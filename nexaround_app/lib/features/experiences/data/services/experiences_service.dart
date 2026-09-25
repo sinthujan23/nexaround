@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:nexaround_app/core/constants/api_constants.dart';
+import 'package:nexaround_app/core/constants/countries.dart';
 import 'package:nexaround_app/core/network/api_client.dart';
 import 'package:nexaround_app/features/experiences/data/models/experience_model.dart';
 import 'package:nexaround_app/features/experiences/domain/entities/experience.dart';
@@ -21,9 +22,32 @@ class ExperienceCountry {
   });
 
   factory ExperienceCountry.fromJson(Map<String, dynamic> json) {
+    String rawCode = (json['code'] ?? '').toString().trim().toUpperCase();
+    String rawName = (json['name'] ?? '').toString().trim();
+
+    // Map dial code or numeric legacy values like 94 or +94 to LK
+    if (rawCode == '94' || rawCode == '+94') {
+      rawCode = 'LK';
+    }
+
+    // Resolve name from countries.dart if empty or numeric
+    String resolvedName = rawName;
+    if (resolvedName.isEmpty || resolvedName == '94' || resolvedName == rawCode) {
+      if (rawCode == 'LK') {
+        resolvedName = 'Sri Lanka';
+      } else {
+        for (final entry in countryCodes.entries) {
+          if (entry.value.toUpperCase() == rawCode) {
+            resolvedName = entry.key;
+            break;
+          }
+        }
+      }
+    }
+
     return ExperienceCountry(
-      code: (json['code'] ?? '').toString().toUpperCase(),
-      name: (json['name'] ?? '').toString(),
+      code: rawCode,
+      name: resolvedName.isNotEmpty ? resolvedName : rawCode,
       count: (json['count'] as num?)?.toInt() ?? 0,
       latitude: (json['latitude'] as num?)?.toDouble(),
       longitude: (json['longitude'] as num?)?.toDouble(),
@@ -32,9 +56,15 @@ class ExperienceCountry {
 
   /// Flag emoji for 2-letter ISO country code.
   String get flag {
-    if (code.length != 2) return '🌐';
-    final first = code.codeUnitAt(0) - 0x41 + 0x1F1E6;
-    final second = code.codeUnitAt(1) - 0x41 + 0x1F1E6;
+    final clean = (code == '94' ? 'LK' : code).toUpperCase();
+    if (clean.length != 2) return '🌐';
+    final firstChar = clean.codeUnitAt(0);
+    final secondChar = clean.codeUnitAt(1);
+    if (firstChar < 0x41 || firstChar > 0x5A || secondChar < 0x41 || secondChar > 0x5A) {
+      return '🌐';
+    }
+    final first = firstChar - 0x41 + 0x1F1E6;
+    final second = secondChar - 0x41 + 0x1F1E6;
     return String.fromCharCode(first) + String.fromCharCode(second);
   }
 }

@@ -1,0 +1,86 @@
+// ISO 3166-1 alpha-2 countries list matching the mobile app & Odyssey planner
+
+export const COUNTRIES = [
+  { code: 'LK', name: 'Sri Lanka', flag: '🇱🇰' },
+  { code: 'AF', name: 'Afghanistan', flag: '🇦🇫' },
+  { code: 'AL', name: 'Albania', flag: '🇦🇱' },
+  { code: 'DZ', name: 'Algeria', flag: '🇩🇿' },
+  { code: 'AD', name: 'Andorra', flag: '🇦🇩' },
+  { code: 'AO', name: 'Angola', flag: '🇦🇴' },
+  { code: 'AR', name: 'Argentina', flag: '🇦🇷' },
+  { code: 'AM', name: 'Armenia', flag: '🇦🇲' },
+  { code: 'AU', name: 'Australia', flag: '🇦🇺' },
+  { code: 'AT', name: 'Austria', flag: '🇦🇹' },
+  { code: 'AZ', name: 'Azerbaijan', flag: '🇦🇿' },
+  { code: 'BH', name: 'Bahrain', flag: '🇧🇭' },
+  { code: 'BD', name: 'Bangladesh', flag: '🇧🇩' },
+  { code: 'BE', name: 'Belgium', flag: '🇧🇪' },
+  { code: 'BT', name: 'Bhutan', flag: '🇧🇹' },
+  { code: 'BR', name: 'Brazil', flag: '🇧🇷' },
+  { code: 'KH', name: 'Cambodia', flag: '🇰🇭' },
+  { code: 'CA', name: 'Canada', flag: '🇨🇦' },
+  { code: 'CN', name: 'China', flag: '🇨🇳' },
+  { code: 'HR', name: 'Croatia', flag: '🇭🇷' },
+  { code: 'CY', name: 'Cyprus', flag: '🇨🇾' },
+  { code: 'CZ', name: 'Czechia', flag: '🇨🇿' },
+  { code: 'DK', name: 'Denmark', flag: '🇩🇰' },
+  { code: 'EG', name: 'Egypt', flag: '🇪🇬' },
+  { code: 'FI', name: 'Finland', flag: '🇫🇮' },
+  { code: 'FR', name: 'France', flag: '🇫🇷' },
+  { code: 'GE', name: 'Georgia', flag: '🇬🇪' },
+  { code: 'DE', name: 'Germany', flag: '🇩🇪' },
+  { code: 'GR', name: 'Greece', flag: '🇬🇷' },
+  { code: 'HK', name: 'Hong Kong', flag: '🇭🇰' },
+  { code: 'HU', name: 'Hungary', flag: '🇭🇺' },
+  { code: 'IS', name: 'Iceland', flag: '🇮🇸' },
+  { code: 'IN', name: 'India', flag: '🇮🇳' },
+  { code: 'ID', name: 'Indonesia', flag: '🇮🇩' },
+  { code: 'IE', name: 'Ireland', flag: '🇮🇪' },
+  { code: 'IL', name: 'Israel', flag: '🇮🇱' },
+  { code: 'IT', name: 'Italy', flag: '🇮🇹' },
+  { code: 'JP', name: 'Japan', flag: '🇯🇵' },
+  { code: 'JO', name: 'Jordan', flag: '🇯🇴' },
+  { code: 'KE', name: 'Kenya', flag: '🇰🇪' },
+  { code: 'KR', name: 'South Korea', flag: '🇰🇷' },
+  { code: 'KW', name: 'Kuwait', flag: '🇰🇼' },
+  { code: 'LA', name: 'Laos', flag: '🇱🇦' },
+  { code: 'MY', name: 'Malaysia', flag: '🇲🇾' },
+  { code: 'MV', name: 'Maldives', flag: '🇲🇻' },
+  { code: 'MX', name: 'Mexico', flag: '🇲🇽' },
+  { code: 'MA', name: 'Morocco', flag: '🇲🇦' },
+  { code: 'NP', name: 'Nepal', flag: '🇳🇵' },
+  { code: 'NL', name: 'Netherlands', flag: '🇳🇱' },
+  { code: 'NZ', name: 'New Zealand', flag: '🇳🇿' },
+  { code: 'NO', name: 'Norway', flag: '🇳🇴' },
+  { code: 'OM', name: 'Oman', flag: '🇴🇲' },
+  { code: 'PK', name: 'Pakistan', flag: '🇵🇰' },
+  { code: 'PH', name: 'Philippines', flag: '🇵🇭' },
+  { code: 'PL', name: 'Poland', flag: '🇵🇱' },
+  { code: 'PT', name: 'Portugal', flag: '🇵🇹' },
+  { code: 'QA', name: 'Qatar', flag: '🇶🇦' },
+  { code: 'SA', name: 'Saudi Arabia', flag: '🇸🇦' },
+  { code: 'SG', name: 'Singapore', flag: '🇸🇬' },
+  { code: 'ZA', name: 'South Africa', flag: '🇿🇦' },
+  { code: 'ES', name: 'Spain', flag: '🇪🇸' },
+  { code: 'SE', name: 'Sweden', flag: '🇸🇪' },
+  { code: 'CH', name: 'Switzerland', flag: '🇨🇭' },
+  { code: 'TW', name: 'Taiwan', flag: '🇹🇼' },
+  { code: 'TH', name: 'Thailand', flag: '🇹🇭' },
+  { code: 'TR', name: 'Turkey', flag: '🇹🇷' },
+  { code: 'AE', name: 'United Arab Emirates', flag: '🇦🇪' },
+  { code: 'GB', name: 'United Kingdom', flag: '🇬🇧' },
+  { code: 'US', name: 'United States', flag: '🇺🇸' },
+  { code: 'VN', name: 'Vietnam', flag: '🇻🇳' },
+];
+
+export function normalizeCountryCode(code) {
+  if (!code) return 'LK';
+  const c = String(code).trim().toUpperCase();
+  if (c === '94' || c === '+94') return 'LK';
+  return c;
+}
+
+export function getCountryByCode(code) {
+  const norm = normalizeCountryCode(code);
+  return COUNTRIES.find((c) => c.code === norm) || { code: norm, name: norm, flag: '🌐' };
+}

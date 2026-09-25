@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
+import 'package:nexaround_app/core/constants/countries.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/core/utils/distance_format.dart';
 import 'package:nexaround_app/features/experiences/data/services/experiences_service.dart';
@@ -324,143 +325,215 @@ class ExperiencesTabState extends State<ExperiencesTab> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) {
-        return Container(
-          constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(ctx).size.height * 0.7,
-          ),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(height: 12),
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: AppColors.border,
-                  borderRadius: BorderRadius.circular(2),
-                ),
+        String searchQuery = '';
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            final q = searchQuery.trim().toLowerCase();
+
+            // Map active countries by ISO code
+            final Map<String, ExperienceCountry> activeMap = {
+              for (final c in _availableCountries) c.code: c,
+            };
+
+            // Filter countries
+            final filteredCountries = countriesList.where((name) {
+              if (q.isEmpty) return true;
+              return name.toLowerCase().contains(q);
+            }).toList();
+
+            final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+
+            return Container(
+              height: MediaQuery.of(context).size.height * 0.78,
+              margin: EdgeInsets.only(bottom: bottomInset),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
               ),
-              const SizedBox(height: 16),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Row(
-                  children: const [
-                    Icon(Icons.public_rounded, color: AppColors.brandGreen, size: 22),
-                    SizedBox(width: 10),
-                    Text(
-                      'Select Destination',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.textPrimary,
-                        letterSpacing: -0.3,
-                      ),
+              child: Column(
+                children: [
+                  const SizedBox(height: 12),
+                  Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: AppColors.border,
+                      borderRadius: BorderRadius.circular(2),
                     ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 24),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    'Browse experiences in specific countries or near your current spot.',
-                    style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
                   ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              const Divider(height: 1, color: AppColors.border),
-              Flexible(
-                child: ListView(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  children: [
-                    // Near Me option
-                    ListTile(
-                      leading: Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          color: _selectedCountry == null
-                              ? AppColors.brandGreenLight
-                              : AppColors.surface,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          Icons.near_me_rounded,
-                          color: _selectedCountry == null
-                              ? AppColors.brandGreen
-                              : AppColors.textSecondary,
-                          size: 20,
-                        ),
-                      ),
-                      title: const Text(
-                        'Near Me (Current Location)',
-                        style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
-                      ),
-                      subtitle: const Text(
-                        'Experiences closest to your current spot',
-                        style: TextStyle(fontSize: 12, color: AppColors.textTertiary),
-                      ),
-                      trailing: _selectedCountry == null
-                          ? const Icon(Icons.check_circle_rounded, color: AppColors.brandGreen)
-                          : null,
-                      onTap: () {
-                        Navigator.pop(ctx);
-                        _selectCountry(null);
-                      },
-                    ),
-                    const Divider(indent: 20, endIndent: 20, height: 1, color: AppColors.border),
-                    // Countries list
-                    ..._availableCountries.map((c) {
-                      final isSelected = _selectedCountry?.code == c.code;
-                      return ListTile(
-                        leading: Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: isSelected
-                                ? AppColors.brandGreenLight
-                                : AppColors.surface,
-                            shape: BoxShape.circle,
-                          ),
-                          alignment: Alignment.center,
-                          child: Text(c.flag, style: const TextStyle(fontSize: 20)),
-                        ),
-                        title: Text(
-                          c.name,
+                  const SizedBox(height: 16),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    child: Row(
+                      children: const [
+                        Icon(Icons.public_rounded, color: AppColors.brandGreen, size: 22),
+                        SizedBox(width: 10),
+                        Text(
+                          'Select Destination',
                           style: TextStyle(
-                            fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                            fontSize: 15,
-                            color: isSelected ? AppColors.brandGreen : AppColors.textPrimary,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.textPrimary,
+                            letterSpacing: -0.3,
                           ),
                         ),
-                        subtitle: c.count > 0
-                            ? Text(
-                                '${c.count} ${c.count == 1 ? 'experience' : 'experiences'}',
-                                style: const TextStyle(fontSize: 12, color: AppColors.textTertiary),
-                              )
-                            : null,
-                        trailing: isSelected
-                            ? const Icon(Icons.check_circle_rounded, color: AppColors.brandGreen)
-                            : null,
-                        onTap: () {
-                          Navigator.pop(ctx);
-                          _selectCountry(c);
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 24),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Browse experiences by country or near your current spot.',
+                        style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  // Search Box matching Odyssey / Travel Stories
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: Colors.grey.shade200),
+                      ),
+                      child: TextField(
+                        autofocus: false,
+                        style: const TextStyle(color: Colors.black87, fontSize: 14),
+                        onChanged: (val) {
+                          setModalState(() {
+                            searchQuery = val;
+                          });
                         },
-                      );
-                    }),
-                  ],
-                ),
+                        decoration: InputDecoration(
+                          hintText: 'Search country...',
+                          hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
+                          prefixIcon: const Icon(Icons.search_rounded, color: Colors.grey, size: 20),
+                          suffixIcon: searchQuery.isNotEmpty
+                              ? IconButton(
+                                  icon: const Icon(Icons.clear_rounded, color: Colors.grey, size: 18),
+                                  onPressed: () {
+                                    setModalState(() {
+                                      searchQuery = '';
+                                    });
+                                  },
+                                )
+                              : null,
+                          border: InputBorder.none,
+                          contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  const Divider(height: 1, color: AppColors.border),
+                  Expanded(
+                    child: ListView(
+                      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+                      children: [
+                        // Near Me option
+                        ListTile(
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          leading: Container(
+                            width: 38,
+                            height: 38,
+                            decoration: BoxDecoration(
+                              color: _selectedCountry == null
+                                  ? AppColors.brandGreenLight
+                                  : AppColors.surface,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              Icons.near_me_rounded,
+                              color: _selectedCountry == null
+                                  ? AppColors.brandGreen
+                                  : AppColors.textSecondary,
+                              size: 19,
+                            ),
+                          ),
+                          title: const Text(
+                            'Near Me (Current Location)',
+                            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14.5),
+                          ),
+                          subtitle: const Text(
+                            'Experiences closest to your current spot',
+                            style: TextStyle(fontSize: 12, color: AppColors.textTertiary),
+                          ),
+                          trailing: _selectedCountry == null
+                              ? const Icon(Icons.check_circle_rounded, color: AppColors.brandGreen)
+                              : null,
+                          onTap: () {
+                            Navigator.pop(ctx);
+                            _selectCountry(null);
+                          },
+                        ),
+                        const Divider(indent: 16, endIndent: 16, height: 16, color: AppColors.border),
+                        // List of countries
+                        ...filteredCountries.map((countryName) {
+                          final code = countryCodeFor(countryName) ?? '';
+                          final active = activeMap[code];
+                          final count = active?.count ?? 0;
+                          final isSelected = _selectedCountry?.name.toLowerCase() == countryName.toLowerCase() ||
+                              (_selectedCountry?.code.isNotEmpty == true && _selectedCountry?.code == code);
+
+                          final flag = ExperienceCountry(code: code, name: countryName).flag;
+
+                          return ListTile(
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                            leading: Container(
+                              width: 38,
+                              height: 38,
+                              decoration: BoxDecoration(
+                                color: isSelected ? AppColors.brandGreenLight : AppColors.surface,
+                                shape: BoxShape.circle,
+                              ),
+                              alignment: Alignment.center,
+                              child: Text(flag, style: const TextStyle(fontSize: 20)),
+                            ),
+                            title: Text(
+                              countryName,
+                              style: TextStyle(
+                                fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                                fontSize: 14.5,
+                                color: isSelected ? AppColors.brandGreen : AppColors.textPrimary,
+                              ),
+                            ),
+                            subtitle: count > 0
+                                ? Text(
+                                    '$count ${count == 1 ? 'experience' : 'experiences'}',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppColors.brandGreen,
+                                    ),
+                                  )
+                                : null,
+                            trailing: isSelected
+                                ? const Icon(Icons.check_circle_rounded, color: AppColors.brandGreen)
+                                : null,
+                            onTap: () {
+                              Navigator.pop(ctx);
+                              final picked = active ??
+                                  ExperienceCountry(
+                                    code: code,
+                                    name: countryName,
+                                    count: count,
+                                  );
+                              _selectCountry(picked);
+                            },
+                          );
+                        }),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 16),
-            ],
-          ),
+            );
+          },
         );
       },
     );

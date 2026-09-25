@@ -65,8 +65,10 @@ class ExperienceRepository:
         if category:
             query = query.where(ExperiencePackage.category == category)
         if country_code:
+            cc = country_code.strip().upper()
+            codes = ["LK", "94", "+94"] if cc in ("LK", "94", "+94") else [cc]
             query = query.join(ExperiencePackage.vendor).where(
-                func.upper(ExperienceVendor.country_code) == country_code.upper()
+                func.upper(ExperienceVendor.country_code).in_(codes)
             )
 
         result = await self.db.execute(query)
@@ -81,8 +83,10 @@ class ExperienceRepository:
         if category:
             query = query.where(ExperiencePackage.category == category)
         if country_code:
+            cc = country_code.strip().upper()
+            codes = ["LK", "94", "+94"] if cc in ("LK", "94", "+94") else [cc]
             query = query.join(ExperiencePackage.vendor).where(
-                func.upper(ExperienceVendor.country_code) == country_code.upper()
+                func.upper(ExperienceVendor.country_code).in_(codes)
             )
         return int((await self.db.execute(query)).scalar() or 0)
 
@@ -105,20 +109,25 @@ class ExperienceRepository:
         )
         result = await self.db.execute(query)
         rows = result.all()
-        countries = []
+        aggregated: dict[str, dict] = {}
         for code, count, avg_lat, avg_lng in rows:
             if not code:
                 continue
             code_upper = code.strip().upper()
-            name = COUNTRY_NAMES.get(code_upper, code_upper)
-            countries.append({
-                "code": code_upper,
-                "name": name,
-                "count": count,
-                "latitude": float(avg_lat) if avg_lat is not None else None,
-                "longitude": float(avg_lng) if avg_lng is not None else None,
-            })
-        return countries
+            if code_upper in ("94", "+94"):
+                code_upper = "LK"
+            name = COUNTRY_NAMES.get(code_upper, "Sri Lanka" if code_upper == "LK" else code_upper)
+            if code_upper in aggregated:
+                aggregated[code_upper]["count"] += count
+            else:
+                aggregated[code_upper] = {
+                    "code": code_upper,
+                    "name": name,
+                    "count": count,
+                    "latitude": float(avg_lat) if avg_lat is not None else None,
+                    "longitude": float(avg_lng) if avg_lng is not None else None,
+                }
+        return sorted(aggregated.values(), key=lambda x: x["count"], reverse=True)
 
     async def get_package(
         self, package_id: uuid.UUID, published_only: bool = True

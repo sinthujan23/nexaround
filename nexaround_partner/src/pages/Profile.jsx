@@ -4,6 +4,7 @@ import { StarIcon, CompassIcon, ImageIcon, MapPinIcon, PhoneIcon, GlobeIcon } fr
 import { Toast, Section } from '../components/Kit';
 import LocationPicker from '../components/LocationPicker';
 import ImageUploader from '../components/ImageUploader';
+import { COUNTRIES, normalizeCountryCode } from '../constants/countries';
 
 /**
  * The vendor's own record.
@@ -150,11 +151,18 @@ export default function Profile({ onSaved }) {
                 />
               </div>
               <div className="form-group">
-                <label className="form-label">Country code</label>
-                <input
-                  type="text" maxLength={2} className="form-input" value={form.country_code || ''}
-                  onChange={(e) => patch({ country_code: e.target.value.toUpperCase() })}
-                />
+                <label className="form-label">Country</label>
+                <select
+                  className="form-input"
+                  value={normalizeCountryCode(form.country_code || 'LK')}
+                  onChange={(e) => patch({ country_code: e.target.value })}
+                >
+                  {COUNTRIES.map((c) => (
+                    <option key={c.code} value={c.code}>
+                      {c.flag} {c.name} ({c.code})
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
             <LocationPicker
@@ -170,6 +178,9 @@ export default function Profile({ onSaved }) {
                 const next = { ...p };
                 delete next.name;
                 delete next.google_place_id;
+                if (next.country_code) {
+                  next.country_code = normalizeCountryCode(next.country_code);
+                }
                 patch(next);
               }}
             />

@@ -6,6 +6,7 @@ import {
 } from '../components/Icons';
 import LocationPicker from '../components/LocationPicker';
 import ImageUploader from '../components/ImageUploader';
+import { COUNTRIES, normalizeCountryCode } from '../constants/countries';
 
 const CATEGORIES = [
   { value: 'boat', label: 'Boat ride' },
@@ -91,6 +92,7 @@ const matches = (query, ...fields) => {
 const pickLocation = (form, patch) => {
   const next = { ...patch };
   if (next.name !== undefined && form.name) delete next.name;
+  if (next.country_code) next.country_code = normalizeCountryCode(next.country_code);
   return next;
 };
 
@@ -805,11 +807,18 @@ export default function Experiences() {
                           />
                         </div>
                         <div className="form-group">
-                          <label className="form-label">Country code</label>
-                          <input
-                            type="text" maxLength={2} className="form-input" value={form.country_code || 'LK'}
-                            onChange={(e) => patchForm({ country_code: e.target.value.toUpperCase() })}
-                          />
+                          <label className="form-label">Country</label>
+                          <select
+                            className="form-input"
+                            value={normalizeCountryCode(form.country_code || 'LK')}
+                            onChange={(e) => patchForm({ country_code: e.target.value })}
+                          >
+                            {COUNTRIES.map((c) => (
+                              <option key={c.code} value={c.code}>
+                                {c.flag} {c.name} ({c.code})
+                              </option>
+                            ))}
+                          </select>
                         </div>
                       </div>
                       <label className="form-label">Map pin</label>
@@ -1089,11 +1098,18 @@ export default function Experiences() {
                 />
               </div>
               <div className="form-group">
-                <label className="form-label">Country code</label>
-                <input
-                  type="text" maxLength={2} className="form-input" value={form.country_code || 'LK'}
-                  onChange={(e) => patchForm({ country_code: e.target.value.toUpperCase() })}
-                />
+                <label className="form-label">Country</label>
+                <select
+                  className="form-input"
+                  value={normalizeCountryCode(form.country_code || 'LK')}
+                  onChange={(e) => patchForm({ country_code: e.target.value })}
+                >
+                  {COUNTRIES.map((c) => (
+                    <option key={c.code} value={c.code}>
+                      {c.flag} {c.name} ({c.code})
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
             <LocationPicker
