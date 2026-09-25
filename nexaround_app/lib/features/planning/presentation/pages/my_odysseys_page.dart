@@ -225,32 +225,18 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
   Widget _buildCreatePlanCard() {
     return GestureDetector(
       onTap: _openPlanner,
-      child: CustomPaint(
-        foregroundPainter: const _DashedRRectPainter(
-          color: Color(0xFF94A3B8),
-          strokeWidth: 1.5,
-          dashLength: 5.0,
-          dashGap: 4.0,
-          radius: 16.0,
+      child: Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFFF1F3F5),
+          borderRadius: BorderRadius.circular(16),
         ),
-        child: Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            gradient: const LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                Color(0xFFF8FAFC),
-                Color(0xFFF1F5F9),
-              ],
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.03),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
+        child: CustomPaint(
+          painter: const _DottedBorderPainter(
+            color: Color(0xFF94A3B8),
+            strokeWidth: 1.6,
+            dashLength: 4.5,
+            dashGap: 4.5,
+            radius: 16.0,
           ),
           child: Padding(
             padding: const EdgeInsets.all(14),
@@ -266,26 +252,19 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 7, vertical: 3.5),
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: AppColors.brandGreen.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(6),
                         border: Border.all(
-                          color: const Color(0xFFE2E8F0),
-                          width: 1,
+                          color: AppColors.brandGreen.withValues(alpha: 0.25),
+                          width: 0.8,
                         ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.03),
-                            blurRadius: 4,
-                            offset: const Offset(0, 1),
-                          ),
-                        ],
                       ),
                       child: const Text(
                         'ODYSSEY',
                         style: TextStyle(
-                          fontSize: 8.5,
+                          fontSize: 8,
                           fontWeight: FontWeight.w900,
-                          letterSpacing: 1.1,
+                          letterSpacing: 1.2,
                           color: AppColors.brandGreen,
                         ),
                       ),
@@ -295,18 +274,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
                       height: 28,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: Colors.white,
-                        border: Border.all(
-                          color: const Color(0xFFE2E8F0),
-                          width: 1,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.03),
-                            blurRadius: 4,
-                            offset: const Offset(0, 1),
-                          ),
-                        ],
+                        color: AppColors.brandGreen.withValues(alpha: 0.12),
                       ),
                       child: const Icon(
                         Icons.auto_awesome_rounded,
@@ -317,18 +285,18 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
                   ],
                 ),
 
-                // Center: Elevated button with brand gradient
+                // Center: Large glowing + button
                 Center(
                   child: Container(
-                    width: 50,
-                    height: 50,
+                    width: 48,
+                    height: 48,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       gradient: AppColors.brandGradient,
                       boxShadow: [
                         BoxShadow(
-                          color: AppColors.brandGreen.withValues(alpha: 0.35),
-                          blurRadius: 14,
+                          color: AppColors.brandGreen.withValues(alpha: 0.28),
+                          blurRadius: 10,
                           offset: const Offset(0, 4),
                         ),
                       ],
@@ -358,7 +326,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
                     Text(
                       'Chart your journey',
                       style: TextStyle(
-                        fontSize: 11,
+                        fontSize: 10.5,
                         fontWeight: FontWeight.w500,
                         color: Color(0xFF64748B),
                       ),
@@ -1295,59 +1263,63 @@ class _BudgetPill extends StatelessWidget {
   }
 }
 
-/// Draws an industry-standard dashed/dotted border around a rounded rectangle
-class _DashedRRectPainter extends CustomPainter {
+/// A painter that draws a clean dotted / dashed rounded border (industry standard for upload/create cards).
+class _DottedBorderPainter extends CustomPainter {
   final Color color;
   final double strokeWidth;
   final double dashLength;
   final double dashGap;
   final double radius;
 
-  const _DashedRRectPainter({
+  const _DottedBorderPainter({
     required this.color,
-    this.strokeWidth = 1.5,
-    this.dashLength = 5.0,
-    this.dashGap = 4.0,
+    this.strokeWidth = 1.6,
+    this.dashLength = 4.5,
+    this.dashGap = 4.5,
     this.radius = 16.0,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (size.width <= 0 || size.height <= 0) return;
-
     final paint = Paint()
       ..color = color
       ..strokeWidth = strokeWidth
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round;
 
-    final halfStroke = strokeWidth / 2;
+    final half = strokeWidth / 2;
     final rrect = RRect.fromRectAndRadius(
       Rect.fromLTWH(
-        halfStroke,
-        halfStroke,
+        half,
+        half,
         size.width - strokeWidth,
         size.height - strokeWidth,
       ),
-      Radius.circular(radius > halfStroke ? radius - halfStroke : 0),
+      Radius.circular((radius - half).clamp(0.0, double.infinity)),
     );
 
     final path = Path()..addRRect(rrect);
+    final dashedPath = Path();
+
     for (final metric in path.computeMetrics()) {
       double distance = 0.0;
       while (distance < metric.length) {
-        final length = (distance + dashLength > metric.length)
-            ? metric.length - distance
-            : dashLength;
-        final extract = metric.extractPath(distance, distance + length);
-        canvas.drawPath(extract, paint);
+        final double len = (distance + dashLength < metric.length)
+            ? dashLength
+            : metric.length - distance;
+        dashedPath.addPath(
+          metric.extractPath(distance, distance + len),
+          Offset.zero,
+        );
         distance += dashLength + dashGap;
       }
     }
+
+    canvas.drawPath(dashedPath, paint);
   }
 
   @override
-  bool shouldRepaint(covariant _DashedRRectPainter oldDelegate) {
+  bool shouldRepaint(covariant _DottedBorderPainter oldDelegate) {
     return oldDelegate.color != color ||
         oldDelegate.strokeWidth != strokeWidth ||
         oldDelegate.dashLength != dashLength ||
@@ -1355,5 +1327,4 @@ class _DashedRRectPainter extends CustomPainter {
         oldDelegate.radius != radius;
   }
 }
-
 
