@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:go_router/go_router.dart';
+import 'package:nexaround_app/core/services/config_key_service.dart';
+import 'package:nexaround_app/core/services/notification_service.dart';
 import 'package:nexaround_app/core/services/permission_service.dart';
 
 const String _splashAnimAsset = 'assets/animations/splash_animation.webp';
@@ -71,7 +73,15 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen> {
   void _kickPermissionsOnce() {
     if (_permissionsKicked) return;
     _permissionsKicked = true;
-    unawaited(PermissionService.requestAllPermissions());
+    unawaited(_requestPermissions());
+  }
+
+  // main() asks for notification permission just after the first frame.
+  // Android cancels a request made while another is on screen, so camera and
+  // location wait for that prompt to be answered.
+  static Future<void> _requestPermissions() async {
+    await NotificationService.instance.permissionPromptDone;
+    await PermissionService.requestAllPermissions();
   }
 
   Future<void> _finishSplash() async {
@@ -82,6 +92,12 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen> {
       await Future.delayed(_minSplashFloor - elapsed);
       if (!mounted || _navigated) return;
     }
+
+    // The SDK keys main() started fetching: map screens read them when they
+    // build. Usually in long before the animation ends; bounded by the
+    // fetch's own 10 s timeout.
+    await ConfigKeyService.fetchOnLaunch();
+    if (!mounted || _navigated) return;
 
     _navigated = true;
     _loadTimeoutTimer?.cancel();

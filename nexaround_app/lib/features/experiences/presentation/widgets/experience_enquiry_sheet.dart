@@ -16,6 +16,7 @@ Future<void> showExperienceEnquirySheet(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
+    showDragHandle: false,
     builder: (_) => _EnquirySheet(package: package),
   );
 }

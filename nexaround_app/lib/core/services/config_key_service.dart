@@ -10,7 +10,8 @@ import 'package:nexaround_app/core/constants/api_constants.dart';
 /// calls simply refresh the keys.
 ///
 /// Called in two places:
-///   1. `main()` — eagerly, so the map tiles load before the user navigates.
+///   1. `main()`, through [fetchOnLaunch] — eagerly, so the map tiles load
+///      before the user navigates. The splash waits on it.
 ///   2. After successful authentication — as a retry, in case the first attempt
 ///      failed (e.g. backend was cold-starting, network was briefly offline).
 class ConfigKeyService {
@@ -19,6 +20,13 @@ class ConfigKeyService {
   /// Whether we have already successfully applied the Mapbox token at least
   /// once during this app session. Avoids redundant `setAccessToken` calls.
   static bool _mapboxTokenApplied = false;
+
+  static Future<bool>? _launchFetch;
+
+  /// The fetch made at launch, started once. `main()` starts it without
+  /// waiting so the first frame isn't held on the network; the splash awaits
+  /// the same call before it opens any screen that may show a map.
+  static Future<bool> fetchOnLaunch() => _launchFetch ??= fetchAndApplyKeys();
 
   /// Returns `true` if keys were fetched and applied successfully.
   static Future<bool> fetchAndApplyKeys() async {

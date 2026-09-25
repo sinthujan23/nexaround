@@ -1040,6 +1040,8 @@ class _LivingMapPageState extends State<LivingMapPage>
                           const SizedBox(height: 24),
                           _buildArSpotlight(),
                           const SizedBox(height: 16),
+                          _buildExperienceRibbon(),
+                          const SizedBox(height: 16),
                           _buildOdysseyCTA(),
                         ],
                       ),
@@ -2451,6 +2453,134 @@ class _LivingMapPageState extends State<LivingMapPage>
         );
       },
     );
+  }
+
+  /// Experience Banner — matching rounded card box (BorderRadius.circular(24))
+  /// like AR Spotlight and Odyssey, with adventure photo background and no arrow circle.
+  Widget _buildExperienceRibbon() {
+    return GestureDetector(
+      onTap: () {
+        final homeState =
+            context.findAncestorStateOfType<HomePageState>() ??
+            HomePage.homeKey.currentState;
+        if (homeState != null) {
+          homeState.switchToDiscover(
+            initialTab: DiscoverPage.tabs.indexOf('Experiences'),
+          );
+        }
+      },
+      child: Container(
+        width: double.infinity,
+        height: 88,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: Colors.white.withOpacity(0.08),
+            width: 1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.35),
+              blurRadius: 18,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(24),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              // ── Background Adventure Collage Image ──
+              Image.asset(
+                'assets/images/experiences_banner_bg.png',
+                fit: BoxFit.cover,
+                alignment: Alignment.center,
+              ),
+
+              // ── Brand Emerald Darkening & Contrast Gradient Overlay ──
+              Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                    colors: [
+                      Colors.black.withOpacity(0.72), // dark near text for perfect readability
+                      const Color(0xFF051C14).withOpacity(0.45),
+                      Colors.transparent, // lets the vivid adventure image show through on right
+                      Colors.black.withOpacity(0.30),
+                    ],
+                    stops: const [0.0, 0.45, 0.75, 1.0],
+                  ),
+                ),
+              ),
+
+              // ── Subtle top-edge shine & bottom vignette ──
+              Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.white.withOpacity(0.08),
+                      Colors.transparent,
+                      Colors.black.withOpacity(0.30),
+                    ],
+                    stops: const [0.0, 0.30, 1.0],
+                  ),
+                ),
+              ),
+
+              // ── Content: Title + Subtitle (clean, no inside arrow circle) ──
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      'UNLEASH EXPERIENCES',
+                      style: TextStyle(
+                        fontSize: 16.5,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.white,
+                        letterSpacing: 0.6,
+                        height: 1.15,
+                        shadows: [
+                          Shadow(
+                            color: Colors.black.withOpacity(0.7),
+                            blurRadius: 6,
+                            offset: const Offset(0, 1.5),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      '— Book Handcrafted Tours',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFFD4AF37), // Warm Champagne Gold
+                        letterSpacing: 0.2,
+                        height: 1.2,
+                        shadows: [
+                          Shadow(
+                            color: Colors.black.withOpacity(0.6),
+                            blurRadius: 4,
+                            offset: const Offset(0, 1),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ).animate().fade(delay: 200.ms).slideX(begin: -0.06, end: 0);
   }
 
   Widget _buildOdysseyCTA() {
@@ -7113,6 +7243,103 @@ class _LivingMapPageState extends State<LivingMapPage>
       ),
     );
   }
+}
+
+/// Helper to construct the dynamic aerodynamic wedge path matching the prototype.
+/// Top edge is straight horizontal.
+/// Right edge slants back/downward.
+/// Bottom edge slants upward towards the right (creating a wedge).
+/// Left edge is vertical with smooth rounded corners.
+Path _buildSlantedWedgePath(Size size) {
+  final path = Path();
+  const double r = 16.0;
+  const double bottomRise = 18.0;
+  const double rightSlant = 24.0;
+
+  final double w = size.width;
+  final double h = size.height;
+
+  // Edge 1->2 (right edge slant)
+  final double len12 = sqrt(rightSlant * rightSlant + (h - bottomRise) * (h - bottomRise));
+  final double dx12 = -rightSlant / len12;
+  final double dy12 = (h - bottomRise) / len12;
+
+  // Edge 2->3 (bottom edge upward slope)
+  final double dx23Raw = -(w - rightSlant);
+  const double dy23Raw = bottomRise;
+  final double len23 = sqrt(dx23Raw * dx23Raw + dy23Raw * dy23Raw);
+  final double dx23 = dx23Raw / len23;
+  final double dy23 = dy23Raw / len23;
+
+  // Start at top-left
+  path.moveTo(r, 0);
+
+  // Top edge (straight horizontal)
+  path.lineTo(w - r, 0);
+
+  // Top-right corner
+  path.quadraticBezierTo(w, 0, w + dx12 * r, dy12 * r);
+
+  // Right edge (slanted inward and down)
+  path.lineTo(w - rightSlant - dx12 * r, h - bottomRise - dy12 * r);
+
+  // Bottom-right corner
+  path.quadraticBezierTo(
+    w - rightSlant,
+    h - bottomRise,
+    w - rightSlant + dx23 * r,
+    h - bottomRise + dy23 * r,
+  );
+
+  // Bottom edge (slanted upwards towards the right)
+  path.lineTo(-dx23 * r, h - dy23 * r);
+
+  // Bottom-left corner
+  path.quadraticBezierTo(0, h, 0, h - r);
+
+  // Left edge (vertical)
+  path.lineTo(0, r);
+
+  // Top-left corner
+  path.quadraticBezierTo(0, 0, r, 0);
+
+  path.close();
+  return path;
+}
+
+/// Custom clip path that creates the dynamic slanted wedge shape.
+class _SlantedRibbonClipper extends CustomClipper<Path> {
+  @override
+  Path getClip(Size size) => _buildSlantedWedgePath(size);
+
+  @override
+  bool shouldReclip(covariant CustomClipper<Path> oldClipper) => false;
+}
+
+/// Paints the luminous neon emerald edge highlight around the slanted wedge.
+class _SlantedWedgeBorderPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final path = _buildSlantedWedgePath(size);
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.3
+      ..shader = const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          Color(0x3534D399), // subtle mint at top-left
+          Color(0x9934D399), // bright neon mint across top & right edge
+          Color(0x1034D399), // faint at bottom
+        ],
+        stops: [0.0, 0.45, 1.0],
+      ).createShader(Offset.zero & size);
+
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 /// L-shaped viewfinder bracket used to frame the AR spotlight card,

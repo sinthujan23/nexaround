@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io' show Platform;
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
@@ -14,11 +15,20 @@ class NotificationService {
   NotificationService._();
   static final NotificationService instance = NotificationService._();
 
-  final FirebaseMessaging _fm = FirebaseMessaging.instance;
+  // A getter, not a field: main() calls init() even when Firebase failed to
+  // start, and reading the instance then throws. init() catches that.
+  FirebaseMessaging get _fm => FirebaseMessaging.instance;
   String? _token;
   String? _apnsToken;
   bool _initialized = false;
   String debugStatus = 'Initializing...';
+
+  final Completer<void> _permissionPrompt = Completer<void>();
+
+  /// Completes once the notification permission prompt has been answered, or
+  /// failed. Android cancels a permission request made while another is on
+  /// screen, so other startup prompts wait on this.
+  Future<void> get permissionPromptDone => _permissionPrompt.future;
 
   String? get token => _token;
   String? get apnsToken => _apnsToken;
@@ -47,7 +57,11 @@ class NotificationService {
     _initialized = true;
     try {
       debugStatus = 'Requesting permissions...';
-      await _fm.requestPermission(alert: true, badge: true, sound: true);
+      try {
+        await _fm.requestPermission(alert: true, badge: true, sound: true);
+      } finally {
+        _permissionPrompt.complete();
+      }
       // iOS: also surface heads-up notifications while the app is foregrounded.
       await _fm.setForegroundNotificationPresentationOptions(
         alert: true,
@@ -98,6 +112,10 @@ class NotificationService {
         debugPrint('❌ FCM getToken failed: $e\n$stack');
         debugPrint('💡 Suggestion: If on iOS, make sure APNs key/certificates are uploaded to Firebase Console, Bundle ID matches, and Push Notifications capability is enabled in Xcode/Developer Portal.');
       }
+
+      // main() doesn't wait for init(), so Home can open (and try to sync)
+      // before the token exists — on iOS, before APNs has delivered it.
+      if (_token != null && CacheService.isLoggedIn()) unawaited(syncToken());
 
       // App launched from terminated state by tapping a notification.
       final initial = await _fm.getInitialMessage();

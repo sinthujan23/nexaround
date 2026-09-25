@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kReleaseMode;
 import 'package:flutter/services.dart';
@@ -43,36 +44,32 @@ void main() async {
     debugPrint = (String? message, {int? wrapWidth}) {};
   }
 
-  // Before the first screen builds: image widgets read the token synchronously
-  // to authenticate photo requests, and an unauthenticated one is served from
-  // the server's disk cache only.
-  await AuthTokenCache.load();
-
   // Initialize DI
   await configureDependencies();
 
-  // Initialize Cache Service
-  await CacheService.init();
+  // Until runApp draws its first frame the user sees only the blank native
+  // launch screen, so await nothing here that the first screens don't read
+  // synchronously, and run what is awaited side by side:
+  //  - the auth token: image widgets read it to authenticate photo requests,
+  //    and an unauthenticated one is served from the server's disk cache only
+  //  - CacheService: the router and splash read login and onboarding state
+  //  - Hive: travel stories read their box synchronously
+  //  - Firebase: quick on its own; the notification setup that needs it is
+  //    slow and runs after runApp
+  await Future.wait([
+    AuthTokenCache.load(),
+    CacheService.init(),
+    _openLocalDatabase(),
+    _initFirebase(),
+  ]);
+
   // Clear attractions cache on app startup to force a fresh fetch from Google Places
   await CacheService.cacheAttractions([]);
 
-  // Initialize Hive Local Database for Travel Stories
-  await Hive.initFlutter();
-  await Hive.openBox('travel_stories_box');
-
-  // Firebase + push notifications (FCM). Non-fatal if it fails so the app
-  // still runs without notifications.
-  try {
-    await Firebase.initializeApp();
-    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-    await NotificationService.instance.init();
-  } catch (e) {
-    debugPrint('Firebase init failed: $e');
-  }
-
   // Fetch public client SDK keys (Mapbox token, Google Maps key) from the
-  // backend. This no longer requires authentication so it works at startup.
-  await ConfigKeyService.fetchAndApplyKeys();
+  // backend. A network call of up to 10 s, so not awaited: the splash waits
+  // on it before opening any screen that may show a map.
+  unawaited(ConfigKeyService.fetchOnLaunch());
 
   // Start session tracking for real engagement metrics (DAU + avg session).
   SessionTracker.instance.start();
@@ -89,4 +86,26 @@ void main() async {
   ));
 
   runApp(const NexAroundApp());
+
+  // Push notifications (FCM): asks for permission, then fetches the device
+  // token. That can take seconds — the prompt waits on the user, and iOS
+  // waits up to 10 s for the APNs token — so it runs behind the first frame.
+  // Non-fatal if Firebase failed: the app still runs without notifications.
+  unawaited(NotificationService.instance.init());
+}
+
+/// Initialize Hive Local Database for Travel Stories
+Future<void> _openLocalDatabase() async {
+  await Hive.initFlutter();
+  await Hive.openBox('travel_stories_box');
+}
+
+/// Non-fatal if it fails, so the app still runs without notifications.
+Future<void> _initFirebase() async {
+  try {
+    await Firebase.initializeApp();
+    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+  } catch (e) {
+    debugPrint('Firebase init failed: $e');
+  }
 }
