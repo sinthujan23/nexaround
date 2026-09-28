@@ -212,7 +212,7 @@ class ExperiencesTabState extends State<ExperiencesTab> {
   }
 
 
-  static const _gutter = EdgeInsets.symmetric(horizontal: 24);
+  static const _gutter = EdgeInsets.symmetric(horizontal: 16);
 
   @override
   Widget build(BuildContext context) {
@@ -248,7 +248,7 @@ class ExperiencesTabState extends State<ExperiencesTab> {
       height: 40,
       child: Row(
         children: [
-          const SizedBox(width: 24),
+          const SizedBox(width: 16),
           // Country Selector Pill (Pinned)
           InkWell(
             onTap: _showCountryPicker,
@@ -274,10 +274,17 @@ class ExperiencesTabState extends State<ExperiencesTab> {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                    hasCountry ? _selectedCountry!.flag : '📍',
-                    style: const TextStyle(fontSize: 14),
-                  ),
+                  if (hasCountry)
+                    Text(
+                      _selectedCountry!.flag,
+                      style: const TextStyle(fontSize: 14),
+                    )
+                  else
+                    const Icon(
+                      Icons.my_location_rounded,
+                      size: 15.5,
+                      color: AppColors.brandGreen,
+                    ),
                   const SizedBox(width: 6),
                   ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 105),
@@ -323,7 +330,7 @@ class ExperiencesTabState extends State<ExperiencesTab> {
           Expanded(
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.only(right: 24, left: 4),
+              padding: const EdgeInsets.only(right: 16, left: 4),
               itemCount: experienceCategories.length,
               separatorBuilder: (_, __) => const SizedBox(width: 8),
               itemBuilder: (_, index) {
@@ -351,14 +358,18 @@ class ExperiencesTabState extends State<ExperiencesTab> {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(chip.emoji, style: const TextStyle(fontSize: 14)),
+                        Icon(
+                          chip.icon,
+                          size: 15,
+                          color: selected ? Colors.white : chip.accent,
+                        ),
                         const SizedBox(width: 6),
                         Text(
                           chip.chipLabel,
                           style: TextStyle(
                             fontSize: 12.5,
                             fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
-                            color: selected ? Colors.white : AppColors.textSecondary,
+                            color: selected ? Colors.white : AppColors.textPrimary,
                           ),
                         ),
                       ],
@@ -502,7 +513,7 @@ class ExperiencesTabState extends State<ExperiencesTab> {
                               shape: BoxShape.circle,
                             ),
                             child: Icon(
-                              Icons.near_me_rounded,
+                              Icons.my_location_rounded,
                               color: _selectedCountry == null
                                   ? AppColors.brandGreen
                                   : AppColors.textSecondary,
@@ -796,7 +807,7 @@ class ExperiencesTabState extends State<ExperiencesTab> {
 
   List<Widget> _buildContent() {
     if (_loading) {
-      return List.generate(3, (_) => _buildShimmerCard());
+      return List.generate(4, (_) => _buildShimmerCard());
     }
 
     if (_awaitingLocation) {
@@ -884,39 +895,56 @@ class ExperiencesTabState extends State<ExperiencesTab> {
         );
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 14),
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(11),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: AppColors.border.withValues(alpha: 0.6)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
           ClipRRect(
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-            child: AspectRatio(
-              aspectRatio: 16 / 9,
-              child: Container(color: Colors.grey[200]),
+            borderRadius: BorderRadius.circular(14),
+            child: Container(
+              width: 116,
+              height: 116,
+              color: Colors.grey[200],
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                bar(200, 15),
-                const SizedBox(height: 8),
-                bar(130, 12),
-                const SizedBox(height: 18),
-                Row(
-                  children: [
-                    bar(70, 26),
-                    const Spacer(),
-                    bar(90, 20),
-                  ],
-                ),
-              ],
+          const SizedBox(width: 12),
+          Expanded(
+            child: SizedBox(
+              height: 116,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      bar(60, 16),
+                      bar(45, 12),
+                    ],
+                  ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      bar(140, 14),
+                      const SizedBox(height: 5),
+                      bar(85, 11),
+                    ],
+                  ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      bar(55, 18),
+                      bar(65, 16),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
         ],
