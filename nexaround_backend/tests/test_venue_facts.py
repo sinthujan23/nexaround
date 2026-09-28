@@ -162,3 +162,63 @@ def test_every_model_written_rating_is_discarded_even_when_it_was_right():
     assert enzo["rating_source"] == "Google", (
         "the value matching is a coincidence; its provenance is the point"
     )
+
+
+# ── Speed: lookups run together, and each venue once ───────────────────────
+
+def _three_days_of_the_same_trattoria():
+    days = []
+    for n in (1, 2, 3):
+        days.append({"kind": "day", "day": n, "activities": [
+            {"name": f"Museum {n}", "type": "attraction", "hours": "9-5"},
+            {"name": "Dinner", "type": "dining", "restaurants": [
+                {"name": "Da Enzo al 29", "rating": "4.5 ★"},
+                {"name": f"Bistro {n}", "rating": "4.1 ★"},
+            ]},
+        ]})
+    return days
+
+
+ROME_THREE_DAYS = [{"city": "Rome", "country": "IT", "start_day": 1, "end_day": 3,
+                    "latitude": 41.90, "longitude": 12.50}]
+
+
+def test_a_venue_named_on_several_days_is_looked_up_once():
+    asked: list[str] = []
+
+    async def _fake(client, name, city, *, latitude, longitude, api_key):
+        asked.append(name)
+        return {"name": name, "rating": 4.2, "review_count": 10, "hours": "",
+                "open": True, "latitude": 41.9, "longitude": 12.5}
+
+    plan = _three_days_of_the_same_trattoria()
+    with patch.object(vf, "lookup", _fake):
+        counts = asyncio.run(svc.verify_venue_facts(plan, ROME_THREE_DAYS, "maps-key"))
+
+    assert asked.count("Da Enzo al 29") == 1
+    assert len(asked) == 7, "3 museums + 3 bistros + the trattoria once"
+    # Every mention still gets Google's numbers, and is still counted.
+    for day in plan:
+        enzo = day["activities"][1]["restaurants"][0]
+        assert enzo["rating"] == "4.2" and enzo["rating_source"] == "Google"
+    assert counts["checked"] == 9
+
+
+def test_lookups_run_at_the_same_time_not_one_after_another():
+    in_flight = 0
+    peak = 0
+
+    async def _slow(client, name, city, *, latitude, longitude, api_key):
+        nonlocal in_flight, peak
+        in_flight += 1
+        peak = max(peak, in_flight)
+        await asyncio.sleep(0.05)
+        in_flight -= 1
+        return None
+
+    plan = _three_days_of_the_same_trattoria()
+    with patch.object(vf, "lookup", _slow):
+        asyncio.run(svc.verify_venue_facts(plan, ROME_THREE_DAYS, "maps-key"))
+
+    assert peak > 1, "the lookups were awaited one at a time"
+    assert peak <= svc._VENUE_LOOKUP_CONCURRENCY, "one plan must not burst past the cap"

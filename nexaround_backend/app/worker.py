@@ -47,6 +47,7 @@ async def main() -> None:
         telemetry_alerts,
         telemetry_rollup,
     )
+    from app.services.providers import airalo
 
     max_jobs = max(1, int(os.getenv("ODYSSEY_MAX_JOBS", "3")))
 
@@ -66,6 +67,9 @@ async def main() -> None:
             asyncio.create_task(telemetry_rollup.rollup_loop()),
             asyncio.create_task(telemetry_rollup.maintenance_loop()),
             asyncio.create_task(telemetry_alerts.alert_loop()),
+            # Airalo's eSIM price list, kept warm so no plan downloads it.
+            # Idle while the provider is switched off in the admin panel.
+            asyncio.create_task(airalo.refresh_loop()),
         ])
         logger.info("telemetry singleton loops started")
     else:

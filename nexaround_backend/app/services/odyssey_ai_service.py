@@ -18,6 +18,7 @@ from app.services import (
     cover_photo_service, geo_resolver, place_cache_service, telemetry,
     trip_cost_floor, venue_facts_service,
 )
+from app.services.providers import enrich as provider_enrich
 from app.services.serpapi_service import (
     SerpApiService,
     _MIN_GOOGLE_HOTEL_CLASS,
@@ -4745,6 +4746,27 @@ async def generate_odyssey(
     # apart, NRT and HND 60, ARN and NYO 100).
     await _reconcile_gateways(route, flight_strategies, primary_flight, geo, geo_budget)
 
+    # Real airport-transfer and eSIM prices, fetched while Gemini writes the
+    # itinerary below and applied after it, so no plan waits for them. Each
+    # provider follows its admin switch (off / shadow / live) — see
+    # providers/enrich.py. Transfers are priced only with a confirmed flight,
+    # the same condition under which the prompt asks for transfer stops.
+    provider_pending = await provider_enrich.start(
+        transfers=provider_enrich.transfers_for(
+            route if primary_flight else None, city_legs,
+            arrival_date=flight_start_date or start_date,
+            departure_date=(
+                flight_end_date or end_date
+                or _derive_return_date(flight_start_date or start_date, days)
+            ),
+            km=_airport_leg_km,
+        ),
+        country_name=geo.country if geo.resolved else "",
+        country_code=geo.country_code if geo.resolved else "",
+        days=days,
+        travelers=travelers,
+    )
+
     # 2. Build grounded prompt using confirmed live inventory
     # What the itinerary itself has left to spend, from the real fares and room
     # rates rather than a percentage the model guesses at. See the helper.
@@ -5442,6 +5464,10 @@ async def generate_odyssey(
             "Inter-city fares applied to %d of %d flown legs.",
             fixed, len(inter_city_flights),
         )
+
+    await provider_enrich.finish(
+        provider_pending, day_items, meta, currency=currency, travelers=travelers,
+    )
 
     # Ratings and opening hours come from Google or they do not appear. The
     # model's own are discarded first, so this cannot be a partial improvement
@@ -6575,6 +6601,12 @@ def stay_cost_row(rng: str, city: str) -> tuple[str, str]:
     return f"{rng} / night", f"Nightly rate range across hotel options {where}: {rng}."
 
 
+# How many venue lookups may be in flight at once. Enough to finish a 14-day
+# plan's worth in well under a second; few enough that one plan is never a
+# burst Places would throttle.
+_VENUE_LOOKUP_CONCURRENCY = 6
+
+
 async def verify_venue_facts(
     day_items: list[dict], city_legs: list[dict], maps_key: str,
 ) -> dict:
@@ -6597,81 +6629,117 @@ async def verify_venue_facts(
     day_city = _day_to_city(city_legs)
     counts = {"checked": 0, "rated": 0, "hours": 0, "stripped": 0, "dropped": 0}
 
-    async with httpx.AsyncClient() as client:
-        for day in day_items:
-            if not isinstance(day, dict) or day.get("kind") != "day":
+    # Every venue the plan names, looked up once and all at the same time.
+    # Awaiting them one after another spent ~0.3 s per venue at the very end of
+    # generation — about 3 s on a typical plan, with the traveller watching a
+    # spinner. A venue named twice (the same trattoria on two nights) is one
+    # lookup: the cache would have answered the second anyway.
+    wanted: dict[str, tuple[str, str, float | None, float | None]] = {}
+
+    def _venue(name: str, city: str, lat, lng) -> str:
+        key = venue_facts_service._cache_key(name, city)
+        wanted.setdefault(key, (name, city, lat, lng))
+        return key
+
+    for day in day_items:
+        if not isinstance(day, dict) or day.get("kind") != "day":
+            continue
+        leg = day_city.get(day.get("day"))
+        if not leg:
+            continue
+        city = str(leg.get("city") or "")
+        lat, lng = leg.get("latitude"), leg.get("longitude")
+        for activity in day.get("activities") or []:
+            if not isinstance(activity, dict):
                 continue
-            leg = day_city.get(day.get("day"))
-            if not leg:
-                continue
-            city = str(leg.get("city") or "")
-            lat, lng = leg.get("latitude"), leg.get("longitude")
+            if normalise_activity_type(activity.get("type")) in ("attraction", "dining"):
+                if str(activity.get("hours") or "").strip():
+                    _venue(str(activity.get("name") or ""), city, lat, lng)
+            for restaurant in activity.get("restaurants") or []:
+                if isinstance(restaurant, dict) and str(restaurant.get("name") or "").strip():
+                    _venue(str(restaurant["name"]).strip(), city, lat, lng)
 
-            for activity in day.get("activities") or []:
-                if not isinstance(activity, dict):
-                    continue
-
-                # The venue the activity itself is: its hours are a claim too.
-                if normalise_activity_type(activity.get("type")) in ("attraction", "dining"):
-                    if str(activity.get("hours") or "").strip():
-                        counts["checked"] += 1
-                        fact = await venue_facts_service.lookup(
-                            client, str(activity.get("name") or ""), city,
-                            latitude=lat, longitude=lng, api_key=maps_key,
-                        )
-                        hours = (fact or {}).get("hours") or ""
-                        if hours:
-                            activity["hours"] = hours
-                            counts["hours"] += 1
-                        else:
-                            activity.pop("hours", None)
-                            counts["stripped"] += 1
-
-                kept: list[dict] = []
-                for restaurant in activity.get("restaurants") or []:
-                    if not isinstance(restaurant, dict):
-                        continue
-                    name = str(restaurant.get("name") or "").strip()
-                    if not name:
-                        continue
-                    counts["checked"] += 1
-                    fact = await venue_facts_service.lookup(
+    facts: dict[str, dict | None] = {}
+    if wanted:
+        gate = asyncio.Semaphore(_VENUE_LOOKUP_CONCURRENCY)
+        async with httpx.AsyncClient() as client:
+            async def _one(key: str, name: str, city: str, lat, lng) -> None:
+                async with gate:
+                    facts[key] = await venue_facts_service.lookup(
                         client, name, city, latitude=lat, longitude=lng, api_key=maps_key,
                     )
-                    if fact is None:
-                        # Unconfirmed: the suggestion survives, the numbers do
-                        # not. Dropping the venue outright would delete real
-                        # places over one failed lookup.
-                        restaurant.pop("rating", None)
-                        counts["stripped"] += 1
-                        kept.append(restaurant)
-                        continue
-                    if not fact.get("open", True):
-                        counts["dropped"] += 1
-                        continue
-                    if fact.get("name"):
-                        restaurant["name"] = fact["name"]
-                    rating = fact.get("rating")
-                    if isinstance(rating, (int, float)) and rating > 0:
-                        # A bare number: the card draws its own star icon, so
-                        # a "\u2605" in the value renders as two of them. The
-                        # model's own ratings arrived both ways.
-                        restaurant["rating"] = f"{float(rating):.1f}"
-                        reviews = fact.get("review_count")
-                        if isinstance(reviews, int) and reviews > 0:
-                            restaurant["review_count"] = reviews
-                        restaurant["rating_source"] = "Google"
-                        counts["rated"] += 1
-                    else:
-                        restaurant.pop("rating", None)
-                        counts["stripped"] += 1
-                    if fact.get("hours"):
-                        restaurant["hours"] = fact["hours"]
-                        counts["hours"] += 1
-                    kept.append(restaurant)
+            await asyncio.gather(*(_one(k, *args) for k, args in wanted.items()))
 
-                if activity.get("restaurants") is not None:
-                    activity["restaurants"] = kept
+    for day in day_items:
+        if not isinstance(day, dict) or day.get("kind") != "day":
+            continue
+        leg = day_city.get(day.get("day"))
+        if not leg:
+            continue
+        city = str(leg.get("city") or "")
+
+        for activity in day.get("activities") or []:
+            if not isinstance(activity, dict):
+                continue
+
+            # The venue the activity itself is: its hours are a claim too.
+            if normalise_activity_type(activity.get("type")) in ("attraction", "dining"):
+                if str(activity.get("hours") or "").strip():
+                    counts["checked"] += 1
+                    fact = facts.get(venue_facts_service._cache_key(
+                        str(activity.get("name") or ""), city,
+                    ))
+                    hours = (fact or {}).get("hours") or ""
+                    if hours:
+                        activity["hours"] = hours
+                        counts["hours"] += 1
+                    else:
+                        activity.pop("hours", None)
+                        counts["stripped"] += 1
+
+            kept: list[dict] = []
+            for restaurant in activity.get("restaurants") or []:
+                if not isinstance(restaurant, dict):
+                    continue
+                name = str(restaurant.get("name") or "").strip()
+                if not name:
+                    continue
+                counts["checked"] += 1
+                fact = facts.get(venue_facts_service._cache_key(name, city))
+                if fact is None:
+                    # Unconfirmed: the suggestion survives, the numbers do
+                    # not. Dropping the venue outright would delete real
+                    # places over one failed lookup.
+                    restaurant.pop("rating", None)
+                    counts["stripped"] += 1
+                    kept.append(restaurant)
+                    continue
+                if not fact.get("open", True):
+                    counts["dropped"] += 1
+                    continue
+                if fact.get("name"):
+                    restaurant["name"] = fact["name"]
+                rating = fact.get("rating")
+                if isinstance(rating, (int, float)) and rating > 0:
+                    # A bare number: the card draws its own star icon, so
+                    # a "\u2605" in the value renders as two of them. The
+                    # model's own ratings arrived both ways.
+                    restaurant["rating"] = f"{float(rating):.1f}"
+                    reviews = fact.get("review_count")
+                    if isinstance(reviews, int) and reviews > 0:
+                        restaurant["review_count"] = reviews
+                    restaurant["rating_source"] = "Google"
+                    counts["rated"] += 1
+                else:
+                    restaurant.pop("rating", None)
+                    counts["stripped"] += 1
+                if fact.get("hours"):
+                    restaurant["hours"] = fact["hours"]
+                    counts["hours"] += 1
+                kept.append(restaurant)
+
+            if activity.get("restaurants") is not None:
+                activity["restaurants"] = kept
 
     return counts
 

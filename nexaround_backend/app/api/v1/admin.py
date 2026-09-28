@@ -1,6 +1,6 @@
 import uuid
 import secrets
-from typing import List, Optional
+from typing import List, Literal, Optional
 from datetime import datetime, timezone, date, timedelta
 from fastapi import APIRouter, Depends, Header, HTTPException, status, Query, BackgroundTasks
 from pydantic import BaseModel
@@ -14,6 +14,7 @@ from app.services.user_service import UserService
 from app.services.attraction_service import AttractionService
 from app.services.settings_service import SettingsService
 from app.services import excluded_keyword_service
+from app.services.providers import config as provider_config
 from app.schemas.user import UserResponse
 from app.schemas.attraction import AttractionResponse, AttractionListResponse, AttractionCreate
 from app.schemas.excluded_keyword import ExcludedKeywordResponse, ExcludedKeywordCreate
@@ -72,6 +73,17 @@ class SettingsResponse(BaseModel):
     default_geofence_radius: str
     unsplash_api_key: str
     serpapi_key: str = ""
+    # Travel-data providers (see app/services/providers/config.py).
+    travelpayouts_api_token: str = ""
+    travelpayouts_marker: str = ""
+    travelpayouts_project_id: str = ""
+    gettransfer_api_token: str = ""
+    provider_mode_gettransfer: str = "off"
+    provider_mode_airalo: str = "off"
+    provider_mode_wegotrip: str = "off"
+    provider_mode_aviasales: str = "off"
+
+ProviderMode = Literal["off", "shadow", "live"]
 
 class SettingsUpdateRequest(BaseModel):
     platform_name: Optional[str] = None
@@ -83,6 +95,14 @@ class SettingsUpdateRequest(BaseModel):
     default_geofence_radius: Optional[str] = None
     unsplash_api_key: Optional[str] = None
     serpapi_key: Optional[str] = None
+    travelpayouts_api_token: Optional[str] = None
+    travelpayouts_marker: Optional[str] = None
+    travelpayouts_project_id: Optional[str] = None
+    gettransfer_api_token: Optional[str] = None
+    provider_mode_gettransfer: Optional[ProviderMode] = None
+    provider_mode_airalo: Optional[ProviderMode] = None
+    provider_mode_wegotrip: Optional[ProviderMode] = None
+    provider_mode_aviasales: Optional[ProviderMode] = None
 
 
 # --- Dependency to protect admin routes ---
@@ -609,6 +629,27 @@ async def broadcast_recipients(
     }
 
 
+# Travel-data provider settings, with the description stored beside each.
+_PROVIDER_SETTINGS = {
+    provider_config.TRAVELPAYOUTS_API_TOKEN: "Travelpayouts API token (Aviasales flight data)",
+    provider_config.TRAVELPAYOUTS_MARKER: "Travelpayouts partner ID stamped on affiliate links",
+    provider_config.TRAVELPAYOUTS_PROJECT_ID: "Travelpayouts Project ID (trs) that affiliate links are credited to",
+    provider_config.GETTRANSFER_API_TOKEN: "GetTransfer API token (issued by Travelpayouts support)",
+    **{
+        provider_config.mode_key(p): f"{p} data in Odyssey plans: off | shadow | live"
+        for p in provider_config.PROVIDERS
+    },
+}
+
+
+async def _provider_settings(service: SettingsService) -> dict:
+    values = {key: await service.get_setting(key, "") for key in _PROVIDER_SETTINGS}
+    for key in provider_config.MODE_KEYS:
+        if values[key] not in provider_config.MODES:
+            values[key] = provider_config.OFF
+    return values
+
+
 @router.get("/settings", response_model=SettingsResponse)
 async def get_admin_settings(
     db: AsyncSession = Depends(get_db),
@@ -626,6 +667,7 @@ async def get_admin_settings(
         default_geofence_radius=await service.get_setting("default_geofence_radius", "100"),
         unsplash_api_key=await service.get_setting("unsplash_api_key", ""),
         serpapi_key=await service.get_setting("serpapi_key", ""),
+        **await _provider_settings(service),
     )
 
 
@@ -655,6 +697,15 @@ async def update_admin_settings(
         await service.set_setting("unsplash_api_key", data.unsplash_api_key, "Unsplash API Access Key")
     if data.serpapi_key is not None:
         await service.set_setting("serpapi_key", data.serpapi_key, "SerpApi Key for Live Google Flight & Hotel Search")
+    provider_changed = False
+    for key, description in _PROVIDER_SETTINGS.items():
+        value = getattr(data, key)
+        if value is not None:
+            await service.set_setting(key, value.strip(), description)
+            provider_changed = True
+    if provider_changed:
+        # This process sees it now; the Odyssey worker within a minute.
+        await provider_config.refresh()
 
     return SettingsResponse(
         platform_name=await service.get_setting("platform_name", "NexARound"),
@@ -666,4 +717,5 @@ async def update_admin_settings(
         default_geofence_radius=await service.get_setting("default_geofence_radius", "100"),
         unsplash_api_key=await service.get_setting("unsplash_api_key", ""),
         serpapi_key=await service.get_setting("serpapi_key", ""),
+        **await _provider_settings(service),
     )

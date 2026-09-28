@@ -33,3 +33,19 @@ def _no_telemetry(monkeypatch):
 
     monkeypatch.setattr(telemetry, "_emit", _drop)
     yield
+
+
+@pytest.fixture(autouse=True)
+def _providers_off(monkeypatch):
+    """Every travel-data provider reads as switched off unless a test says not.
+
+    Without this, the first plan a test generates would ask the database for
+    the admin panel's switches — there is no database in the test container.
+    """
+    import time
+
+    from app.services.providers import config
+
+    monkeypatch.setattr(config, "_config", {})
+    monkeypatch.setattr(config, "_config_at", time.time())
+    yield
