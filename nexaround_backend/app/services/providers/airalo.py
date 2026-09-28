@@ -14,6 +14,7 @@ import logging
 import re
 import time
 import unicodedata
+import urllib.parse
 from typing import Optional
 
 from app.services.providers import base, config
@@ -171,12 +172,70 @@ def _plan_words(plan: list, rate: float, currency: str) -> str:
     return f"{data} for {days} days at {format_amount(currency, usd * rate)}"
 
 
+# Travelpayouts' Airalo program: the redirect every affiliate link goes
+# through, with Airalo's campaign and promo IDs (Travelpayouts help, "Data from
+# Airalo"). Confirmed 2026-09-28 against the partner-links API, which returns
+# exactly this shape for Project 577812.
+_AFFILIATE_REDIRECT = "https://tp.media/r"
+_CAMPAIGN_ID = "541"
+_PROMO_ID = "8310"
+
+# The partner card's name. The app picks a card's link handling from its name
+# and type, and opens the URL untouched only for names and types it does not
+# know — so this must not mention booking, flights or tours.
+PARTNER_NAME = "Airalo eSIM"
+PARTNER_TYPE = "esim"
+
+
+def country_page(slug: str) -> str:
+    return f"https://www.airalo.com/{slug}-esim"
+
+
+def booking_link(slug: str, *, marker: str, project_id: str) -> str:
+    """Airalo's page for the country, credited to NexAround when it can be.
+
+    Without both the partner ID and the Project ID the link still takes the
+    traveller to the right page; it just earns nothing.
+    """
+    page = country_page(slug)
+    if not (marker and project_id):
+        return page
+    query = urllib.parse.urlencode({
+        "campaign_id": _CAMPAIGN_ID, "marker": marker, "p": _PROMO_ID,
+        "trs": project_id, "u": page,
+    })
+    return f"{_AFFILIATE_REDIRECT}?{query}"
+
+
 def connectivity_line(offer: dict, rate: float, currency: str) -> str:
     """"Airalo eSIM for Sri Lanka: 1 GB for 7 days at LKR 1,480, or 5 GB for 30 days at LKR 4,100.\""""
     line = f"Airalo eSIM for {offer['country']}: {_plan_words(offer['cheapest'], rate, currency)}"
     if offer.get("roomy"):
         line += f", or {_plan_words(offer['roomy'], rate, currency)}"
     return line + "."
+
+
+# The Booking Plan & Timeline group it sits in (the app's own label, green
+# chip): an eSIM is bought in the days before departure, not at booking time.
+PLAN_LABEL = "BOOK CLOSER TO TRAVEL"
+PLAN_REASON = "Install it before you fly so you're online when you land."
+
+
+def button_label(offer: dict, rate: float, currency: str) -> str:
+    """The "Get eSIM" button under Connectivity & SIM: "Get eSIM · from USD 8"."""
+    from app.services.providers.money import format_amount
+
+    return f"Get eSIM · from {format_amount(currency, offer['cheapest'][2] * rate)}"
+
+
+def plan_item(offer: dict, rate: float, currency: str, link: str) -> dict:
+    """The tappable row in the Overview tab's Booking Plan & Timeline card."""
+    return {
+        "label": PLAN_LABEL,
+        "item": f"Airalo eSIM for {offer['country']}: {_plan_words(offer['cheapest'], rate, currency)}",
+        "reason": PLAN_REASON,
+        "url": link,
+    }
 
 
 async def refresh_loop() -> None:

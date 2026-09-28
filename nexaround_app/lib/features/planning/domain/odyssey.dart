@@ -546,12 +546,19 @@ class OdysseyPracticalInfo {
   final String connectivity;
   final String safety;
   final String customs;
+  // The "Get eSIM" button under Connectivity & SIM: where it goes and what it
+  // says ("Get eSIM · from USD 8"). Set by the backend when it has a real
+  // eSIM offer for the destination (providers/enrich.py); empty otherwise.
+  final String connectivityUrl;
+  final String connectivityCta;
 
   const OdysseyPracticalInfo({
     this.money = '',
     this.connectivity = '',
     this.safety = '',
     this.customs = '',
+    this.connectivityUrl = '',
+    this.connectivityCta = '',
   });
 
   bool get isEmpty =>
@@ -562,13 +569,19 @@ class OdysseyPracticalInfo {
         connectivity: (json['connectivity'] ?? '').toString(),
         safety: (json['safety'] ?? '').toString(),
         customs: (json['customs'] ?? '').toString(),
+        connectivityUrl: (json['connectivity_url'] ?? '').toString(),
+        connectivityCta: (json['connectivity_cta'] ?? '').toString(),
       );
 
+  // The button keys are written back too: a plan the app saves must not lose
+  // its eSIM link.
   Map<String, dynamic> toJson() => {
         'money': money,
         'connectivity': connectivity,
         'safety': safety,
         'customs': customs,
+        if (connectivityUrl.isNotEmpty) 'connectivity_url': connectivityUrl,
+        if (connectivityCta.isNotEmpty) 'connectivity_cta': connectivityCta,
       };
 }
 

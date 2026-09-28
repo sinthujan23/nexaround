@@ -151,10 +151,22 @@ async def _finish(pending: Pending, day_items, meta, *, currency: str, travelers
         if offer and rate:
             line = airalo.connectivity_line(offer, rate, currency)
             entry.update(cheapest=offer["cheapest"], roomy=offer["roomy"], line=line, applied=False)
+            link = airalo.booking_link(
+                offer["slug"],
+                marker=await config.setting(config.TRAVELPAYOUTS_MARKER),
+                project_id=await config.setting(config.TRAVELPAYOUTS_PROJECT_ID),
+            )
+            entry["link"] = link
             if live:
                 info = meta.setdefault("practical_info", {})
                 existing = str(info.get("connectivity") or "").strip()
                 info["connectivity"] = f"{existing} {line}".strip() if existing else line
+                # The button under that text (app ≥ the release carrying it;
+                # older builds ignore both keys).
+                info["connectivity_url"] = link
+                info["connectivity_cta"] = airalo.button_label(offer, rate, currency)
+                _add_partner(meta, airalo.PARTNER_NAME, airalo.PARTNER_TYPE, link)
+                _add_plan_item(meta, airalo.plan_item(offer, rate, currency, link))
                 entry["applied"] = True
         else:
             entry["none"] = "no rate" if offer else "no plan for this country or trip length"
@@ -162,6 +174,36 @@ async def _finish(pending: Pending, day_items, meta, *, currency: str, travelers
 
     meta["provider_audit"] = audit
     logger.info("providers: %s", audit)
+
+
+def _add_partner(meta: dict, name: str, kind: str, url: str) -> None:
+    """A tappable card under "Booking Partners & Websites" in the Itinerary tab.
+
+    Replaces any card Gemini already wrote for the same brand, so the plan
+    never shows two Airalo cards with different links.
+    """
+    brand = name.split()[0].lower()
+    partners = [
+        p for p in (meta.get("booking_partners") or [])
+        if not (isinstance(p, dict) and brand in str(p.get("name") or "").lower())
+    ]
+    partners.append({"name": name, "type": kind, "url": url})
+    meta["booking_partners"] = partners
+
+
+def _add_plan_item(meta: dict, item: dict) -> None:
+    """A tappable row in "Booking Plan & Timeline" on the Overview tab.
+
+    The app opens a row's URL when it has one (odyssey_plan_view.dart
+    `_bookingPlanItemRow`). Any earlier row for the same brand is replaced.
+    """
+    brand = str(item.get("item") or "").split()[0].lower()
+    rows = [
+        r for r in (meta.get("booking_plan") or [])
+        if not (isinstance(r, dict) and brand and str(r.get("item") or "").lower().startswith(brand))
+    ]
+    rows.append(item)
+    meta["booking_plan"] = rows
 
 
 # ── Transfers ────────────────────────────────────────────────────────────────

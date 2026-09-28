@@ -577,9 +577,10 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
   }
 
   Widget _practicalInfoContent(OdysseyPracticalInfo info) {
+    const connectivityTitle = 'Connectivity & SIM';
     final rows = <MapEntry<String, String>>[
       if (info.money.isNotEmpty) MapEntry('Money & Payments', info.money),
-      if (info.connectivity.isNotEmpty) MapEntry('Connectivity & SIM', info.connectivity),
+      if (info.connectivity.isNotEmpty) MapEntry(connectivityTitle, info.connectivity),
       if (info.safety.isNotEmpty) MapEntry('Safety & Health', info.safety),
       if (info.customs.isNotEmpty) MapEntry('Local Etiquette & Customs', info.customs),
     ];
@@ -606,6 +607,19 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
             rows[i].value,
             style: const TextStyle(fontSize: 13.5, height: 1.45, color: Colors.black87),
           ),
+          if (rows[i].key == connectivityTitle && info.connectivityUrl.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => _launchExternalUrl(info.connectivityUrl),
+                icon: const Icon(Icons.sim_card_outlined, size: 16),
+                label: Text(
+                  info.connectivityCta.isNotEmpty ? info.connectivityCta : 'Get eSIM',
+                ),
+              ),
+            ),
+          ],
         ],
       ],
     );
@@ -4101,6 +4115,8 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     if (name.contains('getyourguide')) return 'assets/images/getyourguide.png';
     if (name.contains('viator')) return 'assets/images/viator.png';
     if (name.contains('skyscanner')) return 'assets/images/skyscanner.png';
+    // The "Airalo eSIM" card the backend adds to every plan (providers/enrich.py).
+    if (name.contains('airalo')) return 'assets/images/airalo_logo.png';
     // Future logos — return null until assets are added:
     // if (name.contains('agoda')) return 'assets/images/agoda_logo.png';
     // if (name.contains('klook')) return 'assets/images/klook_logo.png';

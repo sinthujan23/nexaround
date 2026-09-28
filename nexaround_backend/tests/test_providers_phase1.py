@@ -520,3 +520,128 @@ def test_a_typical_offer_is_labelled_typical_not_fixed():
     assert row["cost"] == "USD 43"
     assert row["price_confidence"] == "Typical"
     assert "(typical price)" in row["price_basis"]
+
+
+# ── The Airalo card: a link travellers can tap, with no app update ───────────
+
+def test_the_link_is_exactly_what_travelpayouts_generates():
+    """Returned by the partner-links API for Project 577812 on 2026-09-28."""
+    assert airalo.booking_link("denmark", marker="781739", project_id="577812") == (
+        "https://tp.media/r?campaign_id=541&marker=781739&p=8310&trs=577812"
+        "&u=https%3A%2F%2Fwww.airalo.com%2Fdenmark-esim"
+    )
+
+
+def test_without_both_ids_the_link_still_reaches_the_right_page():
+    assert airalo.booking_link("sri-lanka", marker="781739", project_id="") == (
+        "https://www.airalo.com/sri-lanka-esim"
+    )
+
+
+def test_the_app_opens_the_card_link_untouched():
+    """odyssey_plan_view.dart `_buildBookingSection` rewrites a card's URL when
+    its name or type reads as hotels, flights or tours (these keyword lists),
+    and opens it as sent otherwise. The card must fall in the second group."""
+    name, kind = airalo.PARTNER_NAME.lower(), airalo.PARTNER_TYPE.lower()
+    type_words = ("hotel", "stay", "accommodation", "transit", "flight", "transport",
+                  "tour", "activity", "experience")
+    name_words = ("booking", "agoda", "expedia", "ostrovok", "skyscanner", "aviasales",
+                  "kayak", "viator", "getyourguide", "klook")
+    assert not any(w in kind for w in type_words)
+    assert not any(w in name for w in name_words)
+
+
+def _ids_and_switches(monkeypatch, **modes):
+    values = {config.mode_key(p): m for p, m in modes.items()}
+    values.update({config.TRAVELPAYOUTS_MARKER: "781739", config.TRAVELPAYOUTS_PROJECT_ID: "577812"})
+    monkeypatch.setattr(config, "_config", values)
+    monkeypatch.setattr(config, "_config_at", time.time())
+
+
+def test_live_adds_one_airalo_card_to_the_plan(world, monkeypatch, providers):
+    _ids_and_switches(monkeypatch, airalo="live")
+    _, meta, _ = e2e.run(world)
+    cards = [p for p in meta["booking_partners"] if "airalo" in p["name"].lower()]
+    assert cards == [{
+        "name": "Airalo eSIM", "type": "esim",
+        "url": "https://tp.media/r?campaign_id=541&marker=781739&p=8310&trs=577812"
+               "&u=https%3A%2F%2Fwww.airalo.com%2Findia-esim",
+    }]
+    assert meta["provider_audit"]["airalo"]["link"] == cards[0]["url"]
+
+
+def test_shadow_adds_no_card(world, monkeypatch, providers):
+    _ids_and_switches(monkeypatch, airalo="shadow")
+    _, meta, _ = e2e.run(world)
+    assert not [p for p in meta.get("booking_partners") or [] if "airalo" in p["name"].lower()]
+    assert meta["provider_audit"]["airalo"]["link"].startswith("https://tp.media/r?")
+
+
+def test_a_card_the_model_wrote_is_replaced_not_doubled():
+    meta = {"booking_partners": [
+        {"name": "Booking.com", "type": "hotels", "url": "https://www.booking.com"},
+        {"name": "Airalo", "type": "other", "url": "https://www.airalo.com"},
+    ]}
+    enrich._add_partner(meta, "Airalo eSIM", "esim", "https://tp.media/r?x")
+    assert [p["name"] for p in meta["booking_partners"]] == ["Booking.com", "Airalo eSIM"]
+
+
+# ── The Airalo row in Booking Plan & Timeline (Overview tab) ─────────────────
+
+def test_the_plan_row_names_the_plan_and_links_to_it():
+    offer = {"country": "Japan", "slug": "japan", "cheapest": [5.0, 15, 10.5], "roomy": None}
+    assert airalo.plan_item(offer, 1.0, "USD", "https://tp.media/r?x") == {
+        "label": "BOOK CLOSER TO TRAVEL",
+        "item": "Airalo eSIM for Japan: 5 GB for 15 days at USD 10.50",
+        "reason": "Install it before you fly so you're online when you land.",
+        "url": "https://tp.media/r?x",
+    }
+
+
+def test_the_row_sits_in_a_group_the_app_already_orders():
+    """odyssey_plan_view.dart `_buildBookingPlanSection` labelOrder."""
+    assert airalo.PLAN_LABEL in ("BOOK NOW", "BOOK AFTER VISA", "BOOK CLOSER TO TRAVEL", "CAN WAIT")
+
+
+def test_live_adds_one_tappable_row_and_shadow_adds_none(world, monkeypatch, providers):
+    _ids_and_switches(monkeypatch, airalo="live")
+    _, meta, _ = e2e.run(world)
+    rows = [r for r in meta["booking_plan"] if r["item"].startswith("Airalo")]
+    assert len(rows) == 1
+    assert rows[0]["item"] == "Airalo eSIM for India: 1 GB for 7 days at INR 360"
+    assert rows[0]["url"].endswith("u=https%3A%2F%2Fwww.airalo.com%2Findia-esim")
+
+    _ids_and_switches(monkeypatch, airalo="shadow")
+    _, meta, _ = e2e.run(world)
+    assert not [r for r in meta.get("booking_plan") or [] if r["item"].startswith("Airalo")]
+
+
+def test_an_earlier_airalo_row_is_replaced_and_others_kept():
+    meta = {"booking_plan": [
+        {"label": "BOOK NOW", "item": "Flight to Tokyo", "reason": "", "url": "https://x"},
+        {"label": "BOOK CLOSER TO TRAVEL", "item": "Airalo eSIM for Japan: old", "reason": "", "url": "u"},
+    ]}
+    enrich._add_plan_item(meta, {"label": "BOOK CLOSER TO TRAVEL", "item": "Airalo eSIM for Japan: new",
+                                 "reason": "r", "url": "v"})
+    assert [r["item"] for r in meta["booking_plan"]] == ["Flight to Tokyo", "Airalo eSIM for Japan: new"]
+
+
+# ── The "Get eSIM" button under Connectivity & SIM ───────────────────────────
+
+def test_the_button_names_the_cheapest_price_in_the_travellers_currency():
+    offer = {"country": "Japan", "slug": "japan", "cheapest": [3.0, 7, 8.0], "roomy": [5.0, 7, 10.0]}
+    assert airalo.button_label(offer, 1.0, "USD") == "Get eSIM · from USD 8"
+    assert airalo.button_label(offer, 300.0, "LKR") == "Get eSIM · from LKR 2,400"
+
+
+def test_live_gives_the_sim_tip_a_button_and_shadow_does_not(world, monkeypatch, providers):
+    _ids_and_switches(monkeypatch, airalo="live")
+    _, meta, _ = e2e.run(world)
+    info = meta["practical_info"]
+    assert info["connectivity_url"].endswith("u=https%3A%2F%2Fwww.airalo.com%2Findia-esim")
+    assert info["connectivity_cta"] == "Get eSIM · from INR 360"
+
+    _ids_and_switches(monkeypatch, airalo="shadow")
+    _, meta, _ = e2e.run(world)
+    assert "connectivity_url" not in meta["practical_info"]
+    assert "connectivity_cta" not in meta["practical_info"]
