@@ -84,6 +84,7 @@ async def run_generation(
     destination_address: str = "",
     departure_latitude: Optional[float] = None,
     departure_longitude: Optional[float] = None,
+    departure_airport: str = "",
     # A plain dict, not the pydantic model: job payloads are serialised to
     # JSON on the way to the worker, so anything here has to survive a
     # round-trip through it. Re-validated by `plan_route` at the other end.
@@ -157,6 +158,7 @@ async def run_generation(
             destination_address=destination_address or "",
             departure_latitude=departure_latitude,
             departure_longitude=departure_longitude,
+            departure_airport=departure_airport or "",
         )
         print(f"[ODYSSEY] SUCCESS {itinerary_id}: {title}", flush=True)
     except Exception as e:

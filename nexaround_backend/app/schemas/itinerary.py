@@ -145,6 +145,10 @@ class OdysseyGenerateRequest(BaseModel):
     # lets the backend recover the country when the name is unusable.
     departure_latitude: Optional[float] = None
     departure_longitude: Optional[float] = None
+    # The airport(s) the traveller flies from, as shown on the planner's
+    # "Travelling from" (e.g. "DWC,DXB"). Used as the flight origin when every
+    # code is a known airport; otherwise the backend resolves it as before.
+    departure_airport: str = Field(default="", max_length=19)
     # The route the traveller was shown by /odyssey/route-preview and accepted.
     # Optional: an app that does not preview still generates exactly as before,
     # and a route that fails the planner's own coherence checks is discarded
@@ -215,11 +219,36 @@ class OdysseyPartnerSwapRequest(BaseModel):
     partner_name: str
     reason: str = ""
 
+class OdysseyAirportOption(BaseModel):
+    """One airport near the traveller, for the planner's "Travelling from"."""
+    iata: str
+    name: str = ""
+    city: str = ""
+    country_code: str = ""
+    country: str = ""
+    distance_km: int = 0
+
+class OdysseyNearestAirportsResponse(BaseModel):
+    """`suggested` is what the flight search would use from here (send it back
+    as `departure_airport`); `airports` lists it first, then other nearby ones."""
+    suggested: str = ""
+    airports: List[OdysseyAirportOption] = Field(default_factory=list)
+
+class OdysseyRideAppLink(BaseModel):
+    """Where a ride app's button goes: its store page on each platform.
+    `ios_url` is empty when Apple has no exact match."""
+    name: str
+    ios_url: str = ""
+    android_url: str = ""
+    icon_url: str = ""
+
 class OdysseyRideAppsResponse(BaseModel):
-    """Ride apps for the itinerary's display-only chips under transport stops.
-    `country` is the ISO code the apps are for, empty when none was usable."""
+    """Ride apps for the itinerary's chips under transport stops.
+    `country` is the ISO code the apps are for, empty when none was usable.
+    `apps` stays a plain list of names for app builds that predate `links`."""
     country: str = ""
     apps: List[str] = Field(default_factory=list)
+    links: List[OdysseyRideAppLink] = Field(default_factory=list)
 
 class ItineraryResponse(ItineraryBase):
     id: UUID

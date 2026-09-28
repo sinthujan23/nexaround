@@ -3,7 +3,7 @@ import asyncio
 import logging
 import uuid
 import json
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.api.deps import get_current_user
@@ -16,6 +16,7 @@ from app.services import odyssey_ai_service, odyssey_jobs
 from app.services.settings_service import SettingsService
 from app.services import cover_photo_service
 from app.services import ride_apps_service
+from app.services import airports_service, geo_resolver
 from app.schemas.itinerary import (
     BUDGET_RANGE,
     DAYS_RANGE,
@@ -29,6 +30,7 @@ from app.schemas.itinerary import (
     OdysseyRoutePreviewResponse,
     OdysseySwapRequest,
     OdysseyPartnerSwapRequest,
+    OdysseyNearestAirportsResponse,
     OdysseyRideAppsResponse,
     TRAVELERS_RANGE,
 )
@@ -99,6 +101,56 @@ async def preview_odyssey_route(
     return OdysseyRoutePreviewResponse(route=route, notice=notice)
 
 
+@router.get("/odyssey/nearest-airports", response_model=OdysseyNearestAirportsResponse)
+async def get_odyssey_nearest_airports(
+    lat: float = Query(..., ge=-90, le=90),
+    lng: float = Query(..., ge=-180, le=180),
+    place: str = Query(default="", max_length=DESTINATION_MAX),
+    country: str = Query(default="", max_length=64),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """The airports nearest the traveller, for the planner's "Travelling from".
+
+    Raw distance is not enough to pick the one to show: from Kinniya the
+    nearest large airport is Jaffna, but trips fly from Colombo. So
+    `suggested` is what the flight search itself would use from here (the
+    same resolver generation runs, e.g. DWC,DXB for Jebel Ali), and
+    `airports` lists those first, then the other large airports nearby.
+    """
+    nearby = airports_service.nearest(lat, lng, limit=5, max_km=300)
+    suggested = ""
+    api_key = await SettingsService(db).get_setting("gemini_api_key") or ""
+    try:
+        suggested = odyssey_ai_service.known_airport_codes(
+            await odyssey_ai_service._resolve_airport_code(
+                place, country, api_key, latitude=lat, longitude=lng,
+            )
+        )
+    except Exception as e:
+        logger.warning("Nearest-airport resolve for %r failed: %s", place, e)
+    if not suggested and nearby:
+        suggested = nearby[0][0].iata
+
+    ordered: list = []
+    for code in suggested.split(",") if suggested else []:
+        known = airports_service.get(code)
+        if known is not None:
+            ordered.append(known)
+    for airport, _ in nearby:
+        if airport not in ordered:
+            ordered.append(airport)
+
+    options = []
+    for airport in ordered[:4]:
+        row = airport.as_dict(
+            distance_km=geo_resolver.haversine_km(lat, lng, airport.latitude, airport.longitude)
+        )
+        row["country"] = ride_apps_service.COUNTRY_NAMES.get(airport.country, "")
+        options.append(row)
+    return OdysseyNearestAirportsResponse(suggested=suggested, airports=options)
+
+
 @router.get("/odyssey/ride-apps", response_model=OdysseyRideAppsResponse)
 async def get_odyssey_ride_apps(
     country: str = "",
@@ -107,8 +159,9 @@ async def get_odyssey_ride_apps(
 ):
     """Ride apps a traveller can use in a country, for the itinerary's chips.
 
-    Display only, so it never fails the screen: an unknown code, a missing
-    Gemini key or a failed lookup all answer with an empty list.
+    Each app comes with its store links, so the app can show it as a button.
+    It never fails the screen: an unknown code, a missing Gemini key or a
+    failed lookup all answer with an empty list.
     """
     code = ride_apps_service.normalise_code(country)
     if not code:
@@ -117,7 +170,8 @@ async def get_odyssey_ride_apps(
     if not api_key:
         return OdysseyRideAppsResponse(country=code)
     apps = await ride_apps_service.ride_apps_for(code, api_key)
-    return OdysseyRideAppsResponse(country=code, apps=apps)
+    links = await ride_apps_service.ride_app_links(code, apps) if apps else []
+    return OdysseyRideAppsResponse(country=code, apps=apps, links=links)
 
 
 @router.post("/odyssey/generate", response_model=ItineraryResponse, status_code=status.HTTP_202_ACCEPTED)
@@ -188,6 +242,7 @@ async def generate_odyssey(
         "destination_address": data.destination_address or "",
         "departure_latitude": data.departure_latitude,
         "departure_longitude": data.departure_longitude,
+        "departure_airport": data.departure_airport or "",
     }
     meta = odyssey_ai_service.build_meta_item(
         destination=data.destination,
@@ -253,6 +308,7 @@ async def generate_odyssey(
         destination_address=data.destination_address or "",
         departure_latitude=data.departure_latitude,
         departure_longitude=data.departure_longitude,
+        departure_airport=data.departure_airport or "",
         # Dumped to a plain dict here rather than in the worker: the job
         # payload is JSON, and a pydantic model is not.
         preset_route=(
@@ -503,6 +559,7 @@ async def retry_odyssey_generation(
     )
     departure_latitude = gen_params.get("departure_latitude")
     departure_longitude = gen_params.get("departure_longitude")
+    departure_airport = str(gen_params.get("departure_airport") or "")[:19]
 
     meta.pop("failure_reason", None)
     itin.status = "generating"
@@ -544,6 +601,7 @@ async def retry_odyssey_generation(
         destination_address=destination_address,
         departure_latitude=departure_latitude,
         departure_longitude=departure_longitude,
+        departure_airport=departure_airport,
     )
     return saved
 

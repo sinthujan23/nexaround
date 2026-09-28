@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:geolocator/geolocator.dart' as geo;
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/services/google_places_service.dart';
 import 'package:nexaround_app/core/utils/number_format.dart';
@@ -63,6 +64,18 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
   double? _departureLng;
   String? _nationality;
   bool _isCustomDeparture = false;
+
+  /// The airports nearest where the traveller starts, and the one
+  /// "Travelling from" shows (client, 2026-09-27: show the nearest airport,
+  /// not the suburb). [_departureAirport] is what the flight search is given:
+  /// the backend's suggestion ("DWC,DXB") until the traveller picks one.
+  /// [_departurePlace] is where they are or what they searched, e.g.
+  /// "Jabal Ali 3".
+  List<AirportOption> _nearbyAirports = const [];
+  AirportOption? _selectedAirport;
+  String _departureAirport = '';
+  String _departurePlace = '';
+  bool _loadingAirports = false;
 
   // What the place picker knew when the user tapped a destination. The picker
   // has always returned these; they were dropped on the floor, and the backend
@@ -134,6 +147,150 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
     _travelersController.text = _travelers.toString();
     _loadUserCurrency();
     _loadUserNationality();
+    _detectDeparture();
+  }
+
+  /// Fill "Travelling from" with the airport nearest the traveller, but only
+  /// when the app already has location permission: opening the planner must
+  /// not start with a permission dialog. The field's own "Use Current
+  /// Location" asks when the traveller wants it.
+  Future<void> _detectDeparture() async {
+    try {
+      final permission = await geo.Geolocator.checkPermission();
+      if (permission != geo.LocationPermission.always &&
+          permission != geo.LocationPermission.whileInUse) {
+        return;
+      }
+      final pos = await geo.Geolocator.getCurrentPosition(
+        desiredAccuracy: geo.LocationAccuracy.medium,
+      ).timeout(const Duration(seconds: 6));
+      if (!mounted || _departureCity.isNotEmpty) return;
+      final details = await GooglePlacesService.reverseGeocodeDetailed(
+        pos.latitude,
+        pos.longitude,
+      );
+      // The traveller may have picked a place while this was running.
+      if (!mounted || _departureCity.isNotEmpty) return;
+      final name = details['location_name'] ?? '';
+      final country = details['country'] ?? '';
+      setState(() {
+        _departurePlace = name == 'Nearby' ? '' : name;
+        _departureCity = _departurePlace;
+        _departureCountry = country == 'Nearby' ? '' : country;
+        _departureLat = pos.latitude;
+        _departureLng = pos.longitude;
+        _isCustomDeparture = false;
+      });
+      await _loadNearestAirports();
+    } catch (_) {
+      // No location, no fill: the traveller picks it, as before.
+    }
+  }
+
+  Future<void> _loadNearestAirports() async {
+    final lat = _departureLat;
+    final lng = _departureLng;
+    if (lat == null || lng == null || (lat == 0 && lng == 0)) return;
+    setState(() => _loadingAirports = true);
+    final result = await _repository.nearestAirports(
+      latitude: lat,
+      longitude: lng,
+      place: _departurePlace,
+      country: _departureCountry,
+    );
+    if (!mounted) return;
+    // A newer pick replaced this one while it loaded.
+    if (_departureLat != lat || _departureLng != lng) {
+      setState(() => _loadingAirports = false);
+      return;
+    }
+    setState(() {
+      _loadingAirports = false;
+      _nearbyAirports = result.airports;
+      if (result.airports.isNotEmpty) {
+        _useAirport(result.airports.first, codes: result.suggested);
+      }
+    });
+  }
+
+  /// Show [airport] and send [codes] (or the airport alone) as the origin.
+  void _useAirport(AirportOption airport, {String codes = ''}) {
+    _selectedAirport = airport;
+    _departureAirport = codes.isNotEmpty ? codes : airport.iata;
+    _departureCity = airport.city.isNotEmpty ? airport.city : _departurePlace;
+    if (airport.country.isNotEmpty) _departureCountry = airport.country;
+  }
+
+  String? get _departureAirportNote {
+    final airport = _selectedAirport;
+    if (airport == null) return null;
+    if (_departurePlace.isNotEmpty && airport.distanceKm > 0) {
+      return '${airport.distanceKm} km from $_departurePlace · tap to change';
+    }
+    return 'Nearest airport · tap to change';
+  }
+
+  /// Switch between the nearby airports, or search somewhere else entirely.
+  Future<void> _onDepartureTap() async {
+    if (_nearbyAirports.isEmpty) {
+      await _pickDepartureLocation();
+      return;
+    }
+    final picked = await showModalBottomSheet<Object>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 18, 20, 6),
+              child: Text(
+                'Flying from',
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+              ),
+            ),
+            for (final airport in _nearbyAirports)
+              ListTile(
+                leading: const Icon(Icons.flight_takeoff_rounded,
+                    color: AppColors.brandGreen),
+                title: Text(airport.label,
+                    maxLines: 2, overflow: TextOverflow.ellipsis),
+                subtitle: Text([
+                  if (airport.city.isNotEmpty) airport.city,
+                  if (airport.distanceKm > 0) '${airport.distanceKm} km away',
+                ].join(' · ')),
+                trailing: airport.iata == _selectedAirport?.iata
+                    ? const Icon(Icons.check_circle_rounded,
+                        color: AppColors.brandGreen)
+                    : null,
+                onTap: () => Navigator.pop(sheetContext, airport),
+              ),
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.search_rounded, color: Colors.black54),
+              title: const Text('Search another city or airport'),
+              onTap: () => Navigator.pop(sheetContext, 'search'),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (!mounted) return;
+    if (picked is AirportOption) {
+      // A single airport the traveller chose: searched on its own.
+      setState(() {
+        _useAirport(picked);
+        _isCustomDeparture = true;
+      });
+    } else if (picked == 'search') {
+      await _pickDepartureLocation();
+    }
   }
 
   void _loadUserCurrency() {
@@ -183,6 +340,8 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
   }
 
   String? get _departureDisplayValue {
+    final airport = _selectedAirport;
+    if (airport != null) return airport.label;
     if (_departureCity.isEmpty && _departureCountry.isEmpty) return null;
     if (_departureCity.isNotEmpty && _departureCountry.isNotEmpty) {
       return '$_departureCity, $_departureCountry';
@@ -215,7 +374,12 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
       _departureLat = lat;
       _departureLng = lng;
       _isCustomDeparture = true;
+      _departurePlace = name;
+      _selectedAirport = null;
+      _nearbyAirports = const [];
+      _departureAirport = '';
     });
+    await _loadNearestAirports();
   }
 
   /// Offer the cities Google confirmed for the chosen country.
@@ -637,6 +801,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
         destinationAddress: _destAddress,
         departureLatitude: _departureLat,
         departureLongitude: _departureLng,
+        departureAirport: _departureAirport,
         mood: _selectedMood,
         budget: _budget * _travelers,
         days: _days,
@@ -803,6 +968,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
     VoidCallback? onClear,
     String? helper,
     String? badge,
+    IconData badgeIcon = Icons.public_rounded,
     bool busy = false,
   }) {
     final enabled = onTap != null;
@@ -866,7 +1032,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              const Icon(Icons.public_rounded,
+                              Icon(badgeIcon,
                                   size: 12, color: AppColors.brandGreen),
                               const SizedBox(width: 4),
                               Text(
@@ -1081,8 +1247,13 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
             value: _departureDisplayValue,
             icon: Icons.my_location_rounded,
             helper: 'Where will you be travelling from?',
-            badge: _isCustomDeparture ? null : (_departureCity.isNotEmpty ? 'Current Location' : null),
-            onTap: _pickDepartureLocation,
+            badge: _departureAirportNote ??
+                (_isCustomDeparture ? null : (_departureCity.isNotEmpty ? 'Current Location' : null)),
+            badgeIcon: _selectedAirport != null
+                ? Icons.flight_takeoff_rounded
+                : Icons.public_rounded,
+            busy: _loadingAirports,
+            onTap: _onDepartureTap,
             onClear: () {
               setState(() {
                 _departureCity = '';
@@ -1090,6 +1261,10 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
                 _departureLat = null;
                 _departureLng = null;
                 _isCustomDeparture = false;
+                _departurePlace = '';
+                _selectedAirport = null;
+                _nearbyAirports = const [];
+                _departureAirport = '';
               });
             },
           ).animate().fade(delay: 170.ms),

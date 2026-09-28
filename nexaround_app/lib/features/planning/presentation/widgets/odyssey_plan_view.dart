@@ -84,7 +84,7 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
 
   /// Ride apps for the trip's country, shown under transport stops once the
   /// backend answers; empty until then, and for good if it never does.
-  List<String> _rideApps = const [];
+  List<RideApp> _rideApps = const [];
   String? _rideAppsCountry;
 
   @override
@@ -2156,7 +2156,7 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     final bool hasPlaceList =
         act.type == ActivityType.dining || act.restaurants.isNotEmpty;
     final bool isHotel = _isHotelActivity(act);
-    final List<String> rideApps = _rideAppsFor(act);
+    final List<RideApp> rideApps = _rideAppsFor(act);
 
     return Material(
       key: key,
@@ -2400,7 +2400,7 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
   }
 
   /// The ride apps to show under a ground-transport row; empty for any other.
-  List<String> _rideAppsFor(OdysseyActivity act) {
+  List<RideApp> _rideAppsFor(OdysseyActivity act) {
     if (act.type != ActivityType.transport ||
         _isFlightRow(act) ||
         _isJourneyFromAbroad(act)) {
@@ -2409,11 +2409,12 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     return _rideApps;
   }
 
-  /// "Available here" and one chip per app, styled like the hotel amenities.
-  ///
-  /// Plain containers rather than chips or buttons: the row only informs, and
-  /// anything that ripples on tap would promise an action that is not there.
-  Widget _rideAppsRow(List<String> apps) {
+  /// "Available here" and one button per app. A tap opens the app's store
+  /// page on this device, which offers "Open" when the app is installed and
+  /// "Install" when it is not (client, 2026-09-27: show the cab companies as
+  /// buttons).
+  Widget _rideAppsRow(List<RideApp> apps) {
+    final platform = Theme.of(context).platform;
     return Wrap(
       spacing: 6,
       runSpacing: 6,
@@ -2435,18 +2436,61 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
           ],
         ),
         for (final app in apps)
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-            decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.04),
+          Material(
+            color: AppColors.brandGreen.withValues(alpha: 0.06),
+            borderRadius: BorderRadius.circular(8),
+            child: InkWell(
               borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(
-              app,
-              style: const TextStyle(
-                fontSize: 11,
-                color: Colors.black87,
-                fontWeight: FontWeight.w500,
+              onTap: () => _launchExternalUrl(app.urlFor(platform)),
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(7, 4, 8, 4),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: AppColors.brandGreen.withValues(alpha: 0.35),
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (app.iconUrl.isNotEmpty)
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(3),
+                        child: CachedNetworkImage(
+                          imageUrl: app.iconUrl,
+                          width: 14,
+                          height: 14,
+                          fit: BoxFit.cover,
+                          errorWidget: (context, url, error) => const Icon(
+                            Icons.local_taxi_rounded,
+                            size: 13,
+                            color: AppColors.brandGreen,
+                          ),
+                        ),
+                      )
+                    else
+                      const Icon(
+                        Icons.local_taxi_rounded,
+                        size: 13,
+                        color: AppColors.brandGreen,
+                      ),
+                    const SizedBox(width: 5),
+                    Text(
+                      app.name,
+                      style: const TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.brandGreen,
+                      ),
+                    ),
+                    const SizedBox(width: 3),
+                    const Icon(
+                      Icons.open_in_new_rounded,
+                      size: 11,
+                      color: AppColors.brandGreen,
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

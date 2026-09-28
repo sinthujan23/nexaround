@@ -31,6 +31,10 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
+# httpx logs every request URL at INFO, and SerpApi, Places photos and Google
+# Directions all carry their API key in the query string — 27 keys a day were
+# landing in the worker log. Failures are still logged by the callers.
+logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger("app.worker")
 
 

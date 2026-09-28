@@ -1,7 +1,7 @@
 """Ride apps a traveller can use in a country, asked of Gemini with Google Search.
 
-The Odyssey itinerary shows these as display-only chips under each ground-
-transport stop ("Available here: PickMe, Uber"). They come from a small,
+The Odyssey itinerary shows these as buttons under each ground-transport
+stop ("Available here: PickMe, Uber"); a tap opens the app's store page. They come from a small,
 separate grounded call per country, never from the itinerary prompt, which is
 left exactly as it is. The answer is cached for 30 days and shared by every
 trip to that country, so a country costs at most one call a month and the list
@@ -16,9 +16,13 @@ traveller nothing.
 import asyncio
 import json
 import logging
+import re
+import urllib.parse
 from datetime import datetime, timezone
 
-from app.services import odyssey_ai_service, place_cache_service
+import httpx
+
+from app.services import odyssey_ai_service, place_cache_service, telemetry
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +42,34 @@ _TIMEOUT_S = 20.0
 # One lookup per country at a time, so a burst of travellers opening trips to
 # the same new country buys one answer, not one each.
 _locks: dict[str, asyncio.Lock] = {}
+
+# Store links, so each app can be a button (client, 2026-09-27: "can the cab
+# companies be shown as buttons"). A tap opens the app's store page, which
+# says "Open" when it is installed and "Install" when it is not. Resolved once
+# per country and cached like the names; a link we cannot verify falls back to
+# a store search, never to a guessed page.
+_LINKS_KEY_VERSION = "v1"
+_STORE_TIMEOUT_S = 8.0
+_ITUNES_SEARCH = "https://itunes.apple.com/search"
+_PLAY_DETAILS = "https://play.google.com/store/apps/details"
+_PLAY_SEARCH = "https://play.google.com/store/search"
+# The companion apps a search for "Uber" or "Bolt" also finds. Only applied
+# when the brand is not an exact match: "Uber: Rides, eats, and more" is the
+# rider app, "Uber Eats: Food Delivery" is not.
+_STAFF_APP = re.compile(r"\b(driver|drivers|partner|captain|courier|merchant|fleet)\b", re.I)
+_NOT_THE_RIDER_APP = re.compile(r"\beats\b", re.I)
+# Android package ids for the big multi-country apps, whose Play id differs
+# from their iPhone bundle id. Only candidates: each is still checked against
+# the Play store before it is used.
+_KNOWN_PACKAGES = {
+    "uber": "com.ubercab", "careem": "com.careem.acma", "grab": "com.grabtaxi.passenger",
+    "bolt": "ee.mtakso.client", "lyft": "me.lyft.android", "didi": "com.didiglobal.passenger",
+    "indrive": "sinet.startup.inDriver", "yandex go": "ru.yandex.taxi",
+    "freenow": "taxi.android.client", "free now": "taxi.android.client",
+    "gojek": "com.gojek.app", "ola": "com.olacabs.customer", "rapido": "com.rapido.passenger",
+    "cabify": "com.cabify.rider", "kakao t": "com.kakao.taxi", "yango": "com.yandex.yango",
+    "pickme": "com.pickme.passenger", "heetch": "com.heetch", "yassir": "com.yatechnologies.yassir_rider",
+}
 
 # ISO 3166-1 alpha-2 codes and English names, generated from the tz database's
 # iso3166.tab rather than typed. It doubles as the allow-list: only a real
@@ -215,3 +247,125 @@ async def ride_apps_for(code: str | None, api_key: str) -> list[str]:
             key, json.dumps(apps), ttl=_CACHE_TTL if apps else _EMPTY_TTL,
         )
         return apps
+
+
+def _norm(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", (text or "").lower())
+
+
+def _brand(title: str) -> str:
+    """"Uber" from "Uber: Rides, eats, and more"; "Bolt" from "Bolt - Taxi"."""
+    return re.split(r"\s*[:\u2013\u2014-]\s+|:\s*", title or "", maxsplit=1)[0]
+
+
+def _pick_itunes(results: list, name: str) -> dict | None:
+    """The rider app among Apple's matches for `name`, or None.
+
+    First an app whose brand is exactly the name, then one whose title merely
+    contains it ("PickMe Sri Lanka"), skipping the driver and delivery apps.
+    """
+    want = _norm(name)
+    if not want:
+        return None
+    rows = [r for r in results or [] if isinstance(r, dict)]
+    rows = [r for r in rows if not _STAFF_APP.search(str(r.get("trackName") or ""))]
+    for r in rows:
+        if _norm(_brand(str(r.get("trackName") or ""))) == want:
+            return r
+    for r in rows:
+        title = str(r.get("trackName") or "")
+        if want in _norm(title) and not _NOT_THE_RIDER_APP.search(title):
+            return r
+    return None
+
+
+async def _get(client: httpx.AsyncClient, url: str, params: dict, op: str) -> httpx.Response:
+    async with telemetry.track("app_stores", op) as t:
+        resp = await client.get(url, params=params)
+        t.upstream(resp)
+    return resp
+
+
+async def _ios_listing(client: httpx.AsyncClient, name: str, code: str) -> dict | None:
+    """Apple's own listing for the app, from the country's store, else the US one."""
+    for store in (code.lower(), "us"):
+        try:
+            resp = await _get(
+                client, _ITUNES_SEARCH,
+                {"term": name, "entity": "software", "country": store, "limit": 8},
+                "itunes_search",
+            )
+            hit = _pick_itunes((resp.json() or {}).get("results") or [], name)
+        except Exception as e:
+            logger.info("iTunes lookup for %r (%s) failed: %s", name, store, e)
+            hit = None
+        if hit:
+            return hit
+    return None
+
+
+async def _play_package(client: httpx.AsyncClient, name: str, candidates: list[str]) -> str:
+    """The first candidate Android package whose Play page exists and names the app."""
+    want = _norm(name.split()[0] if name.split() else name)
+    for pkg in dict.fromkeys(c for c in candidates if c):
+        try:
+            resp = await _get(client, _PLAY_DETAILS, {"id": pkg, "hl": "en"}, "play_details")
+        except Exception as e:
+            logger.info("Play lookup for %s failed: %s", pkg, e)
+            continue
+        # The page title names the app ("PickMe (Sri Lanka) - Apps on Google
+        # Play"); the body mentions every competitor in its suggestions.
+        title = re.search(r"<title[^>]*>([^<]*)", resp.text or "")
+        if resp.status_code == 200 and want and title and want in _norm(title.group(1)):
+            return pkg
+    return ""
+
+
+async def _links_for(client: httpx.AsyncClient, name: str, code: str) -> dict:
+    ios = await _ios_listing(client, name, code)
+    candidates = [
+        _KNOWN_PACKAGES.get(name.strip().lower(), ""),
+        str((ios or {}).get("bundleId") or ""),
+    ]
+    package = await _play_package(client, name, candidates)
+    play_search = f"{_PLAY_SEARCH}?{urllib.parse.urlencode({'q': name, 'c': 'apps'})}"
+    return {
+        "name": name,
+        "ios_url": str((ios or {}).get("trackViewUrl") or "").split("?")[0],
+        "android_url": (
+            f"{_PLAY_DETAILS}?{urllib.parse.urlencode({'id': package})}" if package else play_search
+        ),
+        "icon_url": str((ios or {}).get("artworkUrl100") or (ios or {}).get("artworkUrl60") or ""),
+    }
+
+
+async def ride_app_links(code: str | None, names: list[str]) -> list[dict]:
+    """A store link per app, for the itinerary's buttons. Cached per country.
+
+    `ios_url` is Apple's page for that exact app, or "" when Apple has no
+    match; `android_url` is the Play page when its package checks out, else a
+    Play search for the name. Never raises: a failure returns name-only rows.
+    """
+    code = normalise_code(code)
+    if not code or not names:
+        return []
+    key = f"ride_app_links:{_LINKS_KEY_VERSION}:{code}:{_norm('|'.join(names))}"
+    try:
+        cached = await place_cache_service.get_raw(key)
+        if cached:
+            value = json.loads(cached)
+            if isinstance(value, list):
+                return value
+    except Exception:
+        pass
+    try:
+        async with httpx.AsyncClient(timeout=_STORE_TIMEOUT_S, follow_redirects=True) as client:
+            links = list(await asyncio.gather(*(_links_for(client, n, code) for n in names)))
+    except Exception as e:
+        logger.warning("Store links for %s failed: %s", code, e)
+        return [{"name": n, "ios_url": "", "android_url": "", "icon_url": ""} for n in names]
+    try:
+        await place_cache_service.set_raw(key, json.dumps(links), ttl=_CACHE_TTL)
+    except Exception:
+        pass
+    return links

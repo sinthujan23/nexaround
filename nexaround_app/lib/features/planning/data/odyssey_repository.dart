@@ -66,6 +66,10 @@ class OdysseyRepository {
     // is not always usable, so the point itself travels alongside it.
     double? departureLatitude,
     double? departureLongitude,
+    // The airport(s) shown on "Travelling from" ("DWC,DXB", or the one the
+    // traveller picked). Used as the flight origin; empty lets the backend
+    // resolve it from the city, as every older build does.
+    String departureAirport = '',
     // The route the traveller was shown and accepted, exactly as
     // [previewRoute] returned it. Null means "decide it during generation",
     // which is what every older build does and still works.
@@ -105,6 +109,7 @@ class OdysseyRepository {
         'destination_address': destinationAddress,
         'departure_latitude': departureLatitude,
         'departure_longitude': departureLongitude,
+        if (departureAirport.isNotEmpty) 'departure_airport': departureAirport,
         if (presetRoute != null) 'preset_route': presetRoute,
       },
     );
@@ -306,17 +311,55 @@ class OdysseyRepository {
     }
   }
 
-  /// Ride apps answered per country, for the rest of the app session.
-  static final Map<String, List<String>> _rideAppsByCountry = {};
-
-  /// Ride apps a traveller can use in a country, for the itinerary's
-  /// display-only chips under transport stops.
+  /// The airports nearest a point, for the planner's "Travelling from".
   ///
-  /// The backend asks Gemini with Google Search and caches the answer for a
-  /// month; this keeps it for the session so reopening trips does not ask
-  /// again. An empty answer is not kept, so a failed lookup is retried the
-  /// next time a plan opens. Never throws: a failure just means no chips.
-  Future<List<String>> getRideApps(String countryCode) async {
+  /// `suggested` is what the flight search would use from there (for Jebel
+  /// Ali "DWC,DXB"; for Kinniya "CMB", not the nearer but little-flown
+  /// Jaffna), and the list starts with it. Never throws: a failure returns
+  /// nothing and the field keeps the place name, as before.
+  Future<NearestAirports> nearestAirports({
+    required double latitude,
+    required double longitude,
+    String place = '',
+    String country = '',
+  }) async {
+    try {
+      final response = await _dio.get(
+        '${ApiConstants.itineraries}/odyssey/nearest-airports',
+        queryParameters: {
+          'lat': latitude,
+          'lng': longitude,
+          if (place.isNotEmpty) 'place': place,
+          if (country.isNotEmpty) 'country': country,
+        },
+      );
+      final data = response.data is Map ? response.data as Map : const {};
+      final airports = ((data['airports'] as List?) ?? const [])
+          .whereType<Map>()
+          .map(AirportOption.fromJson)
+          .where((a) => a.iata.isNotEmpty)
+          .toList();
+      return NearestAirports(
+        suggested: (data['suggested'] ?? '').toString(),
+        airports: airports,
+      );
+    } catch (_) {
+      return const NearestAirports();
+    }
+  }
+
+  /// Ride apps answered per country, for the rest of the app session.
+  static final Map<String, List<RideApp>> _rideAppsByCountry = {};
+
+  /// Ride apps a traveller can use in a country, for the itinerary's buttons
+  /// under transport stops.
+  ///
+  /// The backend asks Gemini with Google Search, finds each app's store page
+  /// and caches both for a month; this keeps them for the session so
+  /// reopening trips does not ask again. An empty answer is not kept, so a
+  /// failed lookup is retried the next time a plan opens. Never throws: a
+  /// failure just means no buttons.
+  Future<List<RideApp>> getRideApps(String countryCode) async {
     final code = countryCode.trim().toUpperCase();
     if (code.length != 2) return const [];
     final known = _rideAppsByCountry[code];
@@ -326,11 +369,23 @@ class OdysseyRepository {
         '${ApiConstants.itineraries}/odyssey/ride-apps',
         queryParameters: {'country': code},
       );
-      final raw = response.data is Map ? (response.data as Map)['apps'] : null;
-      final apps = (raw is List ? raw : const [])
-          .map((a) => a.toString().trim())
-          .where((a) => a.isNotEmpty)
-          .toList();
+      final data = response.data is Map ? response.data as Map : const {};
+      final apps = <RideApp>[];
+      final links = data['links'];
+      if (links is List) {
+        for (final link in links.whereType<Map>()) {
+          final app = RideApp.fromJson(link);
+          if (app.name.isNotEmpty) apps.add(app);
+        }
+      }
+      // A backend from before store links still sends the names.
+      final names = data['apps'];
+      if (apps.isEmpty && names is List) {
+        for (final name in names) {
+          final text = name.toString().trim();
+          if (text.isNotEmpty) apps.add(RideApp(name: text));
+        }
+      }
       if (apps.isNotEmpty) _rideAppsByCountry[code] = apps;
       return apps;
     } catch (_) {
@@ -345,4 +400,75 @@ class OdysseyRepository {
     await CacheService.cacheOdysseys(cachedRaw);
     revision.value++;
   }
+}
+
+/// A ride app shown as a button under the itinerary's transport stops, with
+/// the store pages a tap opens.
+class RideApp {
+  final String name;
+  final String iosUrl;
+  final String androidUrl;
+  final String iconUrl;
+
+  const RideApp({
+    required this.name,
+    this.iosUrl = '',
+    this.androidUrl = '',
+    this.iconUrl = '',
+  });
+
+  factory RideApp.fromJson(Map json) => RideApp(
+        name: (json['name'] ?? '').toString().trim(),
+        iosUrl: (json['ios_url'] ?? '').toString().trim(),
+        androidUrl: (json['android_url'] ?? '').toString().trim(),
+        iconUrl: (json['icon_url'] ?? '').toString().trim(),
+      );
+
+  /// This device's store page for the app. The store shows "Open" when it is
+  /// installed and "Install" when it is not. With no verified page, a web
+  /// search for the app, so every button still does something.
+  String urlFor(TargetPlatform platform) {
+    final store = platform == TargetPlatform.iOS ? iosUrl : androidUrl;
+    if (store.isNotEmpty) return store;
+    return 'https://www.google.com/search?q=${Uri.encodeQueryComponent('$name app')}';
+  }
+}
+
+/// One airport near the traveller, as "Travelling from" shows it.
+class AirportOption {
+  final String iata;
+  final String name;
+  final String city;
+  final String countryCode;
+  final String country;
+  final int distanceKm;
+
+  const AirportOption({
+    required this.iata,
+    this.name = '',
+    this.city = '',
+    this.countryCode = '',
+    this.country = '',
+    this.distanceKm = 0,
+  });
+
+  factory AirportOption.fromJson(Map json) => AirportOption(
+        iata: (json['iata'] ?? '').toString().trim().toUpperCase(),
+        name: (json['name'] ?? '').toString().trim(),
+        city: (json['city'] ?? '').toString().trim(),
+        countryCode: (json['country_code'] ?? '').toString().trim(),
+        country: (json['country'] ?? '').toString().trim(),
+        distanceKm: (json['distance_km'] as num?)?.round() ?? 0,
+      );
+
+  /// "Al Maktoum International Airport (DWC)".
+  String get label => name.isNotEmpty ? '$name ($iata)' : iata;
+}
+
+/// The nearest airports and the code list the flight search would use.
+class NearestAirports {
+  final String suggested;
+  final List<AirportOption> airports;
+
+  const NearestAirports({this.suggested = '', this.airports = const []});
 }

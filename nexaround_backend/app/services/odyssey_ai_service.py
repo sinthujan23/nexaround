@@ -15,8 +15,8 @@ from dataclasses import dataclass, field
 import urllib.parse
 import httpx
 from app.services import (
-    cover_photo_service, geo_resolver, place_cache_service, telemetry,
-    trip_cost_floor, venue_facts_service,
+    airports_service, cover_photo_service, geo_resolver, ground_route_service,
+    place_cache_service, telemetry, trip_cost_floor, venue_facts_service,
 )
 from app.services.providers import enrich as provider_enrich
 from app.services.serpapi_service import (
@@ -823,6 +823,20 @@ def _apply_flight_booking_urls(
     return data
 
 
+def known_airport_codes(raw: str | None, limit: int = 4) -> str:
+    """"DWC,DXB" when every code is an airport with scheduled flights, else "".
+
+    For codes that arrive from the app (the traveller's chosen departure
+    airport): all or nothing, so one typo never narrows a search silently.
+    """
+    codes = [c.strip().upper() for c in str(raw or "").split(",") if c.strip()]
+    if not codes or len(codes) > limit:
+        return ""
+    if any(airports_service.get(c) is None for c in codes):
+        return ""
+    return ",".join(dict.fromkeys(codes))
+
+
 def _same_country(departure_country: str, geo) -> bool:
     """True when home and destination sit in the same country.
 
@@ -1474,6 +1488,7 @@ async def generate_flight_strategies(
     departure_latitude: float | None = None,
     departure_longitude: float | None = None,
     route_plan: "RoutePlan | None" = None,
+    departure_airport: str = "",
 ) -> dict:
     """Generates tiered flight strategies from live SerpApi Google Flights data.
 
@@ -1539,21 +1554,35 @@ async def generate_flight_strategies(
     _dgeo = destination_geo
     arrival_code = (route_plan.arrival_code if route_plan is not None else "") or ""
     departure_code = (route_plan.departure_code if route_plan is not None else "") or ""
-    if arrival_code:
-        origin_code = await _resolve_airport_code(
+
+    # The airport the traveller chose on the planner's "Travelling from" (the
+    # app shows the one nearest them). Trusted only when every code is a real
+    # airport with scheduled flights; anything else is resolved as before.
+    chosen_origin = known_airport_codes(departure_airport)
+
+    async def _origin() -> str:
+        if chosen_origin:
+            return chosen_origin
+        return await _resolve_airport_code(
             departure_city, dep_country, api_key,
             latitude=departure_latitude, longitude=departure_longitude,
         )
+
+    if arrival_code:
+        origin_code = await _origin()
+    elif _airportless(_dgeo):
+        # No airport in the country, and no planner gateway: fly into the
+        # nearest large airports next door, all searched together.
+        gateway = _neighbour_gateway(None, _dgeo)
+        arrival_code = (gateway or {}).get("_codes", "")
+        origin_code = await _origin()
     else:
         # No planner gateway: the destination itself is resolved, on the same
         # footing as the origin. (Resolving it with country="" while the origin
         # got its country is the asymmetry that let an Andaman trip resolve to
         # Colombo.)
         origin_code, arrival_code = await asyncio.gather(
-            _resolve_airport_code(
-                departure_city, dep_country, api_key,
-                latitude=departure_latitude, longitude=departure_longitude,
-            ),
+            _origin(),
             _resolve_airport_code(
                 destination,
                 (_dgeo.country if _dgeo is not None and _dgeo.resolved else ""),
@@ -3834,14 +3863,82 @@ async def _airport_geo(code: str, geo, budget=None, city: str = "") -> dict | No
     return data
 
 
+def _airportless(geo) -> bool:
+    """A destination country with no airport of its own (Andorra, Monaco, ...).
+
+    Only then may a gateway sit across the border. Everywhere else the
+    "airport inside the country" rule stands: it is what stops an Indian trip
+    landing in Colombo. The client's Andorra plan (2026-09-27) is why this
+    exists: the planner chose Barcelona, the country check threw it out, and
+    the trip went unflown and opened with an overland journey from Dubai.
+    """
+    if geo is None or not getattr(geo, "resolved", False):
+        return False
+    return not airports_service.has_scheduled_airport(getattr(geo, "country_code", ""))
+
+
+def _neighbour_gateway(point, geo) -> dict | None:
+    """The nearest large airports to a point, for a country with none of its own.
+
+    Returns a planner-shaped airport for the nearest one, carrying all of them
+    in `_codes` so the flight search tries them together (Andorra: GRO,TLS,BCN)
+    and `_reconcile_gateways` then moves to wherever the best fare lands.
+    """
+    lat, lng = point if point else (getattr(geo, "latitude", None), getattr(geo, "longitude", None))
+    hits = airports_service.nearest(lat, lng, limit=3, max_km=_GATEWAY_MAX_KM)
+    if not hits:
+        return None
+    first = hits[0][0]
+    return {
+        "iata": first.iata,
+        "city": first.city,
+        "name": first.name,
+        "latitude": first.latitude,
+        "longitude": first.longitude,
+        "_codes": ",".join(a.iata for a, _ in hits),
+    }
+
+
+async def _gateway_geo(code: str, geo, budget=None, city: str = "") -> dict | None:
+    """Where a gateway airport is: the airport table for a cross-border
+    gateway (a Places query biased to Andorra is no way to find Toulouse),
+    the Places lookup everywhere else, exactly as before."""
+    if _airportless(geo):
+        known = airports_service.get(code)
+        if known is not None:
+            return {
+                "latitude": known.latitude,
+                "longitude": known.longitude,
+                "country_code": known.country,
+                "name": known.name,
+            }
+    return await _airport_geo(code, geo, budget, city=city)
+
+
 async def _locate_gateway(airport: dict | None, geo, budget=None) -> tuple[dict | None, str]:
     """Attach coordinates to a planner gateway; reject one in the wrong country.
 
     Returns (airport, reason). A rejected airport comes back as None with the
-    reason; an unverifiable one is kept as-is with no coordinates.
+    reason; an unverifiable one is kept as-is with no coordinates. A country
+    with no airport of its own takes any airport with scheduled flights — the
+    distance check that follows still keeps it near the first or last leg.
     """
     if not airport:
         return None, ""
+    if _airportless(geo):
+        known = airports_service.get(airport["iata"])
+        if known is None:
+            return None, (
+                f"Airport {airport['iata']} has no scheduled flights. "
+                f"{geo.country or geo.country_code} has no airport of its own: name the "
+                f"nearest large airport in a neighbouring country."
+            )
+        enriched = dict(airport)
+        enriched["latitude"] = known.latitude
+        enriched["longitude"] = known.longitude
+        enriched["name"] = enriched.get("name") or known.name
+        enriched["city"] = enriched.get("city") or known.city
+        return enriched, ""
     located = await _airport_geo(airport["iata"], geo, budget, city=airport.get("city") or "")
     if located is None:
         return airport, ""
@@ -3928,10 +4025,23 @@ def _route_prompt(
 
     country_rule = ""
     if country:
+        airport_rule = f"Both airports MUST be in {country}."
+        if _airportless(geo):
+            near = ", ".join(
+                f"{a.iata} ({a.city})"
+                for a, _ in airports_service.nearest(
+                    geo.latitude, geo.longitude, limit=3, max_km=_GATEWAY_MAX_KM,
+                )
+            )
+            airport_rule = (
+                f"{country} has no airport with scheduled flights, so both airports are "
+                f"in a neighbouring country: the large airport nearest the first (or last) "
+                f"leg{f', for example {near}' if near else ''}. The legs still stay in {country}."
+            )
         country_rule = (
             f"- EVERY leg must be a real city or town in {country}, and the \"country\" "
-            f"field of every leg MUST be exactly \"{geo.country_code}\". Both airports MUST "
-            f"be in {country}. If the destination's name resembles a place in another "
+            f"field of every leg MUST be exactly \"{geo.country_code}\". {airport_rule} "
+            f"If the destination's name resembles a place in another "
             f"country, ignore the resemblance.\n"
         )
 
@@ -4269,6 +4379,13 @@ async def plan_route(
         for attr, leg in (("arrival", plan.legs[0]), ("departure", plan.legs[-1])):
             if getattr(plan, attr) is None and leg:
                 coords = _leg_coords(leg)
+                if _airportless(geo):
+                    # The resolver below only answers inside the country, and
+                    # this country has no airport: take the table's nearest.
+                    gateway = _neighbour_gateway(coords, geo)
+                    if gateway:
+                        setattr(plan, attr, gateway)
+                    continue
                 code = await _resolve_airport_code(
                     leg["city"],
                     (geo.country if geo is not None and geo.resolved else ""),
@@ -4457,7 +4574,12 @@ async def _reconcile_gateways(
         # whole reason this function exists. Airport coordinates are cached for
         # a month, so this is free on any route seen before.
         resolved = {"iata": code, "city": planned.get("city", ""), "name": ""}
-        located = await _airport_geo(code, geo, budget, city=resolved["city"])
+        # Across a border the city does not carry over: the fare for an Andorra
+        # trip may land at Toulouse when the planner named Barcelona.
+        known = airports_service.get(code) if _airportless(geo) else None
+        if known is not None:
+            resolved["city"] = known.city
+        located = await _gateway_geo(code, geo, budget, city=resolved["city"])
         if located:
             resolved["latitude"] = located["latitude"]
             resolved["longitude"] = located["longitude"]
@@ -4473,6 +4595,99 @@ async def _reconcile_gateways(
     trip_type = primary_flight.get("trip_type")
     if trip_type:
         flight_strategies["trip_type"] = trip_type
+
+
+# A trip abroad still starts overland from home when home is this close to the
+# first city — Singapore to Johor Bahru, Geneva to Annecy. Beyond it the
+# traveller flies, whether or not a fare was found.
+_OVERLAND_ABROAD_MAX_KM = 500.0
+
+
+def _gateway_point(airport: dict | None) -> dict | None:
+    """A gateway with coordinates: its own, else the airport table's.
+
+    Without a flight search the planner's airports are never located, and the
+    ground route to the first city needs both ends on the map.
+    """
+    if not airport or not airport.get("iata"):
+        return None
+    if _leg_coords(airport) is not None:
+        return airport
+    known = airports_service.get(airport["iata"])
+    if known is None:
+        return airport
+    out = dict(airport)
+    out["latitude"] = known.latitude
+    out["longitude"] = known.longitude
+    out["name"] = out.get("name") or known.name
+    out["city"] = out.get("city") or known.city
+    return out
+
+
+def _trip_is_abroad(
+    *,
+    departure_country: str,
+    departure_latitude: float | None,
+    departure_longitude: float | None,
+    origin_codes: str,
+    geo,
+    first_leg: dict | None,
+) -> bool:
+    """True when home is in another country and too far to reach by road.
+
+    Then the plan must not open with "Travel from <home>" — the client's
+    Dubai -> Andorra plan did, because the only rule for a trip without a
+    confirmed flight was the overland one. Home's country comes from its
+    airport first (the resolved origin, e.g. DWC is in AE), then from what the
+    traveller typed, then from the nearest airport to their coordinates.
+    Unknown answers False, which keeps the behaviour this replaced.
+    """
+    if geo is None or not getattr(geo, "resolved", False) or not first_leg:
+        return False
+    origin = airports_service.get(str(origin_codes or "").split(",")[0]) if origin_codes else None
+    point = None
+    if departure_latitude is not None and departure_longitude is not None:
+        point = (float(departure_latitude), float(departure_longitude))
+    elif origin is not None:
+        point = (origin.latitude, origin.longitude)
+
+    if origin is not None:
+        same = origin.country == geo.country_code
+    elif str(departure_country or "").strip() and not _is_non_place(departure_country):
+        same = _same_country(departure_country, geo)
+    elif point is not None:
+        near = airports_service.nearest(point[0], point[1], limit=1)
+        same = (near[0][0].country == geo.country_code) if near else None
+    else:
+        same = None
+    if same is None or same:
+        return False
+
+    leg_point = _leg_coords(first_leg)
+    if point is not None and leg_point is not None:
+        km = geo_resolver.haversine_km(point[0], point[1], leg_point[0], leg_point[1])
+        if km <= _OVERLAND_ABROAD_MAX_KM:
+            return False
+    return True
+
+
+async def _ground_leg(start: dict | None, end: dict | None, maps_key: str) -> dict | None:
+    """Google's best ground route between two mapped points, when they are apart.
+
+    Train, else bus, else ferry, else car (see ground_route_service). None when
+    either end is off the map, the two are the same place, or Google has no
+    answer — the prompt then keeps its generic wording.
+    """
+    a, b = _leg_coords(start), _leg_coords(end)
+    if a is None or b is None:
+        return None
+    if geo_resolver.haversine_km(a[0], a[1], b[0], b[1]) <= _SAME_PLACE_KM:
+        return None
+    try:
+        return await ground_route_service.best_route(a, b, maps_key)
+    except Exception as e:  # the helper never raises, but a plan must not die here
+        logger.warning("Ground route lookup failed: %s", e)
+        return None
 
 
 # Output budget for the day-by-day plan, scaled to the trip. A fixed 8192 cap
@@ -4535,6 +4750,7 @@ async def generate_odyssey(
     departure_latitude: float | None = None,
     departure_longitude: float | None = None,
     preset_route: dict | None = None,
+    departure_airport: str = "",
 ) -> tuple[str, list[dict]]:
     """Generate the plan. Returns (title, items) ready to store on an Itinerary.
 
@@ -4649,6 +4865,7 @@ async def generate_odyssey(
                     departure_latitude=departure_latitude,
                     departure_longitude=departure_longitude,
                     route_plan=route,
+                    departure_airport=departure_airport,
                 )
             except Exception as e:
                 logger.error(f"Flight strategy sub-job failed: {e}")
@@ -4746,6 +4963,47 @@ async def generate_odyssey(
     # apart, NRT and HND 60, ARN and NYO 100).
     await _reconcile_gateways(route, flight_strategies, primary_flight, geo, geo_budget)
 
+    # Is this a trip the traveller must fly into? Decides whether the plan may
+    # open with an overland journey from home (see `_trip_is_abroad`).
+    origin_codes = (
+        (flight_strategies or {}).get("origin_airport") if isinstance(flight_strategies, dict) else ""
+    ) or known_airport_codes(departure_airport)
+    abroad = _trip_is_abroad(
+        departure_country=departure_country,
+        departure_latitude=departure_latitude,
+        departure_longitude=departure_longitude,
+        origin_codes=origin_codes or "",
+        geo=geo,
+        first_leg=city_legs[0] if city_legs else None,
+    )
+
+    # The airports the trip enters and leaves by, with coordinates. A booked
+    # flight's gateways come from the route (reconciled above); a trip abroad
+    # with no fare still lands somewhere, so the planner's airport is used, or
+    # for a country with none of its own, the nearest one next door.
+    gateway_in = _gateway_point(route.arrival)
+    gateway_out = _gateway_point(route.departure) or gateway_in
+    if (
+        (gateway_in is None or _leg_coords(gateway_in) is None)
+        and abroad and _airportless(geo) and city_legs
+    ):
+        gateway_in = _neighbour_gateway(_leg_coords(city_legs[0]), geo)
+        gateway_out = _neighbour_gateway(_leg_coords(city_legs[-1]), geo) or gateway_in
+    for gw in (gateway_in, gateway_out):
+        if gw:
+            gw.pop("_codes", None)
+
+    # How the traveller gets from that airport to the first city, and back to
+    # it at the end: train if one runs, else bus, else road — from Google's
+    # timetables, not the model's guess. Only where a transfer is written.
+    if primary_flight or abroad:
+        arrival_ground, departure_ground = await asyncio.gather(
+            _ground_leg(gateway_in, city_legs[0] if city_legs else None, maps_key),
+            _ground_leg(city_legs[-1] if city_legs else None, gateway_out, maps_key),
+        )
+    else:
+        arrival_ground = departure_ground = None
+
     # Real airport-transfer and eSIM prices, fetched while Gemini writes the
     # itinerary below and applied after it, so no plan waits for them. Each
     # provider follows its admin switch (off / shadow / live) — see
@@ -4804,6 +5062,11 @@ async def generate_odyssey(
             route_plan=route,
             inter_city_flights=inter_city_flights,
             spend_room=spend_room,
+            abroad=abroad,
+            gateway_in=gateway_in,
+            gateway_out=gateway_out,
+            arrival_ground=arrival_ground,
+            departure_ground=departure_ground,
         )
 
     prompt = _prompt_for(True)
@@ -5287,6 +5550,7 @@ async def generate_odyssey(
             "include_flights": include_flights,
             "departure_city": departure_city,
             "departure_country": departure_country,
+            "departure_airport": departure_airport,
             "nationality": nationality,
             "has_visa": has_visa,
             "flight_start_date": flight_start_date,
@@ -5679,6 +5943,11 @@ def _build_prompt(
     inter_city_flights: list[dict] | None = None,
     spend_room: float = 0.0,
     grounded: bool = True,
+    abroad: bool = False,
+    gateway_in: dict | None = None,
+    gateway_out: dict | None = None,
+    arrival_ground: dict | None = None,
+    departure_ground: dict | None = None,
 ) -> str:
     nights = days - 1 if days > 1 else 0
     # The rules have to match the tools actually attached to the call this
@@ -5995,12 +6264,25 @@ CRITICAL — CONFIRMED FLIGHTS (live Google Flights; do not change the airports 
             a_time = ((confirmed_flight.get("outbound") or {}).get("arrival_time") or "").strip()
             km_txt = f", about {arrival_km:,.0f} km away" if arrival_km is not None else ""
             mode = (first_leg.get("arrive_by") or "").strip()
-            mode_hint = f" (the route planner suggests: {mode})" if mode and mode != "none" else ""
+            if arrival_ground:
+                # Real timetables: the mode is a fact, not a suggestion.
+                transfer_how = (
+                    f"that travels by {ground_route_service.describe(arrival_ground)} "
+                    f"(Google Maps timetables — use exactly that mode and duration), "
+                    f"with the fare for {travelers} traveller(s)"
+                )
+            else:
+                planner_hint = f" (the route planner suggests: {mode})" if mode and mode != "none" else ""
+                transfer_how = (
+                    f"that states the mode{planner_hint} — a train if one runs, else a bus or "
+                    f"coach, else a car or taxi — a realistic duration, and the fare for "
+                    f"{travelers} traveller(s) found via search"
+                )
             far = arrival_km is not None and arrival_km > _GATEWAY_MAX_KM
             arrival_rules = f"""
 CRITICAL — ARRIVAL LOGISTICS:
 - The traveller lands at {arrival_airport['iata']} ({a_city}){f' at {a_time}' if a_time else ''} on Day 1. The first night is in {first_leg['city']}{km_txt}.
-- Day 1 MUST open with a "transport" activity named "Transfer: {a_city} airport → {first_leg['city']}" that states the mode{mode_hint}, a realistic duration, and the fare for {travelers} traveller(s) found via search.
+- Day 1 MUST open with a "transport" activity named "Transfer: {a_city} airport → {first_leg['city']}" {transfer_how}.
 - {"This is a long transfer: say so plainly and prefer a domestic flight or an overnight train over a road journey; if it needs most of Day 1, plan Day 1 around it." if far else "If the transfer takes more than ~6 hours by road, say so and prefer a domestic flight or overnight train."}
 - Do not schedule sightseeing in {a_city} on Day 1 unless the transfer is under an hour.
 """
@@ -6011,7 +6293,7 @@ CRITICAL — ARRIVAL LOGISTICS:
             departure_rules = f"""
 CRITICAL — DEPARTURE LOGISTICS:
 - The flight home leaves from {departure_airport['iata']} ({d_city}){f' at {d_time}' if d_time else ''} on Day {days}. The last night is in {last_leg['city']}{km_txt}.
-- Day {days} MUST END with a "transport" activity named "Transfer: {last_leg['city']} → {d_city} airport" that arrives at least 3 hours before departure, with mode, duration and fare for {travelers} traveller(s).
+- Day {days} MUST END with a "transport" activity named "Transfer: {last_leg['city']} → {d_city} airport" that arrives at least 3 hours before departure, with mode, duration and fare for {travelers} traveller(s){f" — Google Maps timetables give: {ground_route_service.describe(departure_ground)}; use exactly that mode" if departure_ground else " (a train if one runs, else a bus or coach, else a car or taxi)"}.
 - If the flight leaves before 10:00, make that transfer the last activity of Day {max(days - 1, 1)} instead and note the early start.
 """
 
@@ -6027,6 +6309,7 @@ CRITICAL — DEPARTURE LOGISTICS:
     first_city = (first_leg or {}).get("city") or destination
     if (
         not confirmed_flight
+        and not abroad
         and departure_city
         and departure_city.strip().lower() != first_city.strip().lower()
     ):
@@ -6037,6 +6320,59 @@ CRITICAL — GETTING TO {first_city.upper()} (NO FLIGHT BOOKED FOR THIS TRIP):
 - Estimate its cost from REAL, typical bus/train/shared-taxi fares for this specific route and distance — do not invent a large or round number. A domestic ground journey of a few hundred kilometers or less is normally a small fraction of the total trip budget, not a major line item.
 - If the distance is short (under ~2 hours), keep the cost minimal and say so in the tip.
 """
+
+    # A trip abroad with no fare found (the route has no flights, the search
+    # failed, or the traveller turned flights off) still arrives by air. It used
+    # to fall into the overland rule above and open with "Travel from Jabal Ali 3
+    # to Andorra la Vella" — a bus from Dubai. Now it opens at the airport.
+    if abroad and not confirmed_flight:
+        home = departure_city or "the traveller's home"
+        last_city = (last_leg or first_leg or {}).get("city") or first_city
+        not_included = "Flight not included in this plan — book it separately."
+
+        def _label(gw: dict) -> str:
+            return f"{gw.get('name') or gw['iata']} ({gw['iata']})"
+
+        g_in = gateway_in if (gateway_in or {}).get("iata") else None
+        g_out = gateway_out if (gateway_out or {}).get("iata") else g_in
+        if g_in:
+            a_city = g_in.get("city") or g_in["iata"]
+            d_city = (g_out or g_in).get("city") or (g_out or g_in)["iata"]
+            how_in = (
+                f"by {ground_route_service.describe(arrival_ground)} (Google Maps timetables — use exactly that mode, duration and fare)"
+                if arrival_ground else
+                "stating the mode (a train if one runs, else a bus or coach, else a car or taxi), a realistic duration and the fare"
+            )
+            how_out = (
+                f"by {ground_route_service.describe(departure_ground)} (Google Maps timetables)"
+                if departure_ground else
+                "with mode (train, else bus or coach, else car or taxi), duration and fare"
+            )
+            transfer_in = (
+                f"- Then a \"transport\" activity named \"Transfer: {a_city} airport → {first_city}\" {how_in}, for {travelers} traveller(s).\n"
+                if arrival_ground or a_city.strip().lower() != first_city.strip().lower() else ""
+            )
+            transfer_out = (
+                f"a \"transport\" activity named \"Transfer: {last_city} → {d_city} airport\" {how_out}, then "
+                if departure_ground or d_city.strip().lower() != last_city.strip().lower() else ""
+            )
+            abroad_rules = f"""
+CRITICAL — ARRIVING FROM ABROAD (NO FLIGHT FARE IN THIS PLAN):
+- The traveller comes from {home}, in another country, and flies in. No fare was found for that flight, so it is not priced here.
+- NEVER write an overland journey from {home}: no "Travel from {home}", and no bus, train or car from {home}.
+- Day 1 MUST OPEN with a "transport" activity named "Arrival at {_label(g_in)}" with cost_per_person 0 and the tip "{not_included}"
+{transfer_in}- Day {days} MUST END with {transfer_out}a "transport" activity named "Departure from {_label(g_out or g_in)}" with cost_per_person 0.
+- Plan Day 1 around the arrival and the transfer; do not fill a long travel day with sightseeing.
+"""
+        else:
+            abroad_rules = f"""
+CRITICAL — ARRIVING FROM ABROAD (NO FLIGHT FARE IN THIS PLAN):
+- The traveller comes from {home}, in another country, and flies in. No fare was found, so the flight is not priced here.
+- NEVER write an overland journey from {home}: no "Travel from {home}", and no bus, train or car from {home}.
+- Day 1 MUST OPEN with a "transport" activity named "Arrive in {first_city}" with cost_per_person 0 and the tip "{not_included}"
+- Day {days} MUST END with a "transport" activity named "Depart from {last_city}" with cost_per_person 0.
+"""
+        ground_transport_rules = abroad_rules
 
     if has_visa:
         visa_rules = """CRITICAL — VISA GUIDANCE RULES:

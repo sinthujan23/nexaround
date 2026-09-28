@@ -52,6 +52,9 @@ nexaround_backend/fix_templates.py
 fix_nginx.py
 *.json
 !nexaround_backend/alembic.ini
+# Public-domain airport table the Odyssey airport logic reads (regenerate with
+# app/scripts/refresh_airports.py); without it cross-border gateways switch off.
+!nexaround_backend/app/data/airports.json
 # Large media / archives
 website/*.zip
 website/*.mp4

@@ -1,6 +1,6 @@
 """Ride-app chips for the Odyssey itinerary.
 
-The lookup is display only, so every way it can go wrong must end in an empty
+The lookup never blocks the itinerary, so every way it can go wrong must end in an empty
 list rather than an error, and a country must cost at most one Gemini call per
 cache period however many travellers open a trip there. Pure functions and
 stubs only: no network, no Redis, no database.
@@ -146,3 +146,93 @@ def test_endpoint_is_registered_under_the_odyssey_routes():
 
     paths = {getattr(r, "path", "") for r in itineraries.router.routes}
     assert "/itineraries/odyssey/ride-apps" in paths
+
+
+# ── Store links: each app becomes a button (client, 2026-09-27) ─────────────
+
+PICKME_RESULTS = [
+    {"trackName": "PickMe - Driver", "bundleId": "com.pickme.driverpartner",
+     "trackViewUrl": "https://apps.apple.com/lk/app/pickme-driver/id1520523477?uo=4"},
+    {"trackName": "PickMe Sri Lanka", "bundleId": "com.pickme.passenger",
+     "trackViewUrl": "https://apps.apple.com/lk/app/pickme-sri-lanka/id1000163961?uo=4",
+     "artworkUrl100": "https://is1.mzstatic.com/pickme.png"},
+]
+UBER_RESULTS = [
+    {"trackName": "Uber Eats: Food Delivery", "bundleId": "com.ubercab.UberEats",
+     "trackViewUrl": "https://apps.apple.com/lk/app/uber-eats/id1058959277"},
+    {"trackName": "Uber: Rides, eats, and more", "bundleId": "com.ubercab.UberClient",
+     "trackViewUrl": "https://apps.apple.com/lk/app/uber/id368677368"},
+]
+
+
+def test_the_rider_app_is_picked_not_the_driver_or_delivery_app():
+    assert svc._pick_itunes(PICKME_RESULTS, "PickMe")["bundleId"] == "com.pickme.passenger"
+    assert svc._pick_itunes(UBER_RESULTS, "Uber")["bundleId"] == "com.ubercab.UberClient"
+    assert svc._pick_itunes(UBER_RESULTS, "Careem") is None
+    assert svc._brand("Uber: Rides, eats, and more") == "Uber"
+    assert svc._brand("Bolt - Taxi") == "Bolt"
+
+
+class _Resp:
+    def __init__(self, status=200, data=None, text=""):
+        self.status_code, self._data, self.text = status, data, text
+
+    def json(self):
+        return self._data
+
+
+def _stores(monkeypatch, itunes: dict, play_titles: dict):
+    calls = []
+
+    async def fake_get(client, url, params, op):
+        calls.append((op, dict(params)))
+        if op == "itunes_search":
+            return _Resp(data={"results": itunes.get(params["term"], [])})
+        title = play_titles.get(params["id"])
+        return _Resp(200, text=f"<html><title>{title}</title>") if title else _Resp(404)
+
+    monkeypatch.setattr(svc, "_get", fake_get)
+    return calls
+
+
+def test_links_are_verified_and_fall_back_to_a_search(cache, monkeypatch):
+    calls = _stores(
+        monkeypatch,
+        itunes={"PickMe": PICKME_RESULTS, "Uber": UBER_RESULTS},
+        play_titles={
+            "com.pickme.passenger": "PickMe (Sri Lanka) - Apps on Google Play",
+            "com.ubercab": "Uber - Request a ride - Apps on Google Play",
+        },
+    )
+    links = asyncio.run(svc.ride_app_links("lk", ["PickMe", "Uber", "Kangaroo Cabs"]))
+    pickme, uber, kangaroo = links
+    assert pickme["ios_url"] == "https://apps.apple.com/lk/app/pickme-sri-lanka/id1000163961"
+    assert pickme["android_url"] == "https://play.google.com/store/apps/details?id=com.pickme.passenger"
+    assert pickme["icon_url"] == "https://is1.mzstatic.com/pickme.png"
+    # Uber's Play id is not its iPhone bundle id; the known package is checked.
+    assert uber["android_url"] == "https://play.google.com/store/apps/details?id=com.ubercab"
+    # Nothing verified: no guessed page, a Play search instead; no iPhone link.
+    assert kangaroo["ios_url"] == ""
+    assert kangaroo["android_url"] == "https://play.google.com/store/search?q=Kangaroo+Cabs&c=apps"
+    # Cached per country: a second call asks no store.
+    before = len(calls)
+    assert asyncio.run(svc.ride_app_links("LK", ["PickMe", "Uber", "Kangaroo Cabs"])) == links
+    assert len(calls) == before
+
+
+def test_a_play_page_for_another_app_is_not_trusted(cache, monkeypatch):
+    # The iPhone bundle id exists on Play but belongs to something else.
+    _stores(
+        monkeypatch,
+        itunes={"PickMe": PICKME_RESULTS},
+        play_titles={"com.pickme.passenger": "Some Other App - Apps on Google Play"},
+    )
+    (pickme,) = asyncio.run(svc.ride_app_links("LK", ["PickMe"]))
+    assert pickme["android_url"] == "https://play.google.com/store/search?q=PickMe&c=apps"
+
+
+def test_no_country_or_no_apps_asks_nothing(cache, monkeypatch):
+    calls = _stores(monkeypatch, itunes={}, play_titles={})
+    assert asyncio.run(svc.ride_app_links("XX", ["Uber"])) == []
+    assert asyncio.run(svc.ride_app_links("LK", [])) == []
+    assert calls == []
