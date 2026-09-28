@@ -973,3 +973,68 @@ def test_a_trip_where_nobody_sleeps_anywhere_still_searches(monkeypatch):
         api_key="k", serpapi_key="s", geo=None,
     ))
     assert result.get("strategies")
+
+
+# ── The booking button names where it goes (client, 2026-09-27) ─────────────
+
+def test_hotel_site_link_names_the_hotels_own_website():
+    from app.services.serpapi_service import hotel_site_link
+
+    assert hotel_site_link("http://www.hotelcarlemany.com/?utm_source=google") == (
+        "hotelcarlemany.com", "http://www.hotelcarlemany.com/?utm_source=google",
+    )
+    # A deep page is opened as it is.
+    assert hotel_site_link("https://www.kingsbury.lk/rooms/deluxe") == (
+        "kingsbury.lk", "https://www.kingsbury.lk/rooms/deluxe",
+    )
+    # A bare homepage gets a query, which installed apps need before they
+    # will open it rather than a Google search.
+    assert hotel_site_link("https://www.kingsbury.lk/") == (
+        "kingsbury.lk", "https://www.kingsbury.lk/?utm_source=nexaround",
+    )
+    assert hotel_site_link("https://kingsbury.lk")[1] == "https://kingsbury.lk/?utm_source=nexaround"
+    assert hotel_site_link("https://www.kingsbury.lk/en")[1] == "https://www.kingsbury.lk/en?utm_source=nexaround"
+
+
+@pytest.mark.parametrize("url", [
+    "https://www.booking.com/hotel/lk/kingsbury.html",   # a booking site, not the hotel
+    "https://www.agoda.com/kingsbury/hotel/colombo-lk.html",
+    "https://www.google.com/search?q=kingsbury",
+    "https://hotelbooking-colombo.com/?a=1",              # installed apps route "booking" names away
+    "",
+    "not a url",
+])
+def test_hotel_site_link_leaves_everything_else_alone(url):
+    from app.services.serpapi_service import hotel_site_link
+
+    assert hotel_site_link(url) == ("", url)
+
+
+def _with_links(*links):
+    props = []
+    for i, link in enumerate(links):
+        p = _prop(f"Hotel {i}", nightly=50 + i, hotel_class=4)
+        if link is not None:
+            p["link"] = link
+        props.append(p)
+    return extract_hotel_strategies_from_serpapi(
+        {"properties": props}, destination="Colombo", currency="USD",
+        check_in_date="2026-10-01", check_out_date="2026-10-04",
+    )["strategies"]
+
+
+def test_the_button_says_the_hotels_website_when_it_opens_it():
+    own, bare, ota, none = _with_links(
+        "https://www.kingsbury.lk/rooms?src=g",
+        "https://www.galleface.com/",
+        "https://www.agoda.com/",          # a booking site's bare front page
+        None,
+    )
+    assert own["provider_name"] == "kingsbury.lk"
+    assert own["booking_url"] == own["serpapi_link"] == "https://www.kingsbury.lk/rooms?src=g"
+    assert bare["provider_name"] == "galleface.com"
+    assert bare["booking_url"] == "https://www.galleface.com/?utm_source=nexaround"
+    # Everything that opens Google keeps saying so.
+    assert ota["provider_name"] == "Google Hotels"
+    assert ota["booking_url"].startswith("https://www.google.com/search?q=")
+    assert none["provider_name"] == "Google Hotels"

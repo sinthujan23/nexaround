@@ -29,10 +29,57 @@ class BookingUrlHelper {
     } catch (_) {
       return false;
     }
+    // A hotel's own site is a fine place to land even at its root:
+    // "kingsbury.lk/" is that hotel and nothing else. Only a booking site's
+    // front page is a dead end. Treating the hotel's own homepage as one sent
+    // 40% of Stays taps to a Google search for a hotel whose website we had.
+    // Same rule as the backend's `_looks_like_homepage_url`.
+    if (!_isBookingSite(uri.host)) return false;
     if (uri.hasQuery) return false;
     final segments = uri.pathSegments.where((s) => s.isNotEmpty).toList();
     if (segments.isEmpty) return true;
     return segments.length == 1 && segments.first.length <= 5;
+  }
+
+  static const _bookingSites = {
+    'agoda.com', 'booking.com', 'expedia.com', 'hotels.com', 'trip.com',
+    'priceline.com', 'kayak.com', 'orbitz.com', 'travelocity.com',
+    'hostelworld.com', 'airbnb.com', 'vrbo.com', 'tripadvisor.com',
+    'ebookers.com', 'lastminute.com',
+  };
+
+  static bool _isBookingSite(String host) {
+    final h = host.toLowerCase();
+    return _bookingSites.any((site) => h == site || h.endsWith('.$site'));
+  }
+
+  /// Where a link really goes, for its button: "Google Hotels",
+  /// "Booking.com", or the hotel's own "kingsbury.lk". The client saw
+  /// "Book Hotel on Google Hotels" on buttons that opened the hotel's own
+  /// website; the label now comes from the link that is opened.
+  static String siteLabel(String url) {
+    Uri uri;
+    try {
+      uri = Uri.parse(_sanitizeUrl(url));
+    } catch (_) {
+      return '';
+    }
+    final host = uri.host.toLowerCase().replaceFirst(RegExp(r'^www\.'), '');
+    if (host.isEmpty) return '';
+    if (host.contains('google.')) {
+      return uri.path.contains('/travel/hotels') ? 'Google Hotels' : 'Google';
+    }
+    const names = {
+      'booking.com': 'Booking.com',
+      'agoda.com': 'Agoda',
+      'expedia.com': 'Expedia',
+      'hotels.com': 'Hotels.com',
+      'airbnb.com': 'Airbnb',
+    };
+    for (final entry in names.entries) {
+      if (host == entry.key || host.endsWith('.${entry.key}')) return entry.value;
+    }
+    return host;
   }
 
   /// Try to deduce the provider from the raw URL domain when providerName is

@@ -867,48 +867,22 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     );
   }
 
-  List<OdysseyBookingPartner> get _dynamicPartners {
-    final List<OdysseyBookingPartner> partners = List.from(widget.odyssey.bookingPartners);
-    final existingNames = partners.map((p) => p.name.toLowerCase()).toSet();
-    final dest = widget.odyssey.destination.isNotEmpty ? widget.odyssey.destination : 'Anywhere';
-
-    // Extract dynamic transit app partners mentioned in activities/tips if not already included
-    for (final day in widget.odyssey.dayPlans) {
-      for (final act in day.activities) {
-        final text = '${act.name} ${act.tip}'.toLowerCase();
-
-        if (text.contains('uber') && !existingNames.any((n) => n.contains('uber'))) {
-          existingNames.add('uber');
-          partners.add(OdysseyBookingPartner(
-            name: 'Uber',
-            type: 'transit',
-            url: 'https://m.uber.com/ul/?action=setPickup&dropoff[formatted_address]=${Uri.encodeComponent(dest)}',
-          ));
-        }
-        if (text.contains('pickme') && !existingNames.any((n) => n.contains('pickme'))) {
-          existingNames.add('pickme');
-          partners.add(const OdysseyBookingPartner(
-            name: 'PickMe',
-            type: 'transit',
-            url: 'https://pickme.lk',
-          ));
-        }
-        if (text.contains('grab') && !existingNames.any((n) => n.contains('grab'))) {
-          existingNames.add('grab');
-          partners.add(const OdysseyBookingPartner(
-            name: 'Grab',
-            type: 'transit',
-            url: 'https://www.grab.com',
-          ));
-        }
-      }
-    }
-
-    return partners;
-  }
+  /// The booking partners worth a card: only real integrations, which today
+  /// means the Airalo eSIM card the backend adds (type "esim").
+  ///
+  /// The client asked for the rest to go (2026-09-28: "this part doesn't
+  /// work, and since we are tying up with Travelpayouts it's not relevant
+  /// anymore"). Gemini wrote Booking.com, Viator and Skyscanner homepages
+  /// into every plan, and this list also added Uber, PickMe or Grab whenever
+  /// an activity's text happened to contain the word ("grab a coffee" gave an
+  /// Andorra trip a Grab card) — and opened Google Flights for them. Ride apps
+  /// now appear as buttons under each transport stop instead. Filtering here
+  /// also cleans plans saved before the backend stopped sending those.
+  List<OdysseyBookingPartner> get _dynamicPartners => widget.odyssey.bookingPartners
+      .where((p) => p.type.trim().toLowerCase() == 'esim')
+      .toList();
 
   Widget _buildStaysTab(BuildContext context) {
-    final partners = _dynamicPartners;
     return SingleChildScrollView(
       padding: widget.padding,
       child: Column(
@@ -928,21 +902,10 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
             'traveller for the whole stay — share rooms and it comes down.',
           ),
           const SizedBox(height: 12),
+          // The partner cards that followed here (Booking.com and the rest)
+          // were removed at the client's request; the one card left, the
+          // eSIM, belongs on the Itinerary tab, not under hotels.
           HotelStrategiesSection(odyssey: widget.odyssey, highlightScenario: _selectedScenario),
-          if (partners.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            const Text(
-              'ODYSSEY BOOKING PARTNERS',
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 2,
-                color: AppColors.textSecondary,
-              ),
-            ),
-            const SizedBox(height: 12),
-            _buildBookingSection(context, partners),
-          ],
         ],
       ),
     );
@@ -3633,7 +3596,7 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
                                               const SizedBox(height: 2),
                                               Text(
                                                 isHotel
-                                                    ? 'Tap to view curated hotel options & booking partners in the Stays tab.'
+                                                    ? 'Tap to view curated hotel options in the Stays tab.'
                                                     : sourceDetail,
                                                 style: const TextStyle(
                                                   fontSize: 11,

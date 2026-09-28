@@ -463,7 +463,12 @@ class HotelStrategiesSection extends StatelessWidget {
                     travelers: odyssey.travelers,
                     serpApiLink: hs.serpApiLink,
                   );
-                  final logoPath = _getProviderLogoPath(provider);
+                  // Named for where the tap really goes, not for where the
+                  // price came from: the hotel's own site, Booking.com, or
+                  // Google.
+                  final site = BookingUrlHelper.siteLabel(deepUrl);
+                  final label = site.isNotEmpty ? site : provider;
+                  final logoPath = _getProviderLogoPath(label);
                   return SizedBox(
                     width: double.infinity,
                     height: 48,
@@ -498,7 +503,7 @@ class HotelStrategiesSection extends StatelessWidget {
                           ],
                           Flexible(
                             child: Text(
-                              'Book Hotel on $provider',
+                              'Book Hotel on $label',
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.w700,

@@ -125,6 +125,7 @@ def test_barcelona_is_accepted_for_andorra(monkeypatch, no_places):
     _script(monkeypatch, _route({"iata": "BCN", "city": "Barcelona", "name": "El Prat"}))
     plan = _plan()
     assert plan.reasons == []
+    # The planner's own pick is searched first, on its own.
     assert plan.arrival_code == "BCN" and plan.departure_code == "BCN"
     assert plan.arrival["latitude"] == pytest.approx(41.2971)
     assert [leg["country"] for leg in plan.legs] == ["AD", "AD", "AD"]
@@ -354,3 +355,140 @@ def test_nearest_airports_fall_back_to_distance(monkeypatch):
     ))
     assert result.suggested == "DWC"
     assert [a.iata for a in result.airports][:2] == ["DWC", "DXB"]
+
+
+def _san_marino():
+    return DestinationContext(
+        query="San Marino", name="San Marino", country="San Marino", country_code="SM",
+        latitude=43.94, longitude=12.45, types=("country",), source="places",
+    )
+
+
+def _san_marino_route():
+    leg = {"city": "San Marino", "country": "SM", "start_day": 1, "end_day": 4,
+           "latitude": 43.94, "longitude": 12.45, "arrive_by": "car", "from_previous_km": 25}
+    rimini = {"iata": "RMI", "city": "Rimini"}
+    return RoutePlan(legs=[leg], arrival=dict(rimini), departure=dict(rimini),
+                     arrival_code="RMI", departure_code="RMI", source="planner")
+
+
+def test_neighbours_are_searched_only_when_the_planned_airport_has_no_flight():
+    """New York -> San Marino: Rimini had no route; Florence did."""
+    route = _san_marino_route()
+    searched = []
+
+    async def search():
+        searched.append(route.arrival_code)
+        if route.arrival_code == "RMI":
+            return {"strategies": [], "unavailable_reason": "none_found"}
+        return {"strategies": [{"title": "via FLR"}]}
+
+    result = asyncio.run(svc._flights_with_neighbours(search, route, _san_marino()))
+    assert result["strategies"]
+    assert searched[0] == "RMI"
+    assert searched[1].split(",")[0] == "RMI" and len(searched[1].split(",")) > 1
+    assert route.departure_code == route.arrival_code
+
+
+def test_a_planned_airport_with_flights_is_kept():
+    """Monaco flew into Genoa when every neighbour was searched up front."""
+    route = _san_marino_route()
+    searched = []
+
+    async def search():
+        searched.append(route.arrival_code)
+        return {"strategies": [{"title": "via RMI"}]}
+
+    asyncio.run(svc._flights_with_neighbours(search, route, _san_marino()))
+    assert searched == ["RMI"]
+
+
+def test_neighbours_only_for_countries_without_an_airport():
+    india_route = RoutePlan(
+        legs=[{"city": "Nagpur", "latitude": 21.15, "longitude": 79.09,
+               "start_day": 1, "end_day": 4}],
+        arrival={"iata": "NAG"}, departure={"iata": "NAG"},
+        arrival_code="NAG", departure_code="NAG",
+    )
+    searched = []
+
+    async def search():
+        searched.append(india_route.arrival_code)
+        return {"strategies": [], "unavailable_reason": "none_found"}
+
+    asyncio.run(svc._flights_with_neighbours(search, india_route, _india()))
+    assert searched == ["NAG"]
+
+
+def test_india_keeps_its_own_airports_only(monkeypatch):
+    """The widening is for countries with no airport; India's search is unchanged."""
+    async def _geo(code, geo, budget=None, city=""):
+        return {"NAG": {"latitude": 21.09, "longitude": 79.05, "country_code": "IN", "name": "Nagpur"}}.get(code)
+    monkeypatch.setattr(svc, "_airport_geo", _geo)
+    route = {
+        "region": "Nagpur",
+        "legs": [{"city": "Nagpur", "country": "IN", "start_day": 1, "end_day": 4,
+                  "latitude": 21.15, "longitude": 79.09, "arrive_by": "none", "from_previous_km": 0}],
+        "arrival_airport": {"iata": "NAG", "city": "Nagpur"},
+        "departure_airport": {"iata": "NAG", "city": "Nagpur"},
+    }
+    _script(monkeypatch, route)
+    plan = _plan(destination="India", days=4, geo=_india(), departure_city="Colombo",
+                 departure_country="Sri Lanka")
+    assert plan.arrival_code == "NAG"
+
+
+def test_a_junk_code_from_the_airport_lookup_is_dropped(monkeypatch):
+    """Jebel Ali came back "DWC,HBH" once; HBH (Alaska) sank the flight search."""
+    svc._airport_code_cache.clear()
+
+    async def _fake(prompt, api_key, **kw):
+        return "DWC, HBH", []
+
+    monkeypatch.setattr(svc, "_call_gemini", _fake)
+    code = asyncio.run(svc._resolve_airport_code("Jabal Ali 3", "", "key"))
+    # HBH dropped; DWC then searched with the rest of Dubai.
+    assert code == "DWC,DXB"
+    svc._airport_code_cache.clear()
+
+
+def test_an_unknown_answer_alone_is_still_kept(monkeypatch):
+    """Only filtered when a real airport remains: a small field missing from the
+    table must not turn into "no airport at all"."""
+    svc._airport_code_cache.clear()
+
+    async def _fake(prompt, api_key, **kw):
+        return "ZZQ", []
+
+    monkeypatch.setattr(svc, "_call_gemini", _fake)
+    assert asyncio.run(svc._resolve_airport_code("Somewhere Small", "", "key")) == "ZZQ"
+    svc._airport_code_cache.clear()
+
+
+def test_a_single_home_airport_is_searched_with_its_city_neighbours():
+    """DWC alone found no fare to Barcelona; Dubai (all airports) does."""
+    assert svc.with_city_airports("DWC") == "DWC,DXB"
+    assert svc.with_city_airports("JFK").split(",")[0] == "JFK"
+    assert set(svc.with_city_airports("JFK").split(",")) == {"JFK", "LGA", "EWR"}
+    assert svc.with_city_airports("BCN") == "BCN"          # no second big airport
+    assert svc.with_city_airports("DWC,DXB") == "DWC,DXB"  # a list is left alone
+    assert svc.with_city_airports("ZZQ") == "ZZQ"          # unknown: untouched
+    assert svc.with_city_airports("") == ""
+
+
+def test_a_guessed_home_airport_is_widened_but_curated_and_chosen_ones_are_not(monkeypatch):
+    svc._airport_code_cache.clear()
+
+    async def _fake(prompt, api_key, **kw):
+        return "DWC", []
+    monkeypatch.setattr(svc, "_call_gemini", _fake)
+    # The model's single answer for a suburb: the whole city is searched.
+    assert asyncio.run(svc._resolve_airport_code("Jabal Ali 3", "", "key")) == "DWC,DXB"
+    # A curated city is never widened (Colombo stays CMB, not CMB,RML).
+    assert asyncio.run(svc._resolve_airport_code("Colombo", "Sri Lanka", "key")) == "CMB"
+    svc._airport_code_cache.clear()
+
+    # The traveller's own single pick is searched on its own.
+    monkeypatch.setattr(svc, "SerpApiService", _RecordingSerp)
+    _flights(departure_city="Jabal Ali 3", departure_airport="DWC")
+    assert _RecordingSerp.searches[0]["departure_city"] == "DWC"

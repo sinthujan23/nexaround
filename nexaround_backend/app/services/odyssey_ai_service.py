@@ -657,6 +657,19 @@ async def _resolve_airport_code(
         # Metro codes are silently rejected by Google Flights — drop any that
         # slipped through rather than shipping a search that returns nothing.
         codes = [c for c in dict.fromkeys(codes) if c not in _METRO_CODES][:3]
+        # A three-letter token is not always an airport anyone flies to: Jebel
+        # Ali once came back "DWC,HBH" (HBH is a seaplane base in Alaska), and
+        # the junk code sank the whole flight search. Keep the answers that
+        # are airports with scheduled flights, whenever at least one is.
+        scheduled = [c for c in codes if airports_service.get(c) is not None]
+        if scheduled:
+            codes = scheduled
+        # One airport named for a home town is searched with the rest of its
+        # city ("DWC" -> "DWC,DXB"); see `with_city_airports`. Only for the
+        # model's answer without a country check: the curated table above and
+        # a destination's verified airports are left exactly as they were.
+        if len(codes) == 1 and not country_code:
+            codes = with_city_airports(codes[0]).split(",")
         # Only the model's answers are verified — the static table above is
         # curated, and the live SerpApi path never reaches here at all.
         if codes and country_code:
@@ -835,6 +848,35 @@ def known_airport_codes(raw: str | None, limit: int = 4) -> str:
     if any(airports_service.get(c) is None for c in codes):
         return ""
     return ",".join(dict.fromkeys(codes))
+
+
+# Airports this close to the one a home town resolved to serve the same city:
+# DWC and DXB are 45 km apart and both are "Dubai". Sharjah (60 km) is not.
+_SAME_CITY_AIRPORT_KM = 55.0
+
+
+def with_city_airports(codes: str, limit: int = 3) -> str:
+    """"DWC" -> "DWC,DXB": add the other large airports of the same city.
+
+    Google Flights searches "Dubai (all airports)" for the same reason. The
+    airport lookup for "Jabal Ali 3" answers DWC or DXB depending on the day,
+    and DWC alone has almost no flights: the client's Andorra trip found no
+    fare at all from it. Only widens a single known airport; a list, or a
+    code the table does not know, is returned as it came. Applied to the
+    model's answer in `_resolve_airport_code` only, so curated cities
+    (Colombo -> CMB) search exactly what they always did.
+    """
+    parts = [c for c in str(codes or "").split(",") if c]
+    if len(parts) != 1:
+        return codes or ""
+    home = airports_service.get(parts[0])
+    if home is None:
+        return codes
+    near = airports_service.nearest(
+        home.latitude, home.longitude, limit=limit, max_km=_SAME_CITY_AIRPORT_KM,
+    )
+    extra = [a.iata for a, _ in near if a.large and a.iata != home.iata]
+    return ",".join([home.iata, *extra][:limit])
 
 
 def _same_country(departure_country: str, geo) -> bool:
@@ -1562,6 +1604,7 @@ async def generate_flight_strategies(
 
     async def _origin() -> str:
         if chosen_origin:
+            # The traveller's own pick, even a single airport, is respected.
             return chosen_origin
         return await _resolve_airport_code(
             departure_city, dep_country, api_key,
@@ -3899,6 +3942,50 @@ def _neighbour_gateway(point, geo) -> dict | None:
     }
 
 
+def _widen_gateways(route, geo) -> bool:
+    """Add the nearest large airports to the route's gateways; True if any changed.
+
+    For a country with no airport only, and only after the planner's own pick
+    found no flight (see `_flights_with_neighbours`). Searching the neighbours
+    up front let the cheapest fare win however far away it landed: Monaco
+    flew into Genoa, four hours off, instead of Nice, twenty minutes.
+    """
+    if route is None or not route.legs or not _airportless(geo):
+        return False
+    changed = False
+    for attr, leg in (("arrival_code", route.legs[0]), ("departure_code", route.legs[-1])):
+        wider = _neighbour_gateway(_leg_coords(leg), geo)
+        if not wider:
+            continue
+        current = [c for c in (getattr(route, attr) or "").split(",") if c]
+        codes = list(dict.fromkeys(current + wider["_codes"].split(",")))[:4]
+        if codes != current:
+            setattr(route, attr, ",".join(codes))
+            changed = True
+    return changed
+
+
+async def _flights_with_neighbours(search, route, geo) -> dict:
+    """Search the planner's gateway; next door too only if that finds nothing.
+
+    `search` runs the flight search for the route as it stands. San Marino's
+    Rimini had no route from New York at all, while Florence did.
+    """
+    result = await search()
+    if (
+        not (result or {}).get("strategies")
+        and (result or {}).get("unavailable_reason") != "same_airport"
+        and _widen_gateways(route, geo)
+    ):
+        logger.info(
+            "No flight to the planned gateway for an airportless country; "
+            "searching the neighbours too: in %s, out %s",
+            route.arrival_code, route.departure_code,
+        )
+        result = await search()
+    return result
+
+
 async def _gateway_geo(code: str, geo, budget=None, city: str = "") -> dict | None:
     """Where a gateway airport is: the airport table for a cross-border
     gateway (a Places query biased to Andorra is no way to find Toulouse),
@@ -4847,7 +4934,7 @@ async def generate_odyssey(
 
     async def _get_flights():
         if search_flights:
-            try:
+            async def _search():
                 return await generate_flight_strategies(
                     departure_city=departure_city,
                     departure_country=departure_country,
@@ -4867,6 +4954,8 @@ async def generate_odyssey(
                     route_plan=route,
                     departure_airport=departure_airport,
                 )
+            try:
+                return await _flights_with_neighbours(_search, route, geo)
             except Exception as e:
                 logger.error(f"Flight strategy sub-job failed: {e}")
                 return {}
@@ -4968,6 +5057,23 @@ async def generate_odyssey(
     origin_codes = (
         (flight_strategies or {}).get("origin_airport") if isinstance(flight_strategies, dict) else ""
     ) or known_airport_codes(departure_airport)
+    if (
+        not origin_codes
+        and (str(departure_city or "").strip() or departure_latitude is not None)
+        and not _same_country(departure_country, geo)
+    ):
+        # No flight was searched (flights off, or no route), so home was never
+        # placed. "Jabal Ali 3" with no country and no coordinates is still
+        # Dubai to the airport resolver — static table, then a cached one-line
+        # lookup — and its airport's country says whether the trip is abroad.
+        try:
+            origin_codes = await _resolve_airport_code(
+                departure_city, departure_country, api_key,
+                latitude=departure_latitude, longitude=departure_longitude,
+            )
+        except Exception as e:
+            logger.info("Home airport lookup for %r failed: %s", departure_city, e)
+            origin_codes = ""
     abroad = _trip_is_abroad(
         departure_country=departure_country,
         departure_latitude=departure_latitude,
@@ -5494,10 +5600,17 @@ async def generate_odyssey(
     }
 
     practical_info = _practical_info(plan.get("practical_info"))
+    # The model's "booking partners" are fixed homepages (Booking.com, Viator,
+    # Skyscanner) that book nothing, and the client asked for them to go
+    # (2026-09-28: "this part doesn't work, and since we are tying up with
+    # Travelpayouts it's not relevant anymore"). Partners now come only from
+    # real integrations, added after this by providers/enrich.py (the Airalo
+    # eSIM card and its booking-plan row).
+    booking_partners: list = []
     booking_plan = _assemble_booking_plan(
         primary_flight=primary_flight,
         primary_hotel=primary_hotel,
-        booking_partners=plan.get("booking_partners") or [],
+        booking_partners=booking_partners,
         visa_info=visa_info,
     )
 
@@ -5515,7 +5628,7 @@ async def generate_odyssey(
         budget_split=harmonized_budget_split,
         visa=visa_info,
         logistics=_logistics_text(plan.get("logistics")),
-        booking_partners=plan.get("booking_partners") or [],
+        booking_partners=booking_partners,
         cover_url=cover_url,
         flight_strategies=flight_strategies,
         inter_city_flights=inter_city_flights,

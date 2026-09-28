@@ -374,6 +374,44 @@ _OTA_HOSTS = {
 }
 
 
+def hotel_site_link(url: str) -> tuple[str, str]:
+    """(label, link) for a hotel's own website: ("kingsbury.lk", its link).
+
+    Client, 2026-09-27: "the hotels are still showing Google Hotels". Every
+    Stays button said "Book Hotel on Google Hotels" while 59% of them opened
+    the hotel's own website. The label must name where the tap goes.
+
+    Installed app builds (booking_url_helper.dart `buildHotelUrl`) open a link
+    under a provider name like this only when their `_looksLikeHomepage` is
+    false, so a bare root ("kingsbury.lk/") is tagged with a query
+    ("?utm_source=nexaround") that they accept; the hotel's site ignores it
+    or counts the visit. Names containing "booking", "google" or "agoda" are
+    routed elsewhere by those builds, and booking sites are not the hotel's
+    own, so both return ("", url) and keep the "Google Hotels" label.
+    """
+    raw = (url or "").strip()
+    try:
+        parsed = urllib.parse.urlparse(raw)
+    except Exception:
+        return "", raw
+    host = (parsed.netloc or "").lower().split("@")[-1].split(":")[0].removeprefix("www.")
+    if not host or "." not in host or parsed.scheme not in ("http", "https"):
+        return "", raw
+    if any(word in host for word in ("google", "booking", "agoda")):
+        return "", raw
+    if any(host == o or host.endswith("." + o) for o in _OTA_HOSTS):
+        return "", raw
+    segments = [seg for seg in parsed.path.split("/") if seg]
+    bare = not parsed.query and (
+        not segments or (len(segments) == 1 and len(segments[0]) <= 5)
+    )
+    if bare:
+        raw = urllib.parse.urlunparse(
+            parsed._replace(path=parsed.path or "/", query="utm_source=nexaround")
+        )
+    return host, raw
+
+
 def _looks_like_homepage_url(url: str) -> bool:
     """True when a URL is just a domain root / locale landing page (e.g.
     "agoda.com/en-gb/") rather than a deep link to a specific listing.
@@ -872,8 +910,6 @@ def extract_hotel_strategies_from_serpapi(
         # Rating string
         rating_str = f"{rating} ★" if rating else "N/A"
 
-        # Provider: Google Hotels aggregates rates across all platforms
-        provider = "Google Hotels"
 
         # Clean hotel name by stripping room specifications
         clean_name = re.sub(
@@ -891,6 +927,10 @@ def extract_hotel_strategies_from_serpapi(
         # page is worse than no link, so fall back to a named search instead.
         raw_serpapi_link = str(p.get("link") or "").strip()
         serpapi_link = "" if _looks_like_homepage_url(raw_serpapi_link) else raw_serpapi_link
+        # The hotel's own website, named on the button (see hotel_site_link).
+        site_label, site_link = hotel_site_link(serpapi_link)
+        if site_label:
+            serpapi_link = site_link
         if serpapi_link:
             booking_url = serpapi_link
         else:
@@ -902,6 +942,10 @@ def extract_hotel_strategies_from_serpapi(
             # append was never honoured by that page anyway.
             google_q = urllib.parse.quote_plus(f"{clean_name} {destination} hotel booking")
             booking_url = f"https://www.google.com/search?q={google_q}"
+
+        # Named for where the button goes: the hotel's own site when the app
+        # will open it, else Google, which is where every other tap lands.
+        provider = site_label or "Google Hotels"
 
         # Format price with currency symbol/code if not already formatted.
         #

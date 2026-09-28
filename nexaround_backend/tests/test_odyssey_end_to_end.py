@@ -728,3 +728,51 @@ def test_the_note_on_each_tab_describes_that_tab(world):
     assert basis["minimum"]["stay"]["note"] != basis["comfortable"]["stay"]["note"]
     assert "lowest-priced" in basis["minimum"]["stay"]["note"]
     assert "highest-priced" in basis["comfortable"]["stay"]["note"]
+
+
+
+# ── A trip abroad with flights off (client, 2026-09-27) ─────────────────────
+
+def test_flights_off_from_abroad_never_opens_with_a_journey_from_home(world, monkeypatch):
+    """"Jabal Ali 3", no country, no coordinates, flights off: the plan used to
+    open with "Travel from Jabal Ali 3 to Andorra la Vella". Home's airport is
+    now looked up anyway, and its country (here CMB, Sri Lanka, for a trip to
+    India) is what makes the trip abroad."""
+    async def _airport_code(city, country, api_key, **kw):
+        return "CMB"
+    monkeypatch.setattr(svc, "_resolve_airport_code", _airport_code)
+    run(world, include_flights=False, departure_city="Jabal Ali 3", departure_country="")
+    itinerary_prompt = world["gemini"][-1]
+    assert "ARRIVING FROM ABROAD" in itinerary_prompt
+    assert 'named something like "Travel from Jabal Ali 3' not in itinerary_prompt
+
+
+def test_flights_off_at_home_keeps_the_ground_journey(world):
+    run(world, include_flights=False, departure_city="Nagpur", departure_country="India")
+    itinerary_prompt = world["gemini"][-1]
+    assert "ARRIVING FROM ABROAD" not in itinerary_prompt
+
+
+# ── Booking partners: only real integrations (client, 2026-09-28) ───────────
+
+def test_the_models_placeholder_partners_are_not_kept(world, monkeypatch):
+    """Booking.com, Viator and Skyscanner homepages booked nothing; the client
+    asked for them to go. Real partners (the Airalo eSIM card) are added later
+    by providers/enrich.py, which is switched off in tests."""
+    real_itinerary = _itinerary
+
+    def with_partners(days):
+        plan = real_itinerary(days)
+        plan["booking_partners"] = [
+            {"name": "Booking.com", "type": "hotels", "url": "https://www.booking.com"},
+            {"name": "Viator", "type": "tours", "url": "https://www.viator.com"},
+            {"name": "Skyscanner", "type": "transit", "url": "https://www.skyscanner.com"},
+        ]
+        return plan
+
+    monkeypatch.setitem(globals(), "_itinerary", with_partners)
+    _, meta, _ = run(world)
+    names = [p.get("name") for p in meta.get("booking_partners") or []]
+    assert not {"Booking.com", "Viator", "Skyscanner"} & set(names)
+    labels = [row.get("label") for row in meta.get("booking_plan") or []]
+    assert "BOOK CLOSER TO TRAVEL" not in labels and "CAN WAIT" not in labels
