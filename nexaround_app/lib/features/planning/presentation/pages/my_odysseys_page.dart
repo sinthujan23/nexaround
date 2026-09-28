@@ -14,6 +14,8 @@ import 'package:nexaround_app/core/utils/number_format.dart';
 import 'package:video_player/video_player.dart';
 import 'package:nexaround_app/core/error/user_message.dart';
 import 'package:nexaround_app/features/experiences/presentation/pages/experiences_page.dart';
+import 'dart:typed_data';
+import 'package:nexaround_app/features/planning/presentation/widgets/walking_challenge_asset.dart';
 
 class MyOdysseysPage extends StatefulWidget {
   const MyOdysseysPage({super.key});
@@ -30,6 +32,8 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
   List<Odyssey> _odysseys = const [];
   Timer? _pollTimer;
   VideoPlayerController? _videoController;
+  int _selectedTabIndex = 0; // 0 = My Blueprints, 1 = Curated Hubs
+  double _horizontalDragDistance = 0.0;
 
   @override
   void initState() {
@@ -121,94 +125,421 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
     );
   }
 
-  Widget _buildExperienceBanner() {
-    return GestureDetector(
-      onTap: _openExperiences,
-      child: Container(
-        height: 140,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20),
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Color(0xFF061A14),
-              Color(0xFF020B08),
-            ],
+  Widget _buildSegmentedSwitcher() {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 14, 16, 4),
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: const Color(0xFFE2E8F0),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: _buildSegmentButton(
+              index: 0,
+              icon: Icons.bookmark_outline_rounded,
+              title: 'My Blueprints',
+              badgeText: '${_activeOdysseys.length}',
+            ),
           ),
+          const SizedBox(width: 4),
+          Expanded(
+            child: _buildSegmentButton(
+              index: 1,
+              icon: Icons.explore_outlined,
+              title: 'Curated Hubs',
+              badgeText: 'Explore',
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSegmentButton({
+    required int index,
+    required IconData icon,
+    required String title,
+    required String badgeText,
+  }) {
+    final isSelected = _selectedTabIndex == index;
+    return GestureDetector(
+      onTap: () {
+        if (_selectedTabIndex != index) {
+          setState(() {
+            _selectedTabIndex = index;
+          });
+        }
+      },
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOutCubic,
+        padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFF0F172A) : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.12),
+                    blurRadius: 8,
+                    offset: const Offset(0, 3),
+                  ),
+                ]
+              : null,
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              size: 15,
+              color: isSelected ? Colors.white : const Color(0xFF64748B),
+            ),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+                  color: isSelected ? Colors.white : const Color(0xFF64748B),
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: isSelected
+                    ? (index == 0
+                        ? AppColors.brandGreen
+                        : const Color(0xFF00E5FF).withValues(alpha: 0.25))
+                    : const Color(0xFFE2E8F0),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                badgeText,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                  color: isSelected
+                      ? (index == 0 ? Colors.white : const Color(0xFF00E5FF))
+                      : const Color(0xFF64748B),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCuratedHubsSliver() {
+    return SliverPadding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+      sliver: SliverToBoxAdapter(
+        child: Column(
+          children: [
+            // Compact header row
+            Padding(
+              padding: const EdgeInsets.only(left: 4, right: 4, bottom: 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 18,
+                        height: 18,
+                        decoration: BoxDecoration(
+                          color: AppColors.brandGreen.withValues(alpha: 0.15),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.auto_awesome_rounded,
+                          size: 10,
+                          color: AppColors.brandGreen,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      const Text(
+                        'CURATED PORTALS',
+                        style: TextStyle(
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 1.3,
+                          color: AppColors.brandGreen,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const Text(
+                    '3 Portals Available',
+                    style: TextStyle(
+                      fontSize: 9.5,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF64748B),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // 1. Experiences Hero Card
+            _buildCuratedHubCard(
+              tag: 'EXPERIENCES',
+              tagIcon: Icons.sailing_rounded,
+              tagColor: const Color(0xFF00E676),
+              badge: '120+ TOURS',
+              title: 'Handcrafted Tours & Trips',
+              subtitle:
+                  'Vetted boat excursions, safari adventures, and private day tours hosted by expert local guides.',
+              imageAsset: 'assets/images/experiences_banner_bg.png',
+              ctaText: 'Explore',
+              onTap: _openExperiences,
+            ),
+            const SizedBox(height: 10),
+
+            // 2. Museums Hero Card
+            _buildCuratedHubCard(
+              tag: 'TOP MUSEUMS',
+              tagIcon: Icons.museum_rounded,
+              tagColor: const Color(0xFF00E5FF),
+              badge: 'MASTER ROUTES',
+              title: 'Museum Master Guides',
+              subtitle:
+                  'Curated gallery walks, skip-the-line routes, and expert exhibition highlights.',
+              imageAsset: 'assets/images/museum_banner_bg.png',
+              ctaText: 'Browse',
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const MuseumsListPage()),
+              ),
+            ),
+            const SizedBox(height: 10),
+
+            // 3. Mini-Tour Walking Challenge
+            _buildCuratedHubCard(
+              tag: 'WALKING CHALLENGE',
+              tagIcon: Icons.directions_walk_rounded,
+              tagColor: const Color(0xFFFFB800),
+              badge: 'MINI-TOUR',
+              title: 'City Walking Challenge',
+              subtitle:
+                  'Interactive walking routes around nearby landmarks to explore destinations and unlock badges.',
+              imageBytes: walkingChallengeBytes,
+              imageAsset: 'assets/images/walking_challenge_bg.jpg',
+              ctaText: 'Start',
+              onTap: _openMiniTour,
+            ),
+          ],
+        ).animate(key: ValueKey('curated_hub_$_selectedTabIndex')).fade(duration: 220.ms).slideX(
+          begin: 0.08,
+          end: 0.0,
+          duration: 220.ms,
+          curve: Curves.easeOutCubic,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCuratedHubCard({
+    required String tag,
+    required IconData tagIcon,
+    required Color tagColor,
+    required String badge,
+    required String title,
+    required String subtitle,
+    String? imageAsset,
+    Uint8List? imageBytes,
+    LinearGradient? gradient,
+    required String ctaText,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        height: 148,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(18),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.12),
-              blurRadius: 16,
-              offset: const Offset(0, 8),
+              color: Colors.black.withValues(alpha: 0.14),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
             ),
           ],
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(18),
           child: Stack(
             fit: StackFit.expand,
             children: [
-              // Background adventure collage image
-              Image.asset(
-                'assets/images/experiences_banner_bg.png',
-                fit: BoxFit.cover,
-                alignment: Alignment.center,
-              ),
-              // Gradient scrim to make text highly readable
-              const DecoratedBox(
+              if (imageBytes != null)
+                Image.memory(
+                  imageBytes,
+                  fit: BoxFit.cover,
+                )
+              else if (imageAsset != null)
+                Image.asset(
+                  imageAsset,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) =>
+                      const SizedBox.shrink(),
+                ),
+              DecoratedBox(
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.bottomCenter,
-                    end: Alignment.topCenter,
-                    colors: [
-                      Color(0xEE061A14),
-                      Color(0x99030E0B),
-                      Color(0x22000000),
-                    ],
-                    stops: [0.0, 0.65, 1.0],
-                  ),
+                  gradient: gradient ??
+                      LinearGradient(
+                        begin: Alignment.bottomCenter,
+                        end: Alignment.topCenter,
+                        colors: [
+                          const Color(0xFF0F172A).withValues(alpha: 0.92),
+                          const Color(0xFF0F172A).withValues(alpha: 0.65),
+                          Colors.black.withValues(alpha: 0.25),
+                        ],
+                        stops: const [0.0, 0.55, 1.0],
+                      ),
                 ),
               ),
-              // Content overlay
-              const Padding(
-                padding: EdgeInsets.all(16),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 13),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
+                    // Top: Tag + Badge
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Icon(Icons.terrain_rounded, color: AppColors.brandGreen, size: 22),
-                        Icon(Icons.arrow_forward_ios_rounded, color: Colors.white70, size: 14),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 3.5),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.55),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(
+                              color: tagColor.withValues(alpha: 0.60),
+                              width: 0.8,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(tagIcon, color: tagColor, size: 11.5),
+                              const SizedBox(width: 4.5),
+                              Text(
+                                tag,
+                                style: TextStyle(
+                                  fontSize: 8.5,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 1.1,
+                                  color: tagColor,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 7.5, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.14),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            badge,
+                            style: const TextStyle(
+                              fontSize: 8.5,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.8,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
                       ],
                     ),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+
+                    // Bottom: Title, Subtitle & CTA pill
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        Text(
-                          'UNFORGETTABLE EXPERIENCES',
-                          style: TextStyle(
-                            fontSize: 8.5,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 1.5,
-                            color: AppColors.brandGreen,
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                title,
+                                maxLines: 1,
+                                overflow: TextOverflow.visible,
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: -0.2,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              const SizedBox(height: 3.5),
+                              Text(
+                                subtitle,
+                                maxLines: 3,
+                                overflow: TextOverflow.visible,
+                                softWrap: true,
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  height: 1.36,
+                                  fontWeight: FontWeight.w500,
+                                  color: Colors.white.withValues(alpha: 0.84),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        SizedBox(height: 4),
-                        Text(
-                          'Handcrafted Tours',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w800,
+                        const SizedBox(width: 10),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 11, vertical: 6.5),
+                          decoration: BoxDecoration(
                             color: Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.15),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
                           ),
-                        ),
-                        SizedBox(height: 2),
-                        Text(
-                          '120+ Curated adventures',
-                          style: TextStyle(fontSize: 10, color: Colors.white54),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                ctaText,
+                                style: const TextStyle(
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFF0F172A),
+                                ),
+                              ),
+                              const SizedBox(width: 3),
+                              const Icon(
+                                Icons.arrow_forward_rounded,
+                                size: 11,
+                                color: Color(0xFF0F172A),
+                              ),
+                            ],
+                          ),
                         ),
                       ],
                     ),
@@ -219,7 +550,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
           ),
         ),
       ),
-    ).animate().fade().slideY(begin: 0.1, end: 0);
+    );
   }
 
   Widget _buildCreatePlanCard() {
@@ -345,105 +676,67 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
         );
   }
 
-  Widget _buildMuseumBanner() {
-    return GestureDetector(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const MuseumsListPage()),
-      ),
-      child: Container(
-        height: 140,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20),
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Color(0xFF0F172A),
-              Color(0xFF020617),
-            ],
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.12),
-              blurRadius: 16,
-              offset: const Offset(0, 8),
-            ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(20),
-          child: Stack(
-            fit: StackFit.expand,
+  Widget _buildBlueprintsHeader() {
+    final active = _activeOdysseys;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 26, 20, 12),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Background modern museum image with overlay
-              Image.asset(
-                'assets/images/museum_banner_bg.png',
-                fit: BoxFit.cover,
-              ),
-              // Gradient scrim to make text highly readable
-              const DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.bottomCenter,
-                    end: Alignment.topCenter,
-                    colors: [
-                      Color(0xEE0F172A),
-                      Color(0x99020617),
-                    ],
+              const Row(
+                children: [
+                  Icon(Icons.bookmark_border_rounded, size: 13, color: Color(0xFF64748B)),
+                  SizedBox(width: 5),
+                  Text(
+                    'TRIP BLUEPRINTS',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.4,
+                      color: Color(0xFF64748B),
+                    ),
                   ),
-                ),
+                ],
               ),
-              // Content overlay
-              const Padding(
-                padding: EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Icon(Icons.museum_rounded, color: Color(0xFF00E5FF), size: 22),
-                        Icon(Icons.arrow_forward_ios_rounded, color: Colors.white70, size: 14),
-                      ],
+              const SizedBox(height: 3),
+              Row(
+                children: [
+                  const Text(
+                    'My Itineraries',
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.3,
+                      color: Color(0xFF0F172A),
                     ),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'TOP MUSEUMS',
-                          style: TextStyle(
-                            fontSize: 8.5,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 1.5,
-                            color: Color(0xFF00E5FF),
-                          ),
-                        ),
-                        SizedBox(height: 4),
-                        Text(
-                          'Master Guides',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.white,
-                          ),
-                        ),
-                        SizedBox(height: 2),
-                        Text(
-                          'Expert routes & timings',
-                          style: TextStyle(fontSize: 10, color: Colors.white54),
-                        ),
-                      ],
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: AppColors.brandGreen.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(10),
                     ),
-                  ],
-                ),
+                    child: Text(
+                      '${active.length}',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.brandGreen,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
-        ),
+        ],
       ),
-    ).animate().fade(delay: 100.ms).slideY(begin: 0.1, end: 0);
+    );
   }
 
   Future<void> _openDetail(Odyssey odyssey) async {
@@ -471,10 +764,37 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: RefreshIndicator(
-        onRefresh: _load,
-        color: Colors.black,
-        child: CustomScrollView(
+      body: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onHorizontalDragStart: (_) {
+          _horizontalDragDistance = 0.0;
+        },
+        onHorizontalDragUpdate: (details) {
+          _horizontalDragDistance += details.primaryDelta ?? 0.0;
+        },
+        onHorizontalDragEnd: (details) {
+          final velocity = details.primaryVelocity ?? 0.0;
+          if (_horizontalDragDistance < -45 || velocity < -200) {
+            // Swiped Left -> slide to Curated Hubs (index 1)
+            if (_selectedTabIndex != 1) {
+              setState(() {
+                _selectedTabIndex = 1;
+              });
+            }
+          } else if (_horizontalDragDistance > 45 || velocity > 200) {
+            // Swiped Right -> slide to My Blueprints (index 0)
+            if (_selectedTabIndex != 0) {
+              setState(() {
+                _selectedTabIndex = 0;
+              });
+            }
+          }
+          _horizontalDragDistance = 0.0;
+        },
+        child: RefreshIndicator(
+          onRefresh: _load,
+          color: Colors.black,
+          child: CustomScrollView(
           physics: const BouncingScrollPhysics(),
           slivers: [
             SliverAppBar(
@@ -653,25 +973,33 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
                 ),
               ),
             ),
-            // Side-by-side category banners row
+            // Segmented Pill Switcher (Option 4)
             SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(24, 16, 24, 16),
-                child: Row(
-                  children: [
-                    Expanded(child: _buildExperienceBanner()),
-                    const SizedBox(width: 12),
-                    Expanded(child: _buildMuseumBanner()),
-                  ],
-                ),
-              ),
+              child: _buildSegmentedSwitcher(),
             ),
-            // Trip blueprints list cards
-            _buildSliverContent(),
+            if (_selectedTabIndex == 0) ...[
+              // Personal Trip Blueprints Section Header
+              SliverToBoxAdapter(
+                child: _buildBlueprintsHeader()
+                    .animate(key: ValueKey('blueprints_header_$_selectedTabIndex'))
+                    .fade(duration: 200.ms)
+                    .slideX(
+                      begin: -0.06,
+                      end: 0.0,
+                      curve: Curves.easeOutCubic,
+                    ),
+              ),
+              // Trip blueprints list cards
+              _buildSliverContent(),
+            ] else ...[
+              // Curated Exploration Hubs & Guides
+              _buildCuratedHubsSliver(),
+            ],
           ],
         ),
       ),
-    );
+    ),
+  );
   }
 
   /// Completed trips move to the History page, so the main list shows only

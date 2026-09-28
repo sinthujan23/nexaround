@@ -1087,7 +1087,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                         ),
                         SliverToBoxAdapter(
                           child: Padding(
-                            padding: const EdgeInsets.only(top: 12, bottom: 8),
+                            padding: const EdgeInsets.only(top: 4, bottom: 8),
                             child: _buildMuseumBanner(),
                           ),
                         ),
@@ -1220,7 +1220,7 @@ class _LivingMapPageState extends State<LivingMapPage>
 
                       SliverToBoxAdapter(
                         child: Padding(
-                          padding: const EdgeInsets.only(top: 18, bottom: 14),
+                          padding: const EdgeInsets.only(top: 4, bottom: 14),
                           child: _buildMuseumBanner(),
                         ),
                       ),
@@ -6196,15 +6196,15 @@ class _LivingMapPageState extends State<LivingMapPage>
         : (rawMaxPlaces == 0 ? 0 : rawMaxPlaces.clamp(1, 10));
 
     final double cardHeight = effectiveMaxPlaces == 0
-        ? 180.0
-        : (86.0 + effectiveMaxPlaces * 43.0).clamp(180.0, 525.0);
+        ? 160.0
+        : (76.0 + effectiveMaxPlaces * 37.0).clamp(160.0, 448.0);
 
     // Six streamlined cards, in the order PlaceBands.sections declares.
     return SizedBox(
       height: cardHeight,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
+        padding: const EdgeInsets.fromLTRB(24, 6, 24, 6),
         itemCount: PlaceBands.sections.length,
         separatorBuilder: (_, __) => const SizedBox(width: 16),
         itemBuilder: (_, i) {
@@ -6279,7 +6279,7 @@ class _LivingMapPageState extends State<LivingMapPage>
         alignment: Alignment.topCenter,
         child: Container(
           width: 320,
-          height: 310,
+          height: 148,
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topLeft,
@@ -6367,7 +6367,7 @@ class _LivingMapPageState extends State<LivingMapPage>
               ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -6438,7 +6438,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 9),
                   Builder(builder: (_) {
                     final displayPlaces = places.take(10).toList();
                     final int loadedCount = displayPlaces.length;
@@ -6450,10 +6450,10 @@ class _LivingMapPageState extends State<LivingMapPage>
                       physics: const NeverScrollableScrollPhysics(),
                       padding: EdgeInsets.zero,
                       itemCount: itemCount,
-                      separatorBuilder: (context, index) => const SizedBox(height: 5),
+                      separatorBuilder: (context, index) => const SizedBox(height: 4.5),
                       itemBuilder: (context, index) {
                         if (index >= loadedCount) {
-                          return WaveSkeletonRow(themeColor: themeColor);
+                          return WaveSkeletonRow(themeColor: themeColor, height: 31.0);
                         }
                         final place = displayPlaces[index];
                       final distKm = _getAccurateDistanceM(place) / 1000.0;
@@ -6462,6 +6462,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                       final ratingVal = place.rating;
 
                       return Container(
+                        height: 31.0,
                         decoration: BoxDecoration(
                           color: Colors.white.withOpacity(0.92),
                           borderRadius: BorderRadius.circular(10),
@@ -6500,7 +6501,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                               );
                             },
                             child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6.5),
+                              padding: const EdgeInsets.symmetric(horizontal: 9),
                               child: Row(
                                 crossAxisAlignment: CrossAxisAlignment.center,
                                 children: [
@@ -7600,7 +7601,7 @@ class WaveSkeletonRow extends StatefulWidget {
   const WaveSkeletonRow({
     Key? key,
     required this.themeColor,
-    this.height = 34.0,
+    this.height = 31.0,
   }) : super(key: key);
 
   @override
