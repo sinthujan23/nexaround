@@ -13,6 +13,7 @@ import datetime as dt
 import logging
 import math
 import re
+import urllib.parse
 from typing import Optional
 
 from app.services.providers import base, config
@@ -164,6 +165,41 @@ async def quote(origin: tuple, dest: tuple, date: str, travelers: int) -> Option
         "usd_total": round(usd * cars, 2), "usd_each": usd, "cars": cars, "class": cls,
         "bookable": bookable, "km": got.get("km"), "minutes": got.get("minutes"),
     }
+
+
+# Booking links. GetTransfer's program in Travelpayouts is promo 4439 (the
+# example link on Travelpayouts' own GetTransfer offer page). Verified
+# 2026-09-29: tp.media/r?marker=781739&trs=577812&p=4439&u=<page> lands on
+# gettransfer.com with sub_id=<click>-781739 and the travelpayouts utm tags,
+# the same as the dashboard's short link, and it keeps a deep page. No API key
+# is involved: this is the Airalo pattern.
+PROMO_ID = "4439"
+_AFFILIATE_REDIRECT = "https://tp.media/r"
+BOOKING_PAGE = "https://gettransfer.com/en/transfers/new"
+
+
+def booking_link(car_class: str, *, marker: str, project_id: str) -> str:
+    """GetTransfer's booking page with the quoted car class, credited to us.
+
+    Pickup and drop-off are typed on GetTransfer's page: its website link has
+    no documented way to pre-fill them (only its API does). Without both the
+    partner ID and the Project ID the link still opens the page; it just
+    earns nothing.
+    """
+    page = BOOKING_PAGE + "?" + urllib.parse.urlencode({
+        "transfer_type": "route",
+        "transport_type_ids[]": car_class if car_class in CLASS_LABELS else "economy",
+    })
+    if not (marker and project_id):
+        return page
+    return _AFFILIATE_REDIRECT + "?" + urllib.parse.urlencode({
+        "marker": marker, "trs": project_id, "p": PROMO_ID, "u": page,
+    })
+
+
+def duration_text(minutes) -> str:
+    """"about 37 min", "about 2 h 40 min", or "" when unknown."""
+    return _duration(minutes)
 
 
 def _duration(minutes) -> str:

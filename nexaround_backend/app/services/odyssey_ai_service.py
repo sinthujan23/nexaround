@@ -12,6 +12,7 @@ import logging
 import math
 import re
 from dataclasses import dataclass, field
+from types import SimpleNamespace
 import urllib.parse
 import httpx
 from app.services import (
@@ -5117,7 +5118,13 @@ async def generate_odyssey(
     # the same condition under which the prompt asks for transfer stops.
     provider_pending = await provider_enrich.start(
         transfers=provider_enrich.transfers_for(
-            route if primary_flight else None, city_legs,
+            # A trip abroad with no fare still lands at a gateway and writes
+            # the transfer stop (see `abroad_rules`), so it is priced too.
+            route if primary_flight else (
+                SimpleNamespace(arrival=gateway_in, departure=gateway_out)
+                if abroad and gateway_in else None
+            ),
+            city_legs,
             arrival_date=flight_start_date or start_date,
             departure_date=(
                 flight_end_date or end_date

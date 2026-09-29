@@ -9,8 +9,10 @@ Each provider follows its switch in the admin panel (`config.mode`):
     off     not called
     shadow  fetched, and what it *would* have changed is recorded in the plan's
             `provider_audit` block; the traveller sees nothing new
-    live    applied, through fields every app build already shows: a stop's
-            cost / price_source / price_basis, and the "Connectivity & SIM" tip
+    live    applied, through fields every app build already shows. GetTransfer
+            is information only: the airport stop keeps its own fare and gains
+            a "Private car: USD 71 with GetTransfer" line on its tip. Airalo
+            adds the "Connectivity & SIM" line and its partner card
 
 Nothing here may cost a plan: every failure leaves the plan as Gemini wrote it.
 Prices are shown, never added to the budget, which is computed before this
@@ -25,7 +27,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Optional
 
-from app.services.providers import airalo, base, config, gettransfer
+from app.services.providers import airalo, config, gettransfer
 from app.services.providers.money import format_amount, usd_rate
 
 logger = logging.getLogger(__name__)
@@ -136,13 +138,30 @@ async def _finish(pending: Pending, day_items, meta, *, currency: str, travelers
     if pending.modes["gettransfer"] != config.OFF:
         live = pending.modes["gettransfer"] == config.LIVE
         entry: dict = {"mode": pending.modes["gettransfer"]}
+        marker = await config.setting(config.TRAVELPAYOUTS_MARKER)
+        project_id = await config.setting(config.TRAVELPAYOUTS_PROJECT_ID)
+
+        def link_for(car_class: str) -> str:
+            return gettransfer.booking_link(car_class, marker=marker, project_id=project_id)
+
         for kind, transfer in pending.transfers.items():
             q, ms = result(f"gettransfer:{kind}")
             entry[kind] = _apply_transfer(
                 kind, transfer, q, ms, day_items,
                 live=live, rate=rate, currency=currency, travelers=travelers,
+                link_for=link_for,
             )
         audit["gettransfer"] = entry
+        # One tappable row in the Booking Plan, which every app build opens.
+        shown = [(k, e) for k, e in entry.items() if isinstance(e, dict) and e.get("applied")]
+        if live and shown:
+            _, first = shown[0]
+            _add_plan_item(meta, {
+                "label": "BOOK CLOSER TO TRAVEL",
+                "item": f"GetTransfer private car: {first['route']}, {first['amount']} one way",
+                "reason": "Optional. Book once your flight times are fixed.",
+                "url": link_for(str(first.get("car_class") or "")),
+            })
 
     if pending.modes["airalo"] != config.OFF:
         live = pending.modes["airalo"] == config.LIVE
@@ -309,7 +328,7 @@ def transfer_mode(act: dict) -> str:
     return "public" if public else "unclear"
 
 
-def _apply_transfer(kind, transfer, q, ms, day_items, *, live, rate, currency, travelers) -> dict:
+def _apply_transfer(kind, transfer, q, ms, day_items, *, live, rate, currency, travelers, link_for=None) -> dict:
     entry: dict = {"route": transfer.label, "ms": ms}
     if not q:
         entry["none"] = "no bookable car"
@@ -328,27 +347,36 @@ def _apply_transfer(kind, transfer, q, ms, day_items, *, live, rate, currency, t
     total = round(q["usd_total"] * rate, 2)
     detail = gettransfer.basis(q, travelers, rate, currency)
     mode = transfer_mode(row)
-    # A car price only replaces a car fare. A train or bus the model chose is
-    # a real, usually cheaper option; overwriting it would change the advice,
-    # so the car becomes the alternative printed beside it.
-    entry["decision"] = "replace" if mode == "car" else "alternative"
+    # Information only (user, 2026-09-29: "for airport taxi, just show it as
+    # information for now"). The stop keeps the fare and the mode the plan
+    # chose: a bus or train is usually the cheaper advice, and a changed
+    # price would move the plan's numbers. The private car is shown beside it.
+    entry["mode"] = mode
+    entry["decision"] = "info"
     entry["applied"] = False
     if not live:
         return entry
-    if mode == "car":
-        quote = base.PriceQuote(
-            amount=total, currency=currency, source="GetTransfer",
-            # An instant price is fixed; a typical driver offer is typical.
-            freshness=base.LIVE if q.get("bookable", True) else base.RECENT,
-            basis=detail,
-        )
-        row.update(quote.activity_fields())
-        row["cost_per_person"] = round(total / max(travelers, 1), 2)
-    else:
-        extra = f"Private car instead: {format_amount(currency, total)} (GetTransfer, {detail})"
-        existing = str(row.get("price_basis") or "").strip()
-        row["price_basis"] = f"{existing} · {extra}" if existing else extra
+    amount = format_amount(currency, total)
+    approx = "" if q.get("bookable", True) else "about "
+    took = gettransfer.duration_text(q.get("minutes"))
+    # On the tip, which every app build shows under the stop.
+    line = f"Private car: {approx}{amount} with GetTransfer" + (f", {took}" if took else "") + "."
+    tip = str(row.get("tip") or "").strip()
+    if tip and tip[-1] not in ".!?":
+        tip += "."
+    row["tip"] = f"{tip} {line}" if tip else line
+    # And the full detail in the price sheet the stop's price pill opens.
+    extra = f"Private car option: {amount} (GetTransfer, {detail})"
+    existing = str(row.get("price_basis") or "").strip()
+    row["price_basis"] = f"{existing} · {extra}" if existing else extra
+    # The tracked booking page, for the stop's "Book private car" button
+    # (app builds from 2026-09-29 show it; older ones ignore the field).
+    link = link_for(q.get("class", "")) if link_for else ""
+    if link:
+        row["booking_url"] = link
+        entry["link"] = True
     entry["applied"] = True
+    entry["amount"] = f"{approx}{amount}"
     return entry
 
 

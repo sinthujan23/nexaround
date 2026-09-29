@@ -2472,6 +2472,9 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     Widget? btn;
     switch (act.type) {
       case ActivityType.transport:
+        // Only the airport transfer the backend priced with GetTransfer.
+        btn = _isPrivateCarLink(act.bookingUrl) ? _buildPrivateCarButton(act) : null;
+        break;
       case ActivityType.attraction:
       case ActivityType.exploration:
         break; // btn stays null
@@ -2489,6 +2492,50 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     if (btn is SizedBox) return btn;
 
     return btn ?? const SizedBox.shrink();
+  }
+
+  /// A GetTransfer booking link credited to NexAround through Travelpayouts
+  /// (promo 4439), or GetTransfer's own site. Flight rows carry Google Flights
+  /// links in the same field and must not get this button.
+  static bool _isPrivateCarLink(String url) {
+    final uri = Uri.tryParse(url.trim());
+    if (uri == null) return false;
+    final host = uri.host.toLowerCase();
+    if (host == 'tp.media') return uri.queryParameters['p'] == '4439';
+    return host == 'gettransfer.com' || host.endsWith('.gettransfer.com');
+  }
+
+  /// "Book private car" on the airport transfer stop. The stop's own advice
+  /// (usually a bus or train) stays the plan; its tip already names the
+  /// private-car price, and this opens GetTransfer to book one.
+  Widget _buildPrivateCarButton(OdysseyActivity act) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _launchExternalUrl(act.bookingUrl),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: AppColors.brandGreen.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(5),
+          border: Border.all(color: AppColors.brandGreen.withValues(alpha: 0.35)),
+        ),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.local_taxi_rounded, size: 12, color: AppColors.brandGreen),
+            SizedBox(width: 4),
+            Text(
+              'Book private car',
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w800,
+                color: AppColors.brandGreen,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   /// Index of the Stays tab, accounting for the Flights tab being optional.

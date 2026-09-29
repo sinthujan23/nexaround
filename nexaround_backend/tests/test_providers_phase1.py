@@ -428,8 +428,9 @@ def test_shadow_records_what_it_would_do_and_changes_nothing(world, monkeypatch,
     assert "Airalo" not in str(meta.get("practical_info", {}).get("connectivity", ""))
 
     audit = meta["provider_audit"]
-    assert audit["gettransfer"]["arrival"]["decision"] == "replace"
-    assert audit["gettransfer"]["departure"]["decision"] == "alternative"
+    assert audit["gettransfer"]["arrival"]["decision"] == "info"
+    assert audit["gettransfer"]["arrival"]["mode"] == "car"
+    assert audit["gettransfer"]["departure"]["mode"] == "public"
     assert audit["gettransfer"]["arrival"]["applied"] is False
     assert audit["airalo"]["line"].startswith("Airalo eSIM for India")
     assert audit["airalo"]["applied"] is False
@@ -439,20 +440,27 @@ def test_shadow_records_what_it_would_do_and_changes_nothing(world, monkeypatch,
     assert ((27.18, 78.01), (28.56, 77.10)) in kinds
 
 
-def test_live_replaces_a_taxi_fare_and_offers_a_car_beside_a_train(world, monkeypatch, providers, switches):
+def test_live_shows_the_private_car_as_information_and_changes_no_price(
+    world, monkeypatch, providers, switches,
+):
+    """User, 2026-09-29: "for airport taxi, just show it as information"."""
     switches(gettransfer="live", airalo="live")
     _with_transfer_stops(world, monkeypatch)
     _, meta, days = e2e.run(world)
 
     arrive = _stop(days, "Transfer: DEL airport → Delhi")
-    assert arrive["cost"] == "INR 1,800"
-    assert arrive["price_source"] == "GetTransfer"
-    assert arrive["price_confidence"] == "Fixed"
-    assert arrive["price_basis"] == "Economy car for 2 travellers · 12 km · about 35 min"
+    # The taxi fare the plan wrote stays; the private car is added beside it.
+    assert arrive["price_source"] == "Rome2Rio"
+    assert arrive["tip"] == (
+        "Take a pre-paid taxi from the arrivals hall. "
+        "Private car: INR 1,800 with GetTransfer, about 35 min."
+    )
+    assert "Private car option: INR 1,800 (GetTransfer, Economy car for 2 travellers" in arrive["price_basis"]
 
     leave = _stop(days, "Transfer: Agra → DEL airport")
     assert leave["price_source"] == "IRCTC", "the train the model chose stays the advice"
-    assert "Private car instead: INR 1,800 (GetTransfer" in leave["price_basis"]
+    assert leave["tip"].endswith("Private car: INR 1,800 with GetTransfer, about 35 min.")
+    assert meta["provider_audit"]["gettransfer"]["arrival"]["applied"] is True
 
     assert meta["practical_info"]["connectivity"].endswith(
         "Airalo eSIM for India: 1 GB for 7 days at INR 360, or 10 GB for 30 days at INR 1,440."
@@ -482,11 +490,20 @@ def test_a_provider_that_fails_leaves_the_plan_as_written(world, monkeypatch, sw
     assert meta["provider_audit"]["gettransfer"]["arrival"]["none"] == "no bookable car"
 
 
-def test_no_flight_means_no_transfer_is_priced(world, monkeypatch, providers, switches):
+def test_a_domestic_trip_with_no_flight_prices_no_transfer(world, monkeypatch, providers, switches):
+    switches(gettransfer="live", airalo="off")
+    _with_transfer_stops(world, monkeypatch)
+    e2e.run(world, include_flights=False, departure_city="Nagpur", departure_country="India")
+    assert not [p for p in providers if p[0] == "transfer"]
+
+
+def test_a_trip_abroad_with_no_fare_still_prices_its_airport_transfer(world, monkeypatch, providers, switches):
+    """Colombo -> India with flights off opens at the airport (see
+    abroad_rules), so its transfer is priced like a booked flight's."""
     switches(gettransfer="live", airalo="off")
     _with_transfer_stops(world, monkeypatch)
     e2e.run(world, include_flights=False)
-    assert not [p for p in providers if p[0] == "transfer"]
+    assert [p for p in providers if p[0] == "transfer"]
 
 
 def test_an_airport_in_town_is_not_a_transfer():
@@ -508,17 +525,17 @@ def test_amounts_read_like_the_rest_of_the_plan():
     assert money.format_amount("USD", 4.5) == "USD 4.50"
 
 
-def test_a_typical_offer_is_labelled_typical_not_fixed():
+def test_a_typical_offer_says_about():
     row = {"name": "Taxi from CPH airport to the city", "type": "transport",
-           "cost": "USD 60", "price_source": "Estimate"}
+           "cost": "USD 60", "price_source": "Estimate", "tip": "Cabs wait outside"}
     transfer = enrich.Transfer("arrival", (55.62, 12.65), (55.68, 12.57), "2026-10-06", "CPH → Copenhagen")
     q = {"usd_total": 43.0, "usd_each": 43.0, "cars": 1, "class": "economy",
          "bookable": False, "km": 17, "minutes": 31}
     entry = enrich._apply_transfer("arrival", transfer, q, 400, _days([row]),
                                    live=True, rate=1.0, currency="USD", travelers=1)
-    assert entry["decision"] == "replace" and entry["bookable"] is False
-    assert row["cost"] == "USD 43"
-    assert row["price_confidence"] == "Typical"
+    assert entry["decision"] == "info" and entry["bookable"] is False
+    assert row["cost"] == "USD 60", "the plan's own fare is never replaced"
+    assert row["tip"] == "Cabs wait outside. Private car: about USD 43 with GetTransfer, about 31 min."
     assert "(typical price)" in row["price_basis"]
 
 
@@ -645,3 +662,44 @@ def test_live_gives_the_sim_tip_a_button_and_shadow_does_not(world, monkeypatch,
     _, meta, _ = e2e.run(world)
     assert "connectivity_url" not in meta["practical_info"]
     assert "connectivity_cta" not in meta["practical_info"]
+
+
+# ── GetTransfer booking link (Airalo pattern, no API key) ───────────────────
+
+def test_the_gettransfer_link_is_credited_to_us():
+    """Verified 2026-09-29 against tp.media: lands on the booking page with
+    sub_id=<click>-781739 and the travelpayouts utm tags."""
+    assert gettransfer.booking_link("comfort", marker="781739", project_id="577812") == (
+        "https://tp.media/r?marker=781739&trs=577812&p=4439"
+        "&u=https%3A%2F%2Fgettransfer.com%2Fen%2Ftransfers%2Fnew%3Ftransfer_type%3Droute"
+        "%26transport_type_ids%255B%255D%3Dcomfort"
+    )
+    # An unknown class books economy; no IDs still opens the page.
+    assert gettransfer.booking_link("rocket", marker="", project_id="") == (
+        "https://gettransfer.com/en/transfers/new?transfer_type=route&transport_type_ids%5B%5D=economy"
+    )
+
+
+def test_live_puts_the_link_on_the_stop_and_one_booking_plan_row(world, monkeypatch, providers):
+    _ids_and_switches(monkeypatch, gettransfer="live")
+    _with_transfer_stops(world, monkeypatch)
+    _, meta, days = e2e.run(world)
+
+    arrive = _stop(days, "Transfer: DEL airport → Delhi")
+    assert arrive["booking_url"].startswith("https://tp.media/r?marker=781739&trs=577812&p=4439&u=")
+    assert arrive["price_source"] == "Rome2Rio", "still information only"
+    leave = _stop(days, "Transfer: Agra → DEL airport")
+    assert leave["booking_url"].startswith("https://tp.media/r?marker=781739")
+
+    rows = [r for r in meta["booking_plan"] if r["item"].startswith("GetTransfer")]
+    assert len(rows) == 1
+    assert rows[0]["item"] == "GetTransfer private car: DEL → Delhi, INR 1,800 one way"
+    assert rows[0]["url"].startswith("https://tp.media/r?marker=781739")
+
+
+def test_shadow_adds_no_link_and_no_row(world, monkeypatch, providers):
+    _ids_and_switches(monkeypatch, gettransfer="shadow")
+    _with_transfer_stops(world, monkeypatch)
+    _, meta, days = e2e.run(world)
+    assert not _stop(days, "Transfer: DEL airport → Delhi").get("booking_url")
+    assert not [r for r in meta.get("booking_plan") or [] if r["item"].startswith("GetTransfer")]
