@@ -14,7 +14,9 @@ Each provider follows its switch in the admin panel (`config.mode`):
             a "Private car: USD 71 with GetTransfer" line on its tip. Airalo
             adds the "Connectivity & SIM" line and its partner card. Aviasales
             adds a search link to each flight option and points the Booking
-            Plan's flight row at it; its fares are never used
+            Plan's flight row at it; its fares are never used. WeGoTrip adds
+            a ticket line and link to the sights it sells tickets for, and
+            Klook a "Things to do in <city>" row for the cities it does not
 
 Nothing here may cost a plan: every failure leaves the plan as Gemini wrote it.
 Prices are shown, never added to the budget, which is computed before this
@@ -30,7 +32,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from app.services import airports_service
-from app.services.providers import airalo, aviasales, config, gettransfer
+from app.services.providers import airalo, aviasales, config, gettransfer, klook, wegotrip
 from app.services.providers.money import format_amount, format_range, usd_rate
 
 logger = logging.getLogger(__name__)
@@ -65,6 +67,10 @@ class Pending:
     transfers: dict = field(default_factory=dict)
     started: float = field(default_factory=time.perf_counter)
     esim_country: str = ""
+    # The plan's city legs (the generator's own dicts: their days are
+    # realigned to the itinerary before `finish()` reads them) and country.
+    legs: list = field(default_factory=list)
+    country: str = ""
 
 
 async def start(
@@ -74,10 +80,11 @@ async def start(
     country_code: str,
     days: int,
     travelers: int,
+    legs: Optional[list[dict]] = None,
 ) -> Optional[Pending]:
     """Begin every fetch this plan's switches allow. None when all are off."""
     try:
-        modes = {p: await config.mode(p) for p in ("gettransfer", "airalo", "aviasales")}
+        modes = {p: await config.mode(p) for p in ("gettransfer", "airalo", "aviasales", "wegotrip", "klook")}
     except Exception as e:
         logger.warning("providers: could not read switches: %s", e)
         return None
@@ -95,6 +102,13 @@ async def start(
         pending.esim_country = country_name or country_code
         pending.tasks["airalo"] = asyncio.create_task(
             _timed(airalo.offer_for(country_name, country_code, days))
+        )
+    cities = [str(leg.get("city") or "") for leg in legs or [] if isinstance(leg, dict) and leg.get("city")]
+    if cities and (modes["wegotrip"] != config.OFF or modes["klook"] != config.OFF):
+        pending.legs, pending.country = list(legs or []), country_name
+    if modes["wegotrip"] != config.OFF and cities:
+        pending.tasks["wegotrip"] = asyncio.create_task(
+            _timed(wegotrip.catalogue_for(cities, country_name))
         )
     return pending
 
@@ -210,6 +224,28 @@ async def _finish(pending: Pending, day_items, meta, *, currency: str, travelers
             entry["none"] = "no rate" if offer else "no plan for this country or trip length"
         audit["airalo"] = entry
 
+    if pending.modes.get("wegotrip", config.OFF) != config.OFF and "wegotrip" in pending.tasks:
+        catalogue, ms = result("wegotrip")
+        audit["wegotrip"] = await _apply_tickets(
+            pending, catalogue or {}, day_items, meta,
+            live=pending.modes["wegotrip"] == config.LIVE, rate=rate, currency=currency,
+            marker=await config.setting(config.TRAVELPAYOUTS_MARKER),
+            project_id=await config.setting(config.TRAVELPAYOUTS_PROJECT_ID),
+        )
+        audit["wegotrip"]["ms"] = ms
+
+    if pending.modes.get("klook", config.OFF) != config.OFF and pending.legs:
+        catalogue, _ = result("wegotrip")
+        audit["klook"] = _apply_klook(
+            meta, pending,
+            # Cities WeGoTrip sells something in. With WeGoTrip off, or its
+            # answer missing, every city gets the Klook row.
+            covered={city for city, products in (catalogue or {}).items() if products},
+            live=pending.modes["klook"] == config.LIVE,
+            marker=await config.setting(config.TRAVELPAYOUTS_MARKER),
+            project_id=await config.setting(config.TRAVELPAYOUTS_PROJECT_ID),
+        )
+
     if pending.modes.get("aviasales", config.OFF) != config.OFF:
         audit["aviasales"] = _apply_flight_links(
             meta,
@@ -251,6 +287,141 @@ def _add_plan_item(meta: dict, item: dict) -> None:
     ]
     rows.append(item)
     meta["booking_plan"] = rows
+
+
+# ── Tickets ──────────────────────────────────────────────────────────────────
+
+# At most this many ticket rows in the Booking Plan, the most reviewed first.
+TICKET_PLAN_ROWS = 3
+
+
+def _cities_on(legs: list, day) -> list[str]:
+    """The city (or, on a travel day, both cities) a day's stops are in."""
+    try:
+        d = int(day)
+    except (TypeError, ValueError):
+        d = None
+    named = [leg for leg in legs if isinstance(leg, dict) and leg.get("city")]
+    if d is not None:
+        on = [
+            str(leg["city"]) for leg in named
+            if int(leg.get("start_day") or 0) <= d <= int(leg.get("end_day") or 0)
+        ]
+        if on:
+            return on
+    return [str(leg["city"]) for leg in named]
+
+
+async def _apply_tickets(
+    pending: Pending, catalogue: dict, day_items: list[dict], meta: dict, *,
+    live: bool, rate, currency: str, marker: str, project_id: str,
+) -> dict:
+    """A WeGoTrip line and link on each sight it sells a ticket or audio tour
+    for, and the tickets in the Booking Plan.
+
+    Information only, like GetTransfer: the stop's own cost and advice stay,
+    and "On WeGoTrip: Burj Khalifa: Level 124/125 Ticket, from INR 5,076
+    (rated 4.0 from 78 reviews)." is added to its tip, naming the product so
+    a combined or partial ticket reads as what it is. The link goes in the
+    stop's `booking_url`, which app builds before the "Book on WeGoTrip"
+    button ignore on sights. A stop only ever takes a product from the city
+    it is in that day, and never loses a link it already had.
+    """
+    entry: dict = {
+        "mode": config.LIVE if live else config.SHADOW,
+        "products": sum(len(v) for v in catalogue.values()),
+        "cities": sorted(catalogue), "matched": [],
+    }
+    if not catalogue or not rate:
+        if not rate:
+            entry["none"] = "no rate"
+        return entry
+    names = [str(leg.get("city")) for leg in pending.legs if isinstance(leg, dict) and leg.get("city")]
+    place = wegotrip.place_words(names, pending.country)
+    rates: dict = {}
+    booked: dict = {}
+    for day in day_items:
+        if not isinstance(day, dict):
+            continue
+        pool = [p for city in _cities_on(pending.legs, day.get("day")) for p in catalogue.get(city, [])]
+        if not pool:
+            continue
+        for act in day.get("activities") or []:
+            if not isinstance(act, dict) or str(act.get("type") or "").lower() not in wegotrip.SIGHT_TYPES:
+                continue
+            if act.get("booking_url"):
+                continue
+            product = wegotrip.match(str(act.get("name") or ""), pool, place)
+            if not product:
+                continue
+            code = product["currency"]
+            if code not in rates:
+                rates[code] = await usd_rate(code)
+            if not rates[code]:
+                continue
+            amount = format_amount(currency, product["price"] / rates[code] * rate)
+            said = wegotrip.rating_words(product)
+            line = f"On WeGoTrip: {product['title']}, from {amount}" + (f" ({said})" if said else "") + "."
+            link = wegotrip.booking_link(product, marker=marker, project_id=project_id)
+            entry["matched"].append({
+                "stop": act.get("name"), "product": product["title"], "id": product["id"],
+                "kind": wegotrip.kind(product), "amount": amount,
+            })
+            if not live:
+                continue
+            tip = str(act.get("tip") or "").strip()
+            act["tip"] = f"{tip} {line}".strip()
+            act["booking_url"] = link
+            if wegotrip.kind(product) == "Ticket":
+                booked.setdefault(product["id"], (product, amount, link))
+    if live and booked:
+        entry["plan_rows"] = _add_ticket_rows(meta, list(booked.values()))
+    return entry
+
+
+def _add_ticket_rows(meta: dict, tickets: list) -> int:
+    """The most reviewed tickets as Booking Plan rows, which every app build
+    opens. Rows from an earlier pass are replaced, not doubled."""
+    tickets = sorted(tickets, key=lambda t: -t[0]["reviews"])[:TICKET_PLAN_ROWS]
+    rows = [
+        r for r in (meta.get("booking_plan") or [])
+        if not (isinstance(r, dict) and str(r.get("item") or "").startswith("WeGoTrip"))
+    ]
+    for product, amount, link in tickets:
+        rows.append({
+            "label": "BOOK CLOSER TO TRAVEL",
+            "item": f"WeGoTrip: {product['title']}, from {amount}",
+            "reason": "Popular sights sell out their time slots; book once your dates are fixed.",
+            "url": link,
+        })
+    meta["booking_plan"] = rows
+    return len(tickets)
+
+
+# ── Things to do where WeGoTrip has nothing ──────────────────────────────────
+
+def _apply_klook(meta: dict, pending: Pending, *, covered: set, live: bool, marker: str, project_id: str) -> dict:
+    """A "Things to do in Colombo on Klook" row in the Booking Plan for each
+    city WeGoTrip sells nothing in (at most three, longest stay first).
+
+    A Booking Plan row, not a button on a stop: Klook's catalogue cannot be
+    read (see klook.py), so no stop can be matched to what it sells. Every
+    app build opens the row. Rows from an earlier pass are replaced.
+    """
+    cities = klook.cities_to_link(pending.legs, covered)
+    links = {city: klook.booking_link(city, marker=marker, project_id=project_id) for city in cities}
+    entry: dict = {"mode": config.LIVE if live else config.SHADOW, "cities": cities}
+    if not live:
+        entry["links"] = links
+        return entry
+    rows = [
+        r for r in (meta.get("booking_plan") or [])
+        if not (isinstance(r, dict) and klook.is_klook_link(str(r.get("url") or "")))
+    ]
+    rows += [klook.plan_item(city, links[city]) for city in cities]
+    meta["booking_plan"] = rows
+    entry["rows"] = len(cities)
+    return entry
 
 
 # ── Flights ──────────────────────────────────────────────────────────────────

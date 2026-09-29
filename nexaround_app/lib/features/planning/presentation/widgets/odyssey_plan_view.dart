@@ -734,6 +734,8 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
 
   Widget _bookingPlanItemRow(BuildContext context, OdysseyBookingPlanItem item) {
     final hasUrl = item.url.trim().isNotEmpty;
+    final partnerLogo = hasUrl ? _planPartnerLogo(item.url) : null;
+    if (partnerLogo != null) return _partnerPlanRow(item, partnerLogo);
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: InkWell(
@@ -775,6 +777,108 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
                 child: Icon(Icons.open_in_new_rounded, size: 15, color: Colors.black38),
               ),
           ],
+        ),
+      ),
+    );
+  }
+
+  /// The logo of the paid partner a Booking Plan link opens, or null.
+  ///
+  /// A Travelpayouts link names its partner by promo number (`p`); a direct
+  /// link by its host.
+  static String? _planPartnerLogo(String url) {
+    final uri = Uri.tryParse(url.trim());
+    if (uri == null) return null;
+    final host = uri.host.toLowerCase();
+    if (host == 'tp.media') {
+      return const {
+        '4114': 'assets/images/aviasales_logo.png',
+        '4439': 'assets/images/gettransfer_logo.png',
+        '8310': 'assets/images/airalo_logo.png',
+        '4487': 'assets/images/wegotrip_logo.png',
+        '4110': 'assets/images/klook_logo.png',
+      }[uri.queryParameters['p']];
+    }
+    const byHost = {
+      'aviasales.com': 'assets/images/aviasales_logo.png',
+      'gettransfer.com': 'assets/images/gettransfer_logo.png',
+      'airalo.com': 'assets/images/airalo_logo.png',
+      'wegotrip.com': 'assets/images/wegotrip_logo.png',
+      'klook.com': 'assets/images/klook_logo.png',
+    };
+    for (final entry in byHost.entries) {
+      if (host == entry.key || host.endsWith('.${entry.key}')) return entry.value;
+    }
+    return null;
+  }
+
+  /// A Booking Plan row that opens a paid partner: its logo on a white tile,
+  /// on the brand teal tint, so it stands out from the plain rows around it
+  /// (user, 2026-09-29: "our partners should be highlighted more than others").
+  Widget _partnerPlanRow(OdysseyBookingPlanItem item, String logoAsset) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Material(
+        color: AppColors.brandGreen.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          onTap: () => _launchExternalUrl(item.url),
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(10, 9, 10, 9),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.brandGreen.withValues(alpha: 0.35)),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 32,
+                  height: 32,
+                  padding: const EdgeInsets.all(2),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.black12),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: Image.asset(
+                      logoAsset,
+                      fit: BoxFit.contain,
+                      errorBuilder: (context, error, stack) =>
+                          const Icon(Icons.handshake_outlined, size: 16, color: AppColors.brandGreen),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.item,
+                        style: const TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.black,
+                        ),
+                      ),
+                      if (item.reason.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          item.reason,
+                          style: const TextStyle(fontSize: 12, color: Colors.black54, height: 1.3),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Icon(Icons.open_in_new_rounded, size: 16, color: AppColors.brandGreen),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -2479,7 +2583,9 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
         break;
       case ActivityType.attraction:
       case ActivityType.exploration:
-        break; // btn stays null
+        // Only a sight the backend matched to a WeGoTrip ticket or audio tour.
+        btn = _isTicketLink(act.bookingUrl) ? _buildTicketButton(act) : null;
+        break;
       case ActivityType.accommodation:
         btn = _buildAccommodationButton(act);
         break;
@@ -2505,6 +2611,29 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     final host = uri.host.toLowerCase();
     if (host == 'tp.media') return uri.queryParameters['p'] == '4439';
     return host == 'gettransfer.com' || host.endsWith('.gettransfer.com');
+  }
+
+  /// A WeGoTrip ticket or audio tour credited to NexAround through
+  /// Travelpayouts (promo 4487), or WeGoTrip's own site. The backend sets it
+  /// only on a sight it matched to a product by name; the stop's tip names
+  /// that product and its price.
+  static bool _isTicketLink(String url) {
+    final uri = Uri.tryParse(url.trim());
+    if (uri == null) return false;
+    final host = uri.host.toLowerCase();
+    if (host == 'tp.media') return uri.queryParameters['p'] == '4487';
+    return host == 'wegotrip.com' || host.endsWith('.wegotrip.com');
+  }
+
+  /// "Book on WeGoTrip" on a matched sight: the same solid partner button as
+  /// GetTransfer's, so paid partners stand out.
+  Widget _buildTicketButton(OdysseyActivity act) {
+    return _partnerPill(
+      logoAsset: 'assets/images/wegotrip_logo.png',
+      fallbackIcon: Icons.confirmation_number_outlined,
+      label: 'Book on WeGoTrip',
+      onTap: () => _launchExternalUrl(act.bookingUrl),
+    );
   }
 
   /// "Book private car" on the airport transfer stop. The stop's own advice

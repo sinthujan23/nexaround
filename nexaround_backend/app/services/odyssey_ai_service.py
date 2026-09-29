@@ -5204,6 +5204,7 @@ async def generate_odyssey(
         country_code=geo.country_code if geo.resolved else "",
         days=days,
         travelers=travelers,
+        legs=city_legs,
     )
 
     # 2. Build grounded prompt using confirmed live inventory

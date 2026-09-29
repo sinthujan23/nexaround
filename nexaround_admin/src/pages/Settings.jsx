@@ -49,6 +49,7 @@ const PROVIDER_FIELDS = {
   provider_mode_airalo: 'off',
   provider_mode_wegotrip: 'off',
   provider_mode_aviasales: 'off',
+  provider_mode_klook: 'off',
 };
 
 const PROVIDER_SWITCHES = [
@@ -56,6 +57,7 @@ const PROVIDER_SWITCHES = [
   { key: 'provider_mode_airalo', name: 'Airalo', use: 'eSIM prices per country' },
   { key: 'provider_mode_wegotrip', name: 'WeGoTrip', use: 'Tour & ticket prices, ratings, photos' },
   { key: 'provider_mode_aviasales', name: 'Aviasales', use: 'Book on Aviasales link on flights (no prices)' },
+  { key: 'provider_mode_klook', name: 'Klook', use: 'Things-to-do link for cities WeGoTrip has no tickets in' },
 ];
 
 function SecretField({ label, tag, value, onChange, placeholder }) {
