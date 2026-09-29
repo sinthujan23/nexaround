@@ -50,6 +50,7 @@ import 'package:nexaround_app/features/living_map/presentation/widgets/location_
 import 'package:nexaround_app/features/living_map/presentation/widgets/animated_neva_banner.dart';
 import 'package:nexaround_app/features/living_map/presentation/widgets/discovery_engine_sheet.dart';
 import 'package:nexaround_app/features/planning/presentation/pages/museums_list_page.dart';
+import 'package:nexaround_app/features/planning/presentation/pages/my_odysseys_page.dart';
 import 'package:nexaround_app/features/experiences/presentation/pages/experiences_page.dart';
 import 'package:nexaround_app/core/services/avatar_service.dart';
 
@@ -2458,13 +2459,22 @@ class _LivingMapPageState extends State<LivingMapPage>
 
   /// Experience Banner — matching rounded card box (BorderRadius.circular(24))
   /// like AR Spotlight and Odyssey, with adventure photo background and no arrow circle.
+  /// Opens directly to the Curated Hubs section of Plans.
   Widget _buildExperienceRibbon() {
     return GestureDetector(
       onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const ExperiencesPage()),
-        );
+        final homeState = context.findAncestorStateOfType<HomePageState>() ??
+            HomePage.homeKey.currentState;
+        if (homeState != null) {
+          homeState.switchToPlans(initialTab: 1);
+        } else {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const MyOdysseysPage(initialTabIndex: 1),
+            ),
+          );
+        }
       },
       child: Container(
         width: double.infinity,
@@ -2648,7 +2658,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                       ),
                       SizedBox(height: 4),
                       Text(
-                        'Chart your journey with AI',
+                        'Craft your journey',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w700,

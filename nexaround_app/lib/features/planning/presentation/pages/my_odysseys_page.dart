@@ -18,7 +18,14 @@ import 'dart:typed_data';
 import 'package:nexaround_app/features/planning/presentation/widgets/walking_challenge_asset.dart';
 
 class MyOdysseysPage extends StatefulWidget {
-  const MyOdysseysPage({super.key});
+  final int initialTabIndex;
+  final int requestCount;
+
+  const MyOdysseysPage({
+    super.key,
+    this.initialTabIndex = 0,
+    this.requestCount = 0,
+  });
 
   @override
   State<MyOdysseysPage> createState() => _MyOdysseysPageState();
@@ -32,12 +39,13 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
   List<Odyssey> _odysseys = const [];
   Timer? _pollTimer;
   VideoPlayerController? _videoController;
-  int _selectedTabIndex = 0; // 0 = My Blueprints, 1 = Curated Hubs
+  late int _selectedTabIndex; // 0 = My Blueprints, 1 = Curated Hubs
   double _horizontalDragDistance = 0.0;
 
   @override
   void initState() {
     super.initState();
+    _selectedTabIndex = widget.initialTabIndex;
     // Render the last cached list instantly; the network refresh updates it in background.
     _odysseys = _repository.getCachedOdysseys();
     _loading = false;
@@ -60,6 +68,17 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
           setState(() {});
         }
       });
+  }
+
+  @override
+  void didUpdateWidget(covariant MyOdysseysPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.initialTabIndex != oldWidget.initialTabIndex ||
+        widget.requestCount != oldWidget.requestCount) {
+      setState(() {
+        _selectedTabIndex = widget.initialTabIndex;
+      });
+    }
   }
 
   @override
@@ -804,6 +823,25 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
               elevation: 0,
               scrolledUnderElevation: 4,
               automaticallyImplyLeading: false,
+              leading: Navigator.canPop(context)
+                  ? Padding(
+                      padding: const EdgeInsets.only(left: 12, top: 6, bottom: 6),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.18),
+                          shape: BoxShape.circle,
+                        ),
+                        child: IconButton(
+                          icon: const Icon(
+                            Icons.arrow_back_ios_new_rounded,
+                            size: 16,
+                            color: Colors.white,
+                          ),
+                          onPressed: () => Navigator.pop(context),
+                        ),
+                      ),
+                    )
+                  : null,
               actions: [
                 Padding(
                   padding: const EdgeInsets.only(top: 8, right: 14),

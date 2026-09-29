@@ -42,6 +42,8 @@ class HomePageState extends State<HomePage> with WidgetsBindingObserver {
   // Which Discovery tab opens on the first build: POI.
   int _discoverInitialTab = DiscoverPage.tabs.indexOf('POI');
   int _discoverRequestCount = 0;
+  int _plansInitialTab = 0;
+  int _plansRequestCount = 0;
   DateTime? _lastBackPressTime;
   @override
   void initState() {
@@ -324,8 +326,10 @@ class HomePageState extends State<HomePage> with WidgetsBindingObserver {
     });
   }
 
-  void switchToPlans() {
+  void switchToPlans({int initialTab = 0}) {
     setState(() {
+      _plansInitialTab = initialTab;
+      _plansRequestCount++;
       _selectedIndex = 4; // Blueprints / Odysseys Tab
     });
   }
@@ -347,7 +351,10 @@ class HomePageState extends State<HomePage> with WidgetsBindingObserver {
         isActive: _selectedIndex == 3,
         requestCount: _discoverRequestCount,
       ),
-      const MyOdysseysPage(),
+      MyOdysseysPage(
+        initialTabIndex: _plansInitialTab,
+        requestCount: _plansRequestCount,
+      ),
       const ProfilePage(),
     ];
 
