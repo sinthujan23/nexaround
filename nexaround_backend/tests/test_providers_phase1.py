@@ -220,8 +220,10 @@ def test_a_small_party_is_one_car_and_one_shared_answer(cache, monkeypatch):
         return one, three
 
     one, three = asyncio.run(run())
+    # The fixture's lowest driver offer is US$1, under the instant US$35.
     assert one == three == {"usd_total": 35.0, "usd_each": 35.0, "cars": 1, "class": "economy",
-                            "bookable": True, "km": 40, "minutes": 58}
+                            "bookable": True, "km": 40, "minutes": 58,
+                            "usd_low_total": 1.0, "usd_low_each": 1.0}
     assert len(calls) == 1, "one to three travellers pay the same, so they share an answer"
     params = calls[0].url.params
     assert params.get_list("points[]") == ["7.18000,79.88000", "6.93000,79.84000"]
@@ -535,7 +537,7 @@ def test_a_typical_offer_says_about():
                                    live=True, rate=1.0, currency="USD", travelers=1)
     assert entry["decision"] == "info" and entry["bookable"] is False
     assert row["cost"] == "USD 60", "the plan's own fare is never replaced"
-    assert row["tip"] == "Cabs wait outside. Private car: about USD 43 with GetTransfer, about 31 min."
+    assert row["tip"] == "Cabs wait outside. Private car: from USD 43 with GetTransfer, about 31 min."
     assert "(typical price)" in row["price_basis"]
 
 
@@ -703,3 +705,37 @@ def test_shadow_adds_no_link_and_no_row(world, monkeypatch, providers):
     _, meta, days = e2e.run(world)
     assert not _stop(days, "Transfer: DEL airport → Delhi").get("booking_url")
     assert not [r for r in meta.get("booking_plan") or [] if r["item"].startswith("GetTransfer")]
+
+
+# ── The price shown: lowest driver offer to instant price (user, 2026-09-29) ─
+
+def test_amount_ranges_read_like_prices():
+    assert money.format_range("USD", 17, 24) == "USD 17–24"
+    assert money.format_range("INR", 1530, 10568) == "INR 1,530–10,568"
+    assert money.format_range("USD", 24, 24) == "USD 24"
+
+
+def test_the_quote_keeps_the_lowest_offer_for_the_same_car(monkeypatch):
+    """Lisbon airport, live on 2026-09-29: economy instant USD 24, offers from 17."""
+    async def _route(origin, dest, day, pax):
+        return {"prices": {
+            "economy": {"now": 24.0, "min": 17.0},
+            "comfort": {"now": 33.0, "min": 18.0},
+            "business": {"now": None, "min": 25.0},
+        }, "km": 7, "minutes": 24}
+    monkeypatch.setattr(gettransfer, "_route", _route)
+    q = asyncio.run(gettransfer.quote((38.77, -9.13), (38.72, -9.14), "2026-10-15", 2))
+    assert (q["class"], q["usd_total"], q["usd_low_total"], q["bookable"]) == ("economy", 24.0, 17.0, True)
+
+
+def test_the_tip_shows_the_range():
+    row = {"name": "Transfer: Lisbon airport → Lisbon", "type": "transport",
+           "cost": "USD 4", "tip": "Take the metro"}
+    transfer = enrich.Transfer("arrival", (38.77, -9.13), (38.72, -9.14), "2026-10-15", "LIS → Lisbon")
+    q = {"usd_total": 24.0, "usd_each": 24.0, "cars": 1, "class": "economy", "bookable": True,
+         "km": 7, "minutes": 24, "usd_low_total": 17.0, "usd_low_each": 17.0}
+    entry = enrich._apply_transfer("arrival", transfer, q, 400, _days([row]),
+                                   live=True, rate=1.0, currency="USD", travelers=2)
+    assert row["tip"] == "Take the metro. Private car: USD 17–24 with GetTransfer, about 24 min."
+    assert row["cost"] == "USD 4"
+    assert entry["amount"] == "USD 17–24"

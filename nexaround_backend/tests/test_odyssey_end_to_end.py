@@ -776,3 +776,28 @@ def test_the_models_placeholder_partners_are_not_kept(world, monkeypatch):
     assert not {"Booking.com", "Viator", "Skyscanner"} & set(names)
     labels = [row.get("label") for row in meta.get("booking_plan") or []]
     assert "BOOK CLOSER TO TRAVEL" not in labels and "CAN WAIT" not in labels
+
+
+# ── A flight or hotel source on a meal (Spain plan, 2026-09-29) ─────────────
+
+def test_a_meal_never_says_google_flights():
+    from app.services.odyssey_ai_service import _keep_sources_on_their_rows
+    day = {"kind": "day", "day": 1, "activities": [
+        {"type": "dining", "name": "Dinner at a local tapas bar", "cost": "USD 30",
+         "price_source": "Google Flights", "price_confidence": "Fixed",
+         "price_basis": "Estimated cost for a typical meal in Madrid."},
+        {"type": "attraction", "name": "Sagrada Familia", "price_source": "Google Hotels",
+         "price_confidence": "Typical"},
+        {"type": "transport", "name": "Flight: MAD -> BCN", "price_source": "Google Flights",
+         "price_confidence": "Fixed"},
+        {"type": "accommodation", "name": "Hotel Check-in", "price_source": "Google Hotels"},
+        {"type": "dining", "name": "Lunch", "price_source": "Visit Madrid"},
+    ]}
+    assert _keep_sources_on_their_rows([day]) == 2
+    dinner, sight, flight, hotel, lunch = day["activities"]
+    assert (dinner["price_source"], dinner["price_confidence"]) == ("Estimated", "Estimated")
+    assert dinner["price_basis"] == "Estimated cost for a typical meal in Madrid."
+    assert sight["price_source"] == "Typical local rate"
+    assert flight["price_source"] == "Google Flights"
+    assert hotel["price_source"] == "Google Hotels"
+    assert lunch["price_source"] == "Visit Madrid"

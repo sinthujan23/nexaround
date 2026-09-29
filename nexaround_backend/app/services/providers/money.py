@@ -31,3 +31,11 @@ def format_amount(currency: str, amount: float) -> str:
     if amount < 20 and round(amount, 2) != round(amount):
         return f"{code} {amount:,.2f}"
     return f"{code} {amount:,.0f}"
+
+
+def format_range(currency: str, low: float, high: float) -> str:
+    """"USD 17–24": one currency code, two amounts, or one amount when equal."""
+    lo, hi = format_amount(currency, low), format_amount(currency, high)
+    if lo == hi:
+        return lo
+    return f"{lo}–{hi.split(' ', 1)[1]}"

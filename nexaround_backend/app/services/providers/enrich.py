@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from app.services.providers import airalo, config, gettransfer
-from app.services.providers.money import format_amount, usd_rate
+from app.services.providers.money import format_amount, format_range, usd_rate
 
 logger = logging.getLogger(__name__)
 
@@ -333,8 +333,9 @@ def _apply_transfer(kind, transfer, q, ms, day_items, *, live, rate, currency, t
     if not q:
         entry["none"] = "no bookable car"
         return entry
-    entry.update(usd=q["usd_total"], cars=q["cars"], car_class=q["class"],
-                 bookable=q.get("bookable", True), km=q.get("km"), minutes=q.get("minutes"))
+    entry.update(usd=q["usd_total"], usd_low=q.get("usd_low_total"), cars=q["cars"],
+                 car_class=q["class"], bookable=q.get("bookable", True),
+                 km=q.get("km"), minutes=q.get("minutes"))
     row = find_transfer_row(day_items, kind)
     if row is None:
         entry["decision"] = "no_row"
@@ -356,11 +357,18 @@ def _apply_transfer(kind, transfer, q, ms, day_items, *, live, rate, currency, t
     entry["applied"] = False
     if not live:
         return entry
-    amount = format_amount(currency, total)
-    approx = "" if q.get("bookable", True) else "about "
+    # The lowest driver offer to the instant price ("USD 17–24"); "from" when
+    # there is only an offer; one figure when there is only an instant price.
+    low_usd = q.get("usd_low_total")
+    if not q.get("bookable", True):
+        amount = f"from {format_amount(currency, total)}"
+    elif low_usd:
+        amount = format_range(currency, round(low_usd * rate, 2), total)
+    else:
+        amount = format_amount(currency, total)
     took = gettransfer.duration_text(q.get("minutes"))
     # On the tip, which every app build shows under the stop.
-    line = f"Private car: {approx}{amount} with GetTransfer" + (f", {took}" if took else "") + "."
+    line = f"Private car: {amount} with GetTransfer" + (f", {took}" if took else "") + "."
     tip = str(row.get("tip") or "").strip()
     if tip and tip[-1] not in ".!?":
         tip += "."
@@ -376,7 +384,7 @@ def _apply_transfer(kind, transfer, q, ms, day_items, *, live, rate, currency, t
         row["booking_url"] = link
         entry["link"] = True
     entry["applied"] = True
-    entry["amount"] = f"{approx}{amount}"
+    entry["amount"] = amount
     return entry
 
 

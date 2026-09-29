@@ -689,12 +689,17 @@ def test_prompt_demands_the_arrival_transfer_when_the_first_night_is_elsewhere()
     assert "ARRIVAL LOGISTICS" in prompt
     assert "Transfer: Nagpur airport → Pench" in prompt
     assert "at 2026-11-01 06:00" in prompt
-    assert "DEPARTURE LOGISTICS" not in prompt        # last leg IS Jabalpur
+    # The last night is in Jabalpur itself, but its airport is 6 km out: the
+    # ride to it is still a stop (2026-09-29, transfers from 3 km).
+    assert "Transfer: Jabalpur → Jabalpur airport" in prompt
 
 
-def test_prompt_skips_the_arrival_transfer_when_the_first_night_is_the_gateway_city():
+def test_prompt_keeps_the_town_transfer_when_the_first_night_is_the_gateway_city():
+    """Nagpur airport is about 8 km from the town. Skipping the stop because
+    the first night is "in the gateway city" left Lisbon plans (airport 6 km
+    out) opening at the hotel with no word on getting there."""
     prompt = _prompt(_route_for_prompt(first_city="Nagpur"), _confirmed())
-    assert "ARRIVAL LOGISTICS" not in prompt
+    assert "Transfer: Nagpur airport → Nagpur" in prompt
 
 
 def test_prompt_demands_the_departure_transfer_when_the_last_night_is_elsewhere():

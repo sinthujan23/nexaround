@@ -492,3 +492,120 @@ def test_a_guessed_home_airport_is_widened_but_curated_and_chosen_ones_are_not(m
     monkeypatch.setattr(svc, "SerpApiService", _RecordingSerp)
     _flights(departure_city="Jabal Ali 3", departure_airport="DWC")
     assert _RecordingSerp.searches[0]["departure_city"] == "DWC"
+
+
+# ── New Zealand plan, 2026-09-29: two things future plans must get right ─────
+
+def _nz():
+    return DestinationContext(
+        query="New Zealand", name="New Zealand", country="New Zealand", country_code="NZ",
+        latitude=-41.0, longitude=174.0, types=("country",), source="places",
+    )
+
+
+NZ_LEGS = [
+    {"city": "Auckland", "country": "NZ", "start_day": 1, "end_day": 2,
+     "latitude": -36.85, "longitude": 174.76},
+    {"city": "Wellington", "country": "NZ", "start_day": 3, "end_day": 7,
+     "latitude": -41.29, "longitude": 174.78},
+]
+AKL = {"iata": "AKL", "city": "Auckland", "name": "Auckland Airport",
+       "latitude": -37.0082, "longitude": 174.785}
+WLG = {"iata": "WLG", "city": "Wellington", "name": "Wellington Airport",
+       "latitude": -41.3272, "longitude": 174.8053}
+
+
+def test_an_airport_18_km_out_gets_its_transfer_stop():
+    """Auckland airport is 18 km from town; at a 40 km threshold the plan
+    opened at the hotel, with nowhere for the private-car price to go."""
+    route = RoutePlan(legs=NZ_LEGS, arrival=AKL, departure=WLG,
+                      arrival_code="AKL", departure_code="WLG", source="planner")
+    flight = {"title": "Colombo to Auckland", "route": "CMB → AKL", "trip_type": "open_jaw",
+              "price_per_traveler": 1800, "currency": "USD"}
+    prompt = svc._build_prompt(
+        "New Zealand", "Adventurous", 9000, 7, "USD", travelers=2,
+        departure_city="Colombo", departure_country="Sri Lanka", legs=NZ_LEGS,
+        geo=_nz(), confirmed_flight=flight, route_plan=route,
+    )
+    assert '"Transfer: Auckland airport → Auckland"' in prompt
+    # Wellington airport is 5 km from its centre, and Lisbon's 6: close, but
+    # the traveller still has to get into town.
+    assert '"Transfer: Wellington → Wellington airport"' in prompt
+
+
+def test_an_airport_in_town_needs_no_transfer_stop():
+    in_town = dict(AKL, latitude=-36.855, longitude=174.765)   # about 1 km out
+    route = RoutePlan(legs=NZ_LEGS[:1], arrival=in_town, departure=in_town,
+                      arrival_code="AKL", departure_code="AKL", source="planner")
+    flight = {"title": "x", "route": "CMB → AKL", "trip_type": "round_trip",
+              "price_per_traveler": 1800, "currency": "USD"}
+    prompt = svc._build_prompt(
+        "Auckland", "Adventurous", 9000, 4, "USD", travelers=2,
+        departure_city="Colombo", departure_country="Sri Lanka", legs=NZ_LEGS[:1],
+        geo=_nz(), confirmed_flight=flight, route_plan=route,
+    )
+    assert '"Transfer: Auckland airport → Auckland"' not in prompt
+
+
+def test_an_estimate_keeps_the_open_jaw_the_trip_was_planned_with(monkeypatch):
+    """SerpApi down: the live search gave up the open jaw for a round trip via
+    Auckland, the round trip found nothing too, and the estimate still flew
+    home from Auckland — a 7.5-hour drive from Wellington on the last day."""
+    class _Down:
+        def __init__(self, key, **kw):
+            pass
+
+        async def search_flights(self, **kw):
+            return {}
+
+        async def search_flights_return(self, **kw):
+            return {}
+
+    asked = []
+
+    async def _estimate(prompt, api_key, **kw):
+        asked.append(prompt)
+        return json.dumps({"strategies": [{
+            "title": "x", "estimated_price_range": "USD 1500 - 1900",
+            "route": "CMB → AKL", "return_route": "AKL → CMB",
+            "airlines": ["Qantas"], "stops": 1, "total_duration": "20h",
+        }]}), []
+
+    monkeypatch.setattr(svc, "SerpApiService", _Down)
+    monkeypatch.setattr(svc, "_call_gemini", _estimate)
+    route = RoutePlan(legs=NZ_LEGS, arrival=dict(AKL), departure=dict(WLG),
+                      arrival_code="AKL", departure_code="WLG", source="planner")
+    result = asyncio.run(svc.generate_flight_strategies(
+        departure_city="Colombo", departure_country="Sri Lanka", destination="New Zealand",
+        days=7, budget=9000, currency="USD", travelers=2,
+        flight_start_date="2026-10-11", flight_end_date="2026-10-17",
+        api_key="k", serpapi_key="s", destination_geo=_nz(), route_plan=route,
+    ))
+    assert result["trip_type"] == "open_jaw"
+    assert result["strategies"][0]["return_route"] == "WLG → CMB"
+    assert result["departure_airport"]["iata"] == "WLG"
+    assert route.departure["iata"] == "WLG" and route.departure_code == "WLG"
+    assert '"return_route" MUST be "WLG → CMB"' in asked[-1]
+
+
+def test_an_estimate_for_andorra_may_land_next_door(monkeypatch):
+    class _Down:
+        def __init__(self, key, **kw):
+            pass
+
+        async def search_flights(self, **kw):
+            return {}
+
+        async def search_flights_return(self, **kw):
+            return {}
+
+    asked = []
+
+    async def _estimate(prompt, api_key, **kw):
+        asked.append(prompt)
+        return json.dumps({"strategies": []}), []
+
+    monkeypatch.setattr(svc, "SerpApiService", _Down)
+    monkeypatch.setattr(svc, "_call_gemini", _estimate)
+    _flights(departure_city="Dubai")
+    assert "Never route to an airport in a different country" not in asked[-1]

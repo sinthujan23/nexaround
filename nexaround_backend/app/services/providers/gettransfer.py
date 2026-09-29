@@ -145,9 +145,16 @@ async def _route(origin: tuple, dest: tuple, date: str, pax: int) -> Optional[di
 async def quote(origin: tuple, dest: tuple, date: str, travelers: int) -> Optional[dict]:
     """The cheapest right-sized way to move the whole party by car, in USD, or None.
 
-    {"usd_total", "usd_each", "cars", "class", "bookable", "km", "minutes"}.
+    {"usd_total", "usd_each", "cars", "class", "bookable", "km", "minutes",
+     "usd_low_total", "usd_low_each"}.
     A party bigger than one car is first asked for as itself (a van or SUV);
     where nothing that size is offered, as several economy-size cars.
+
+    `usd_low_*` is the class's lowest driver offer when it is below the instant
+    price, else None. The instant ("book now") price is GetTransfer's dearest
+    way to buy the ride; its drivers usually offer less, about what a metered
+    taxi costs (Lisbon airport: instant USD 24, lowest offer USD 17, taxi
+    EUR 15-20). Showing both is the honest range (user's choice, 2026-09-29).
     """
     travelers = max(1, int(travelers or 1))
     day = query_date(date)
@@ -161,9 +168,12 @@ async def quote(origin: tuple, dest: tuple, date: str, travelers: int) -> Option
     if choice is None:
         return None
     cls, usd, bookable = choice
+    low = (got["prices"].get(cls) or {}).get("min")
+    low = low if bookable and low and low < usd else None
     return {
         "usd_total": round(usd * cars, 2), "usd_each": usd, "cars": cars, "class": cls,
         "bookable": bookable, "km": got.get("km"), "minutes": got.get("minutes"),
+        "usd_low_total": round(low * cars, 2) if low else None, "usd_low_each": low,
     }
 
 

@@ -1260,6 +1260,49 @@ def _name_the_price_source(day_items: list[dict]) -> int:
     return named
 
 
+# Sources that can only ever describe one kind of stop.
+_FLIGHT_SOURCES = ("google flights", "skyscanner", "kayak", "aviasales", "kiwi.com")
+_HOTEL_SOURCES = ("google hotels", "booking.com", "agoda", "hotels.com")
+
+
+def _keep_sources_on_their_rows(day_items: list[dict]) -> int:
+    """Take a flight or hotel source off a stop it cannot describe.
+
+    The model copies "Google Flights" — the source the prompt gives for the
+    flights — onto meals and sights: a Spain plan (2026-09-29) had it on 12
+    stops, dinner and the Sagrada Familia among them, and the app printed
+    "USD 30 | Google Flights" under a tapas bar. A flight source stays only
+    on transport stops, a hotel source only on accommodation; anything else is
+    what it really is, the model's own estimate. The explanation in
+    `price_basis` is kept, and a "Fixed" claim that rested on the wrong
+    source becomes an estimate.
+    """
+    fixed = 0
+    for day in day_items:
+        if not isinstance(day, dict):
+            continue
+        for a in day.get("activities") or []:
+            if not isinstance(a, dict):
+                continue
+            source = str(a.get("price_source") or "").strip().lower()
+            if not source:
+                continue
+            kind = str(a.get("type") or "").strip().lower()
+            wrong = (
+                (kind != "transport" and any(s in source for s in _FLIGHT_SOURCES))
+                or (kind != "accommodation" and any(s in source for s in _HOTEL_SOURCES))
+            )
+            if not wrong:
+                continue
+            confidence = str(a.get("price_confidence") or "").strip().lower()
+            if confidence not in ("typical", "estimated"):
+                confidence = "estimated"
+                a["price_confidence"] = "Estimated"
+            a["price_source"] = "Typical local rate" if confidence == "typical" else "Estimated"
+            fixed += 1
+    return fixed
+
+
 def stretched_route_notice(
     route, days: int, entry_city: str = "", exit_city: str = "",
 ) -> str:
@@ -1738,6 +1781,10 @@ async def generate_flight_strategies(
         )
         return _with_airports(direct, trip_type=trip_type, home_code=home_code)
 
+    # The open-jaw route the planner drew, kept so an estimate can return to it
+    # (see the fallback path below). None until the live search abandons it.
+    planned_open_jaw = None
+
     # ── Primary path: SerpApi direct extraction ──────────────────────────────
     if serpapi_key and origin_code and dest_code:
         try:
@@ -1791,6 +1838,11 @@ async def generate_flight_strategies(
                     departure_code, origin_code,
                     len((ret_result or {}).get("best_flights") or []) + len((ret_result or {}).get("other_flights") or []),
                     arrival_code,
+                )
+                planned_open_jaw = (
+                    departure_code,
+                    dict(route_plan.departure) if route_plan is not None and route_plan.departure else None,
+                    route_plan.departure_code if route_plan is not None else "",
                 )
                 is_open_jaw = False
                 departure_code = arrival_code
@@ -1893,6 +1945,17 @@ async def generate_flight_strategies(
             logger.warning(f"SerpApi flight search failed, falling back to Gemini knowledge: {e}")
 
     # ── Fallback path: Gemini estimation ─────────────────────────────────────
+    # The switch to a round trip above only holds if Google then found one.
+    # With no real fare either way, the estimate follows the route the trip
+    # actually takes: a New Zealand plan ending in Wellington was estimated as
+    # a round trip via Auckland, and the last morning became a 7.5-hour drive
+    # to the airport.
+    if planned_open_jaw is not None:
+        departure_code, planned_departure, planned_departure_code = planned_open_jaw
+        is_open_jaw = True
+        if route_plan is not None:
+            route_plan.departure = planned_departure
+            route_plan.departure_code = planned_departure_code
     date_str = ""
     if outbound_date and return_date:
         date_str = f"- Departure Date: {outbound_date}\n- Return Date: {return_date}"
@@ -1950,7 +2013,7 @@ These can be:
 
 IMPORTANT RULES:
 - In the "route" field, always use real IATA airport codes. The route MUST be "{ex_route}" — {ex_o} is the airport for "{departure_city}" and {ex_d} is the airport for "{destination}". If a city has no airport of its own, its nearest major airport is already reflected in those codes.
-- The arrival airport MUST be {ex_d}. Never route to an airport in a different country from "{destination}", however similar the names look.
+- The arrival airport MUST be {ex_d}.{"" if _airportless(_dgeo) else f' Never route to an airport in a different country from "{destination}", however similar the names look.'}
 {return_rule}- provider_name MUST be "Google Flights" for all strategies.
 - PRICE BASIS (critical): every "estimated_price_range" is the fare for ONE traveller for the
   ENTIRE {trip_basis} journey, in {currency}, taxes and fees included. Never quote a group
@@ -3681,9 +3744,14 @@ _GATEWAY_MAX_KM = 400.0
 # "car" between two cities 900 km apart is a day lost on the road.
 _LEG_HOP_MAX_KM = 600.0
 
-# Below this the gateway city and the first leg are the same place: no
-# transfer activity is demanded, an airport taxi is part of check-in.
-_SAME_PLACE_KM = 40.0
+# Below this the airport and the first (or last) city are the same place: no
+# transfer stop is demanded. It was 40 km, which let a New Zealand plan land
+# at Auckland airport, 18 km out, and open straight at the hotel, with no word
+# on getting into town; then 10 km, which did the same to Lisbon (6 km). Every
+# traveller still has to get from the airport to the hotel, so the stop is
+# written unless the airport is essentially in town — the same 3 km below
+# which GetTransfer is not asked either (providers/enrich.MIN_TRANSFER_KM).
+_SAME_PLACE_KM = 3.0
 
 # Airports do not move. Verified coordinates are kept for a month so the
 # gateway check on a popular route costs no Places lookup at all.
@@ -5834,6 +5902,9 @@ async def generate_odyssey(
     sourced = _name_the_price_source(day_items)
     if sourced:
         logger.info("Named the price source on %d estimated stop(s).", sourced)
+    misplaced = _keep_sources_on_their_rows(day_items)
+    if misplaced:
+        logger.info("Took a flight/hotel source off %d other stop(s).", misplaced)
 
     # The flight into the country and the one home: link them where they are
     # read, and stop the row home looking free.

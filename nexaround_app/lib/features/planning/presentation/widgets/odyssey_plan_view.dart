@@ -609,14 +609,15 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
           ),
           if (rows[i].key == connectivityTitle && info.connectivityUrl.isNotEmpty) ...[
             const SizedBox(height: 10),
+            // Airalo is a paid partner: the solid partner button, with its logo.
             SizedBox(
               width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: () => _launchExternalUrl(info.connectivityUrl),
-                icon: const Icon(Icons.sim_card_outlined, size: 16),
-                label: Text(
-                  info.connectivityCta.isNotEmpty ? info.connectivityCta : 'Get eSIM',
-                ),
+              child: _partnerPill(
+                logoAsset: 'assets/images/airalo_logo.png',
+                fallbackIcon: Icons.sim_card_outlined,
+                label: info.connectivityCta.isNotEmpty ? info.connectivityCta : 'Get eSIM',
+                onTap: () => _launchExternalUrl(info.connectivityUrl),
+                expand: true,
               ),
             ),
           ],
@@ -2508,31 +2509,81 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
   /// "Book private car" on the airport transfer stop. The stop's own advice
   /// (usually a bus or train) stays the plan; its tip already names the
   /// private-car price, and this opens GetTransfer to book one.
+  ///
+  /// A paid partner, so it is drawn solid with its logo — the one button on
+  /// the stop that stands out (user, 2026-09-29: "our partners should be
+  /// highlighted more than others"). The ride apps beside it stay outlined.
   Widget _buildPrivateCarButton(OdysseyActivity act) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
+    return _partnerPill(
+      logoAsset: 'assets/images/gettransfer_logo.png',
+      fallbackIcon: Icons.local_taxi_rounded,
+      label: 'Book private car',
       onTap: () => _launchExternalUrl(act.bookingUrl),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        decoration: BoxDecoration(
-          color: AppColors.brandGreen.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(5),
-          border: Border.all(color: AppColors.brandGreen.withValues(alpha: 0.35)),
-        ),
-        child: const Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.local_taxi_rounded, size: 12, color: AppColors.brandGreen),
-            SizedBox(width: 4),
-            Text(
-              'Book private car',
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w800,
-                color: AppColors.brandGreen,
-              ),
+    );
+  }
+
+  /// The solid button every paid partner gets (GetTransfer, Airalo): brand
+  /// teal, the partner's logo on a white tile, white label, and an arrow
+  /// saying it opens outside the app.
+  Widget _partnerPill({
+    required String logoAsset,
+    required IconData fallbackIcon,
+    required String label,
+    required VoidCallback onTap,
+    bool expand = false,
+  }) {
+    final content = Row(
+      mainAxisSize: expand ? MainAxisSize.max : MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Container(
+          width: expand ? 22 : 18,
+          height: expand ? 22 : 18,
+          padding: const EdgeInsets.all(1.5),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(5),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: Image.asset(
+              logoAsset,
+              fit: BoxFit.contain,
+              errorBuilder: (context, error, stack) =>
+                  Icon(fallbackIcon, size: 12, color: AppColors.brandGreen),
             ),
-          ],
+          ),
+        ),
+        const SizedBox(width: 6),
+        Flexible(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: expand ? 13.5 : 11.5,
+              fontWeight: FontWeight.w800,
+              color: Colors.white,
+            ),
+          ),
+        ),
+        const SizedBox(width: 4),
+        Icon(Icons.open_in_new_rounded, size: expand ? 14 : 11, color: Colors.white),
+      ],
+    );
+    return Material(
+      color: AppColors.brandGreen,
+      borderRadius: BorderRadius.circular(expand ? 12 : 8),
+      elevation: 1.5,
+      shadowColor: AppColors.brandGreen.withValues(alpha: 0.4),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(expand ? 12 : 8),
+        onTap: onTap,
+        child: Padding(
+          padding: expand
+              ? const EdgeInsets.symmetric(horizontal: 14, vertical: 11)
+              : const EdgeInsets.fromLTRB(5, 4, 9, 4),
+          child: content,
         ),
       ),
     );
