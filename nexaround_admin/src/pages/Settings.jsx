@@ -55,7 +55,7 @@ const PROVIDER_SWITCHES = [
   { key: 'provider_mode_gettransfer', name: 'GetTransfer', use: 'Airport & city-to-city transfer prices' },
   { key: 'provider_mode_airalo', name: 'Airalo', use: 'eSIM prices per country' },
   { key: 'provider_mode_wegotrip', name: 'WeGoTrip', use: 'Tour & ticket prices, ratings, photos' },
-  { key: 'provider_mode_aviasales', name: 'Aviasales', use: 'Flight prices when Google Flights has none' },
+  { key: 'provider_mode_aviasales', name: 'Aviasales', use: 'Book on Aviasales link on flights (no prices)' },
 ];
 
 function SecretField({ label, tag, value, onChange, placeholder }) {

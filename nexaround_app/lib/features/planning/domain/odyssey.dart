@@ -819,6 +819,12 @@ class FlightStrategy {
   final FlightLeg? returnLeg;
   final String returnRoute; // "NAG → CMB"; '' when unknown
 
+  /// Aviasales' live search for this option's flights, through our
+  /// Travelpayouts link; '' on plans made before it or with it switched off.
+  /// Kept apart from [bookingUrl], which stays Google Flights: builds before
+  /// this one rebuild any "Aviasales" flight link into a bare, untracked search.
+  final String aviasalesUrl;
+
   const FlightStrategy({
     required this.rank,
     required this.strategy,
@@ -844,6 +850,7 @@ class FlightStrategy {
     this.outbound,
     this.returnLeg,
     this.returnRoute = '',
+    this.aviasalesUrl = '',
   });
 
   /// True when the backend priced this strategy, so the UI can render exact
@@ -908,6 +915,7 @@ class FlightStrategy {
         outbound: FlightLeg.fromJson(json['outbound']),
         returnLeg: FlightLeg.fromJson(json['return']),
         returnRoute: (json['return_route'] ?? '').toString(),
+        aviasalesUrl: (json['aviasales_url'] ?? '').toString(),
       );
 
   Map<String, dynamic> toJson() => {
@@ -935,6 +943,7 @@ class FlightStrategy {
         if (outbound != null) 'outbound': outbound!.toJson(),
         if (returnLeg != null) 'return': returnLeg!.toJson(),
         if (returnRoute.isNotEmpty) 'return_route': returnRoute,
+        if (aviasalesUrl.isNotEmpty) 'aviasales_url': aviasalesUrl,
       };
 }
 

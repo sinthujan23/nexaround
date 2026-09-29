@@ -188,18 +188,27 @@ _AFFILIATE_REDIRECT = "https://tp.media/r"
 BOOKING_PAGE = "https://gettransfer.com/en/transfers/new"
 
 
-def booking_link(car_class: str, *, marker: str, project_id: str) -> str:
-    """GetTransfer's booking page with the quoted car class, credited to us.
+def booking_link(
+    car_class: str, *, marker: str, project_id: str, from_name: str = "", to_name: str = "",
+) -> str:
+    """GetTransfer's booking page with the ride filled in, credited to us.
 
-    Pickup and drop-off are typed on GetTransfer's page: its website link has
-    no documented way to pre-fill them (only its API does). Without both the
+    The booking form reads `from_name` / `to_name` from the link and looks the
+    places up itself (found in its app bundle, verified 2026-09-29 in a
+    headless browser): "Madrid-Barajas Airport" → "Hotel Villa Real, Madrid"
+    opened with both points set and prices showing. A place ID is optional; a
+    bare city ("Madrid") fills in but GetTransfer asks for an exact drop-off,
+    which is why the hotel is named when the plan has one. Without both the
     partner ID and the Project ID the link still opens the page; it just
     earns nothing.
     """
-    page = BOOKING_PAGE + "?" + urllib.parse.urlencode({
-        "transfer_type": "route",
-        "transport_type_ids[]": car_class if car_class in CLASS_LABELS else "economy",
-    })
+    query = {"transfer_type": "route"}
+    if from_name.strip():
+        query["from_name"] = from_name.strip()
+    if to_name.strip():
+        query["to_name"] = to_name.strip()
+    query["transport_type_ids[]"] = car_class if car_class in CLASS_LABELS else "economy"
+    page = BOOKING_PAGE + "?" + urllib.parse.urlencode(query)
     if not (marker and project_id):
         return page
     return _AFFILIATE_REDIRECT + "?" + urllib.parse.urlencode({

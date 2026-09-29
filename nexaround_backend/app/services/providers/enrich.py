@@ -12,7 +12,9 @@ Each provider follows its switch in the admin panel (`config.mode`):
     live    applied, through fields every app build already shows. GetTransfer
             is information only: the airport stop keeps its own fare and gains
             a "Private car: USD 71 with GetTransfer" line on its tip. Airalo
-            adds the "Connectivity & SIM" line and its partner card
+            adds the "Connectivity & SIM" line and its partner card. Aviasales
+            adds a search link to each flight option and points the Booking
+            Plan's flight row at it; its fares are never used
 
 Nothing here may cost a plan: every failure leaves the plan as Gemini wrote it.
 Prices are shown, never added to the budget, which is computed before this
@@ -27,7 +29,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Optional
 
-from app.services.providers import airalo, config, gettransfer
+from app.services import airports_service
+from app.services.providers import airalo, aviasales, config, gettransfer
 from app.services.providers.money import format_amount, format_range, usd_rate
 
 logger = logging.getLogger(__name__)
@@ -48,6 +51,11 @@ class Transfer:
     dest: tuple
     date: str
     label: str
+    # For GetTransfer's booking form: the airport's full name, the city, and
+    # which leg's hotel is the other end (first leg in, last leg out).
+    airport: str = ""
+    city: str = ""
+    leg_index: int = 0
 
 
 @dataclass
@@ -69,7 +77,7 @@ async def start(
 ) -> Optional[Pending]:
     """Begin every fetch this plan's switches allow. None when all are off."""
     try:
-        modes = {p: await config.mode(p) for p in ("gettransfer", "airalo")}
+        modes = {p: await config.mode(p) for p in ("gettransfer", "airalo", "aviasales")}
     except Exception as e:
         logger.warning("providers: could not read switches: %s", e)
         return None
@@ -141,8 +149,19 @@ async def _finish(pending: Pending, day_items, meta, *, currency: str, travelers
         marker = await config.setting(config.TRAVELPAYOUTS_MARKER)
         project_id = await config.setting(config.TRAVELPAYOUTS_PROJECT_ID)
 
-        def link_for(car_class: str) -> str:
-            return gettransfer.booking_link(car_class, marker=marker, project_id=project_id)
+        def link_for(car_class: str, transfer: Optional[Transfer] = None) -> str:
+            """The booking page with the ride filled in: the airport one end,
+            the plan's hotel for that city the other (or the city itself)."""
+            if transfer is None:
+                return gettransfer.booking_link(car_class, marker=marker, project_id=project_id)
+            town = _hotel_for_leg(meta, transfer.leg_index, transfer.city) or transfer.city
+            airport = transfer.airport or transfer.label.split(" → ")[0]
+            inbound = transfer.kind == "arrival"
+            return gettransfer.booking_link(
+                car_class, marker=marker, project_id=project_id,
+                from_name=airport if inbound else town,
+                to_name=town if inbound else airport,
+            )
 
         for kind, transfer in pending.transfers.items():
             q, ms = result(f"gettransfer:{kind}")
@@ -155,12 +174,12 @@ async def _finish(pending: Pending, day_items, meta, *, currency: str, travelers
         # One tappable row in the Booking Plan, which every app build opens.
         shown = [(k, e) for k, e in entry.items() if isinstance(e, dict) and e.get("applied")]
         if live and shown:
-            _, first = shown[0]
+            first_kind, first = shown[0]
             _add_plan_item(meta, {
                 "label": "BOOK CLOSER TO TRAVEL",
                 "item": f"GetTransfer private car: {first['route']}, {first['amount']} one way",
                 "reason": "Optional. Book once your flight times are fixed.",
-                "url": link_for(str(first.get("car_class") or "")),
+                "url": link_for(str(first.get("car_class") or ""), pending.transfers.get(first_kind)),
             })
 
     if pending.modes["airalo"] != config.OFF:
@@ -190,6 +209,15 @@ async def _finish(pending: Pending, day_items, meta, *, currency: str, travelers
         else:
             entry["none"] = "no rate" if offer else "no plan for this country or trip length"
         audit["airalo"] = entry
+
+    if pending.modes.get("aviasales", config.OFF) != config.OFF:
+        audit["aviasales"] = _apply_flight_links(
+            meta,
+            live=pending.modes["aviasales"] == config.LIVE,
+            travelers=travelers,
+            marker=await config.setting(config.TRAVELPAYOUTS_MARKER),
+            project_id=await config.setting(config.TRAVELPAYOUTS_PROJECT_ID),
+        )
 
     meta["provider_audit"] = audit
     logger.info("providers: %s", audit)
@@ -223,6 +251,66 @@ def _add_plan_item(meta: dict, item: dict) -> None:
     ]
     rows.append(item)
     meta["booking_plan"] = rows
+
+
+# ── Flights ──────────────────────────────────────────────────────────────────
+
+def _apply_flight_links(meta: dict, *, live: bool, travelers: int, marker: str, project_id: str) -> dict:
+    """An Aviasales search on each flight option, as `aviasales_url`, and the
+    Booking Plan's flight row pointed at its option's search.
+
+    The option's `booking_url` and `provider_name` stay Google's. The fare on
+    the card is Google's, and installed app builds rebuild any flight link
+    whose provider is "Aviasales" into a bare search with no dates and no
+    marker (BookingUrlHelper.buildFlightUrl). So the button reads the new field,
+    in the builds that carry it. The Booking Plan row is opened unchanged by
+    every build, which is why it moves now.
+    """
+    flights = meta.get("flight_strategies") if isinstance(meta.get("flight_strategies"), dict) else {}
+    options = [s for s in (flights.get("strategies") or []) if isinstance(s, dict)]
+    entry: dict = {"mode": config.LIVE if live else config.SHADOW, "options": len(options), "linked": 0}
+    linked = []
+    for option in options:
+        legs = aviasales.legs_for(option, flights)
+        path = aviasales.search_path(legs, adults=travelers, travel_class=option.get("travel_class"))
+        if not path:
+            continue
+        entry["linked"] += 1
+        entry.setdefault("path", path)
+        link = aviasales.booking_link(path, marker=marker, project_id=project_id)
+        linked.append((option, legs, link))
+        if live:
+            option["aviasales_url"] = link
+    if live and linked:
+        entry["plan_row"] = _point_flight_row(meta, linked)
+    return entry
+
+
+def _point_flight_row(meta: dict, linked: list[tuple[dict, list, str]]) -> bool:
+    """Send the Booking Plan's flight row to Aviasales, naming it there (the
+    label says where the tap goes). A visa reason on the row is kept.
+
+    The row is found by the option it was written from — the same title and
+    Google link. Which option that is varies (the Recommended tier on a live
+    fare; the first option on older, estimated ones), so none is assumed.
+    """
+    for row in meta.get("booking_plan") or []:
+        if not isinstance(row, dict):
+            continue
+        for option, legs, link in linked:
+            title = str(option.get("title") or option.get("name") or "")
+            if not (row.get("item") == title and str(row.get("url") or "") == str(option.get("booking_url") or "")):
+                continue
+            row["item"] = f"Flights on Aviasales: {aviasales.trip_text(legs)}"
+            row["url"] = link
+            if str(row.get("reason") or "").startswith("Confirmed live fare"):
+                row["reason"] = (
+                    "Fares move, so book early. Aviasales shows its live price for these flights."
+                    if option.get("is_live_price")
+                    else "The fare in this plan is an estimate. Aviasales shows the live price."
+                )
+            return True
+    return False
 
 
 # ── Transfers ────────────────────────────────────────────────────────────────
@@ -379,13 +467,61 @@ def _apply_transfer(kind, transfer, q, ms, day_items, *, live, rate, currency, t
     row["price_basis"] = f"{existing} · {extra}" if existing else extra
     # The tracked booking page, for the stop's "Book private car" button
     # (app builds from 2026-09-29 show it; older ones ignore the field).
-    link = link_for(q.get("class", "")) if link_for else ""
+    link = link_for(q.get("class", ""), transfer) if link_for else ""
     if link:
         row["booking_url"] = link
         entry["link"] = True
     entry["applied"] = True
     entry["amount"] = amount
     return entry
+
+
+def _airport_full_name(airport: Optional[dict]) -> str:
+    """"Adolfo Suárez Madrid-Barajas Airport": what GetTransfer's form can find.
+
+    The route's own name first, then the airport table's; a bare code is
+    widened to "MAD airport", which the form also resolves.
+    """
+    airport = airport or {}
+    name = str(airport.get("name") or "").strip()
+    if name:
+        return name
+    code = str(airport.get("iata") or "").strip().upper()
+    known = airports_service.get(code)
+    if known is not None:
+        return known.name
+    return f"{code} airport" if code else ""
+
+
+_NUMBER = re.compile(r"[\d,]+(?:\.\d+)?")
+
+
+def _hotel_for_leg(meta: dict, leg_index: int, city: str) -> str:
+    """"Hotel Villa Real, Madrid": the plan's cheapest hotel for that leg.
+
+    The cheapest is the Stays tab's default pick (Minimum tier). The
+    traveller can change the drop-off on GetTransfer's page; a named hotel
+    beats a city, which GetTransfer will not take as an exact point. Plans
+    made without hotels return "".
+    """
+    strategies = ((meta or {}).get("hotel_strategies") or {}).get("strategies") or []
+    rows = [h for h in strategies if isinstance(h, dict) and str(h.get("name") or "").strip()]
+    if any("leg_index" in h for h in rows):
+        rows = [h for h in rows if h.get("leg_index") == leg_index]
+
+    def nightly(h: dict) -> float:
+        m = _NUMBER.search(str(h.get("price_per_night") or ""))
+        try:
+            return float(m.group().replace(",", "")) if m else float("inf")
+        except ValueError:
+            return float("inf")
+
+    if not rows:
+        return ""
+    best = min(rows, key=nightly)
+    town = str(best.get("city") or city or "").strip()
+    name = str(best["name"]).strip()
+    return f"{name}, {town}" if town and town.lower() not in name.lower() else name
 
 
 def transfers_for(route, legs: list[dict], arrival_date: str, departure_date: str, km) -> list[Transfer]:
@@ -424,5 +560,8 @@ def transfers_for(route, legs: list[dict], arrival_date: str, departure_date: st
             dest=c if inbound else a,
             date=date,
             label=label,
+            airport=_airport_full_name(airport),
+            city=city,
+            leg_index=0 if inbound else len(legs) - 1,
         ))
     return out

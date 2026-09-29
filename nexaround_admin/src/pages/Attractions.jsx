@@ -64,7 +64,7 @@ export default function Attractions() {
       const marker = window.L.marker([p.latitude, p.longitude]).addTo(map);
 
       marker.bindPopup(`
-        <div style="font-family: sans-serif; padding: 2px; min-width: 150px;">
+        <div style="font-family: 'DM Sans', sans-serif; padding: 2px; min-width: 150px;">
           <h4 style="margin: 0 0 4px 0; font-weight: 700; color: #007a7c;">${p.name}</h4>
           <p style="margin: 0 0 6px 0; font-size: 11px; color: #5a6070;">${p.address || 'No address'}</p>
           <span style="font-size: 9px; background: rgba(0, 122, 124, 0.06); color: #007a7c; padding: 2px 6px; border-radius: 4px; font-weight: 600;">${p.category_name || 'General'}</span>

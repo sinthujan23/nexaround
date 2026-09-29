@@ -6,6 +6,7 @@ import 'package:nexaround_app/core/utils/booking_url_helper.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:nexaround_app/features/planning/presentation/widgets/flight_strategies_section.dart';
 import 'package:nexaround_app/features/planning/presentation/widgets/hotel_strategies_section.dart';
+import 'package:nexaround_app/features/planning/presentation/widgets/partner_pill.dart';
 import 'package:nexaround_app/core/utils/number_format.dart';
 import 'package:nexaround_app/core/services/google_places_service.dart';
 import 'package:nexaround_app/features/living_map/presentation/pages/smart_tourism_map_page.dart';
@@ -2522,9 +2523,7 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     );
   }
 
-  /// The solid button every paid partner gets (GetTransfer, Airalo): brand
-  /// teal, the partner's logo on a white tile, white label, and an arrow
-  /// saying it opens outside the app.
+  /// The solid button every paid partner gets — see [PartnerPill].
   Widget _partnerPill({
     required String logoAsset,
     required IconData fallbackIcon,
@@ -2532,60 +2531,12 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     required VoidCallback onTap,
     bool expand = false,
   }) {
-    final content = Row(
-      mainAxisSize: expand ? MainAxisSize.max : MainAxisSize.min,
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Container(
-          width: expand ? 22 : 18,
-          height: expand ? 22 : 18,
-          padding: const EdgeInsets.all(1.5),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(5),
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: Image.asset(
-              logoAsset,
-              fit: BoxFit.contain,
-              errorBuilder: (context, error, stack) =>
-                  Icon(fallbackIcon, size: 12, color: AppColors.brandGreen),
-            ),
-          ),
-        ),
-        const SizedBox(width: 6),
-        Flexible(
-          child: Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: expand ? 13.5 : 11.5,
-              fontWeight: FontWeight.w800,
-              color: Colors.white,
-            ),
-          ),
-        ),
-        const SizedBox(width: 4),
-        Icon(Icons.open_in_new_rounded, size: expand ? 14 : 11, color: Colors.white),
-      ],
-    );
-    return Material(
-      color: AppColors.brandGreen,
-      borderRadius: BorderRadius.circular(expand ? 12 : 8),
-      elevation: 1.5,
-      shadowColor: AppColors.brandGreen.withValues(alpha: 0.4),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(expand ? 12 : 8),
-        onTap: onTap,
-        child: Padding(
-          padding: expand
-              ? const EdgeInsets.symmetric(horizontal: 14, vertical: 11)
-              : const EdgeInsets.fromLTRB(5, 4, 9, 4),
-          child: content,
-        ),
-      ),
+    return PartnerPill(
+      logoAsset: logoAsset,
+      fallbackIcon: fallbackIcon,
+      label: label,
+      onTap: onTap,
+      expand: expand,
     );
   }
 

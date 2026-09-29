@@ -5,6 +5,7 @@ import 'package:nexaround_app/core/utils/booking_url_helper.dart';
 import 'package:nexaround_app/core/utils/number_format.dart';
 import 'package:nexaround_app/core/utils/scenario_price_mapper.dart';
 import 'package:nexaround_app/features/planning/domain/odyssey.dart';
+import 'package:nexaround_app/features/planning/presentation/widgets/partner_pill.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class FlightStrategiesSection extends StatelessWidget {
@@ -936,6 +937,24 @@ class FlightStrategiesSection extends StatelessWidget {
               const SizedBox(height: 16),
             ],
 
+            // Aviasales is a paid partner, so its button leads, drawn solid
+            // with its logo. One search covers both tickets of an open-jaw
+            // trip. The Google Flights button below stays: the fare shown on
+            // this card is Google's.
+            if (fs.aviasalesUrl.isNotEmpty) ...[
+              SizedBox(
+                width: double.infinity,
+                child: PartnerPill(
+                  logoAsset: 'assets/images/aviasales_logo.png',
+                  fallbackIcon: Icons.flight_rounded,
+                  label: _aviasalesLabel(fs),
+                  onTap: () => _launchUrl(context, fs.aviasalesUrl),
+                  expand: true,
+                ),
+              ),
+              if (fs.bookingUrl.isNotEmpty) const SizedBox(height: 8),
+            ],
+
             // Action Button: Direct Booking Link
             if (fs.bookingUrl.isNotEmpty) ...[
               Builder(
@@ -967,6 +986,26 @@ class FlightStrategiesSection extends StatelessWidget {
                     route: fs.route,
                     airlines: fs.airlines,
                   );
+                  if (fs.aviasalesUrl.isNotEmpty) {
+                    return SizedBox(
+                      width: double.infinity,
+                      height: 44,
+                      child: OutlinedButton.icon(
+                        onPressed: () => _launchUrl(context, deepUrl),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.black,
+                          side: const BorderSide(color: Colors.black26),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        ),
+                        icon: const Icon(Icons.open_in_new_rounded, size: 16),
+                        label: Text(
+                          fs.isOpenJaw ? 'Check outbound on $provider' : 'Check on $provider',
+                          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    );
+                  }
                   final logoPath = _getProviderLogoPath(provider);
                   return SizedBox(
                     width: double.infinity,
@@ -1033,7 +1072,8 @@ class FlightStrategiesSection extends StatelessWidget {
                     ),
                     icon: const Icon(Icons.flight_land_rounded, size: 16),
                     label: Text(
-                      'Book Return${fs.returnRoute.isNotEmpty ? ' (${fs.returnRoute})' : ''}',
+                      '${fs.aviasalesUrl.isNotEmpty ? 'Check return' : 'Book Return'}'
+                      '${fs.returnRoute.isNotEmpty ? ' (${fs.returnRoute})' : ''}',
                       style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -1045,6 +1085,13 @@ class FlightStrategiesSection extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  /// "Book on Aviasales"; "Book both flights …" when it is two tickets; and
+  /// "Find live fares …" when the fare on the card is only an estimate.
+  static String _aviasalesLabel(FlightStrategy fs) {
+    if (!fs.isLivePrice) return 'Find live fares on Aviasales';
+    return fs.isOpenJaw ? 'Book both flights on Aviasales' : 'Book on Aviasales';
   }
 
   /// Returns the asset path for a provider logo, or null if none exists yet.

@@ -739,3 +739,55 @@ def test_the_tip_shows_the_range():
     assert row["tip"] == "Take the metro. Private car: USD 17–24 with GetTransfer, about 24 min."
     assert row["cost"] == "USD 4"
     assert entry["amount"] == "USD 17–24"
+
+
+# ── Pickup and drop-off filled in on GetTransfer's page (2026-09-29) ─────────
+
+def _page_query(link: str) -> dict:
+    import urllib.parse as up
+    outer = up.parse_qs(up.urlparse(link).query)
+    inner = up.urlparse(outer["u"][0])
+    return {k: v[0] for k, v in up.parse_qs(inner.query).items()}
+
+
+def test_the_link_names_both_ends_of_the_ride():
+    link = gettransfer.booking_link(
+        "economy", marker="781739", project_id="577812",
+        from_name="Adolfo Suárez Madrid-Barajas Airport", to_name="Hotel Villa Real, Madrid",
+    )
+    q = _page_query(link)
+    assert q["from_name"] == "Adolfo Suárez Madrid-Barajas Airport"
+    assert q["to_name"] == "Hotel Villa Real, Madrid"
+    assert q["transfer_type"] == "route" and q["transport_type_ids[]"] == "economy"
+
+
+def test_the_drop_off_is_the_cheapest_hotel_in_that_city():
+    meta = {"hotel_strategies": {"strategies": [
+        {"name": "Grand Palace", "price_per_night": "USD 240", "leg_index": 0, "city": "Madrid"},
+        {"name": "Hotel Villa Real", "price_per_night": "USD 101", "leg_index": 0, "city": "Madrid"},
+        {"name": "Hotel Arts", "price_per_night": "USD 90", "leg_index": 3, "city": "Barcelona"},
+    ]}}
+    assert enrich._hotel_for_leg(meta, 0, "Madrid") == "Hotel Villa Real, Madrid"
+    assert enrich._hotel_for_leg(meta, 3, "Barcelona") == "Hotel Arts, Barcelona"
+    assert enrich._hotel_for_leg({}, 0, "Madrid") == ""
+
+
+def test_an_airport_is_named_in_full():
+    assert enrich._airport_full_name({"iata": "MAD", "name": "Madrid Barajas"}) == "Madrid Barajas"
+    assert "Barajas" in enrich._airport_full_name({"iata": "MAD"})
+    assert enrich._airport_full_name({"iata": "ZZQ"}) == "ZZQ airport"
+
+
+def test_live_links_open_with_the_ride_filled_in(world, monkeypatch, providers):
+    _ids_and_switches(monkeypatch, gettransfer="live")
+    _with_transfer_stops(world, monkeypatch)
+    _, meta, days = e2e.run(world)
+    arrive = _page_query(_stop(days, "Transfer: DEL airport → Delhi")["booking_url"])
+    leave = _page_query(_stop(days, "Transfer: Agra → DEL airport")["booking_url"])
+    # In: the airport, then the first city's hotel (or the city). Out: reversed.
+    assert "DEL" in arrive["from_name"] or "Indira" in arrive["from_name"]
+    assert arrive["to_name"]
+    assert leave["to_name"] == arrive["from_name"]
+    assert leave["from_name"]
+    row = next(r for r in meta["booking_plan"] if r["item"].startswith("GetTransfer"))
+    assert _page_query(row["url"])["from_name"] == arrive["from_name"]
