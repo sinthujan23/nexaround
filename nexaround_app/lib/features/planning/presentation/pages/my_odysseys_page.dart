@@ -219,7 +219,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
             Icon(
               icon,
               size: 15,
-              color: isSelected ? Colors.white : const Color(0xFF64748B),
+              color: isSelected ? Colors.white : const Color(0xFF1E293B),
             ),
             const SizedBox(width: 6),
             Flexible(
@@ -229,8 +229,8 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   fontSize: 12.5,
-                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
-                  color: isSelected ? Colors.white : const Color(0xFF64748B),
+                  fontWeight: FontWeight.w700,
+                  color: isSelected ? Colors.white : const Color(0xFF1E293B),
                 ),
               ),
             ),
@@ -242,8 +242,11 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
                     ? (index == 0
                         ? AppColors.brandGreen
                         : const Color(0xFF00E5FF).withValues(alpha: 0.25))
-                    : const Color(0xFFE2E8F0),
+                    : Colors.white,
                 borderRadius: BorderRadius.circular(8),
+                border: isSelected
+                    ? null
+                    : Border.all(color: const Color(0xFFCBD5E1), width: 0.8),
               ),
               child: Text(
                 badgeText,
@@ -252,7 +255,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
                   fontWeight: FontWeight.w800,
                   color: isSelected
                       ? (index == 0 ? Colors.white : const Color(0xFF00E5FF))
-                      : const Color(0xFF64748B),
+                      : const Color(0xFF1E293B),
                 ),
               ),
             ),
