@@ -41,7 +41,27 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
   bool _isDeletingStory = false;
   final Set<String> _expandedStoryIds = {};
 
-  int _currentImageIndex = 0;
+  /// Which photo each story is on, by story id; a story missing here is on
+  /// its first. Kept per story because while one page slides out and the
+  /// next slides in, both are on screen: the one leaving keeps its photo,
+  /// the one arriving shows its first. A single index for both pointed past
+  /// the end of a story with fewer photos, which flashed the error screen.
+  final Map<String, int> _imageIndexes = {};
+
+  int _imageIndexOf(TravelStory story) {
+    final count = story.imageUrls.isNotEmpty ? story.imageUrls.length : 1;
+    return (_imageIndexes[story.id] ?? 0).clamp(0, count - 1);
+  }
+
+  String _imageUrlOf(TravelStory story) => story.imageUrls.isNotEmpty
+      ? story.imageUrls[_imageIndexOf(story)]
+      : story.imageUrl;
+
+  int get _currentImageIndex => _imageIndexOf(widget.stories[_currentIndex]);
+
+  set _currentImageIndex(int index) =>
+      _imageIndexes[widget.stories[_currentIndex].id] = index;
+
   Timer? _storyTimer;
   bool _isPaused = false;
 
@@ -601,7 +621,7 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
                                   child: Stack(
                                     fit: StackFit.expand,
                                     children: [
-                                      _buildMainImage(story.imageUrls.isNotEmpty ? story.imageUrls[_currentImageIndex] : story.imageUrl),
+                                      _buildMainImage(_imageUrlOf(story)),
                                       // Left tap area to go to previous story
                                       Positioned(
                                         left: 0,
