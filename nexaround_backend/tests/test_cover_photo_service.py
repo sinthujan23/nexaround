@@ -1,6 +1,6 @@
 """Cover-photo selection. No network: which of a place's photos becomes the
 cover, and how the cache is keyed."""
-from app.services.cover_photo_service import _key, _pick_photo
+from app.services.cover_photo_service import _key, _pick_photo, _get_iconic_query
 
 
 def test_pick_prefers_largest_landscape():
@@ -24,3 +24,20 @@ def test_pick_falls_back_to_first_when_all_portrait():
 def test_cache_key_is_case_and_whitespace_insensitive():
     assert _key("  New York ") == _key("new york")
     assert _key("Paris") != _key("Paris, France")
+
+
+def test_iconic_query_for_famous_destinations():
+    assert "Eiffel Tower" in _get_iconic_query("Paris")
+    assert "Eiffel Tower" in _get_iconic_query("Paris, France")
+    assert "Colosseum" in _get_iconic_query("Rome, Italy")
+    assert "Statue of Liberty" in _get_iconic_query("New York, USA")
+    assert "Sigiriya Lion Rock" in _get_iconic_query("Sigiriya, Sri Lanka")
+    assert "Lotus Tower" in _get_iconic_query("Colombo")
+
+
+def test_iconic_query_dynamic_fallback():
+    query = _get_iconic_query("Hobart", country="Australia")
+    assert "Hobart" in query
+    assert "Australia" in query
+    assert "landmark" in query
+
