@@ -16,7 +16,8 @@ Each provider follows its switch in the admin panel (`config.mode`):
             adds a search link to each flight option and points the Booking
             Plan's flight row at it; its fares are never used. WeGoTrip adds
             a ticket line and link to the sights it sells tickets for, and
-            Klook a "Things to do in <city>" row for the cities it does not
+            Klook a "Things to do in <city>" row for the cities it does not.
+            Go City adds a sightseeing-pass row for its big cities
 
 Nothing here may cost a plan: every failure leaves the plan as Gemini wrote it.
 Prices are shown, never added to the budget, which is computed before this
@@ -32,7 +33,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from app.services import airports_service
-from app.services.providers import airalo, aviasales, config, gettransfer, klook, wegotrip
+from app.services.providers import airalo, aviasales, config, gettransfer, gocity, klook, wegotrip
 from app.services.providers.money import format_amount, format_range, usd_rate
 
 logger = logging.getLogger(__name__)
@@ -84,7 +85,7 @@ async def start(
 ) -> Optional[Pending]:
     """Begin every fetch this plan's switches allow. None when all are off."""
     try:
-        modes = {p: await config.mode(p) for p in ("gettransfer", "airalo", "aviasales", "wegotrip", "klook")}
+        modes = {p: await config.mode(p) for p in ("gettransfer", "airalo", "aviasales", "wegotrip", "klook", "gocity")}
     except Exception as e:
         logger.warning("providers: could not read switches: %s", e)
         return None
@@ -104,7 +105,7 @@ async def start(
             _timed(airalo.offer_for(country_name, country_code, days))
         )
     cities = [str(leg.get("city") or "") for leg in legs or [] if isinstance(leg, dict) and leg.get("city")]
-    if cities and (modes["wegotrip"] != config.OFF or modes["klook"] != config.OFF):
+    if cities and any(modes[p] != config.OFF for p in ("wegotrip", "klook", "gocity")):
         pending.legs, pending.country = list(legs or []), country_name
     if modes["wegotrip"] != config.OFF and cities:
         pending.tasks["wegotrip"] = asyncio.create_task(
@@ -248,6 +249,14 @@ async def _finish(pending: Pending, day_items, meta, *, currency: str, travelers
                 m.get("city") for m in tickets.get("matched") or []
             } if tickets.get("mode") == config.LIVE else set(),
             live=pending.modes["klook"] == config.LIVE,
+            marker=await config.setting(config.TRAVELPAYOUTS_MARKER),
+            project_id=await config.setting(config.TRAVELPAYOUTS_PROJECT_ID),
+        )
+
+    if pending.modes.get("gocity", config.OFF) != config.OFF and pending.legs:
+        audit["gocity"] = _apply_gocity(
+            meta, pending,
+            live=pending.modes["gocity"] == config.LIVE,
             marker=await config.setting(config.TRAVELPAYOUTS_MARKER),
             project_id=await config.setting(config.TRAVELPAYOUTS_PROJECT_ID),
         )
@@ -433,6 +442,32 @@ def _apply_klook(meta: dict, pending: Pending, *, covered: set, live: bool, mark
     rows += [klook.plan_item(city, links[city]) for city in cities]
     meta["booking_plan"] = rows
     entry["rows"] = len(cities)
+    return entry
+
+
+# ── Sightseeing passes in big cities ─────────────────────────────────────────
+
+def _apply_gocity(meta: dict, pending: Pending, *, live: bool, marker: str, project_id: str) -> dict:
+    """A "Go City pass for New York" row in the Booking Plan for each Go City
+    city the plan spends at least two days in (at most two).
+
+    Shown beside WeGoTrip's single tickets, not instead: a pass is the better
+    buy only for someone visiting several paid sights, which the traveller
+    judges on Go City's own price page. Rows from an earlier pass are replaced.
+    """
+    slugs = gocity.cities_to_link(pending.legs)
+    links = {slug: gocity.booking_link(slug, marker=marker, project_id=project_id) for slug in slugs}
+    entry: dict = {"mode": config.LIVE if live else config.SHADOW, "cities": slugs}
+    if not live:
+        entry["links"] = links
+        return entry
+    rows = [
+        r for r in (meta.get("booking_plan") or [])
+        if not (isinstance(r, dict) and gocity.is_gocity_link(str(r.get("url") or "")))
+    ]
+    rows += [gocity.plan_item(slug, links[slug]) for slug in slugs]
+    meta["booking_plan"] = rows
+    entry["rows"] = len(slugs)
     return entry
 
 

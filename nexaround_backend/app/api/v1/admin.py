@@ -83,6 +83,7 @@ class SettingsResponse(BaseModel):
     provider_mode_wegotrip: str = "off"
     provider_mode_aviasales: str = "off"
     provider_mode_klook: str = "off"
+    provider_mode_gocity: str = "off"
 
 ProviderMode = Literal["off", "shadow", "live"]
 
@@ -105,6 +106,7 @@ class SettingsUpdateRequest(BaseModel):
     provider_mode_wegotrip: Optional[ProviderMode] = None
     provider_mode_aviasales: Optional[ProviderMode] = None
     provider_mode_klook: Optional[ProviderMode] = None
+    provider_mode_gocity: Optional[ProviderMode] = None
 
 
 # --- Dependency to protect admin routes ---

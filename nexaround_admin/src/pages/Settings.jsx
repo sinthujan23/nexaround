@@ -50,6 +50,7 @@ const PROVIDER_FIELDS = {
   provider_mode_wegotrip: 'off',
   provider_mode_aviasales: 'off',
   provider_mode_klook: 'off',
+  provider_mode_gocity: 'off',
 };
 
 const PROVIDER_SWITCHES = [
@@ -58,6 +59,7 @@ const PROVIDER_SWITCHES = [
   { key: 'provider_mode_wegotrip', name: 'WeGoTrip', use: 'Tour & ticket prices, ratings, photos' },
   { key: 'provider_mode_aviasales', name: 'Aviasales', use: 'Book on Aviasales link on flights (no prices)' },
   { key: 'provider_mode_klook', name: 'Klook', use: 'Things-to-do link for cities WeGoTrip has no tickets in' },
+  { key: 'provider_mode_gocity', name: 'Go City', use: 'Sightseeing-pass link for big cities (2+ days)' },
 ];
 
 function SecretField({ label, tag, value, onChange, placeholder }) {
