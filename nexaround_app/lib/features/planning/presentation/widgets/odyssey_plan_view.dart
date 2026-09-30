@@ -517,6 +517,8 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
             _buildPracticalInfoSection(context),
           if (widget.odyssey.bookingPlan.isNotEmpty)
             _buildBookingPlanSection(context),
+          if (_dynamicPartners.isNotEmpty)
+            _buildOverviewBookingPartnersSection(context),
         ],
       ),
     );
@@ -696,6 +698,60 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
               for (final item in grouped[orderedLabels[li]]!)
                 _bookingPlanItemRow(context, item),
             ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOverviewBookingPartnersSection(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.black12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          initiallyExpanded: false,
+          tilePadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
+          childrenPadding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
+          leading: Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: AppColors.brandGreen.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(Icons.handshake_rounded, color: AppColors.brandGreen, size: 20),
+          ),
+          title: const Text(
+            'Booking Partners & Websites',
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          subtitle: const Text(
+            'Flights, transfers, eSIM, tickets & passes',
+            style: TextStyle(
+              fontSize: 12,
+              color: AppColors.textSecondary,
+            ),
+          ),
+          children: [
+            const Divider(height: 1, color: Colors.black12),
+            const SizedBox(height: 14),
+            _buildBookingSection(context, _dynamicPartners),
           ],
         ),
       ),
@@ -977,18 +1033,180 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
 
   /// The booking partners worth a card: only real integrations, which today
   /// means the Airalo eSIM card the backend adds (type "esim").
-  ///
-  /// The client asked for the rest to go (2026-09-28: "this part doesn't
-  /// work, and since we are tying up with Travelpayouts it's not relevant
-  /// anymore"). Gemini wrote Booking.com, Viator and Skyscanner homepages
-  /// into every plan, and this list also added Uber, PickMe or Grab whenever
-  /// an activity's text happened to contain the word ("grab a coffee" gave an
-  /// Andorra trip a Grab card) — and opened Google Flights for them. Ride apps
-  /// now appear as buttons under each transport stop instead. Filtering here
-  /// also cleans plans saved before the backend stopped sending those.
-  List<OdysseyBookingPartner> get _dynamicPartners => widget.odyssey.bookingPartners
-      .where((p) => p.type.trim().toLowerCase() == 'esim')
-      .toList();
+  /// The official monetized partners we have affiliate partnerships with through
+  /// Travelpayouts: Aviasales (Flights), GetTransfer (Airport Car), Airalo (eSIM),
+  /// WeGoTrip (Sight Tickets), Klook (Things to Do), and Go City (City Passes).
+  List<OdysseyBookingPartner> get _dynamicPartners {
+    final Map<String, OdysseyBookingPartner> partnersByBrand = {};
+
+    void addPartner(String brandKey, OdysseyBookingPartner partner) {
+      if (!partnersByBrand.containsKey(brandKey) && partner.url.trim().isNotEmpty) {
+        partnersByBrand[brandKey] = partner;
+      }
+    }
+
+    // 1. From widget.odyssey.bookingPartners (from backend enrich)
+    for (final bp in widget.odyssey.bookingPartners) {
+      final nameLower = bp.name.toLowerCase();
+      final typeLower = bp.type.toLowerCase();
+      if (nameLower.contains('airalo') || typeLower == 'esim') {
+        addPartner('airalo', bp);
+      } else if (nameLower.contains('aviasales') || typeLower.contains('flight')) {
+        addPartner('aviasales', bp);
+      } else if (nameLower.contains('gettransfer') || typeLower.contains('transfer') || typeLower.contains('car')) {
+        addPartner('gettransfer', bp);
+      } else if (nameLower.contains('wegotrip') || typeLower.contains('ticket')) {
+        addPartner('wegotrip', bp);
+      } else if (nameLower.contains('klook') || typeLower.contains('tour') || typeLower.contains('activit')) {
+        addPartner('klook', bp);
+      } else if (nameLower.contains('gocity') || nameLower.contains('go city') || typeLower.contains('pass')) {
+        addPartner('gocity', bp);
+      }
+    }
+
+    // 2. Synthesize fallbacks for existing/saved Odysseys:
+    // Airalo
+    if (!partnersByBrand.containsKey('airalo')) {
+      final url = widget.odyssey.practicalInfo.connectivityUrl;
+      if (url.isNotEmpty) {
+        addPartner('airalo', OdysseyBookingPartner(
+          name: 'Airalo eSIM',
+          type: 'esim',
+          url: url,
+        ));
+      }
+    }
+
+    // Aviasales
+    if (!partnersByBrand.containsKey('aviasales')) {
+      String flightUrl = '';
+      for (final fs in widget.odyssey.flightStrategies) {
+        if (fs.aviasalesUrl.isNotEmpty) {
+          flightUrl = fs.aviasalesUrl;
+          break;
+        }
+      }
+      if (flightUrl.isEmpty) {
+        for (final item in widget.odyssey.bookingPlan) {
+          if (item.url.contains('aviasales') || (item.url.contains('tp.media') && item.url.contains('p=4114'))) {
+            flightUrl = item.url;
+            break;
+          }
+        }
+      }
+      if (flightUrl.isNotEmpty) {
+        addPartner('aviasales', OdysseyBookingPartner(
+          name: 'Aviasales Flights',
+          type: 'flights',
+          url: flightUrl,
+        ));
+      }
+    }
+
+    // GetTransfer
+    if (!partnersByBrand.containsKey('gettransfer')) {
+      String transferUrl = '';
+      for (final day in widget.odyssey.dayPlans) {
+        for (final act in day.activities) {
+          if (act.bookingUrl.contains('gettransfer') || (act.bookingUrl.contains('tp.media') && act.bookingUrl.contains('p=4439'))) {
+            transferUrl = act.bookingUrl;
+            break;
+          }
+        }
+        if (transferUrl.isNotEmpty) break;
+      }
+      if (transferUrl.isEmpty) {
+        for (final item in widget.odyssey.bookingPlan) {
+          if (item.url.contains('gettransfer') || (item.url.contains('tp.media') && item.url.contains('p=4439'))) {
+            transferUrl = item.url;
+            break;
+          }
+        }
+      }
+      if (transferUrl.isNotEmpty) {
+        addPartner('gettransfer', OdysseyBookingPartner(
+          name: 'GetTransfer Airport Car',
+          type: 'transfer',
+          url: transferUrl,
+        ));
+      }
+    }
+
+    // WeGoTrip
+    if (!partnersByBrand.containsKey('wegotrip')) {
+      String ticketUrl = '';
+      for (final day in widget.odyssey.dayPlans) {
+        for (final act in day.activities) {
+          if (act.bookingUrl.contains('wegotrip') || (act.bookingUrl.contains('tp.media') && act.bookingUrl.contains('p=4487'))) {
+            ticketUrl = act.bookingUrl;
+            break;
+          }
+        }
+        if (ticketUrl.isNotEmpty) break;
+      }
+      if (ticketUrl.isEmpty) {
+        for (final item in widget.odyssey.bookingPlan) {
+          if (item.url.contains('wegotrip') || (item.url.contains('tp.media') && item.url.contains('p=4487'))) {
+            ticketUrl = item.url;
+            break;
+          }
+        }
+      }
+      if (ticketUrl.isNotEmpty) {
+        addPartner('wegotrip', OdysseyBookingPartner(
+          name: 'WeGoTrip Sight Tickets',
+          type: 'tickets',
+          url: ticketUrl,
+        ));
+      }
+    }
+
+    // Klook
+    if (!partnersByBrand.containsKey('klook')) {
+      String klookUrl = '';
+      for (final item in widget.odyssey.bookingPlan) {
+        if (item.url.contains('klook') || (item.url.contains('tp.media') && item.url.contains('p=4110'))) {
+          klookUrl = item.url;
+          break;
+        }
+      }
+      if (klookUrl.isNotEmpty) {
+        addPartner('klook', OdysseyBookingPartner(
+          name: 'Klook Experiences',
+          type: 'tours',
+          url: klookUrl,
+        ));
+      }
+    }
+
+    // Go City
+    if (!partnersByBrand.containsKey('gocity')) {
+      String gocityUrl = '';
+      for (final item in widget.odyssey.bookingPlan) {
+        if (item.url.contains('gocity') || (item.url.contains('tp.media') && item.url.contains('p=1942'))) {
+          gocityUrl = item.url;
+          break;
+        }
+      }
+      if (gocityUrl.isNotEmpty) {
+        addPartner('gocity', OdysseyBookingPartner(
+          name: 'Go City Pass',
+          type: 'passes',
+          url: gocityUrl,
+        ));
+      }
+    }
+
+    // Return in consistent, logical order
+    const priorityOrder = ['aviasales', 'gettransfer', 'airalo', 'wegotrip', 'klook', 'gocity'];
+    final result = <OdysseyBookingPartner>[];
+    for (final key in priorityOrder) {
+      if (partnersByBrand.containsKey(key)) {
+        result.add(partnersByBrand[key]!);
+      }
+    }
+    return result;
+  }
 
   Widget _buildStaysTab(BuildContext context) {
     return SingleChildScrollView(
@@ -4294,28 +4512,15 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
   }
 
 
-  /// Returns the asset image path for a known provider, or null if no logo exists yet.
+  /// Returns the asset image path for our 6 official monetized providers, or null.
   static String? _getPartnerLogoPath(String providerName) {
     final name = providerName.toLowerCase().trim();
-    if (name.contains('booking')) return 'assets/images/booking_logo.jpg';
-    if (name.contains('uber')) return 'assets/images/uber_logo.png';
-    if (name.contains('getyourguide')) return 'assets/images/getyourguide.png';
-    if (name.contains('viator')) return 'assets/images/viator.png';
-    if (name.contains('skyscanner')) return 'assets/images/skyscanner.png';
-    // The "Airalo eSIM" card the backend adds to every plan (providers/enrich.py).
     if (name.contains('airalo')) return 'assets/images/airalo_logo.png';
-    // Future logos — return null until assets are added:
-    // if (name.contains('agoda')) return 'assets/images/agoda_logo.png';
-    // if (name.contains('klook')) return 'assets/images/klook_logo.png';
-    // if (name.contains('grab')) return 'assets/images/grab_logo.png';
-    // if (name.contains('expedia')) return 'assets/images/expedia_logo.png';
-    // if (name.contains('airbnb')) return 'assets/images/airbnb_logo.png';
-    // if (name.contains('kayak')) return 'assets/images/kayak_logo.png';
-    // if (name.contains('google')) return 'assets/images/google_travel_logo.png';
-    // if (name.contains('ostrovok')) return 'assets/images/ostrovok_logo.png';
-    // if (name.contains('pickme')) return 'assets/images/pickme_logo.png';
-    // if (name.contains('yandex')) return 'assets/images/yandex_logo.png';
-    // if (name.contains('hotels.com')) return 'assets/images/hotelscom_logo.png';
+    if (name.contains('aviasales')) return 'assets/images/aviasales_logo.png';
+    if (name.contains('gettransfer')) return 'assets/images/gettransfer_logo.png';
+    if (name.contains('wegotrip')) return 'assets/images/wegotrip_logo.png';
+    if (name.contains('klook')) return 'assets/images/klook_logo.png';
+    if (name.contains('gocity') || name.contains('go city')) return 'assets/images/gocity_logo.png';
     return null;
   }
 
@@ -4324,7 +4529,7 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
       return const SizedBox.shrink();
     }
 
-    final dest = widget.odyssey.destination.isNotEmpty ? widget.odyssey.destination : 'Anywhere';
+    final dest = widget.odyssey.destination.isNotEmpty ? widget.odyssey.destination : 'Your Destination';
 
     return Column(
       children: partners.map((bp) {
@@ -4333,100 +4538,52 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
         final nameLower = bp.name.toLowerCase();
         final String? logoPath = _getPartnerLogoPath(bp.name);
         
-        // Deduce Icon (fallback when no logo asset exists)
         IconData icon = Icons.bookmark_rounded;
-        if (type == 'hotels') {
-          icon = Icons.hotel_rounded;
-        } else if (type == 'tours') {
-          icon = Icons.local_activity_rounded;
-        } else if (type == 'transit') {
-          if (nameLower.contains('flight') || 
-              nameLower.contains('aviasales') ||
-              nameLower.contains('skyscanner')) {
-            icon = Icons.flight_takeoff_rounded;
-          } else {
-            icon = Icons.directions_car_rounded;
-          }
-        }
-
-        // Deduce Brand Color
-        Color color = const Color(0xFF007A7C); // Default Theme Teal
-        if (nameLower.contains('agoda')) {
-          color = const Color(0xFF8E24AA); // Purple
-        } else if (nameLower.contains('ostrovok')) {
-          color = const Color(0xFFFF5722); // Orange-Red
-        } else if (nameLower.contains('booking')) {
-          color = const Color(0xFF003580); // Blue
-        } else if (nameLower.contains('getyourguide')) {
-          color = const Color(0xFFFF595D); // GYG Red-Orange
-        } else if (nameLower.contains('klook')) {
-          color = const Color(0xFFFF5B00); // Klook Orange
-        } else if (nameLower.contains('viator')) {
-          color = const Color(0xFF00A680); // Viator Green
-        } else if (nameLower.contains('pickme')) {
-          color = const Color(0xFFFBC02D); // Yellow
-        } else if (nameLower.contains('grab')) {
-          color = const Color(0xFF00B14F); // Grab Green
-        } else if (nameLower.contains('yandex')) {
-          color = const Color(0xFFFFCC00); // Yandex Yellow
-        } else if (nameLower.contains('skyscanner')) {
-          color = const Color(0xFF077078); // Skyscanner Teal
-        } else if (nameLower.contains('uber')) {
-          color = Colors.black; // Uber Black
-        }
-
-        final bool isHotelCategory = type.contains('hotel') || type.contains('stay') || type.contains('accommodation') || nameLower.contains('booking') || nameLower.contains('agoda') || nameLower.contains('expedia') || nameLower.contains('ostrovok');
-        final bool isFlightCategory = type.contains('transit') || type.contains('flight') || type.contains('transport') || nameLower.contains('skyscanner') || nameLower.contains('aviasales') || nameLower.contains('kayak');
-        final bool isTourCategory = type.contains('tour') || type.contains('activity') || type.contains('experience') || nameLower.contains('viator') || nameLower.contains('getyourguide') || nameLower.contains('klook');
-
-        // Deduce Subtitle
+        Color color = AppColors.brandGreen;
         String subtitle = 'Find services for $dest via ${bp.name}';
-        if (isHotelCategory) {
-          subtitle = 'Book top-rated stays in $dest via ${bp.name}';
-        } else if (isTourCategory) {
-          subtitle = 'Explore local experiences in $dest via ${bp.name}';
-        } else if (isFlightCategory) {
-          subtitle = 'Get rides or check transit in $dest via ${bp.name}';
+
+        if (nameLower.contains('airalo') || type == 'esim') {
+          icon = Icons.sim_card_outlined;
+          color = const Color(0xFFE54353);
+          subtitle = 'eSIM mobile data for $dest via Airalo';
+        } else if (nameLower.contains('aviasales') || type.contains('flight')) {
+          icon = Icons.flight_takeoff_rounded;
+          color = const Color(0xFF0072D2);
+          subtitle = 'Search & compare flights to $dest via Aviasales';
+        } else if (nameLower.contains('gettransfer') || type.contains('transfer') || type.contains('car')) {
+          icon = Icons.directions_car_rounded;
+          color = const Color(0xFF1B84FF);
+          subtitle = 'Private airport & city transfers in $dest via GetTransfer';
+        } else if (nameLower.contains('wegotrip') || type.contains('ticket')) {
+          icon = Icons.confirmation_number_outlined;
+          color = const Color(0xFF6C5CE7);
+          subtitle = 'Museum tickets & audio tours in $dest via WeGoTrip';
+        } else if (nameLower.contains('klook') || type.contains('tour') || type.contains('activit')) {
+          icon = Icons.local_activity_rounded;
+          color = const Color(0xFFFF5B00);
+          subtitle = 'Tours, day trips & activities in $dest via Klook';
+        } else if (nameLower.contains('gocity') || nameLower.contains('go city') || type.contains('pass')) {
+          icon = Icons.card_membership_rounded;
+          color = const Color(0xFF00A389);
+          subtitle = 'Sightseeing & attraction passes in $dest via Go City';
         }
 
-        // Build a destination-aware URL through the helper instead of
-        // using the raw AI URL which often has empty search fields.
         String resolvedUrl = bp.url;
-        if (isHotelCategory) {
-          resolvedUrl = BookingUrlHelper.buildHotelUrl(
-            rawUrl: bp.url,
-            providerName: bp.name,
-            hotelName: '',
-            destination: dest,
-            checkInDate: widget.odyssey.startDate ?? '',
-            checkOutDate: widget.odyssey.endDate ?? '',
-            travelers: widget.odyssey.travelers,
-          );
-        } else if (isFlightCategory) {
-          resolvedUrl = BookingUrlHelper.buildFlightUrl(
-            rawUrl: bp.url,
-            providerName: bp.name,
-            strategyTitle: '',
-            destination: dest,
-            departureCity: widget.odyssey.departureCity,
-            startDate: widget.odyssey.startDate ?? '',
-            endDate: widget.odyssey.endDate ?? '',
-            travelers: widget.odyssey.travelers,
-          );
-        } else if (isTourCategory) {
-          resolvedUrl = BookingUrlHelper.buildToursUrl(
-            rawUrl: bp.url,
-            providerName: bp.name,
-            destination: dest,
-          );
-        } else {
-          // Additional fallback by provider name
-          if (nameLower.contains('viator') || nameLower.contains('getyourguide') || nameLower.contains('klook')) {
-            resolvedUrl = BookingUrlHelper.buildToursUrl(rawUrl: bp.url, providerName: bp.name, destination: dest);
-          } else if (nameLower.contains('skyscanner') || nameLower.contains('aviasales') || nameLower.contains('kayak')) {
-            resolvedUrl = BookingUrlHelper.buildFlightUrl(rawUrl: bp.url, providerName: bp.name, strategyTitle: '', destination: dest, departureCity: widget.odyssey.departureCity, startDate: widget.odyssey.startDate ?? '', endDate: widget.odyssey.endDate ?? '', travelers: widget.odyssey.travelers);
-          } else if (nameLower.contains('booking') || nameLower.contains('agoda')) {
-            resolvedUrl = BookingUrlHelper.buildHotelUrl(rawUrl: bp.url, providerName: bp.name, hotelName: '', destination: dest, checkInDate: widget.odyssey.startDate ?? '', checkOutDate: widget.odyssey.endDate ?? '', travelers: widget.odyssey.travelers);
+        final bool isTracked = bp.url.contains('tp.media') || bp.url.contains('marker=');
+        if (!isTracked) {
+          if (nameLower.contains('klook')) {
+            resolvedUrl = BookingUrlHelper.buildToursUrl(rawUrl: bp.url, providerName: 'Klook', destination: dest);
+          } else if (nameLower.contains('aviasales')) {
+            resolvedUrl = BookingUrlHelper.buildFlightUrl(
+              rawUrl: bp.url,
+              providerName: 'Aviasales',
+              strategyTitle: '',
+              destination: dest,
+              departureCity: widget.odyssey.departureCity,
+              startDate: widget.odyssey.startDate ?? '',
+              endDate: widget.odyssey.endDate ?? '',
+              travelers: widget.odyssey.travelers,
+            );
           }
         }
 
@@ -4440,7 +4597,7 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
             color: color,
             url: resolvedUrl,
             logoPath: logoPath,
-            isAiGenerated: true,
+            isAiGenerated: false,
           ),
         );
       }).toList(),

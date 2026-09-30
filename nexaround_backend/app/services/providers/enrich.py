@@ -190,12 +190,14 @@ async def _finish(pending: Pending, day_items, meta, *, currency: str, travelers
         shown = [(k, e) for k, e in entry.items() if isinstance(e, dict) and e.get("applied")]
         if live and shown:
             first_kind, first = shown[0]
+            transfer_link = link_for(str(first.get("car_class") or ""), pending.transfers.get(first_kind))
             _add_plan_item(meta, {
                 "label": "BOOK CLOSER TO TRAVEL",
                 "item": f"GetTransfer private car: {first['route']}, {first['amount']} one way",
                 "reason": "Optional. Book once your flight times are fixed.",
-                "url": link_for(str(first.get("car_class") or ""), pending.transfers.get(first_kind)),
+                "url": transfer_link,
             })
+            _add_partner(meta, "GetTransfer Airport Car", "transfer", transfer_link)
 
     if pending.modes["airalo"] != config.OFF:
         live = pending.modes["airalo"] == config.LIVE
@@ -269,6 +271,14 @@ async def _finish(pending: Pending, day_items, meta, *, currency: str, travelers
             marker=await config.setting(config.TRAVELPAYOUTS_MARKER),
             project_id=await config.setting(config.TRAVELPAYOUTS_PROJECT_ID),
         )
+
+    # Restrict booking_partners to only our 6 monetized partners
+    if meta.get("booking_partners"):
+        monetized_brands = ("airalo", "aviasales", "gettransfer", "wegotrip", "klook", "gocity", "go city")
+        meta["booking_partners"] = [
+            p for p in meta["booking_partners"]
+            if isinstance(p, dict) and any(b in str(p.get("name") or "").lower() for b in monetized_brands)
+        ]
 
     meta["provider_audit"] = audit
     logger.info("providers: %s", audit)
@@ -397,6 +407,12 @@ async def _apply_tickets(
                 booked.setdefault(product["id"], (product, amount, link))
     if live and booked:
         entry["plan_rows"] = _add_ticket_rows(meta, list(booked.values()))
+        first_ticket = list(booked.values())[0]
+        _add_partner(meta, "WeGoTrip Sight Tickets", "tickets", first_ticket[2])
+    elif live and entry.get("matched"):
+        first_match = entry["matched"][0]
+        match_link = wegotrip.booking_link({"id": first_match["id"], "title": first_match["product"]}, marker=marker, project_id=project_id)
+        _add_partner(meta, "WeGoTrip Sight Tickets", "tickets", match_link)
     return entry
 
 
@@ -442,6 +458,9 @@ def _apply_klook(meta: dict, pending: Pending, *, covered: set, live: bool, mark
     rows += [klook.plan_item(city, links[city]) for city in cities]
     meta["booking_plan"] = rows
     entry["rows"] = len(cities)
+    if cities:
+        first_city = cities[0]
+        _add_partner(meta, "Klook Experiences", "tours", links[first_city])
     return entry
 
 
@@ -468,6 +487,9 @@ def _apply_gocity(meta: dict, pending: Pending, *, live: bool, marker: str, proj
     rows += [gocity.plan_item(slug, links[slug]) for slug in slugs]
     meta["booking_plan"] = rows
     entry["rows"] = len(slugs)
+    if slugs:
+        first_slug = slugs[0]
+        _add_partner(meta, "Go City Pass", "passes", links[first_slug])
     return entry
 
 
@@ -501,6 +523,7 @@ def _apply_flight_links(meta: dict, *, live: bool, travelers: int, marker: str, 
             option["aviasales_url"] = link
     if live and linked:
         entry["plan_row"] = _point_flight_row(meta, linked)
+        _add_partner(meta, "Aviasales Flights", "flights", linked[0][2])
     return entry
 
 
