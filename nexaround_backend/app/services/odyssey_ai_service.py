@@ -4780,26 +4780,22 @@ def _gateway_point(airport: dict | None) -> dict | None:
     return out
 
 
-def _trip_is_abroad(
+def _home_and_country(
     *,
     departure_country: str,
     departure_latitude: float | None,
     departure_longitude: float | None,
     origin_codes: str,
     geo,
-    first_leg: dict | None,
-) -> bool:
-    """True when home is in another country and too far to reach by road.
+) -> tuple[tuple[float, float] | None, bool | None]:
+    """(home's point, whether home is in the trip's country), either None if unknown.
 
-    Then the plan must not open with "Travel from <home>" — the client's
-    Dubai -> Andorra plan did, because the only rule for a trip without a
-    confirmed flight was the overland one. Home's country comes from its
-    airport first (the resolved origin, e.g. DWC is in AE), then from what the
-    traveller typed, then from the nearest airport to their coordinates.
-    Unknown answers False, which keeps the behaviour this replaced.
+    Home's country comes from its airport first (the resolved origin, e.g.
+    DWC is in AE), then from what the traveller typed, then from the nearest
+    airport to their coordinates.
     """
-    if geo is None or not getattr(geo, "resolved", False) or not first_leg:
-        return False
+    if geo is None or not getattr(geo, "resolved", False):
+        return None, None
     origin = airports_service.get(str(origin_codes or "").split(",")[0]) if origin_codes else None
     point = None
     if departure_latitude is not None and departure_longitude is not None:
@@ -4816,6 +4812,35 @@ def _trip_is_abroad(
         same = (near[0][0].country == geo.country_code) if near else None
     else:
         same = None
+    return point, same
+
+
+def _trip_is_abroad(
+    *,
+    departure_country: str,
+    departure_latitude: float | None,
+    departure_longitude: float | None,
+    origin_codes: str,
+    geo,
+    first_leg: dict | None,
+) -> bool:
+    """True when home is in another country and too far to reach by road.
+
+    Then the plan must not open with "Travel from <home>" — the client's
+    Dubai -> Andorra plan did, because the only rule for a trip without a
+    confirmed flight was the overland one. Home's country: see
+    `_home_and_country`. Unknown answers False, which keeps the behaviour this
+    replaced.
+    """
+    if geo is None or not getattr(geo, "resolved", False) or not first_leg:
+        return False
+    point, same = _home_and_country(
+        departure_country=departure_country,
+        departure_latitude=departure_latitude,
+        departure_longitude=departure_longitude,
+        origin_codes=origin_codes,
+        geo=geo,
+    )
     if same is None or same:
         return False
 
@@ -5151,6 +5176,16 @@ async def generate_odyssey(
         geo=geo,
         first_leg=city_legs[0] if city_legs else None,
     )
+    # Travel insurance is offered on any trip to another country, a short
+    # hop over the border included (`abroad` leaves those out: it is about
+    # whether the plan may open overland from home).
+    _, home_here = _home_and_country(
+        departure_country=departure_country,
+        departure_latitude=departure_latitude,
+        departure_longitude=departure_longitude,
+        origin_codes=origin_codes or "",
+        geo=geo,
+    )
 
     # The airports the trip enters and leaves by, with coordinates. A booked
     # flight's gateways come from the route (reconciled above); a trip abroad
@@ -5205,6 +5240,7 @@ async def generate_odyssey(
         days=days,
         travelers=travelers,
         legs=city_legs,
+        international=home_here is False,
     )
 
     # 2. Build grounded prompt using confirmed live inventory

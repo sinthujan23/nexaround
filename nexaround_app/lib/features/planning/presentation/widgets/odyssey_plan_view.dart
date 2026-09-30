@@ -581,10 +581,11 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
 
   Widget _practicalInfoContent(OdysseyPracticalInfo info) {
     const connectivityTitle = 'Connectivity & SIM';
+    const safetyTitle = 'Safety & Health';
     final rows = <MapEntry<String, String>>[
       if (info.money.isNotEmpty) MapEntry('Money & Payments', info.money),
       if (info.connectivity.isNotEmpty) MapEntry(connectivityTitle, info.connectivity),
-      if (info.safety.isNotEmpty) MapEntry('Safety & Health', info.safety),
+      if (info.safety.isNotEmpty || info.safetyUrl.isNotEmpty) MapEntry(safetyTitle, info.safety),
       if (info.customs.isNotEmpty) MapEntry('Local Etiquette & Customs', info.customs),
     ];
     return Column(
@@ -605,11 +606,27 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
               color: Colors.black54,
             ),
           ),
-          const SizedBox(height: 4),
-          Text(
-            rows[i].value,
-            style: const TextStyle(fontSize: 13.5, height: 1.45, color: Colors.black87),
-          ),
+          if (rows[i].value.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              rows[i].value,
+              style: const TextStyle(fontSize: 13.5, height: 1.45, color: Colors.black87),
+            ),
+          ],
+          if (rows[i].key == safetyTitle && info.safetyUrl.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            // EKTA is a paid partner: the solid partner button, with its logo.
+            SizedBox(
+              width: double.infinity,
+              child: _partnerPill(
+                logoAsset: 'assets/images/ekta_logo.png',
+                fallbackIcon: Icons.health_and_safety_outlined,
+                label: info.safetyCta.isNotEmpty ? info.safetyCta : 'Get travel insurance',
+                onTap: () => _launchExternalUrl(info.safetyUrl),
+                expand: true,
+              ),
+            ),
+          ],
           if (rows[i].key == connectivityTitle && info.connectivityUrl.isNotEmpty) ...[
             const SizedBox(height: 10),
             // Airalo is a paid partner: the solid partner button, with its logo.
@@ -855,6 +872,7 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
         '4110': 'assets/images/klook_logo.png',
         '1942': 'assets/images/gocity_logo.png',
         '4136': 'assets/images/kiwi_logo.png',
+        '5869': 'assets/images/ekta_logo.png',
       }[uri.queryParameters['p']];
     }
     const byHost = {
@@ -865,6 +883,7 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
       'klook.com': 'assets/images/klook_logo.png',
       'gocity.com': 'assets/images/gocity_logo.png',
       'kiwi.com': 'assets/images/kiwi_logo.png',
+      'ektatraveling.com': 'assets/images/ekta_logo.png',
     };
     for (final entry in byHost.entries) {
       if (host == entry.key || host.endsWith('.${entry.key}')) return entry.value;

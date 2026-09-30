@@ -33,6 +33,13 @@ CAMPAIGN_ID = "111"
 PROMO_ID = "4136"
 DEEP_PAGE = "https://www.kiwi.com/deep"
 
+# Multi-city links ("into Sydney, home from Melbourne") are held back until
+# one is seen opening right on a phone: Travelpayouts' article writes them
+# with place slugs, and ours use airport codes. Round-trip and one-way links
+# follow the article exactly and are on; Kiwi went live on that
+# basis (2026-09-30); set True once the multi-city link is checked.
+MULTICITY_READY = False
+
 
 def deep_url(legs, *, adults=1, today=None) -> str:
     """Kiwi's deep search for these legs, or "" when they can't be searched.
@@ -46,6 +53,8 @@ def deep_url(legs, *, adults=1, today=None) -> str:
     pax = aviasales.passengers(adults)
     (origin, dest, out), rest = parts[0], parts[1:]
     if rest and not (rest[0][0] == dest and rest[0][1] == origin):
+        if not MULTICITY_READY:
+            return ""
         home_from, home_to, back = rest[0]
         query = {"multicity": f"{origin}~{dest}~{out:%Y-%m-%d}/{home_from}~{home_to}~{back:%Y-%m-%d}"}
     else:

@@ -17,8 +17,9 @@ Each provider follows its switch in the admin panel (`config.mode`):
             Plan's flight row at it; its fares are never used. WeGoTrip adds
             a ticket line and link to the sights it sells tickets for, and
             Klook a "Things to do in <city>" row for the cities it does not.
-            Go City adds a sightseeing-pass row for its big cities, and
-            Kiwi.com a second flight link beside Aviasales'
+            Go City adds a sightseeing-pass row for its big cities,
+            Kiwi.com a second flight link beside Aviasales', and EKTA a
+            travel-insurance row and button on trips to another country
 
 Nothing here may cost a plan: every failure leaves the plan as Gemini wrote it.
 Prices are shown, never added to the budget, which is computed before this
@@ -34,7 +35,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from app.services import airports_service
-from app.services.providers import airalo, aviasales, config, gettransfer, gocity, kiwi, klook, wegotrip
+from app.services.providers import airalo, aviasales, config, ekta, gettransfer, gocity, kiwi, klook, wegotrip
 from app.services.providers.money import format_amount, format_range, usd_rate
 
 logger = logging.getLogger(__name__)
@@ -73,6 +74,8 @@ class Pending:
     # realigned to the itinerary before `finish()` reads them) and country.
     legs: list = field(default_factory=list)
     country: str = ""
+    # Home is in another country than the trip: the travel-insurance offer.
+    international: bool = False
 
 
 async def start(
@@ -83,11 +86,12 @@ async def start(
     days: int,
     travelers: int,
     legs: Optional[list[dict]] = None,
+    international: bool = False,
 ) -> Optional[Pending]:
     """Begin every fetch this plan's switches allow. None when all are off."""
     try:
         modes = {p: await config.mode(p) for p in (
-            "gettransfer", "airalo", "aviasales", "wegotrip", "klook", "gocity", "kiwi",
+            "gettransfer", "airalo", "aviasales", "wegotrip", "klook", "gocity", "kiwi", "ekta",
         )}
     except Exception as e:
         logger.warning("providers: could not read switches: %s", e)
@@ -95,7 +99,7 @@ async def start(
     if all(m == config.OFF for m in modes.values()):
         return None
 
-    pending = Pending(modes=modes)
+    pending = Pending(modes=modes, international=international)
     if modes["gettransfer"] != config.OFF:
         for t in transfers:
             pending.transfers[t.kind] = t
@@ -282,6 +286,14 @@ async def _finish(pending: Pending, day_items, meta, *, currency: str, travelers
             p for p in meta["booking_partners"]
             if isinstance(p, dict) and any(b in str(p.get("name") or "").lower() for b in monetized_brands)
         ]
+
+    if pending.modes.get("ekta", config.OFF) != config.OFF and pending.international:
+        audit["ekta"] = _apply_insurance(
+            meta,
+            live=pending.modes["ekta"] == config.LIVE,
+            marker=await config.setting(config.TRAVELPAYOUTS_MARKER),
+            project_id=await config.setting(config.TRAVELPAYOUTS_PROJECT_ID),
+        )
 
     # After Aviasales, whose Booking Plan row the Kiwi row goes under.
     if pending.modes.get("kiwi", config.OFF) != config.OFF:
@@ -625,6 +637,38 @@ def _add_kiwi_row(meta: dict, options: list[dict], option: dict, legs: list, lin
         rows.insert(at + 1, row)
     meta["booking_plan"] = rows
     return at is not None
+
+
+# ── Travel insurance ─────────────────────────────────────────────────────────
+
+def _apply_insurance(meta: dict, *, live: bool, marker: str, project_id: str) -> dict:
+    """An EKTA travel-insurance row in the Booking Plan, and the "Get travel
+    insurance" button under Practical Info's Safety row, on a trip to another
+    country.
+
+    With a visa to get, the row is "BOOK NOW": many embassies ask for
+    insurance with the application. No price and no cover are named; EKTA
+    quotes both for the traveller's age and trip (see ekta.py). The button
+    reads `practical_info.safety_url` / `safety_cta`, in app builds that carry
+    it; every build opens the row.
+    """
+    visa_needed = str((meta.get("visa") or {}).get("status") or "") == "needed"
+    link = ekta.booking_link(marker=marker, project_id=project_id)
+    entry: dict = {"mode": config.LIVE if live else config.SHADOW, "visa_needed": visa_needed}
+    if not live:
+        entry["link"] = link
+        return entry
+    rows = [
+        r for r in (meta.get("booking_plan") or [])
+        if not (isinstance(r, dict) and ekta.is_ekta_link(str(r.get("url") or "")))
+    ]
+    rows.append(ekta.plan_item(link, visa_needed=visa_needed))
+    meta["booking_plan"] = rows
+    info = meta.setdefault("practical_info", {})
+    info["safety_url"] = link
+    info["safety_cta"] = ekta.BUTTON_LABEL
+    entry["applied"] = True
+    return entry
 
 
 # ── Transfers ────────────────────────────────────────────────────────────────

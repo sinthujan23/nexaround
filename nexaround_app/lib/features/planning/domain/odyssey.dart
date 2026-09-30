@@ -551,6 +551,10 @@ class OdysseyPracticalInfo {
   // eSIM offer for the destination (providers/enrich.py); empty otherwise.
   final String connectivityUrl;
   final String connectivityCta;
+  // The "Get travel insurance" button under Safety & Health (EKTA), on trips
+  // to another country; empty otherwise.
+  final String safetyUrl;
+  final String safetyCta;
 
   const OdysseyPracticalInfo({
     this.money = '',
@@ -559,6 +563,8 @@ class OdysseyPracticalInfo {
     this.customs = '',
     this.connectivityUrl = '',
     this.connectivityCta = '',
+    this.safetyUrl = '',
+    this.safetyCta = '',
   });
 
   bool get isEmpty =>
@@ -571,10 +577,12 @@ class OdysseyPracticalInfo {
         customs: (json['customs'] ?? '').toString(),
         connectivityUrl: (json['connectivity_url'] ?? '').toString(),
         connectivityCta: (json['connectivity_cta'] ?? '').toString(),
+        safetyUrl: (json['safety_url'] ?? '').toString(),
+        safetyCta: (json['safety_cta'] ?? '').toString(),
       );
 
   // The button keys are written back too: a plan the app saves must not lose
-  // its eSIM link.
+  // its eSIM or insurance link.
   Map<String, dynamic> toJson() => {
         'money': money,
         'connectivity': connectivity,
@@ -582,6 +590,8 @@ class OdysseyPracticalInfo {
         'customs': customs,
         if (connectivityUrl.isNotEmpty) 'connectivity_url': connectivityUrl,
         if (connectivityCta.isNotEmpty) 'connectivity_cta': connectivityCta,
+        if (safetyUrl.isNotEmpty) 'safety_url': safetyUrl,
+        if (safetyCta.isNotEmpty) 'safety_cta': safetyCta,
       };
 }
 

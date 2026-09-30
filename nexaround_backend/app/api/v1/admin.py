@@ -85,6 +85,7 @@ class SettingsResponse(BaseModel):
     provider_mode_klook: str = "off"
     provider_mode_gocity: str = "off"
     provider_mode_kiwi: str = "off"
+    provider_mode_ekta: str = "off"
 
 ProviderMode = Literal["off", "shadow", "live"]
 
@@ -109,6 +110,7 @@ class SettingsUpdateRequest(BaseModel):
     provider_mode_klook: Optional[ProviderMode] = None
     provider_mode_gocity: Optional[ProviderMode] = None
     provider_mode_kiwi: Optional[ProviderMode] = None
+    provider_mode_ekta: Optional[ProviderMode] = None
 
 
 # --- Dependency to protect admin routes ---

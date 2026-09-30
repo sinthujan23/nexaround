@@ -31,13 +31,18 @@ def _before_the_trips(monkeypatch):
      "https://www.kiwi.com/deep?from=DXB&to=BCN&departure=2026-11-15&return=2026-11-24&adults=2"),
     ([("DXB", "BCN", "2026-11-15")], 1,
      "https://www.kiwi.com/deep?from=DXB&to=BCN&departure=2026-11-15"),
-    ([("CMB", "MAD", "2026-10-11"), ("BCN", "CMB", "2026-10-17")], 1,
-     "https://www.kiwi.com/deep?multicity=CMB~MAD~2026-10-11/BCN~CMB~2026-10-17"),
     ([("DWC,DXB", "BCN", "2026-11-15")], 12,
      "https://www.kiwi.com/deep?from=DWC&to=BCN&departure=2026-11-15&adults=9"),
 ])
 def test_every_trip_shape_is_a_deep_search(legs, adults, url):
     assert kiwi.deep_url(legs, adults=adults) == url
+
+
+def test_a_multi_city_trip_is_held_back_until_its_link_is_checked(monkeypatch):
+    legs = [("CMB", "MAD", "2026-10-11"), ("BCN", "CMB", "2026-10-17")]
+    assert kiwi.deep_url(legs) == ""
+    monkeypatch.setattr(kiwi, "MULTICITY_READY", True)
+    assert kiwi.deep_url(legs) == "https://www.kiwi.com/deep?multicity=CMB~MAD~2026-10-11/BCN~CMB~2026-10-17"
 
 
 @pytest.mark.parametrize("legs", [
