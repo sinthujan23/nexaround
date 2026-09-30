@@ -17,7 +17,8 @@ Each provider follows its switch in the admin panel (`config.mode`):
             Plan's flight row at it; its fares are never used. WeGoTrip adds
             a ticket line and link to the sights it sells tickets for, and
             Klook a "Things to do in <city>" row for the cities it does not.
-            Go City adds a sightseeing-pass row for its big cities
+            Go City adds a sightseeing-pass row for its big cities, and
+            Kiwi.com a second flight link beside Aviasales'
 
 Nothing here may cost a plan: every failure leaves the plan as Gemini wrote it.
 Prices are shown, never added to the budget, which is computed before this
@@ -33,7 +34,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from app.services import airports_service
-from app.services.providers import airalo, aviasales, config, gettransfer, gocity, klook, wegotrip
+from app.services.providers import airalo, aviasales, config, gettransfer, gocity, kiwi, klook, wegotrip
 from app.services.providers.money import format_amount, format_range, usd_rate
 
 logger = logging.getLogger(__name__)
@@ -85,7 +86,9 @@ async def start(
 ) -> Optional[Pending]:
     """Begin every fetch this plan's switches allow. None when all are off."""
     try:
-        modes = {p: await config.mode(p) for p in ("gettransfer", "airalo", "aviasales", "wegotrip", "klook", "gocity")}
+        modes = {p: await config.mode(p) for p in (
+            "gettransfer", "airalo", "aviasales", "wegotrip", "klook", "gocity", "kiwi",
+        )}
     except Exception as e:
         logger.warning("providers: could not read switches: %s", e)
         return None
@@ -279,6 +282,16 @@ async def _finish(pending: Pending, day_items, meta, *, currency: str, travelers
             p for p in meta["booking_partners"]
             if isinstance(p, dict) and any(b in str(p.get("name") or "").lower() for b in monetized_brands)
         ]
+
+    # After Aviasales, whose Booking Plan row the Kiwi row goes under.
+    if pending.modes.get("kiwi", config.OFF) != config.OFF:
+        audit["kiwi"] = _apply_kiwi_links(
+            meta,
+            live=pending.modes["kiwi"] == config.LIVE,
+            travelers=travelers,
+            marker=await config.setting(config.TRAVELPAYOUTS_MARKER),
+            project_id=await config.setting(config.TRAVELPAYOUTS_PROJECT_ID),
+        )
 
     meta["provider_audit"] = audit
     logger.info("providers: %s", audit)
@@ -552,6 +565,66 @@ def _point_flight_row(meta: dict, linked: list[tuple[dict, list, str]]) -> bool:
                 )
             return True
     return False
+
+
+def _apply_kiwi_links(meta: dict, *, live: bool, travelers: int, marker: str, project_id: str) -> dict:
+    """A Kiwi.com deep search on each flight option, as `kiwi_url`, and one
+    "Compare on Kiwi.com" row under the Booking Plan's flight row.
+
+    Beside Aviasales, not instead (user, 2026-09-30: "both options"). The fare
+    on the card stays Google's; each button opens its site's own live fares for
+    the same trip, built from the same legs as the Aviasales link. Like
+    `aviasales_url`, the field is read only by app builds that carry the
+    button. The row is opened by every build.
+    """
+    flights = meta.get("flight_strategies") if isinstance(meta.get("flight_strategies"), dict) else {}
+    options = [s for s in (flights.get("strategies") or []) if isinstance(s, dict)]
+    entry: dict = {"mode": config.LIVE if live else config.SHADOW, "options": len(options), "linked": 0}
+    main = None
+    for option in options:
+        legs = aviasales.legs_for(option, flights)
+        url = kiwi.deep_url(legs, adults=travelers)
+        if not url:
+            continue
+        entry["linked"] += 1
+        entry.setdefault("url", url)
+        link = kiwi.booking_link(url, marker=marker, project_id=project_id)
+        if main is None or (option.get("tier") == "recommended" and main[0].get("tier") != "recommended"):
+            main = (option, legs, link)
+        if live:
+            option["kiwi_url"] = link
+    if live and main:
+        entry["plan_row"] = _add_kiwi_row(meta, options, *main)
+    return entry
+
+
+def _add_kiwi_row(meta: dict, options: list[dict], option: dict, legs: list, link: str) -> bool:
+    """Put the Kiwi row right under the flight row, with its label ("BOOK NOW",
+    or "BOOK AFTER VISA"), replacing any earlier Kiwi row. With no flight row
+    to sit under, it goes last under "BOOK NOW"."""
+    rows = [
+        r for r in (meta.get("booking_plan") or [])
+        if not (isinstance(r, dict) and kiwi.is_kiwi_link(str(r.get("url") or "")))
+    ]
+    # The flight row: pointed at an option's Aviasales search, or still at the
+    # option's own title and Google link.
+    marks = {str(o.get("aviasales_url") or "") for o in options} - {""}
+    marks |= {(str(o.get("title") or ""), str(o.get("booking_url") or "")) for o in options}
+    at = next((
+        i for i, r in enumerate(rows)
+        if isinstance(r, dict) and (
+            str(r.get("url") or "") in marks
+            or (str(r.get("item") or ""), str(r.get("url") or "")) in marks
+        )
+    ), None)
+    label = str(rows[at].get("label") or "BOOK NOW") if at is not None else "BOOK NOW"
+    row = kiwi.plan_item(label, legs, link)
+    if at is None:
+        rows.append(row)
+    else:
+        rows.insert(at + 1, row)
+    meta["booking_plan"] = rows
+    return at is not None
 
 
 # ── Transfers ────────────────────────────────────────────────────────────────

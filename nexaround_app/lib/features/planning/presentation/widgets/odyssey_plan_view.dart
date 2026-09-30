@@ -854,6 +854,7 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
         '4487': 'assets/images/wegotrip_logo.png',
         '4110': 'assets/images/klook_logo.png',
         '1942': 'assets/images/gocity_logo.png',
+        '4136': 'assets/images/kiwi_logo.png',
       }[uri.queryParameters['p']];
     }
     const byHost = {
@@ -863,6 +864,7 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
       'wegotrip.com': 'assets/images/wegotrip_logo.png',
       'klook.com': 'assets/images/klook_logo.png',
       'gocity.com': 'assets/images/gocity_logo.png',
+      'kiwi.com': 'assets/images/kiwi_logo.png',
     };
     for (final entry in byHost.entries) {
       if (host == entry.key || host.endsWith('.${entry.key}')) return entry.value;

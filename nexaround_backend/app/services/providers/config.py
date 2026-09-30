@@ -17,7 +17,7 @@ import time
 
 logger = logging.getLogger(__name__)
 
-PROVIDERS = ("gettransfer", "airalo", "wegotrip", "aviasales", "klook", "gocity")
+PROVIDERS = ("gettransfer", "airalo", "wegotrip", "aviasales", "klook", "gocity", "kiwi")
 
 OFF, SHADOW, LIVE = "off", "shadow", "live"
 MODES = (OFF, SHADOW, LIVE)

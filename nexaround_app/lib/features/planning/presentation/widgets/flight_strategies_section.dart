@@ -952,6 +952,21 @@ class FlightStrategiesSection extends StatelessWidget {
                   expand: true,
                 ),
               ),
+              if (fs.kiwiUrl.isNotEmpty || fs.bookingUrl.isNotEmpty) const SizedBox(height: 8),
+            ],
+
+            // Kiwi.com, the second partner: the same trip, to compare fares.
+            if (fs.kiwiUrl.isNotEmpty) ...[
+              SizedBox(
+                width: double.infinity,
+                child: PartnerPill(
+                  logoAsset: 'assets/images/kiwi_logo.png',
+                  fallbackIcon: Icons.compare_arrows_rounded,
+                  label: 'Compare on Kiwi.com',
+                  onTap: () => _launchUrl(context, fs.kiwiUrl),
+                  expand: true,
+                ),
+              ),
               if (fs.bookingUrl.isNotEmpty) const SizedBox(height: 8),
             ],
 
@@ -986,7 +1001,7 @@ class FlightStrategiesSection extends StatelessWidget {
                     route: fs.route,
                     airlines: fs.airlines,
                   );
-                  if (fs.aviasalesUrl.isNotEmpty) {
+                  if (fs.aviasalesUrl.isNotEmpty || fs.kiwiUrl.isNotEmpty) {
                     return SizedBox(
                       width: double.infinity,
                       height: 44,
@@ -1072,7 +1087,7 @@ class FlightStrategiesSection extends StatelessWidget {
                     ),
                     icon: const Icon(Icons.flight_land_rounded, size: 16),
                     label: Text(
-                      '${fs.aviasalesUrl.isNotEmpty ? 'Check return' : 'Book Return'}'
+                      '${fs.aviasalesUrl.isNotEmpty || fs.kiwiUrl.isNotEmpty ? 'Check return' : 'Book Return'}'
                       '${fs.returnRoute.isNotEmpty ? ' (${fs.returnRoute})' : ''}',
                       style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
                       overflow: TextOverflow.ellipsis,

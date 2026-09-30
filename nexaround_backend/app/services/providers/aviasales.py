@@ -108,29 +108,44 @@ def legs_for(option: dict, flights: dict) -> list[tuple[str, str, str]]:
     return legs
 
 
-def search_path(legs, *, adults=1, travel_class="", today: Optional[dt.date] = None) -> str:
-    """Aviasales' search path for these legs, or "" when they can't be searched.
+def searchable(legs, today: Optional[dt.date] = None) -> list[tuple[str, str, dt.date]]:
+    """The legs as (origin, destination, date) a flight search can take, or [].
 
-    Two legs that retrace each other are a round trip; any other pair is
-    searched as the two flights they are ("into Madrid, home from Barcelona").
-    A leg without both airports, or dated before today, gives "".
+    One leg or two. A leg without both airports, to itself, or dated before
+    today gives [], and so does a way home dated before the way out. Shared by
+    every flight partner's link (Kiwi.com's too), so they agree on what can
+    be searched.
     """
     if not legs or len(legs) > 2:
-        return ""
+        return []
     today = today or _today()
     parts = []
     for origin, dest, date in legs:
         origin, dest, day = _code(origin), _code(dest), _day(date)
         if not (origin and dest and day) or origin == dest or day < today:
-            return ""
+            return []
         parts.append((origin, dest, day))
     if len(parts) == 2 and parts[1][2] < parts[0][2]:
-        return ""
-    try:
-        pax = min(max(int(adults or 1), 1), MAX_PASSENGERS)
-    except (TypeError, ValueError):
-        pax = 1
+        return []
+    return parts
 
+
+def passengers(adults) -> int:
+    try:
+        return min(max(int(adults or 1), 1), MAX_PASSENGERS)
+    except (TypeError, ValueError):
+        return 1
+
+
+def search_path(legs, *, adults=1, travel_class="", today: Optional[dt.date] = None) -> str:
+    """Aviasales' search path for these legs, or "" when they can't be searched.
+
+    Two legs that retrace each other are a round trip; any other pair is
+    searched as the two flights they are ("into Madrid, home from Barcelona").
+    """
+    parts = searchable(legs, today)
+    if not parts:
+        return ""
     origin, dest, out = parts[0]
     path = f"{origin}{out:%d%m}{dest}"
     if len(parts) == 2:
@@ -139,7 +154,7 @@ def search_path(legs, *, adults=1, travel_class="", today: Optional[dt.date] = N
             path += f"{back:%d%m}"
         else:
             path += f"-{home_from}{back:%d%m}{home_to}"
-    return f"{path}{class_letter(travel_class)}{pax}"
+    return f"{path}{class_letter(travel_class)}{passengers(adults)}"
 
 
 def trip_text(legs) -> str:

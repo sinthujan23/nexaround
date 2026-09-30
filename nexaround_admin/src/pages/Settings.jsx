@@ -51,6 +51,7 @@ const PROVIDER_FIELDS = {
   provider_mode_aviasales: 'off',
   provider_mode_klook: 'off',
   provider_mode_gocity: 'off',
+  provider_mode_kiwi: 'off',
 };
 
 const PROVIDER_SWITCHES = [
@@ -60,6 +61,7 @@ const PROVIDER_SWITCHES = [
   { key: 'provider_mode_aviasales', name: 'Aviasales', use: 'Book on Aviasales link on flights (no prices)' },
   { key: 'provider_mode_klook', name: 'Klook', use: 'Things-to-do link for cities WeGoTrip has no tickets in' },
   { key: 'provider_mode_gocity', name: 'Go City', use: 'Sightseeing-pass link for big cities (2+ days)' },
+  { key: 'provider_mode_kiwi', name: 'Kiwi.com', use: 'Second flight link beside Aviasales (no prices)' },
 ];
 
 function SecretField({ label, tag, value, onChange, placeholder }) {

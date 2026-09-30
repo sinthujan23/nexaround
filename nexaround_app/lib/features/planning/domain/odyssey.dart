@@ -825,6 +825,10 @@ class FlightStrategy {
   /// this one rebuild any "Aviasales" flight link into a bare, untracked search.
   final String aviasalesUrl;
 
+  /// Kiwi.com's deep search for the same flights, through our Travelpayouts
+  /// link: the second partner button, to compare. '' when not set.
+  final String kiwiUrl;
+
   const FlightStrategy({
     required this.rank,
     required this.strategy,
@@ -851,6 +855,7 @@ class FlightStrategy {
     this.returnLeg,
     this.returnRoute = '',
     this.aviasalesUrl = '',
+    this.kiwiUrl = '',
   });
 
   /// True when the backend priced this strategy, so the UI can render exact
@@ -916,6 +921,7 @@ class FlightStrategy {
         returnLeg: FlightLeg.fromJson(json['return']),
         returnRoute: (json['return_route'] ?? '').toString(),
         aviasalesUrl: (json['aviasales_url'] ?? '').toString(),
+        kiwiUrl: (json['kiwi_url'] ?? '').toString(),
       );
 
   Map<String, dynamic> toJson() => {
@@ -944,6 +950,7 @@ class FlightStrategy {
         if (returnLeg != null) 'return': returnLeg!.toJson(),
         if (returnRoute.isNotEmpty) 'return_route': returnRoute,
         if (aviasalesUrl.isNotEmpty) 'aviasales_url': aviasalesUrl,
+        if (kiwiUrl.isNotEmpty) 'kiwi_url': kiwiUrl,
       };
 }
 
