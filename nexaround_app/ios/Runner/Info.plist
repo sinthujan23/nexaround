@@ -127,6 +127,11 @@
 		<string>instagram</string>
 		<string>facebook-stories</string>
 		<string>twitter</string>
+		<!-- The share sheet's chat buttons check these (with instagram and
+		     twitter above) to open the app's chat screen, or its App Store
+		     page when it isn't installed. -->
+		<string>whatsapp</string>
+		<string>fb-messenger</string>
 	</array>
 	<key>FacebookAppID</key>
 	<string>2569128396926202</string>

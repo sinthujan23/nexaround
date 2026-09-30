@@ -10,6 +10,9 @@ import 'package:nexaround_app/features/experiences/domain/entities/experience.da
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_enquiry_sheet.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_share_sheet.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/vendor_social_bar.dart';
+import 'package:nexaround_app/core/services/cache_service.dart';
+import 'package:nexaround_app/core/services/google_places_service.dart';
+import 'package:nexaround_app/features/living_map/presentation/pages/smart_tourism_map_page.dart';
 
 /// Detail for one package.
 ///
@@ -39,6 +42,107 @@ class _ExperiencePackageDetailPageState
   final PageController _photoController = PageController();
   int _photoIndex = 0;
   bool _loading = true;
+  bool _isNavigatingToMap = false;
+
+  Future<void> _openDirectionsInSmartMap({
+    required double targetLat,
+    required double targetLng,
+    required String destinationName,
+    required String addressQuery,
+  }) async {
+    if (_isNavigatingToMap) return;
+    _isNavigatingToMap = true;
+
+    double finalLat = targetLat;
+    double finalLng = targetLng;
+
+    // If coordinates are missing (0,0), attempt to search/geocode using GooglePlacesService
+    if (finalLat == 0.0 && finalLng == 0.0) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text('Locating $destinationName on Smart Map...'),
+                ),
+              ],
+            ),
+            duration: const Duration(seconds: 2),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        );
+      }
+
+      try {
+        final query = addressQuery.isNotEmpty ? addressQuery : destinationName;
+        final places = await GooglePlacesService.searchPlaces(
+          query: query,
+          latitude: widget.userLatitude ?? CacheService.getLastFetchLat(),
+          longitude: widget.userLongitude ?? CacheService.getLastFetchLng(),
+        );
+        if (places.isNotEmpty) {
+          finalLat = places.first.latitude;
+          finalLng = places.first.longitude;
+        }
+      } catch (e) {
+        debugPrint('Geocoding error for $addressQuery: $e');
+      }
+    }
+
+    if (!mounted) {
+      _isNavigatingToMap = false;
+      return;
+    }
+
+    // Fallback to cached or user location if coordinates remain 0.0
+    if (finalLat == 0.0 && finalLng == 0.0) {
+      finalLat = widget.userLatitude ?? CacheService.getLastFetchLat() ?? 0.0;
+      finalLng = widget.userLongitude ?? CacheService.getLastFetchLng() ?? 0.0;
+    }
+
+    if (finalLat == 0.0 && finalLng == 0.0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('📍 Location coordinates could not be resolved'),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
+      _isNavigatingToMap = false;
+      return;
+    }
+
+    try {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => SmartTourismMapPage(
+            initialLat: finalLat,
+            initialLng: finalLng,
+            destinationName: destinationName,
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isNavigatingToMap = false;
+        });
+      }
+    }
+  }
 
   @override
   void initState() {
@@ -325,10 +429,36 @@ class _ExperiencePackageDetailPageState
             const SizedBox(height: 20),
             _sectionTitle('Meeting point'),
             const SizedBox(height: 8),
-            Text(
-              _package.meetingPointAddress!,
-              style: const TextStyle(
-                  fontSize: 14, color: AppColors.textSecondary),
+            GestureDetector(
+              onTap: () => _openDirectionsInSmartMap(
+                targetLat: _package.latitude,
+                targetLng: _package.longitude,
+                destinationName: '${_package.title} (Meeting Point)',
+                addressQuery: _package.meetingPointAddress!,
+              ),
+              behavior: HitTestBehavior.opaque,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.only(top: 2),
+                    child: Icon(Icons.place_rounded,
+                        size: 15, color: AppColors.brandGreen),
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      _package.meetingPointAddress!,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: AppColors.brandGreen,
+                        fontWeight: FontWeight.w600,
+                        height: 1.4,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
 
@@ -344,20 +474,42 @@ class _ExperiencePackageDetailPageState
               ),
             if ((vendor.address ?? '').isNotEmpty) ...[
               const SizedBox(height: 8),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Icon(Icons.place_rounded,
-                      size: 15, color: AppColors.textTertiary),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      vendor.address!,
-                      style: const TextStyle(
-                          fontSize: 13, color: AppColors.textTertiary),
+              GestureDetector(
+                onTap: () => _openDirectionsInSmartMap(
+                  targetLat: vendor.latitude != 0.0
+                      ? vendor.latitude
+                      : _package.latitude,
+                  targetLng: vendor.longitude != 0.0
+                      ? vendor.longitude
+                      : _package.longitude,
+                  destinationName: vendor.name.isNotEmpty
+                      ? vendor.name
+                      : _package.title,
+                  addressQuery: '${vendor.name}, ${vendor.address}',
+                ),
+                behavior: HitTestBehavior.opaque,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Padding(
+                      padding: EdgeInsets.only(top: 2),
+                      child: Icon(Icons.place_rounded,
+                          size: 15, color: AppColors.brandGreen),
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        vendor.address!,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: AppColors.brandGreen,
+                          fontWeight: FontWeight.w600,
+                          height: 1.4,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
             if (vendor.hasWebsite) ...[
@@ -411,6 +563,8 @@ class _ExperiencePackageDetailPageState
         text,
         style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
       );
+
+
 
   Widget _chip(IconData icon, String label, {bool highlight = false}) {
     return Container(

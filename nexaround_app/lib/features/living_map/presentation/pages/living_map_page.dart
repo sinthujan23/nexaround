@@ -62,7 +62,8 @@ class _LocalEvent {
 }
 
 class LivingMapPage extends StatefulWidget {
-  const LivingMapPage({super.key});
+  final bool isActive;
+  const LivingMapPage({super.key, this.isActive = true});
 
   @override
   State<LivingMapPage> createState() => _LivingMapPageState();
@@ -1294,6 +1295,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                 top: MediaQuery.of(context).padding.top + 70,
                 right: 0,
                 child: AnimatedNevaBanner(
+                  isActive: widget.isActive,
                   onTap: () {
                     _showDiscoveryEngineSheet(context);
                   },

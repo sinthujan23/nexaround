@@ -343,7 +343,7 @@ class HomePageState extends State<HomePage> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final pages = [
-      const LivingMapPage(),
+      LivingMapPage(isActive: _selectedIndex == 0),
       ArCameraPage(isActive: _selectedIndex == 1),
       AiChatPage(initialPrompt: _pendingPrompt, placeContext: _pendingPlaceContext),
       DiscoverPage(

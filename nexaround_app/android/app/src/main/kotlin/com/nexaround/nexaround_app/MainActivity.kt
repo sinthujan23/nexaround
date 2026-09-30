@@ -1,8 +1,8 @@
 package com.nexaround.nexaround_app
 
-import android.content.ClipData
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.pm.ResolveInfo
 import android.net.Uri
 import android.os.Build
 import androidx.core.content.FileProvider
@@ -23,24 +23,17 @@ class MainActivity : FlutterActivity() {
         super.configureFlutterEngine(flutterEngine)
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, APP_SHARE_CHANNEL).setMethodCallHandler { call, result ->
-            if (call.method == "shareToApp") {
-                val pkg = call.argument<String>("package")
-                if (pkg != null) {
+            if (call.method == "shareToChat") {
+                val packages = call.argument<List<String>>("packages")
+                val text = call.argument<String>("text")
+                if (!packages.isNullOrEmpty() && text != null) {
                     try {
-                        result.success(
-                            shareToApp(
-                                pkg,
-                                call.argument<ByteArray>("image"),
-                                call.argument<String>("mimeType") ?: "image/jpeg",
-                                call.argument<String>("text"),
-                                call.argument<String>("title") ?: "Share",
-                            )
-                        )
+                        result.success(shareToChat(packages, text))
                     } catch (e: Exception) {
                         result.error("ERROR", e.message, null)
                     }
                 } else {
-                    result.error("INVALID_ARGUMENT", "Package name is required", null)
+                    result.error("INVALID_ARGUMENT", "Packages and text are required", null)
                 }
             } else {
                 result.notImplemented()
@@ -131,37 +124,48 @@ class MainActivity : FlutterActivity() {
     }
 
     /**
-     * Hands [image] (or [text] alone) to one app with a plain ACTION_SEND, the
-     * way the system share sheet does. The receiving app then offers its own
-     * choices: Instagram lists Feed, Stories and Chats as separate targets, X
-     * lists Post and Direct Message, so when [pkg] has more than one we show a
-     * chooser limited to that app. Returns false when the app isn't installed.
+     * Opens the chat picker of the first installed app in [packages] with
+     * [text] ready to send: Instagram's Direct, X's Direct Message, WhatsApp's
+     * and Messenger's chat list. The intent names that one screen, so neither
+     * the system share menu nor the app's own Feed / Story / Chat choices
+     * appear. Answers "sent", "missing" when none of [packages] is installed,
+     * or "no_chat" when the app has no share screen that looks like a chat.
      */
-    private fun shareToApp(
-        pkg: String,
-        image: ByteArray?,
-        mimeType: String,
-        text: String?,
-        title: String,
-    ): Boolean {
-        val send = Intent(Intent.ACTION_SEND).setPackage(pkg)
-        if (image != null) {
-            val dir = File(cacheDir, "share").apply { mkdirs() }
-            val ext = if (mimeType == "image/png") "png" else "jpg"
-            val file = File(dir, "nexaround_share.$ext").apply { writeBytes(image) }
-            val uri = FileProvider.getUriForFile(this, "$packageName.shareimages", file)
-            send.type = mimeType
-            send.putExtra(Intent.EXTRA_STREAM, uri)
-            send.clipData = ClipData.newRawUri(null, uri)
-            send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        } else {
-            send.type = "text/plain"
-        }
-        if (text != null) send.putExtra(Intent.EXTRA_TEXT, text)
-
+    private fun shareToChat(packages: List<String>, text: String): String {
+        val pkg = packages.firstOrNull { isInstalled(it) } ?: return "missing"
+        val send = Intent(Intent.ACTION_SEND)
+            .setPackage(pkg)
+            .setType("text/plain")
+            .putExtra(Intent.EXTRA_TEXT, text)
         val targets = packageManager.queryIntentActivities(send, 0)
-        if (targets.isEmpty()) return false
-        startActivity(if (targets.size == 1) send else Intent.createChooser(send, title))
-        return true
+        val chat = targets.firstOrNull { CHAT_TARGET.containsMatchIn(describe(it)) }
+            ?: targets.firstOrNull { !NOT_CHAT_TARGET.containsMatchIn(describe(it)) }
+            ?: return "no_chat"
+        send.setClassName(chat.activityInfo.packageName, chat.activityInfo.name)
+        startActivity(send)
+        return "sent"
+    }
+
+    /** A share target as its class and label, e.g. Instagram's
+     *  "com.instagram.direct.share.handler.DirectShareHandlerActivity Chats". */
+    private fun describe(target: ResolveInfo) =
+        "${target.activityInfo.name} ${target.loadLabel(packageManager)}"
+
+    private fun isInstalled(pkg: String) = try {
+        packageManager.getPackageInfo(pkg, 0)
+        true
+    } catch (e: PackageManager.NameNotFoundException) {
+        false
+    }
+
+    companion object {
+        /** Share targets that send to a chat: Instagram's Direct ("Chats"),
+         *  X's "Direct Message" (a DM... class). */
+        private val CHAT_TARGET = Regex("""(?i:direct|message|chat)|\.dm\.|DM[A-Z]""")
+
+        /** Share targets that post instead: a story, the feed, WhatsApp's
+         *  Status, X's composer. WhatsApp and Messenger name their chat picker
+         *  neither way, so it is the one left once these are skipped. */
+        private val NOT_CHAT_TARGET = Regex("""(?i)stor(y|ies)|feed|post|tweet|composer|status""")
     }
 }
