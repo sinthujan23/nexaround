@@ -74,9 +74,7 @@ class _ExperienceLinkPageState extends State<ExperienceLinkPage> {
       _leave();
       return;
     }
-    Navigator.of(context).pop();
-    Navigator.push(
-      context,
+    Navigator.of(context).pushReplacement(
       MaterialPageRoute(builder: (_) => const ExperiencesPage()),
     );
   }

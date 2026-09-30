@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
+import 'package:go_router/go_router.dart';
 import 'package:nexaround_app/core/widgets/glass_card.dart';
 import 'package:nexaround_app/features/auth/presentation/pages/home_page.dart';
 import 'package:nexaround_app/features/auth/presentation/pages/register_page.dart';
@@ -67,15 +68,7 @@ class _LoginPageState extends State<LoginPage> {
         if (state is AuthAuthenticated) {
           await CacheService.setLoggedIn(true);
           if (!mounted) return;
-          
-          Navigator.of(context).pushReplacement(
-            PageRouteBuilder(
-              pageBuilder: (_, animation, __) => HomePage(),
-              transitionsBuilder: (_, animation, __, child) =>
-                  FadeTransition(opacity: animation, child: child),
-              transitionDuration: const Duration(milliseconds: 800),
-            ),
-          );
+          context.go('/home');
         } else if (state is AuthOTPVerificationRequired) {
           if (!mounted) return;
           Navigator.of(context).push(

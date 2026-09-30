@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
+import 'package:go_router/go_router.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_event.dart';
@@ -217,15 +218,7 @@ class _OTPVerificationPageState extends State<OTPVerificationPage>
         if (state is AuthAuthenticated) {
           await CacheService.setLoggedIn(true);
           if (!mounted) return;
-
-          Navigator.of(context).pushReplacement(
-            PageRouteBuilder(
-              pageBuilder: (_, animation, __) => HomePage(),
-              transitionsBuilder: (_, animation, __, child) =>
-                  FadeTransition(opacity: animation, child: child),
-              transitionDuration: const Duration(milliseconds: 800),
-            ),
-          );
+          context.go('/home');
         } else if (state is AuthResetOTPVerified) {
           if (!mounted) return;
           Navigator.of(context).push(

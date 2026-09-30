@@ -4249,15 +4249,15 @@ class _LivingMapPageState extends State<LivingMapPage>
   ) {
     bool locating = false;
     return StatefulBuilder(
-      builder: (context, setSheetState) {
+      builder: (sheetContext, setSheetState) {
         return ElevatedButton.icon(
           onPressed: locating
               ? null
               : () async {
                   if (matchedPlace != null) {
-                    Navigator.pop(context);
-                    Navigator.push(
-                      context,
+                    final pageNav = Navigator.of(context);
+                    Navigator.pop(sheetContext);
+                    pageNav.push(
                       MaterialPageRoute(
                         builder: (_) => SmartTourismMapPage(
                           initialLat: matchedPlace.latitude,
@@ -4295,10 +4295,10 @@ class _LivingMapPageState extends State<LivingMapPage>
                         longitude: userLng,
                       );
                       if (!mounted) return;
-                      Navigator.pop(context);
+                      final pageNav = Navigator.of(context);
+                      Navigator.pop(sheetContext);
                       if (results.isNotEmpty) {
-                        Navigator.push(
-                          context,
+                        pageNav.push(
                           MaterialPageRoute(
                             builder: (_) => SmartTourismMapPage(
                               initialLat: results.first.latitude,
@@ -4308,8 +4308,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                           ),
                         );
                       } else {
-                        Navigator.push(
-                          context,
+                        pageNav.push(
                           MaterialPageRoute(
                             builder: (_) => SmartTourismMapPage(
                               initialLat: userLat,
@@ -4322,9 +4321,9 @@ class _LivingMapPageState extends State<LivingMapPage>
                     } catch (e) {
                       debugPrint('Locating experience error: $e');
                       if (!mounted) return;
-                      Navigator.pop(context);
-                      Navigator.push(
-                        context,
+                      final pageNav = Navigator.of(context);
+                      Navigator.pop(sheetContext);
+                      pageNav.push(
                         MaterialPageRoute(
                           builder: (_) => SmartTourismMapPage(
                             initialLat: userLat,
@@ -5316,7 +5315,7 @@ class _LivingMapPageState extends State<LivingMapPage>
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) {
+      builder: (sheetContext) {
         return Container(
           height: MediaQuery.of(context).size.height * 0.75,
           decoration: BoxDecoration(
@@ -5589,9 +5588,9 @@ class _LivingMapPageState extends State<LivingMapPage>
                           height: 52,
                           child: ElevatedButton(
                             onPressed: () {
-                              Navigator.pop(context);
-                              Navigator.push(
-                                context,
+                              final pageNav = Navigator.of(context);
+                              Navigator.pop(sheetContext);
+                              pageNav.push(
                                 MaterialPageRoute(
                                   builder: (_) => AttractionDetailPage(
                                     id: place.id,

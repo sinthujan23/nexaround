@@ -14,6 +14,7 @@ import 'package:nexaround_app/core/utils/number_format.dart';
 import 'package:video_player/video_player.dart';
 import 'package:nexaround_app/core/error/user_message.dart';
 import 'package:nexaround_app/features/experiences/presentation/pages/experiences_page.dart';
+import 'package:nexaround_app/features/auth/presentation/pages/home_page.dart';
 import 'dart:typed_data';
 import 'package:nexaround_app/features/planning/presentation/widgets/walking_challenge_asset.dart';
 
@@ -775,6 +776,56 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
     if (deleted == true) _load();
   }
 
+  Widget? _buildLeading() {
+    final homeState = context.findAncestorStateOfType<HomePageState>() ??
+        HomePage.homeKey.currentState;
+    if (homeState != null) {
+      if (_selectedTabIndex == 1) {
+        return Padding(
+          padding: const EdgeInsets.only(left: 12, top: 6, bottom: 6),
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.18),
+              shape: BoxShape.circle,
+            ),
+            child: IconButton(
+              icon: const Icon(
+                Icons.arrow_back_ios_new_rounded,
+                size: 16,
+                color: Colors.white,
+              ),
+              onPressed: () {
+                homeState.switchToExplore();
+              },
+            ),
+          ),
+        );
+      }
+      return null;
+    }
+
+    if (Navigator.canPop(context)) {
+      return Padding(
+        padding: const EdgeInsets.only(left: 12, top: 6, bottom: 6),
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.18),
+            shape: BoxShape.circle,
+          ),
+          child: IconButton(
+            icon: const Icon(
+              Icons.arrow_back_ios_new_rounded,
+              size: 16,
+              color: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(context),
+          ),
+        ),
+      );
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     // Safety check: ensure video is playing if it was paused by lifecycle events
@@ -826,25 +877,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
               elevation: 0,
               scrolledUnderElevation: 4,
               automaticallyImplyLeading: false,
-              leading: Navigator.canPop(context)
-                  ? Padding(
-                      padding: const EdgeInsets.only(left: 12, top: 6, bottom: 6),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.18),
-                          shape: BoxShape.circle,
-                        ),
-                        child: IconButton(
-                          icon: const Icon(
-                            Icons.arrow_back_ios_new_rounded,
-                            size: 16,
-                            color: Colors.white,
-                          ),
-                          onPressed: () => Navigator.pop(context),
-                        ),
-                      ),
-                    )
-                  : null,
+              leading: _buildLeading(),
               actions: [
                 Padding(
                   padding: const EdgeInsets.only(top: 8, right: 14),
