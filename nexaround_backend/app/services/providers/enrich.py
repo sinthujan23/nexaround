@@ -235,12 +235,18 @@ async def _finish(pending: Pending, day_items, meta, *, currency: str, travelers
         audit["wegotrip"]["ms"] = ms
 
     if pending.modes.get("klook", config.OFF) != config.OFF and pending.legs:
-        catalogue, _ = result("wegotrip")
+        tickets = audit.get("wegotrip") or {}
         audit["klook"] = _apply_klook(
             meta, pending,
-            # Cities WeGoTrip sells something in. With WeGoTrip off, or its
-            # answer missing, every city gets the Klook row.
-            covered={city for city, products in (catalogue or {}).items() if products},
+            # Cities where WeGoTrip put a ticket or tour on a stop. Selling
+            # something there is not enough: in Oslo, Bergen and Mumbai it has
+            # only general city audio walks, which match no stop, and those
+            # cities got neither partner (user's Norway and India plans,
+            # 2026-09-29/30). With WeGoTrip off or in shadow, every city
+            # gets its Klook row.
+            covered={
+                m.get("city") for m in tickets.get("matched") or []
+            } if tickets.get("mode") == config.LIVE else set(),
             live=pending.modes["klook"] == config.LIVE,
             marker=await config.setting(config.TRAVELPAYOUTS_MARKER),
             project_id=await config.setting(config.TRAVELPAYOUTS_PROJECT_ID),
@@ -343,7 +349,12 @@ async def _apply_tickets(
     for day in day_items:
         if not isinstance(day, dict):
             continue
-        pool = [p for city in _cities_on(pending.legs, day.get("day")) for p in catalogue.get(city, [])]
+        where: dict = {}
+        pool = []
+        for city in _cities_on(pending.legs, day.get("day")):
+            for p in catalogue.get(city, []):
+                where.setdefault(p["id"], city)
+                pool.append(p)
         if not pool:
             continue
         for act in day.get("activities") or []:
@@ -364,7 +375,8 @@ async def _apply_tickets(
             line = f"On WeGoTrip: {product['title']}, from {amount}" + (f" ({said})" if said else "") + "."
             link = wegotrip.booking_link(product, marker=marker, project_id=project_id)
             entry["matched"].append({
-                "stop": act.get("name"), "product": product["title"], "id": product["id"],
+                "stop": act.get("name"), "city": where.get(product["id"], ""),
+                "product": product["title"], "id": product["id"],
                 "kind": wegotrip.kind(product), "amount": amount,
             })
             if not live:
@@ -402,7 +414,7 @@ def _add_ticket_rows(meta: dict, tickets: list) -> int:
 
 def _apply_klook(meta: dict, pending: Pending, *, covered: set, live: bool, marker: str, project_id: str) -> dict:
     """A "Things to do in Colombo on Klook" row in the Booking Plan for each
-    city WeGoTrip sells nothing in (at most three, longest stay first).
+    city WeGoTrip put nothing on (at most five, longest stay first).
 
     A Booking Plan row, not a button on a stop: Klook's catalogue cannot be
     read (see klook.py), so no stop can be matched to what it sells. Every

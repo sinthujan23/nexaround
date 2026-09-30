@@ -1,4 +1,4 @@
-"""Klook: a "Things to do in <city>" link where WeGoTrip sells nothing.
+"""Klook: a "Things to do in <city>" link where WeGoTrip has nothing for the plan.
 
 WeGoTrip has no tickets in Sri Lanka, the Maldives or most of India, which are
 our biggest markets. Klook does: Colombo, Sigiriya and Kandy tours, the Kandy
@@ -28,8 +28,10 @@ PROMO_ID = "4110"
 # currency, as it does for the dashboard link's bare klook.com.
 SEARCH_PAGE = "https://www.klook.com/search/result/"
 
-# Booking Plan rows, at most; the longest stays first.
-MAX_ROWS = 3
+# Booking Plan rows, at most; the longest stays first. Five covers the cities
+# of nearly every plan (the user's 14-day South India plan had five, and lost
+# Mangaluru at three).
+MAX_ROWS = 5
 
 PLAN_LABEL = "BOOK CLOSER TO TRAVEL"
 
@@ -59,10 +61,10 @@ def is_klook_link(url: str) -> bool:
 
 
 def cities_to_link(legs: list, covered: set[str]) -> list[str]:
-    """The plan's cities WeGoTrip has nothing in, longest stay first.
+    """The plan's cities WeGoTrip put nothing on, longest stay first.
 
-    `covered` holds the cities WeGoTrip sells something in. A city visited on
-    two legs is linked once.
+    `covered` holds the cities where a WeGoTrip ticket or tour landed on a
+    stop. A city visited on two legs is linked once.
     """
     stays: dict[str, int] = {}
     order: list[str] = []

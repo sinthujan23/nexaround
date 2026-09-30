@@ -3,10 +3,13 @@
 What these pin:
 - the link is Klook's search for the city, credited to us the way
   Travelpayouts' Links API credits Klook (campaign 137, promo 4110);
-- only cities WeGoTrip has nothing in get a row, at most three, longest stay
-  first, as Booking Plan rows (the one place every app build opens a link);
+- only cities where WeGoTrip put nothing on a stop get a row, at most five,
+  longest stay first, as Booking Plan rows (the one place every app build
+  opens a link). Selling something in the city is not enough: Oslo, Bergen
+  and Mumbai have only general audio walks and got neither partner;
 - shadow records and changes nothing; off asks nothing.
 """
+import copy
 import time
 import urllib.parse
 
@@ -16,6 +19,7 @@ from app.services.providers import config, enrich, klook
 
 import test_odyssey_end_to_end as e2e
 from test_odyssey_end_to_end import world  # noqa: F401  (fixture)
+from test_wegotrip_tickets import _TAJ, _with_sights
 
 
 def test_the_link_is_klooks_search_credited_to_us():
@@ -54,9 +58,18 @@ _LEGS = [
 ]
 
 
-def test_cities_are_linked_once_longest_stay_first_and_at_most_three():
+def test_cities_are_linked_once_longest_stay_first():
     # Colombo: 1 + 2 nights across two legs; Kandy 3; Ella 2; Galle 1.
-    assert klook.cities_to_link(_LEGS, covered=set()) == ["Colombo", "Kandy", "Ella"]
+    assert klook.cities_to_link(_LEGS, covered=set()) == ["Colombo", "Kandy", "Ella", "Galle"]
+
+
+def test_every_city_of_the_south_india_plan_gets_its_row_up_to_five():
+    """Plan 7a7939d1 (2026-09-29): five cities; three rows lost Mangaluru."""
+    legs = [{"city": c, "start_day": s, "end_day": e} for c, s, e in (
+        ("Chennai", 1, 3), ("Mysuru", 4, 6), ("Kochi", 7, 9), ("Mangaluru", 10, 11), ("Mumbai", 12, 14))]
+    assert klook.cities_to_link(legs, covered=set()) == ["Chennai", "Mysuru", "Kochi", "Mumbai", "Mangaluru"]
+    six = legs + [{"city": "Goa", "start_day": 15, "end_day": 15}]
+    assert klook.cities_to_link(six, covered=set()) == ["Chennai", "Mysuru", "Kochi", "Mumbai", "Mangaluru"]
 
 
 def test_cities_wegotrip_sells_in_are_left_to_wegotrip():
@@ -98,14 +111,14 @@ def test_a_second_pass_replaces_its_rows():
     meta = {"booking_plan": []}
     for _ in range(2):
         enrich._apply_klook(meta, _pending(), covered=set(), live=True, marker="781739", project_id="577812")
-    assert len(meta["booking_plan"]) == 3
+    assert len(meta["booking_plan"]) == 4
 
 
 def test_shadow_records_the_links_and_changes_nothing():
     meta = {"booking_plan": []}
     entry = enrich._apply_klook(meta, _pending("shadow"), covered=set(), live=False, marker="781739", project_id="577812")
     assert meta == {"booking_plan": []}
-    assert entry["mode"] == "shadow" and list(entry["links"]) == ["Colombo", "Kandy", "Ella"]
+    assert entry["mode"] == "shadow" and list(entry["links"]) == ["Colombo", "Kandy", "Ella", "Galle"]
 
 
 # ── End to end through generate_odyssey ──────────────────────────────────────
@@ -118,20 +131,52 @@ def _switches(monkeypatch, **modes):
 
 
 @pytest.fixture
-def wegotrip_sells_in_agra(monkeypatch):
+def one_rate(monkeypatch):
+    async def _rate(code):
+        return 1.0
+    monkeypatch.setattr(enrich, "usd_rate", _rate)
+
+
+def _wegotrip_sells(monkeypatch, catalogue):
     async def _catalogue(cities, country):
-        return {"Agra": [{"id": 9, "title": "Agra: Taj Mahal Ticket & Audio Tour"}], "Delhi": []}
+        return copy.deepcopy(catalogue)
     monkeypatch.setattr(enrich.wegotrip, "catalogue_for", _catalogue)
 
 
-def test_live_links_only_the_city_wegotrip_has_nothing_in(world, monkeypatch, wegotrip_sells_in_agra):
-    # The e2e world: Delhi days 1-3, Agra days 4-6.
+def _klook_rows(meta):
+    return [r["item"] for r in meta["booking_plan"] if r["item"].endswith("on Klook")]
+
+
+def test_a_city_wegotrip_put_a_ticket_on_is_left_to_it(world, monkeypatch, one_rate):
+    # The e2e world: Delhi days 1-3, Agra days 4-6, with the Taj Mahal on day 4.
+    _wegotrip_sells(monkeypatch, {"Agra": [_TAJ], "Delhi": []})
+    _with_sights(monkeypatch)
+    _switches(monkeypatch, klook="live", wegotrip="live")
+    _, meta, _ = e2e.run(world)
+    assert _klook_rows(meta) == ["Things to do in Delhi on Klook"]
+    row = next(r for r in meta["booking_plan"] if r["item"].endswith("on Klook"))
+    assert row["url"].startswith("https://tp.media/r?campaign_id=137&marker=781739&p=4110")
+    assert meta["provider_audit"]["klook"]["cities"] == ["Delhi"]
+
+
+def test_selling_something_that_fits_no_stop_does_not_count(world, monkeypatch, one_rate):
+    """Oslo, Bergen and Mumbai: only general audio walks, no stop matched."""
+    walk = {**_TAJ, "id": 5, "title": "Agra: Self-Guided Audio Walk Through the Old Bazaars"}
+    _wegotrip_sells(monkeypatch, {"Agra": [walk], "Delhi": []})
+    _with_sights(monkeypatch)
+    _switches(monkeypatch, klook="live", wegotrip="live")
+    _, meta, _ = e2e.run(world)
+    assert meta["provider_audit"]["wegotrip"]["matched"] == []
+    assert _klook_rows(meta) == ["Things to do in Delhi on Klook", "Things to do in Agra on Klook"]
+
+
+def test_wegotrip_in_shadow_leaves_every_city_to_klook(world, monkeypatch, one_rate):
+    _wegotrip_sells(monkeypatch, {"Agra": [_TAJ], "Delhi": []})
+    _with_sights(monkeypatch)
     _switches(monkeypatch, klook="live", wegotrip="shadow")
     _, meta, _ = e2e.run(world)
-    rows = [r for r in meta["booking_plan"] if r["item"].endswith("on Klook")]
-    assert [r["item"] for r in rows] == ["Things to do in Delhi on Klook"]
-    assert rows[0]["url"].startswith("https://tp.media/r?campaign_id=137&marker=781739&p=4110")
-    assert meta["provider_audit"]["klook"]["cities"] == ["Delhi"]
+    assert len(meta["provider_audit"]["wegotrip"]["matched"]) == 1, "shadow matched it but shows nothing"
+    assert _klook_rows(meta) == ["Things to do in Delhi on Klook", "Things to do in Agra on Klook"]
 
 
 def test_with_wegotrip_off_every_city_gets_its_row(world, monkeypatch):
