@@ -1236,6 +1236,23 @@ class Odyssey {
   final String budgetSplit; // e.g. "40% Stay · 30% Food · 30% Experiences"
   final OdysseyVisaInfo visaInfo;
   String get visa => visaInfo.note.isNotEmpty ? visaInfo.note : (visaInfo.status != 'unknown' ? visaInfo.status : '');
+
+  /// The linear city route chosen for this itinerary, e.g. "Luanda → Kalandula → Luanda".
+  String get chosenRouteDescription {
+    if (legs.isEmpty) return destination;
+    final cities = legs
+        .map((l) => l.city.trim())
+        .where((c) => c.isNotEmpty)
+        .toList();
+    if (cities.isEmpty) return destination;
+    if (cities.length == 1) return cities.first;
+
+    final isLinearOnly = flightTripType == 'open_jaw' || flightTripType == 'one_way';
+    if (!isLinearOnly && cities.first.toLowerCase() != cities.last.toLowerCase()) {
+      return [...cities, cities.first].join(' → ');
+    }
+    return cities.join(' → ');
+  }
   final String logistics; // multi-line blueprint
   final List<OdysseyDay> dayPlans;
   final List<OdysseyBookingPartner> bookingPartners;

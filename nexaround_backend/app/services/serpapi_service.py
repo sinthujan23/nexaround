@@ -1766,6 +1766,150 @@ def extract_open_jaw_strategies_from_serpapi(
     }
 
 
+def extract_connecting_hub_strategies_from_serpapi(
+    leg1_data: Dict[str, Any],
+    leg2_data: Dict[str, Any],
+    *,
+    origin_code: str,
+    hub_code: str,
+    dest_code: str,
+    departure_city: str,
+    destination: str,
+    currency: str,
+    outbound_date: str = "",
+    return_date: str = "",
+    travelers: int = 1,
+) -> Dict[str, Any]:
+    """Combines two legs (origin -> hub and hub -> destination) into unified
+    connecting flight strategies when no single through-ticket exists.
+    """
+    leg1_candidates = _candidate_metrics(leg1_data)
+    leg2_candidates = _candidate_metrics(leg2_data)
+    if not leg1_candidates or not leg2_candidates:
+        return {}
+
+    leg1_pool = sorted(leg1_candidates, key=lambda c: c["price"])[:_OPEN_JAW_POOL]
+    leg2_pool = sorted(leg2_candidates, key=lambda c: c["price"])[:_OPEN_JAW_POOL]
+
+    combos: List[Dict[str, Any]] = []
+    for l1 in leg1_pool:
+        for l2 in leg2_pool:
+            airlines = list(l1["airlines"])
+            airlines += [a for a in l2["airlines"] if a not in airlines]
+            flight_numbers = list(l1.get("flight_numbers") or []) + list(l2.get("flight_numbers") or [])
+            # Estimated layover in hub: 180 minutes (3 hours)
+            layover_mins = 180
+            combos.append({
+                "identity": (l1["identity"], l2["identity"]),
+                "price": l1["price"] + l2["price"],
+                "duration": (l1.get("duration") or 0) + (l2.get("duration") or 0) + layover_mins,
+                "stops": (l1.get("stops") or 0) + (l2.get("stops") or 0) + 1,
+                "airlines": airlines,
+                "flight_numbers": flight_numbers,
+                "origin_id": origin_code,
+                "dest_id": dest_code,
+                "travel_class": l1.get("travel_class") or l2.get("travel_class") or "Economy",
+                "departure_time": l1.get("departure_time") or "",
+                "arrival_time": l2.get("arrival_time") or "",
+                "_leg1": l1,
+                "_leg2": l2,
+            })
+
+    selected = _select_flight_tiers(combos)
+    if not selected:
+        return {}
+
+    party = max(int(travelers or 1), 1)
+    trip_type = "round_trip" if return_date else "one_way"
+    trip_label = "round trip" if trip_type == "round_trip" else "one way"
+    route_str = f"{origin_code} → {hub_code} → {dest_code}"
+    ret_route_str = f"{dest_code} → {hub_code} → {origin_code}" if return_date else ""
+
+    strategies: List[Dict[str, Any]] = []
+    for rank, tier in enumerate([t for t in FLIGHT_TIERS if t in selected], start=1):
+        m = selected[tier]
+        l1, l2 = m["_leg1"], m["_leg2"]
+        per_traveler = round(convert_from_search_currency(m["price"], currency), 2)
+        carriers = ", ".join(m["airlines"][:2]) if m["airlines"] else "multiple carriers"
+        duration_str = _format_duration(m["duration"])
+        description = (
+            f"1 stop {trip_label} from {departure_city} to {destination} with transfer in {hub_code} "
+            f"({carriers})"
+            + (f", {duration_str} outbound." if duration_str else ".")
+        )
+        out_leg = {
+            "origin": origin_code,
+            "destination": dest_code,
+            "route": route_str,
+            "date": outbound_date or "",
+            "departure_time": l1.get("departure_time") or "",
+            "arrival_time": l2.get("arrival_time") or "",
+            "airlines": m["airlines"],
+            "flight_numbers": m["flight_numbers"],
+            "stops": m["stops"],
+            "duration_minutes": m["duration"],
+            "duration": duration_str,
+            "price_per_traveler": per_traveler if not return_date else None,
+            "booking_url": f"https://www.google.com/travel/flights?q=Flights%20to%20{dest_code}%20from%20{origin_code}%20on%20{outbound_date}",
+        }
+        ret_leg = {
+            "origin": dest_code,
+            "destination": origin_code,
+            "route": ret_route_str,
+            "date": return_date or "",
+            "departure_time": l2.get("departure_time") or "",
+            "arrival_time": l1.get("arrival_time") or "",
+            "airlines": m["airlines"],
+            "flight_numbers": m["flight_numbers"],
+            "stops": m["stops"],
+            "duration_minutes": m["duration"],
+            "duration": duration_str,
+            "price_per_traveler": None,
+            "booking_url": f"https://www.google.com/travel/flights?q=Flights%20to%20{origin_code}%20from%20{dest_code}%20on%20{return_date}",
+        } if return_date else None
+
+        strat = _strategy_payload(
+            tier=tier,
+            rank=rank,
+            m=m,
+            per_traveler=per_traveler,
+            party=party,
+            currency=currency,
+            trip_type=trip_type,
+            outbound_date=outbound_date,
+            return_date=return_date,
+            description=description,
+            outbound=out_leg,
+            return_leg=ret_leg,
+        )
+        strat["route"] = route_str
+        strat["return_route"] = ret_route_str
+        strat["title"] = f"1 stop via {hub_code} · {duration_str}"
+        strat["strategy"] = "connecting"
+        strat["convenience"] = _convenience_stars(m["stops"], m["duration"])
+        strat["tip"] = f"Connecting route via {hub_code} hub. Confirm connection times on Google Flights before booking."
+        strategies.append(strat)
+
+    general_tips: List[str] = [
+        f"Connecting route via {hub_code} hub: covers {origin_code} → {hub_code} and {hub_code} → {dest_code} "
+        f"for {outbound_date or 'outbound'}" + (f" → {return_date}." if return_date else "."),
+    ]
+    if party > 1:
+        general_tips.append(
+            f"Group total is the per-traveller fare x {party}; seats at the lowest fare may be limited."
+        )
+    general_tips.append("Fares change constantly — tap through to confirm the current price before booking.")
+
+    return {
+        "strategies": strategies,
+        "general_tips": general_tips,
+        "best_months": "",
+        "more_options": [],
+        "_departure_tokens": {},
+        "hub_code": hub_code,
+    }
+
+
 def rerank_tiers(strategies: List[Dict[str, Any]]) -> bool:
     """Put the cards back in order after a fare has moved, dropping any that
     the move has made pointless.

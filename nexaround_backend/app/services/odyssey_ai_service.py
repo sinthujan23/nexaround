@@ -31,6 +31,7 @@ from app.services.serpapi_service import (
     extract_hotel_strategies_from_serpapi,
     extract_flight_strategies_from_serpapi,
     extract_open_jaw_strategies_from_serpapi,
+    extract_connecting_hub_strategies_from_serpapi,
     rooms_for as serpapi_rooms_for,
     _card_title as serpapi_card_title,
     no_results as serpapi_no_results,
@@ -426,6 +427,7 @@ _AIRPORT_CODES = {
     "cape town": "CPT", "casablanca": "CMN", "addis ababa": "ADD",
     "lagos": "LOS", "accra": "ACC", "dar es salaam": "DAR",
     "zanzibar": "ZNZ", "mauritius": "MRU", "seychelles": "SEZ",
+    "luanda": "NBJ,LAD",
     "sydney": "SYD", "melbourne": "MEL", "brisbane": "BNE", "perth": "PER",
     "auckland": "AKL", "wellington": "WLG", "christchurch": "CHC",
     # ── Countries ────────────────────────────────────────────────────────────
@@ -465,6 +467,7 @@ _AIRPORT_CODES = {
     "egypt": "CAI", "morocco": "CMN", "kenya": "NBO",
     "south africa": "JNB,CPT", "tanzania": "DAR,ZNZ",
     "ethiopia": "ADD", "nigeria": "LOS", "ghana": "ACC",
+    "angola": "NBJ,LAD",
 }
 
 _AIRPORT_CODE_RE = re.compile(r"^[A-Z]{3}(,[A-Z]{3})*$")
@@ -516,6 +519,28 @@ _airport_code_cache: dict[str, str] = {}
 # deliberately NOT applied to a whole-country destination — see
 # _verify_airport_codes.
 _AIRPORT_MAX_KM = 1000.0
+
+
+def _normalize_airport_search_code(code: str) -> str:
+    """Expands airport codes to modern IATA codes for Google Flights.
+
+    e.g. Luanda, Angola opened Dr. António Agostinho Neto (NBJ) to replace
+    Quatro de Fevereiro (LAD). Google Flights indexes all commercial flights
+    under NBJ, so searching LAD alone returns 0 results.
+    """
+    if not code:
+        return ""
+    parts = [p.strip().upper() for p in str(code).split(",") if p.strip()]
+    normalized: list[str] = []
+    for p in parts:
+        if p == "LAD":
+            if "NBJ" not in normalized and "NBJ" not in parts:
+                normalized.append("NBJ")
+            normalized.append("LAD")
+        else:
+            if p not in normalized:
+                normalized.append(p)
+    return ",".join(normalized)
 
 
 async def _verify_airport_codes(
@@ -611,10 +636,12 @@ async def _resolve_airport_code(
 
     # Already a code (or comma-separated codes), or a "City (CMB)" string.
     upper = raw.upper().replace(" ", "")
+    if upper == "LAD":
+        return "NBJ,LAD"
     if _AIRPORT_CODE_RE.match(upper) and not any(
         c in _METRO_CODES for c in upper.split(",")
     ):
-        return upper
+        return _normalize_airport_search_code(upper)
     bracketed = re.search(r"\(([A-Z]{3})\)", raw)
     if bracketed and bracketed.group(1) not in _METRO_CODES:
         return bracketed.group(1)
@@ -1681,6 +1708,9 @@ async def generate_flight_strategies(
                 budget=geo_budget,
             ),
         )
+    origin_code = _normalize_airport_search_code(origin_code)
+    arrival_code = _normalize_airport_search_code(arrival_code)
+    departure_code = _normalize_airport_search_code(departure_code)
     if not departure_code:
         departure_code = arrival_code
     dest_code = arrival_code
@@ -1920,13 +1950,66 @@ async def generate_flight_strategies(
                     return await _finish(direct, trip_type=trip_type, home_code=dest_code)
 
                 if serpapi_no_results(serp_result):
-                    # Google answered, and the answer was that nothing flies
-                    # this route on these dates. An estimate here would invent
-                    # a fare for a journey that cannot be booked at any price,
-                    # so the section comes back empty with a reason instead.
                     logger.info(
-                        "Google has no flights %s → %s on %s; returning an empty "
-                        "flight section rather than an estimate.",
+                        "Google has no direct flights %s → %s on %s; checking connecting transit hubs...",
+                        origin_code, dest_code, outbound_date,
+                    )
+                    candidate_hubs = ["DXB", "ADD", "DOH"]
+                    hubs = [h for h in candidate_hubs if h != origin_code and h != dest_code]
+                    hub_strategies = None
+                    for hub in hubs[:2]:
+                        try:
+                            logger.info(
+                                "Trying connecting hub %s for route %s → %s...",
+                                hub, origin_code, dest_code,
+                            )
+                            leg1_res, leg2_res = await asyncio.gather(
+                                serp.search_flights(
+                                    departure_city=origin_code, destination=hub,
+                                    outbound_date=outbound_date, return_date=return_date,
+                                    adults=1, currency=currency,
+                                ),
+                                serp.search_flights(
+                                    departure_city=hub, destination=dest_code,
+                                    outbound_date=outbound_date, return_date=return_date,
+                                    adults=1, currency=currency,
+                                ),
+                                return_exceptions=True,
+                            )
+                            if (
+                                isinstance(leg1_res, dict)
+                                and isinstance(leg2_res, dict)
+                                and not serpapi_no_results(leg1_res)
+                                and not serpapi_no_results(leg2_res)
+                            ):
+                                connected = extract_connecting_hub_strategies_from_serpapi(
+                                    leg1_res, leg2_res,
+                                    origin_code=origin_code,
+                                    hub_code=hub,
+                                    dest_code=dest_code,
+                                    departure_city=departure_city,
+                                    destination=destination,
+                                    currency=currency,
+                                    outbound_date=outbound_date,
+                                    return_date=return_date,
+                                    travelers=travelers,
+                                )
+                                if connected and connected.get("strategies"):
+                                    logger.info(
+                                        "Found connecting route via %s (%s → %s → %s) with %d strategies.",
+                                        hub, origin_code, hub, dest_code, len(connected["strategies"]),
+                                    )
+                                    hub_strategies = connected
+                                    break
+                        except Exception as hub_err:
+                            logger.warning("Connecting hub search via %s failed: %s", hub, hub_err)
+
+                    if hub_strategies and hub_strategies.get("strategies"):
+                        trip_type = "round_trip" if return_date else "one_way"
+                        return await _finish(hub_strategies, trip_type=trip_type, home_code=dest_code)
+
+                    logger.info(
+                        "Google has no flights %s → %s (direct or via hub) on %s; returning empty flight section.",
                         origin_code, dest_code, outbound_date,
                     )
                     return _no_flights_found(
@@ -4554,11 +4637,13 @@ async def plan_route(
                 if code:
                     first = code.split(",")[0]
                     setattr(plan, attr, {"iata": first, "city": leg["city"], "name": "", "_codes": code})
-        plan.arrival_code = (plan.arrival or {}).get("_codes") or _search_code_for(plan.arrival)
-        plan.departure_code = (plan.departure or {}).get("_codes") or _search_code_for(plan.departure)
+        plan.arrival_code = _normalize_airport_search_code((plan.arrival or {}).get("_codes") or _search_code_for(plan.arrival))
+        plan.departure_code = _normalize_airport_search_code((plan.departure or {}).get("_codes") or _search_code_for(plan.departure))
         for airport in (plan.arrival, plan.departure):
             if airport:
                 airport.pop("_codes", None)
+                if airport.get("iata") == "LAD":
+                    airport["iata"] = "NBJ"
 
     logger.info(
         "%s %d city leg(s) for %s: %s | in via %s, out via %s (%s)",

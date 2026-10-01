@@ -481,6 +481,12 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _buildCinematicHeroCard(context),
+          if (widget.odyssey.legs.length > 1)
+            _infoCard(
+              'Selected Route',
+              widget.odyssey.chosenRouteDescription,
+              Icons.alt_route_rounded,
+            ),
           if (widget.odyssey.formattedDateRange.isNotEmpty) ...[
             _infoCard(
               'Trip Dates',
@@ -1018,6 +1024,88 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     );
   }
 
+  Widget _buildRouteCard() {
+    final routeText = widget.odyssey.chosenRouteDescription;
+    if (routeText.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      margin: const EdgeInsets.only(top: 8, bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.border.withValues(alpha: 0.6)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(7),
+            decoration: BoxDecoration(
+              color: AppColors.brandGreenLight,
+              borderRadius: BorderRadius.circular(9),
+            ),
+            child: const Icon(
+              Icons.alt_route_rounded,
+              size: 17,
+              color: AppColors.brandGreen,
+            ),
+          ),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      'ROUTE CHOSEN',
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1.2,
+                        color: AppColors.textSecondary.withValues(alpha: 0.8),
+                      ),
+                    ),
+                    if (widget.odyssey.legs.length > 1) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                        decoration: BoxDecoration(
+                          color: AppColors.brandGreenLight,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          '${widget.odyssey.legs.length} CITIES',
+                          style: const TextStyle(
+                            fontSize: 9.5,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.brandGreen,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  routeText,
+                  style: const TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
+                    height: 1.25,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// True when the backend priced each flight tier separately, so switching
   /// tiers actually swaps the itinerary and its fare.
   bool get _hasTieredFlights =>
@@ -1400,7 +1488,13 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
                       letterSpacing: 2,
                     ),
                   ),
-                  if (widget.onToggleVisited != null) _buildProgress(),
+                  if (widget.odyssey.legs.length > 1) ...[
+                    _buildRouteCard(),
+                  ],
+                  if (widget.onToggleVisited != null) ...[
+                    const SizedBox(height: 8),
+                    _buildProgress(),
+                  ],
                   const SizedBox(height: 12),
                 ],
               ],
