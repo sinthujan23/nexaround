@@ -517,3 +517,123 @@ def test_an_airport_code_only_matches_as_a_word():
     days = [_day(1, "Shuttle to the salad bar"), _day(2)]
     svc._mark_long_drives(days, legs, arrival=far)
     assert _km(days, 1)["Shuttle to the salad bar"] is None
+
+
+# ── One star class for the whole trip ───────────────────────────────────────
+
+ANTIGUA = DestinationContext(
+    query="Antigua", name="Antigua and Barbuda", country="Antigua and Barbuda",
+    country_code="AG", latitude=17.06, longitude=-61.80, types=("country",), source="places",
+)
+ANTIGUA_LEGS = [
+    {"city": "St. John's", "start_day": 1, "end_day": 4, "nights": 3,
+     "check_in_date": "2026-11-09", "check_out_date": "2026-11-12"},
+    {"city": "English Harbour", "start_day": 5, "end_day": 5, "nights": 1,
+     "check_in_date": "2026-11-12", "check_out_date": "2026-11-13"},
+]
+
+
+def _classes_searched(monkeypatch, **kw):
+    """The star class each city's first search asked Google for."""
+    first: dict[str, int] = {}
+
+    class _ScriptedSerp:
+        def __init__(self, key):
+            pass
+
+        async def search_hotels(self, *, destination, min_hotel_class=0, **_):
+            first.setdefault(destination, min_hotel_class)
+            return {"properties": [_priced(f"{destination} Inn", 90, 4)]}
+
+    monkeypatch.setattr(svc, "SerpApiService", _ScriptedSerp)
+    args = dict(
+        legs=copy.deepcopy(ANTIGUA_LEGS), days=5, budget=100_000, currency="INR",
+        travelers=2, hotel_check_in_date="2026-11-09", hotel_check_out_date="2026-11-13",
+        api_key="", serpapi_key="k", geo=ANTIGUA,
+    )
+    args.update(kw)
+    asyncio.run(svc.generate_hotel_strategies_for_legs(**args))
+    return first
+
+
+def test_a_one_night_stop_is_not_searched_as_if_the_trip_were_rich(monkeypatch):
+    """The reported plan: 3 nights got 3-star+, the 1-night stop 4-star+."""
+    first = _classes_searched(monkeypatch, departure="India", include_flights=True)
+    assert first == {"St. John's": 3, "English Harbour": 3}
+
+
+def test_every_city_shares_one_class_even_without_flights(monkeypatch):
+    first = _classes_searched(monkeypatch)
+    assert len(set(first.values())) == 1
+
+
+def test_flights_come_out_of_the_budget_before_rooms_are_sized():
+    """100,000 INR cannot buy 4-star rooms once Kochi -> Antigua is paid for."""
+    kw = dict(destination="Antigua and Barbuda", days=5, budget=100_000, currency="INR", travelers=2)
+    assert svc._star_floor_for_budget(**kw) == 4
+    assert svc._star_floor_for_budget(**kw, departure="India", include_flights=True) == 3
+
+
+def test_a_budget_that_covers_the_flights_keeps_its_four_star_rooms():
+    """The client's Angola trip: 332,000 INR for two still affords 4-star."""
+    assert svc._star_floor_for_budget(
+        destination="Angola", days=5, budget=332_000, currency="INR", travelers=2,
+        departure="India", include_flights=True,
+    ) == 4
+
+
+# ── Closest first ───────────────────────────────────────────────────────────
+
+ENGLISH_HARBOUR = (17.0036, -61.7631)
+
+
+def _km_away(prop, km):
+    """Place a property `km` north of English Harbour."""
+    return _at(prop, ENGLISH_HARBOUR[0] + km / 111.2, ENGLISH_HARBOUR[1])
+
+
+# Google's lowest-price order for English Harbour, 3-star+, 12-13 Nov 2026.
+ENGLISH_HARBOUR_ANSWER = [
+    _km_away(_priced("Eko Cozy Guest House", 101), 15),
+    _km_away(_priced("Ellen Bay Cottages", 135), 11),
+    _km_away(_priced("Pinkshack Studio Cottage", 92), 18),
+    _km_away(_priced("Heritage Hotel", 132), 16),
+    _km_away(_priced("Paige Pond Country Inn", 95), 8),
+    _km_away(_priced("The Ocean Inn", 140), 1),
+    _km_away(_priced("Villa Touloulou", 271, 4), 2),
+    _km_away(_priced("Antigua Superyacht Marina & Resort", 300), 1),
+    _km_away(_priced("Admiral's Inn and Gunpowder Suites", 421, 5), 1),
+]
+
+
+def test_english_harbour_shows_english_harbour_hotels():
+    result = _extract(ENGLISH_HARBOUR_ANSWER, destination="English Harbour",
+                      latitude=ENGLISH_HARBOUR[0], longitude=ENGLISH_HARBOUR[1])
+    assert [s["name"] for s in result["strategies"]] == [
+        "The Ocean Inn", "Villa Touloulou", "Antigua Superyacht Marina & Resort",
+        "Admiral's Inn and Gunpowder Suites",
+    ]
+
+
+def test_farther_hotels_fill_the_list_cheapest_first():
+    answer = [ENGLISH_HARBOUR_ANSWER[0], ENGLISH_HARBOUR_ANSWER[2], ENGLISH_HARBOUR_ANSWER[5],
+              ENGLISH_HARBOUR_ANSWER[1]]
+    result = _extract(answer, destination="English Harbour",
+                      latitude=ENGLISH_HARBOUR[0], longitude=ENGLISH_HARBOUR[1])
+    assert [s["name"] for s in result["strategies"]] == [
+        "The Ocean Inn", "Eko Cozy Guest House", "Pinkshack Studio Cottage", "Ellen Bay Cottages",
+    ]
+
+
+def test_the_town_s_own_unpriced_hotel_comes_before_a_priced_one_far_away():
+    answer = [ENGLISH_HARBOUR_ANSWER[0], _km_away(dict(POUSADA, name="Dockyard Rooms"), 1)]
+    result = _extract(answer, destination="English Harbour",
+                      latitude=ENGLISH_HARBOUR[0], longitude=ENGLISH_HARBOUR[1])
+    assert [s["name"] for s in result["strategies"]] == ["Dockyard Rooms", "Eko Cozy Guest House"]
+
+
+def test_without_the_town_s_position_google_s_order_stands():
+    result = _extract(ENGLISH_HARBOUR_ANSWER, destination="English Harbour")
+    assert [s["name"] for s in result["strategies"]][:2] == [
+        "Eko Cozy Guest House", "Ellen Bay Cottages",
+    ]

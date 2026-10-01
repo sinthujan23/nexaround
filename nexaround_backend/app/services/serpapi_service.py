@@ -276,6 +276,14 @@ def _within_radius(
     return kept
 
 
+# Hotels this close to the town's own coordinates are listed before any
+# farther ones, cheapest first within each group. Google's lowest-price order
+# spans the whole search area: English Harbour (Antigua) was shown four St.
+# John's hotels 15-18 km away, ahead of The Ocean Inn and Admiral's Inn 1 km
+# from the dockyard, because they were cheaper.
+CLOSE_HOTEL_KM = 5.0
+
+
 def _haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
     """Great-circle distance in km. Local copy: this module must not import
     the geo resolver, which imports the Places client, which imports this."""
@@ -824,6 +832,8 @@ def extract_hotel_strategies_from_serpapi(
     travelers: int = 1,
     nights: int = 0,
     max_hotels: int = 4,
+    latitude: float | None = None,
+    longitude: float | None = None,
 ) -> Dict[str, Any]:
     """Convert raw SerpAPI Google Hotels results directly into hotel strategy
     dicts compatible with the Odyssey HotelStrategy model.
@@ -855,19 +865,30 @@ def extract_hotel_strategies_from_serpapi(
     # callers that pass no nights.
     nights = int(nights or 0) or nights_between(check_in_date, check_out_date)
 
-    # Priced properties first, in Google's order (the search sorts by price),
-    # then the ones Google lists without a rate. Unpriced properties used to be
-    # dropped outright, which emptied every city where Google has no online
-    # rate: a Luanda -> Kalandula -> Ndalatando trip showed Luanda hotels only.
-    # They still carry no price, so they never set a budget figure or a tier;
-    # the budget prices those nights from the trip's other rooms.
-    priced: List[Dict[str, Any]] = []
-    unpriced: List[Dict[str, Any]] = []
-    for p in raw_properties:
-        if not isinstance(p, dict) or not str(p.get("name") or "").strip():
-            continue
-        (priced if property_has_rate(p) else unpriced).append(p)
-    properties = priced + unpriced
+    # Hotels within CLOSE_HOTEL_KM of the town first, when its coordinates are
+    # known; then, inside each group, priced properties before the ones Google
+    # lists without a rate; Google's own order (the search sorts by price)
+    # otherwise. Unpriced properties used to be dropped outright, which emptied
+    # every city where Google has no online rate: a Luanda -> Kalandula ->
+    # Ndalatando trip showed Luanda hotels only. They still carry no price, so
+    # they never set a budget figure or a tier; the budget prices those nights
+    # from the trip's other rooms.
+    def _far(p: Dict[str, Any]) -> bool:
+        if latitude is None or longitude is None:
+            return False
+        gps = p.get("gps_coordinates") or {}
+        lat, lng = gps.get("latitude"), gps.get("longitude")
+        if not isinstance(lat, (int, float)) or not isinstance(lng, (int, float)):
+            return True
+        return _haversine_km(latitude, longitude, float(lat), float(lng)) > CLOSE_HOTEL_KM
+
+    properties = sorted(
+        (
+            p for p in raw_properties
+            if isinstance(p, dict) and str(p.get("name") or "").strip()
+        ),
+        key=lambda p: (_far(p), not property_has_rate(p)),
+    )
 
     # Categorize hotels by price tier
     def _categorize(rate: float, all_rates: List[float]) -> str:

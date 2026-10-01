@@ -2352,33 +2352,38 @@ def _prefer_classed(serp_result: dict, destination: str) -> dict:
     return {**serp_result, "properties": classed}
 
 
-async def generate_hotel_strategies(
+def _star_floor_for_budget(
     *,
     destination: str,
     days: int,
     budget: float,
     currency: str,
     travelers: int,
-    hotel_check_in_date: str = "",
-    hotel_check_out_date: str = "",
-    api_key: str,
-    serpapi_key: str = "",
-    country: str = "",
-    country_code: str = "",
-    latitude: float | None = None,
-    longitude: float | None = None,
-) -> dict:
-    """Generates hotel/accommodation strategies using SerpApi Google Hotels directly.
+    departure: str = "",
+    include_flights: bool = False,
+) -> int:
+    """The lowest star class a trip of `days` days on `budget` should be shown.
 
-    Uses SerpAPI results directly, filtered to a minimum **star class** (see
-    `min_hotel_class` below) rather than to a guest review score. Gemini is NOT
-    used for hotel selection — prices, classes, ratings and hotel names come
-    straight from Google Hotels via SerpAPI.
+    A trip-level answer: `budget` must cover every night of `days`. A
+    multi-city trip asks once with the whole trip's days and passes the result
+    to every city's search (see `generate_hotel_strategies_for_legs`). Asking
+    per city divided the whole budget by that city's nights alone, so a
+    one-night stop looked rich: an Antigua plan searched St. John's (3 nights)
+    at 3-star+ and English Harbour (1 night) at 4-star+, and the Minimum tier
+    priced that night at INR 22,614 instead of a 3-star room.
 
-    Falls back to Gemini-based generation only after every rung of the class
-    ladder has come back empty.
+    With `include_flights`, the fares come out of the budget first (the
+    cost-floor table's estimate from `departure`): the same Antigua trip had a
+    100,000 INR budget and 366,000 of flights, and was still judged able to
+    afford 4-star rooms.
     """
-
+    if include_flights and departure:
+        floor = trip_cost_floor.minimum_budget(
+            destination=destination, days=days, travelers=travelers,
+            currency=currency, departure_country=departure, include_flights=True,
+        )
+        flights = trip_cost_floor.from_usd(float((floor or {}).get("flight_usd") or 0), currency)
+        budget = max(budget - (flights or 0.0), 0.0)
     # Filter on **star class**, not on guest review score.
     #
     # The floor this replaces was `overall_rating >= 4.0` — a guest score out
@@ -2411,7 +2416,7 @@ async def generate_hotel_strategies(
         # was the original bug: for destinations outside that list, this whole
         # budget-aware adjustment never engaged at all. Fall back to a plain
         # budget-share estimate (lodging as ~35% of total, the same rule of
-        # thumb the overall budget waterfall elsewhere in this function uses)
+        # thumb the overall budget waterfall elsewhere in this module uses)
         # rather than giving up on being budget-aware.
         affordable_per_night = (budget * 0.35) / nights / rooms
 
@@ -2423,6 +2428,44 @@ async def generate_hotel_strategies(
         # a reason to sort by price, which this search already does, not a
         # reason to show the traveller worse hotels than they asked for.
         min_hotel_class = 4
+    return min_hotel_class
+
+
+async def generate_hotel_strategies(
+    *,
+    destination: str,
+    days: int,
+    budget: float,
+    currency: str,
+    travelers: int,
+    hotel_check_in_date: str = "",
+    hotel_check_out_date: str = "",
+    api_key: str,
+    serpapi_key: str = "",
+    country: str = "",
+    country_code: str = "",
+    latitude: float | None = None,
+    longitude: float | None = None,
+    min_hotel_class: int | None = None,
+) -> dict:
+    """Generates hotel/accommodation strategies using SerpApi Google Hotels directly.
+
+    Uses SerpAPI results directly, filtered to a minimum **star class** (see
+    `_star_floor_for_budget`; a multi-city trip passes its own trip-wide
+    `min_hotel_class`) rather than to a guest review score. Gemini is NOT
+    used for hotel selection — prices, classes, ratings and hotel names come
+    straight from Google Hotels via SerpAPI.
+
+    Falls back to Gemini-based generation only after every rung of the class
+    ladder has come back empty.
+    """
+
+    nights = max(days - 1, 1)
+    if min_hotel_class is None:
+        min_hotel_class = _star_floor_for_budget(
+            destination=destination, days=days, budget=budget,
+            currency=currency, travelers=travelers,
+        )
 
     # ── Primary path: SerpAPI direct extraction ──────────────────────────────
     if serpapi_key:
@@ -2447,6 +2490,8 @@ async def generate_hotel_strategies(
                     travelers=travelers,
                     nights=nights,
                     max_hotels=4,
+                    latitude=latitude,
+                    longitude=longitude,
                 )
 
             # Rungs that found hotels but not a usable answer: none in the
@@ -3686,6 +3731,8 @@ async def generate_hotel_strategies_for_legs(
     api_key: str,
     serpapi_key: str,
     geo=None,
+    departure: str = "",
+    include_flights: bool = False,
 ) -> dict:
     """Hotels for every city the trip sleeps in, each priced for its own nights.
 
@@ -3728,11 +3775,28 @@ async def generate_hotel_strategies_for_legs(
             ),
         )
 
+    # One star class for the whole trip, sized to every night it pays for.
+    # Each city deciding its own put a one-night stop on 4-star+ beside a
+    # three-night city on 3-star+, from the same budget.
+    trip_class = _star_floor_for_budget(
+        destination=(
+            geo.country if geo is not None and geo.resolved and geo.country
+            else str(legs[0].get("city") or "")
+        ),
+        days=days,
+        budget=budget,
+        currency=currency,
+        travelers=travelers,
+        departure=departure,
+        include_flights=include_flights,
+    )
+
     searches = [
         generate_hotel_strategies(
             destination=leg["city"],
             days=max(int(leg.get("nights") or 1), 1) + 1,
             budget=budget,
+            min_hotel_class=trip_class,
             currency=currency,
             travelers=travelers,
             # Each leg's own window. This is what makes a two-night stay quote
@@ -5423,6 +5487,8 @@ async def generate_odyssey(
                     geo=geo,
                     days=days,
                     budget=budget,
+                    departure=departure_country or departure_city or "",
+                    include_flights=search_flights,
                     currency=currency,
                     travelers=travelers,
                     hotel_check_in_date=hotel_check_in_date or "",

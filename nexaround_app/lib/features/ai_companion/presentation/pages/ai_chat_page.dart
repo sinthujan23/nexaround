@@ -2,8 +2,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong2.dart' as ll;
+import 'package:nexaround_app/core/constants/api_constants.dart';
 import 'package:nexaround_app/core/services/gemini_service.dart';
 import 'package:nexaround_app/core/services/google_places_service.dart';
+import 'package:nexaround_app/core/services/neva_service.dart';
 import 'package:nexaround_app/core/services/permission_service.dart';
 import 'package:nexaround_app/features/attractions/domain/entities/attraction.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -303,12 +307,23 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
     if (!_locationResolved) await _resolveUserLocation();
 
     try {
-      final response = await _geminiService.getResponse(
-        text,
-        systemInstruction: _nevaSystemPrompt,
-        context: _locationContext(),
-        temperature: 0.85,
+      // The backend answers "where is…" questions with real places, which are
+      // mapped under the reply. When it is unreachable, the plain proxy below
+      // answers exactly as before, without a map.
+      final reply = await NevaService.chat(
+        message: text,
+        latitude: _userLat,
+        longitude: _userLng,
+        area: _userArea,
       );
+      final response = reply?.text ??
+          await _geminiService.getResponse(
+            text,
+            systemInstruction: _nevaSystemPrompt,
+            context: _locationContext(),
+            temperature: 0.85,
+          );
+      final places = reply?.places ?? const <AttractionEntity>[];
 
       if (mounted) {
         setState(() {
@@ -318,6 +333,8 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
               text: response,
               isUser: false,
               timestamp: DateTime.now(),
+              places: places.isEmpty ? null : places,
+              placesCategoryLabel: reply?.query,
             ),
           );
         });
@@ -637,6 +654,13 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
                 ),
                 if (message.places != null && message.places!.isNotEmpty) ...[
                   const SizedBox(height: 10),
+                  _NevaPlacesMap(
+                    places: message.places!,
+                    userLat: _userLat,
+                    userLng: _userLng,
+                    onExpand: () => _openPlacesMap(message),
+                  ),
+                  const SizedBox(height: 10),
                   _buildPlacesList(message.places!),
                 ],
               ],
@@ -686,10 +710,46 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
     ).animate().fade();
   }
 
+  /// In-app navigation to one place — the screen every place card opens.
+  void _openDirections(AttractionEntity p) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SmartTourismMapPage(
+          initialLat: p.latitude,
+          initialLng: p.longitude,
+          destinationName: p.name,
+        ),
+      ),
+    );
+  }
+
+  /// The chat map, full screen and movable; tapping a pin starts directions.
+  void _openPlacesMap(_ChatMessage message) {
+    final places = message.places;
+    if (places == null || places.isEmpty) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => _NevaPlacesMapPage(
+          title: (message.placesCategoryLabel ?? '').isNotEmpty
+              ? message.placesCategoryLabel!
+              : 'Places near you',
+          places: places,
+          userLat: _userLat,
+          userLng: _userLng,
+          onPlaceTap: _openDirections,
+        ),
+      ),
+    );
+  }
+
   Widget _buildPlacesList(List<AttractionEntity> places) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: places.map((p) {
+      children: places.asMap().entries.map((entry) {
+        final pin = entry.key + 1;
+        final p = entry.value;
         final distM = p.distanceM;
         final distLabel = distM == null
             ? ''
@@ -698,18 +758,7 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
                   : '${(distM / 1000).toStringAsFixed(1)} km');
 
         return GestureDetector(
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => SmartTourismMapPage(
-                  initialLat: p.latitude,
-                  initialLng: p.longitude,
-                  destinationName: p.name,
-                ),
-              ),
-            );
-          },
+          onTap: () => _openDirections(p),
           child: Container(
             margin: const EdgeInsets.only(bottom: 8),
             padding: const EdgeInsets.all(10),
@@ -728,6 +777,9 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
+                // Matches the numbered pin on the map above.
+                _NevaPinBadge(pin, size: 22),
+                const SizedBox(width: 8),
                 ClipRRect(
                   borderRadius: BorderRadius.circular(10),
                   child: Container(
@@ -802,6 +854,39 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
                             ),
                           ],
                         ],
+                      ),
+                      if ((p.address ?? '').isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          p.address!,
+                          style: const TextStyle(fontSize: 11, color: Colors.black45),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                // Says out loud what tapping the card already did.
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.black,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.directions_rounded, color: Colors.white, size: 13),
+                      SizedBox(width: 4),
+                      Text(
+                        'Directions',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ],
                   ),
@@ -1309,6 +1394,244 @@ class _NevaFormattedText extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// The numbered marker shared by a map pin and its place card below.
+class _NevaPinBadge extends StatelessWidget {
+  final int number;
+  final double size;
+
+  const _NevaPinBadge(this.number, {this.size = 24});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: AppColors.primary,
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.white, width: 2),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.2),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Text(
+        '$number',
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: size * 0.45,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+  }
+}
+
+/// The places Neva found, pinned on a map under her reply, with the user's own
+/// position as a blue dot (client request, 2026-10-01: "respond with map
+/// integrated when asking help for location").
+///
+/// Inside the chat it does not pan or zoom, which would fight the list's
+/// scrolling; a tap opens it full screen via [onExpand]. With [interactive]
+/// it is that full-screen map, and tapping a pin calls [onPlaceTap].
+class _NevaPlacesMap extends StatelessWidget {
+  final List<AttractionEntity> places;
+  final double? userLat;
+  final double? userLng;
+  final VoidCallback? onExpand;
+  final void Function(AttractionEntity place)? onPlaceTap;
+  final bool interactive;
+
+  const _NevaPlacesMap({
+    required this.places,
+    this.userLat,
+    this.userLng,
+    this.onExpand,
+    this.onPlaceTap,
+    this.interactive = false,
+  });
+
+  /// Mapbox streets when the app has its token, else CARTO's free tiles: the
+  /// same pair the manual-mode map uses.
+  static String get _tileUrl {
+    final token = ApiConstants.mapboxAccessToken;
+    return token.isNotEmpty && token != 'YOUR_MAPBOX_ACCESS_TOKEN_HERE'
+        ? ApiConstants.mapboxStreets
+        : 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final pins = [for (final p in places) ll.LatLng(p.latitude, p.longitude)];
+    final me = (userLat != null && userLng != null)
+        ? ll.LatLng(userLat!, userLng!)
+        : null;
+    final everything = [...pins, if (me != null) me];
+
+    final map = FlutterMap(
+      options: MapOptions(
+        initialCenter: everything.first,
+        initialZoom: 15,
+        // Every pin and the user in view, without zooming past street level
+        // when they are all on one block.
+        initialCameraFit: everything.length > 1
+            ? CameraFit.coordinates(
+                coordinates: everything,
+                padding: const EdgeInsets.all(36),
+                maxZoom: 17,
+              )
+            : null,
+        interactionOptions: InteractionOptions(
+          flags: interactive
+              ? InteractiveFlag.all & ~InteractiveFlag.rotate
+              : InteractiveFlag.none,
+        ),
+      ),
+      children: [
+        TileLayer(
+          urlTemplate: _tileUrl,
+          subdomains: const ['a', 'b', 'c', 'd'],
+          maxZoom: 19,
+          userAgentPackageName: 'com.nexaround.app',
+        ),
+        MarkerLayer(
+          markers: [
+            if (me != null)
+              Marker(
+                point: me,
+                width: 20,
+                height: 20,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.blueAccent,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 3),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.blueAccent.withValues(alpha: 0.35),
+                        blurRadius: 8,
+                        spreadRadius: 2,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            // Last pin first, so pin 1 (the nearest) is drawn on top.
+            for (var i = pins.length - 1; i >= 0; i--)
+              Marker(
+                point: pins[i],
+                width: 30,
+                height: 30,
+                child: GestureDetector(
+                  onTap: onPlaceTap == null ? null : () => onPlaceTap!(places[i]),
+                  child: _NevaPinBadge(i + 1, size: 28),
+                ),
+              ),
+          ],
+        ),
+      ],
+    );
+
+    if (interactive) return map;
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: SizedBox(
+        height: 180,
+        width: double.infinity,
+        child: Stack(
+          children: [
+            map,
+            Positioned.fill(
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(onTap: onExpand),
+              ),
+            ),
+            Positioned(
+              right: 8,
+              bottom: 8,
+              child: IgnorePointer(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.12),
+                        blurRadius: 6,
+                      ),
+                    ],
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.open_in_full_rounded, size: 12, color: Colors.black87),
+                      SizedBox(width: 4),
+                      Text(
+                        'Open map',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.black87,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// [_NevaPlacesMap] full screen: pan and zoom, tap a pin for directions.
+class _NevaPlacesMapPage extends StatelessWidget {
+  final String title;
+  final List<AttractionEntity> places;
+  final double? userLat;
+  final double? userLng;
+  final void Function(AttractionEntity place) onPlaceTap;
+
+  const _NevaPlacesMapPage({
+    required this.title,
+    required this.places,
+    required this.onPlaceTap,
+    this.userLat,
+    this.userLng,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final heading = title.isEmpty
+        ? title
+        : '${title[0].toUpperCase()}${title.substring(1)}';
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(heading),
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black87,
+        elevation: 0,
+      ),
+      body: _NevaPlacesMap(
+        places: places,
+        userLat: userLat,
+        userLng: userLng,
+        onPlaceTap: onPlaceTap,
+        interactive: true,
       ),
     );
   }
