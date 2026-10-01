@@ -49,3 +49,20 @@ def _providers_off(monkeypatch):
     monkeypatch.setattr(config, "_config", {})
     monkeypatch.setattr(config, "_config_at", time.time())
     yield
+
+
+@pytest.fixture(autouse=True)
+def _leg_lookup_off(monkeypatch):
+    """Route legs keep the planner's coordinates unless a test says not.
+
+    `_leg_geo` reads the Redis the live stack shares and calls Places; every
+    route-planner test would otherwise do both. Tests of the lookup itself
+    restore the real function (see tests/test_hotels_without_rates.py).
+    """
+    from app.services import odyssey_ai_service
+
+    async def _unknown(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(odyssey_ai_service, "_leg_geo", _unknown)
+    yield

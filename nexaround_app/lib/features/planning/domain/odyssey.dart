@@ -82,6 +82,9 @@ class OdysseyActivity {
   final String bookingUrl; // optional deep link for booking
   final List<RestaurantOption> restaurants; // dining activity restaurant list
   final String hours; // real opening hours, attraction/dining/accommodation only, if search-confirmed
+  /// Straight-line km of the drive this transport row covers, set by the
+  /// backend only when it is too long for a ride app (over 150 km); 0 otherwise.
+  final int intercityKm;
 
   const OdysseyActivity({
     required this.time,
@@ -97,6 +100,7 @@ class OdysseyActivity {
     this.bookingUrl = '',
     this.restaurants = const [],
     this.hours = '',
+    this.intercityKm = 0,
   });
 
   OdysseyActivity copyWith({
@@ -121,6 +125,7 @@ class OdysseyActivity {
         bookingUrl: bookingUrl,
         restaurants: restaurants,
         hours: hours,
+        intercityKm: intercityKm,
       );
 
   factory OdysseyActivity.fromJson(Map<String, dynamic> json) {
@@ -148,6 +153,7 @@ class OdysseyActivity {
           .map((r) => RestaurantOption.fromJson(r.cast<String, dynamic>()))
           .toList(),
       hours: (json['hours'] ?? '').toString(),
+      intercityKm: (num.tryParse('${json['intercity_km'] ?? ''}') ?? 0).round(),
     );
   }
 
@@ -166,6 +172,8 @@ class OdysseyActivity {
         if (restaurants.isNotEmpty)
           'restaurants': restaurants.map((r) => r.toJson()).toList(),
         'hours': hours,
+        // Written back so a save from the app (ticking a stop visited) keeps it.
+        if (intercityKm > 0) 'intercity_km': intercityKm,
       };
 
   /// Infer activity type from explicit JSON value or name/cost heuristics.

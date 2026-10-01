@@ -205,6 +205,25 @@ def property_hotel_class(prop: Dict[str, Any]) -> int:
     return 0
 
 
+def property_has_rate(prop: Dict[str, Any]) -> bool:
+    """Does Google quote this property a nightly rate for the dates searched?
+
+    Small towns are the usual exception: Google lists the hotel, its rating and
+    amenities, but no booking site sells its rooms online, so `rate_per_night`
+    is absent. Every hotel in Kalandula and Ndalatando (Angola) came back that
+    way, and dropping them is what left those cities off the Stays tab.
+    """
+    if not isinstance(prop, dict):
+        return False
+    rate_info = prop.get("rate_per_night") or {}
+    if not isinstance(rate_info, dict):
+        return False
+    extracted = rate_info.get("extracted_lowest") or 0
+    return (
+        isinstance(extracted, (int, float)) and not isinstance(extracted, bool) and extracted > 0
+    ) or bool(rate_info.get("lowest"))
+
+
 # Hotels are priced per room, so a party of three needs two rooms and pays
 # twice the nightly rate. Defined here, beside the extraction that quotes the
 # stay total, so the Stays tab and the budget allocation cannot drift apart:
@@ -836,24 +855,23 @@ def extract_hotel_strategies_from_serpapi(
     # callers that pass no nights.
     nights = int(nights or 0) or nights_between(check_in_date, check_out_date)
 
-    # Strictly filter for available properties that have valid, active pricing and names
-    properties: List[Dict[str, Any]] = []
+    # Priced properties first, in Google's order (the search sorts by price),
+    # then the ones Google lists without a rate. Unpriced properties used to be
+    # dropped outright, which emptied every city where Google has no online
+    # rate: a Luanda -> Kalandula -> Ndalatando trip showed Luanda hotels only.
+    # They still carry no price, so they never set a budget figure or a tier;
+    # the budget prices those nights from the trip's other rooms.
+    priced: List[Dict[str, Any]] = []
+    unpriced: List[Dict[str, Any]] = []
     for p in raw_properties:
-        if not isinstance(p, dict):
+        if not isinstance(p, dict) or not str(p.get("name") or "").strip():
             continue
-        name = p.get("name", "").strip()
-        if not name:
-            continue
-        rate_info = p.get("rate_per_night") or {}
-        extracted_rate = rate_info.get("extracted_lowest") or 0
-        price_display = rate_info.get("lowest", "")
-        # Must have a positive price to ensure the hotel is currently available and bookable
-        if (isinstance(extracted_rate, (int, float)) and extracted_rate > 0) or price_display:
-            properties.append(p)
+        (priced if property_has_rate(p) else unpriced).append(p)
+    properties = priced + unpriced
 
     # Categorize hotels by price tier
     def _categorize(rate: float, all_rates: List[float]) -> str:
-        if not all_rates:
+        if not all_rates or rate <= 0:
             return "Hotel"
         avg = sum(all_rates) / len(all_rates)
         if rate >= avg * 1.5:
@@ -892,13 +910,18 @@ def extract_hotel_strategies_from_serpapi(
         if isinstance(amenities, list):
             amenities = [str(a) for a in amenities[:6]]
 
-        # Location from nearby_places
+        # Location from nearby_places. Google always lists the nearest airport
+        # there, with the taxi time to it, so it is not the neighbourhood: an
+        # Ndalatando hotel read "Dr. Antonio Agostinho Neto Angola
+        # International Airport", a 2 hr 53 min drive away.
         nearby = p.get("nearby_places") or []
         location_parts = []
-        for np_item in nearby[:2]:
+        for np_item in nearby:
+            if len(location_parts) >= 2:
+                break
             if isinstance(np_item, dict):
-                np_name = np_item.get("name", "")
-                if np_name:
+                np_name = str(np_item.get("name") or "").strip()
+                if np_name and "airport" not in np_name.lower():
                     location_parts.append(np_name)
         location = ", ".join(location_parts) if location_parts else destination
 
@@ -1011,16 +1034,28 @@ def extract_hotel_strategies_from_serpapi(
             "hotel_class": property_hotel_class(p),
             "location": location,
             "amenities": amenities,
-            "description": description or f"Well-rated hotel in {destination} with excellent guest reviews.",
+            "description": description or (
+                f"Well-rated hotel in {destination} with excellent guest reviews."
+                if price_str else
+                "No online rate for these dates — contact the hotel to book."
+            ),
             "booking_url": booking_url,
             "serpapi_link": serpapi_link,
         })
 
     # Generate helpful tips
     general_tips = []
-    if check_in_date and check_out_date:
-        general_tips.append(f"Prices shown are live rates for {check_in_date} to {check_out_date}.")
-    general_tips.append("Prices may vary — tap to view the latest rates on the booking site.")
+    any_priced = any(s.get("price_per_night") for s in strategies)
+    if any_priced:
+        if check_in_date and check_out_date:
+            general_tips.append(f"Prices shown are live rates for {check_in_date} to {check_out_date}.")
+        general_tips.append("Prices may vary — tap to view the latest rates on the booking site.")
+    if any(not s.get("price_per_night") for s in strategies):
+        general_tips.append(
+            f"Some hotels in {destination} list no online rate"
+            + (f" for {check_in_date} to {check_out_date}" if check_in_date and check_out_date else "")
+            + " — contact them directly to book."
+        )
     if strategies:
         # State the star class actually met, not the average guest score. The
         # old line read "All hotels shown are rated 4.3★ or higher" off the
@@ -1030,10 +1065,13 @@ def extract_hotel_strategies_from_serpapi(
         classes = [int(s.get("hotel_class") or 0) for s in strategies]
         classed = [c for c in classes if c > 0]
         if classed and len(classed) == len(classes):
+            # Named for its city: tips from every leg are merged into one list,
+            # and a bare "every hotel here" sat over Kalandula's unclassed
+            # guesthouse on the same tab.
             general_tips.append(
-                f"Every hotel here is {min(classed)}-star class or above."
+                f"Every hotel in {destination} here is {min(classed)}-star class or above."
             )
-        if nights > 0:
+        if nights > 0 and any_priced:
             room_word = "room" if rooms == 1 else "rooms"
             general_tips.append(
                 f"Est. Total covers {nights} {'night' if nights == 1 else 'nights'} "

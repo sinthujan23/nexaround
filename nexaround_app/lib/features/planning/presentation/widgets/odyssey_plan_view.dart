@@ -2803,10 +2803,27 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     return TripCostFloor.countryFor(widget.odyssey.departureCity) != _tripCountryCode;
   }
 
+  static final RegExp _rentalWord =
+      RegExp(r'\brentals?\b|\brent an?\b|\bself[- ]?drive\b');
+
+  /// A car the traveller drives is not a ride: an Angola plan offered Yango,
+  /// Heetch and Bolt under "Car rental: Luanda -> Kalandula", a 367 km drive.
+  ///
+  /// Read from the row's name only. The price source is free text from the
+  /// model, and "No current search result found" matches "rent".
+  bool _isRentalRow(OdysseyActivity act) =>
+      _rentalWord.hasMatch(act.name.toLowerCase());
+
   /// The ride apps to show under a ground-transport row; empty for any other.
+  ///
+  /// `intercityKm` is set by the backend on a drive over 150 km between two
+  /// cities, or between a city and a distant airport. That is no ride-app
+  /// trip, whatever the model named the row ("Car Transfer to Kalandula").
   List<RideApp> _rideAppsFor(OdysseyActivity act) {
     if (act.type != ActivityType.transport ||
+        act.intercityKm > 0 ||
         _isFlightRow(act) ||
+        _isRentalRow(act) ||
         _isJourneyFromAbroad(act)) {
       return const [];
     }

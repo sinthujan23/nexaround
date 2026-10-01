@@ -16,7 +16,8 @@ from types import SimpleNamespace
 import urllib.parse
 import httpx
 from app.services import (
-    airports_service, cover_photo_service, geo_resolver, ground_route_service,
+    airports_service, cover_photo_service, geo_resolver, google_places_client,
+    ground_route_service,
     place_cache_service, telemetry, trip_cost_floor, venue_facts_service,
 )
 from app.services.providers import enrich as provider_enrich
@@ -24,6 +25,7 @@ from app.services.serpapi_service import (
     SerpApiService,
     _MIN_GOOGLE_HOTEL_CLASS,
     property_hotel_class as serpapi_property_hotel_class,
+    property_has_rate as serpapi_property_has_rate,
     attach_return_leg,
     rerank_tiers,
     format_flight_results_for_gemini,
@@ -200,6 +202,13 @@ _PLACE_ANCHOR_KM = 150
 # enough for an airport hotel or a hill-station property spread along a valley,
 # tight enough that a namesake city on another continent cannot survive it.
 _HOTEL_MAX_KM = 60.0
+
+# How close at least one hotel must be for a search to count as finding the
+# town. `_HOTEL_MAX_KM` is only a sanity bound: a 4-star search for Roskilde
+# came back with three hotels in Copenhagen's suburbs 21-22 km away, and
+# Kalundborg's with a manor 26 km out, while the towns' own lower-class hotels
+# were never searched. A rung with nothing this close tries the next rung.
+_HOTEL_NEAR_KM = 15.0
 
 # How many classed (2-star+) properties the unfiltered rung must find before
 # it drops the unclassed ones. Below this the traveller is better served by
@@ -1287,6 +1296,82 @@ def _name_the_price_source(day_items: list[dict]) -> int:
     return named
 
 
+# A drive longer than this, in a straight line, is not a ride-app trip: the app
+# hides its "Available here" ride-app buttons on any row carrying
+# `intercity_km`. 150 km keeps Colombo -> Kandy (~95 km), where PickMe and Uber
+# run out-of-town rides, and drops Luanda -> Kalandula (~300 km), where an
+# Angola plan offered Yango, Heetch and Bolt under the drive. The user's
+# choice, 2026-10-01.
+_RIDE_APP_MAX_KM = 150.0
+
+
+def _mark_long_drives(
+    day_items: list[dict],
+    city_legs: list[dict] | None,
+    arrival: dict | None = None,
+    departure: dict | None = None,
+) -> int:
+    """Stamp `intercity_km` on the transport rows that cover a long drive.
+
+    Two kinds of drive: from one city of the route to the next, on the day the
+    next one starts; and between the airport and the first or last city, on
+    the first or last day. The row is found by the place names it mentions.
+    A city-to-city day where no row names either city, but exactly one
+    transport row does not go to an airport, marks that row: a missing
+    ride-app button costs the traveller nothing.
+
+    Runs after the providers step, which replaces transfer rows wholesale.
+    Returns how many rows were marked.
+    """
+    legs = [leg for leg in (city_legs or []) if isinstance(leg, dict)]
+    days = [d for d in (day_items or []) if isinstance(d, dict)]
+    if not legs or not days:
+        return 0
+    numbers = [_as_int(d.get("day"), 0) for d in days]
+    first_day, last_day = min(numbers), max(numbers)
+
+    def _mentions(row: dict, words: list[str]) -> bool:
+        name = str(row.get("name") or "").lower()
+        return any(re.search(rf"\b{re.escape(w)}\b", name) for w in words)
+
+    marked = 0
+    for d, day_no in zip(days, numbers):
+        rows = [
+            a for a in (d.get("activities") or [])
+            if isinstance(a, dict) and a.get("type") == "transport"
+        ]
+        if not rows:
+            continue
+        # (km, the place names that identify the row, ends at an airport)
+        hops: list[tuple[float | None, list[str], bool]] = []
+        for i, leg in enumerate(legs):
+            prev = legs[i - 1] if i else None
+            if prev is None or _as_int(leg.get("start_day"), 0) != day_no:
+                continue
+            cities = [str(x.get("city") or "").strip().lower() for x in (prev, leg)]
+            if cities[0] != cities[1]:
+                hops.append((_airport_leg_km(prev, leg), cities, False))
+        for airport, leg, on_day in ((arrival, legs[0], first_day), (departure, legs[-1], last_day)):
+            if airport and day_no == on_day:
+                code = str(airport.get("iata") or "").strip().lower()
+                hops.append((_airport_leg_km(airport, leg), ["airport", code], True))
+
+        for km, words, to_airport in hops:
+            words = [w for w in words if w]
+            if km is None or km < _RIDE_APP_MAX_KM or not words:
+                continue
+            if to_airport:
+                hit = [a for a in rows if _mentions(a, words)]
+            else:
+                local = [a for a in rows if not _mentions(a, ["airport"])]
+                hit = [a for a in local if _mentions(a, words)] or (local if len(local) == 1 else [])
+            for a in hit:
+                if not a.get("intercity_km"):
+                    marked += 1
+                a["intercity_km"] = max(int(round(km)), int(a.get("intercity_km") or 0))
+    return marked
+
+
 # Sources that can only ever describe one kind of stop.
 _FLIGHT_SOURCES = ("google flights", "skyscanner", "kayak", "aviasales", "kiwi.com")
 _HOTEL_SOURCES = ("google hotels", "booking.com", "agoda", "hotels.com")
@@ -2219,6 +2304,26 @@ Return ONLY a JSON object with this exact shape (note every strategy has a price
         return {}
 
 
+def _any_hotel_near(
+    properties: list[dict], latitude: float | None, longitude: float | None,
+) -> bool:
+    """Is at least one property within `_HOTEL_NEAR_KM` of the town?
+
+    True when the town or a property has no coordinates to measure: an
+    unmeasurable search is not evidence of the wrong place.
+    """
+    if latitude is None or longitude is None:
+        return True
+    for p in properties:
+        gps = (p or {}).get("gps_coordinates") or {}
+        lat, lng = gps.get("latitude"), gps.get("longitude")
+        if not isinstance(lat, (int, float)) or not isinstance(lng, (int, float)):
+            return True
+        if geo_resolver.haversine_km(latitude, longitude, lat, lng) <= _HOTEL_NEAR_KM:
+            return True
+    return False
+
+
 def _prefer_classed(serp_result: dict, destination: str) -> dict:
     """On the unfiltered rung, keep the classed hotels when there are enough.
 
@@ -2234,7 +2339,10 @@ def _prefer_classed(serp_result: dict, destination: str) -> dict:
         p for p in properties
         if isinstance(p, dict) and serpapi_property_hotel_class(p) >= _MIN_GOOGLE_HOTEL_CLASS
     ]
-    if len(classed) < _MIN_CLASSED_RESULTS:
+    # Counted on priced ones only: classed hotels Google shows no rate for
+    # cannot stand in for the priced guesthouses this would otherwise drop,
+    # and leave the town with nothing to budget from.
+    if sum(1 for p in classed if serpapi_property_has_rate(p)) < _MIN_CLASSED_RESULTS:
         return serp_result
     if len(classed) < len(properties):
         logger.info(
@@ -2329,6 +2437,24 @@ async def generate_hotel_strategies(
             attempts = [c for c in _HOTEL_CLASS_FALLBACKS if c < min_hotel_class]
             attempts.insert(0, min_hotel_class)
 
+            def _extract(result: dict) -> dict:
+                return extract_hotel_strategies_from_serpapi(
+                    result,
+                    destination=destination,
+                    currency=currency,
+                    check_in_date=hotel_check_in_date,
+                    check_out_date=hotel_check_out_date,
+                    travelers=travelers,
+                    nights=nights,
+                    max_hotels=4,
+                )
+
+            # Rungs that found hotels but not a usable answer: none in the
+            # town itself, or none with an online rate (a town's sole 4-star
+            # may sell no rooms online while its 3-stars do, and a price is
+            # what the budget needs). Kept in case no wider rung does better.
+            fallbacks: list[tuple[bool, bool, int, dict]] = []
+
             for attempt, class_floor in enumerate(attempts):
                 label = f"{class_floor}-star+" if class_floor else "any class"
                 logger.info(
@@ -2371,20 +2497,31 @@ async def generate_hotel_strategies(
                     serp_result = _prefer_classed(serp_result, destination)
                     properties = serp_result.get("properties") or []
 
+                in_town = _any_hotel_near(properties, latitude, longitude)
+                priced = any(serpapi_property_has_rate(p) for p in properties)
+                if not (in_town and priced):
+                    logger.warning(
+                        "SerpAPI listed %d hotels at %s for %s, %s%s",
+                        len(properties), label, destination,
+                        f"none within {_HOTEL_NEAR_KM:.0f} km of it" if not in_town
+                        else "none with an online rate",
+                        "; trying a wider search" if attempt + 1 < len(attempts) else "",
+                    )
+                    fallbacks.append((in_town, priced, -attempt, serp_result))
+                    continue
+
                 logger.info(
                     "SerpAPI returned %d hotels (%s) for %s",
                     len(properties), label, destination,
                 )
-                return extract_hotel_strategies_from_serpapi(
-                    serp_result,
-                    destination=destination,
-                    currency=currency,
-                    check_in_date=hotel_check_in_date,
-                    check_out_date=hotel_check_out_date,
-                    travelers=travelers,
-                    nights=nights,
-                    max_hotels=4,
-                )
+                return _extract(serp_result)
+
+            if fallbacks:
+                # The town's own hotels first, even unpriced, over a priced one
+                # 26 km out; then a price; then the higher class. Any of them
+                # beats an invented hotel with an invented price, which is what
+                # the Gemini fallback below writes.
+                return _extract(max(fallbacks, key=lambda f: f[:3])[3])
 
         except Exception as e:
             logger.warning(f"SerpApi hotel search failed, falling back to Gemini: {e}")
@@ -2856,14 +2993,17 @@ def stay_cost_lines(
     Each line carries how its rate was found, in `basis`:
       "classed"   — a property at `_BASE_HOTEL_CLASS` or above, the normal case
       "unclassed" — the leg had nothing at that class, so every rate was open
-      "pooled"    — the leg's own search came back empty and the trip's other
-                    rates stood in for it
+      "pooled"    — the leg's own search priced nothing and the trip's other
+                    rates stood in for it; `unpriced` counts the hotels it did
+                    list without a rate, so the sheet can tell "no online
+                    price" from "nothing found"
     """
     strategies_ = (hotel_strategies or {}).get("strategies")
     if not isinstance(strategies_, list) or not city_legs:
         return []
     rooms_ = _rooms_for(travelers)
     by_leg: dict[int, list[tuple[float, dict]]] = {}
+    unpriced_by_leg: dict[int, int] = {}
     # The same rates again, keeping only properties at the star class the
     # search asked for. The ladder falls back to an unfiltered rung when a
     # class-filtered search comes back empty (`_HOTEL_CLASS_FALLBACKS`), so on
@@ -2876,11 +3016,13 @@ def stay_cost_lines(
         if not isinstance(s, dict):
             continue
         rate = _extract_lowest_price(s.get("price_per_night"))
+        leg_key = int(s.get("leg_index") or 0)
         if rate > 0:
-            leg_key = int(s.get("leg_index") or 0)
             by_leg.setdefault(leg_key, []).append((rate, s))
             if int(s.get("hotel_class") or 0) >= _BASE_HOTEL_CLASS:
                 classed_by_leg.setdefault(leg_key, []).append((rate, s))
+        elif s.get("name"):
+            unpriced_by_leg[leg_key] = unpriced_by_leg.get(leg_key, 0) + 1
 
     lines: list[dict] = []
     for leg_i, leg_ in enumerate(city_legs):
@@ -2928,6 +3070,7 @@ def stay_cost_lines(
             # caveat `budget_basis` draws from this.
             "options": len(entries_),
             "basis": basis_,
+            "unpriced": unpriced_by_leg.get(leg_i, 0),
             "amount": round(rate_ * nights_ * rooms_, 2),
         })
     return lines
@@ -3363,11 +3506,27 @@ def budget_basis(
             "amount": line["amount"],
         })
 
+    def _cities(names: list[str]) -> str:
+        names = [n for n in dict.fromkeys(names) if n] or ["one city"]
+        return names[0] if len(names) == 1 else f"{', '.join(names[:-1])} and {names[-1]}"
+
     stay_caveat = ""
-    if any(ln["basis"] == "pooled" for ln in lines):
+    pooled = [ln for ln in lines if ln["basis"] == "pooled"]
+    if pooled:
+        # Named, and for the right reason: "came back empty" was printed for
+        # Kalandula and Ndalatando, where Google listed four hotels between
+        # them — none with an online rate.
+        unpriced = [ln["city"] for ln in pooled if ln.get("unpriced")]
+        empty = [ln["city"] for ln in pooled if not ln.get("unpriced")]
+        why = []
+        if unpriced:
+            why.append(f"hotels in {_cities(unpriced)} list no online price")
+        if empty:
+            why.append(f"the hotel search for {_cities(empty)} came back empty")
+        reason = " and ".join(why)
         stay_caveat = (
-            "One city's own hotel search came back empty; those nights are "
-            "priced from the rest of the trip's rooms."
+            f"{reason[0].upper()}{reason[1:]}, so those nights are priced "
+            "from the rest of the trip's rooms."
         )
     elif any(ln["basis"] == "unclassed" for ln in lines):
         stay_caveat = (
@@ -3840,6 +3999,18 @@ _SAME_PLACE_KM = 3.0
 # gateway check on a popular route costs no Places lookup at all.
 _AIRPORT_GEO_TTL_S = 30 * 24 * 60 * 60
 
+# How far a leg's planned coordinates may sit from where Google puts the city
+# before Google's point replaces them. The planner writes coordinates without
+# a search tool, and an Angola plan put Kalandula at (-7.25, 15.01), 220 km
+# from the town, so the hop checks, the hotel search bias and the prompt's
+# route table all read the wrong place. 30 km leaves room for a metro's centre
+# being drawn in a different district.
+_LEG_COORD_MAX_KM = 30.0
+
+# Places lookups held back for the two gateways, which `_attempt` locates
+# after the legs: a wrong-country airport is the costlier miss.
+_GATEWAY_GEO_RESERVE = 2
+
 # One re-plan, ever, when the route comes back incoherent. Same shape as the
 # geographic-drift regeneration below: a straight line, not a loop.
 _MAX_ROUTE_RETRIES = 1
@@ -4006,6 +4177,100 @@ def _validate_route(
                 f"real 3-letter IATA airport code (metropolitan codes like LON/NYC are not accepted)."
             )
     return plan, reasons
+
+
+async def _leg_geo(
+    city: str, geo, near: tuple[float, float] | None, budget=None, reserve: int = 0,
+) -> dict | None:
+    """Where Google puts a leg's city, inside the trip's country. None = unknown.
+
+    Biased to the planner's own point rather than searched blind: a town name
+    that exists twice in one country keeps the one the planner meant, and only
+    a point with no such town anywhere near it — Kalandula placed 220 km away —
+    resolves to the real one. A result outside the country, or the country or
+    province itself (what Google answers when it does not know the town), is
+    not a correction. Cached a month per city and planner point.
+    """
+    cc = str(getattr(geo, "country_code", "") or "").strip().upper()
+    country = str(getattr(geo, "country", "") or "").strip()
+    if not cc or not city:
+        return None
+    where = f"{near[0]:.1f},{near[1]:.1f}" if near else "-"
+    cache_key = f"geo:leg:v1:{cc}:{city.lower()}:{where}"
+    try:
+        cached = await place_cache_service.get_raw(cache_key)
+        if cached:
+            data = json.loads(cached)
+            return data if isinstance(data, dict) and data.get("latitude") is not None else None
+    except Exception:
+        pass
+    if budget is not None and (budget.left <= reserve or not budget.take()):
+        return None
+    try:
+        found = await asyncio.wait_for(
+            google_places_client.resolve_place_geo(
+                f"{city}, {country}" if country and country.lower() not in city.lower() else city,
+                bias_lat=near[0] if near else None,
+                bias_lng=near[1] if near else None,
+            ),
+            timeout=geo_resolver._RESOLVE_TIMEOUT_S,
+        )
+    except Exception as e:
+        logger.debug("Leg lookup for %r failed: %s", city, e)
+        return None
+    data: dict = {}
+    if (
+        found
+        and found.get("latitude") is not None
+        and found.get("longitude") is not None
+        and str(found.get("country_code") or "").upper() == cc
+        and not {"country", "administrative_area_level_1"} & set(found.get("types") or [])
+    ):
+        data = {"latitude": float(found["latitude"]), "longitude": float(found["longitude"])}
+    try:
+        # A miss is cached too (as {}), so a town Google does not know is not
+        # looked up again on every plan that names it.
+        await place_cache_service.set_raw(cache_key, json.dumps(data), ttl=_AIRPORT_GEO_TTL_S)
+    except Exception:
+        pass
+    return data or None
+
+
+async def _locate_legs(raw_legs, geo, budget=None, reserve: int = 0) -> list[str]:
+    """Replace planner coordinates that sit far from the city they name.
+
+    Runs on the planner's raw answer, before `_validate_route`, so the hop and
+    gateway checks measure the real route. Returns "city N km" notes for the
+    log; an empty list when nothing moved or nothing could be checked.
+    """
+    if not isinstance(raw_legs, list) or geo is None or not geo.resolved:
+        return []
+    moved: list[str] = []
+    for entry in raw_legs:
+        if not isinstance(entry, dict):
+            continue
+        city = str(entry.get("city") or "").strip()
+        if not city:
+            continue
+        try:
+            near = (float(entry.get("latitude")), float(entry.get("longitude")))
+            if not all(math.isfinite(v) for v in near):
+                near = None
+        except (TypeError, ValueError):
+            near = None
+        found = await _leg_geo(city, geo, near, budget, reserve)
+        if not found:
+            continue
+        if near is not None:
+            km = geo_resolver.haversine_km(near[0], near[1], found["latitude"], found["longitude"])
+            if km <= _LEG_COORD_MAX_KM:
+                continue
+            moved.append(f"{city} {km:,.0f} km")
+        else:
+            moved.append(f"{city} (no coordinates)")
+        entry["latitude"] = round(found["latitude"], 4)
+        entry["longitude"] = round(found["longitude"], 4)
+    return moved
 
 
 async def _airport_geo(code: str, geo, budget=None, city: str = "") -> dict | None:
@@ -4523,6 +4788,16 @@ async def plan_route(
                 use_grounding=False, response_schema=_ROUTE_SCHEMA, operation="odyssey_route",
             )
             parsed = _parse_json(raw)
+        if isinstance(parsed, dict):
+            moved = await _locate_legs(
+                parsed.get("legs"), geo, geo_budget,
+                reserve=_GATEWAY_GEO_RESERVE if include_flights else 0,
+            )
+            if moved:
+                logger.info(
+                    "Leg coordinates for %s replaced with Google's: %s",
+                    destination, ", ".join(moved),
+                )
         plan, reasons = _validate_route(parsed, destination, days, start_date, geo)
 
         # Locate the gateways (Places, budgeted, cached) and judge their distance
@@ -5887,7 +6162,7 @@ async def generate_odyssey(
         # Same expression the append below uses, read once so the hotel range
         # and the stored day number cannot disagree about which day this is.
         day_no = _as_int(d.get("day"), len(day_items) + 1)
-        stay_range, stay_city = stay_basis_for_day(
+        stay_range, stay_city, stay_borrowed = stay_basis_for_day(
             day_no, city_legs, hotel_range_by_leg, hotel_price_range,
         )
 
@@ -5920,7 +6195,7 @@ async def generate_odyssey(
             # shown on the Stays tab.
             if is_acc and has_hotel_data:
                 has_accommodation = True
-                display_cost, display_basis = stay_cost_row(stay_range, stay_city)
+                display_cost, display_basis = stay_cost_row(stay_range, stay_city, stay_borrowed)
 
                 if is_first_day:
                     act_dict["name"] = "Hotel Check-in"
@@ -5998,9 +6273,9 @@ async def generate_odyssey(
                 "time": "14:00",
                 "name": "Hotel Check-in",
                 "tip": "Check in and settle into your accommodation.",
-                "cost": stay_cost_row(stay_range, stay_city)[0],
+                "cost": stay_cost_row(stay_range, stay_city, stay_borrowed)[0],
                 "price_source": "Google Hotels",
-                "price_basis": stay_cost_row(stay_range, stay_city)[1],
+                "price_basis": stay_cost_row(stay_range, stay_city, stay_borrowed)[1],
                 "price_confidence": "Estimated",
                 "type": "accommodation",
             })
@@ -6045,6 +6320,14 @@ async def generate_odyssey(
     await provider_enrich.finish(
         provider_pending, day_items, meta, currency=currency, travelers=travelers,
     )
+
+    long_drives = _mark_long_drives(
+        day_items, city_legs,
+        arrival=route.arrival if route is not None else None,
+        departure=route.departure if route is not None else None,
+    )
+    if long_drives:
+        logger.info("Marked %d long drive(s) for no ride-app buttons.", long_drives)
 
     # Ratings and opening hours come from Google or they do not appear. The
     # model's own are discarded first, so this cannot be a partial improvement
@@ -7221,31 +7504,53 @@ def stay_basis_for_day(
     city_legs: list[dict] | None,
     ranges_by_leg: dict[int, str],
     trip_range: str,
-) -> tuple[str, str]:
-    """(nightly range, city) for the city a given day sleeps in.
+) -> tuple[str, str, bool]:
+    """(nightly range, city, borrowed) for the city a given day sleeps in.
 
     Falls back to the trip-wide range when the day sits outside every leg, or
-    when that leg's own search returned nothing - a rate has to be printed
-    either way, and a neighbouring city's is closer than none.
+    when that leg's own search priced nothing - a rate has to be printed
+    either way, and a neighbouring city's is closer than none. `borrowed` says
+    the second case happened, so the row does not present another city's
+    rates as this one's.
     """
-    for i, leg in enumerate(city_legs or []):
+    legs = city_legs or []
+    for i, leg in enumerate(legs):
         if not isinstance(leg, dict):
             continue
         start = _as_int(leg.get("start_day"), 0)
         end = _as_int(leg.get("end_day"), 0)
         if start <= day_no <= end:
-            return ranges_by_leg.get(i) or trip_range, str(leg.get("city") or "")
-    return trip_range, ""
+            city = str(leg.get("city") or "")
+            own = ranges_by_leg.get(i)
+            if not own and city:
+                # The same city's range from another visit. A trip that flies
+                # home from where it began ends on a 0-night leg nobody
+                # searched, and its check-out day is still in a city with
+                # rates of its own.
+                own = next((
+                    ranges_by_leg[j] for j, other in enumerate(legs)
+                    if j in ranges_by_leg and isinstance(other, dict)
+                    and str(other.get("city") or "").strip().lower() == city.strip().lower()
+                ), "")
+            return own or trip_range, city, not own and bool(trip_range)
+    return trip_range, "", False
 
 
-def stay_cost_row(rng: str, city: str) -> tuple[str, str]:
+def stay_cost_row(rng: str, city: str, borrowed: bool = False) -> tuple[str, str]:
     """The `cost` and `price_basis` one accommodation row prints.
 
     The basis names the city when one is known: "for this trip" was the exact
-    wording that made a trip-wide range look deliberate rather than wrong.
+    wording that made a trip-wide range look deliberate rather than wrong. A
+    borrowed range says so: a Kalandula day used to read "Nightly rate range
+    across hotel options in Kalandula" over Luanda's rates, when no Kalandula
+    hotel lists a rate at all.
     """
     if not rng:
         return "See Stays tab", "See the Stays tab for hotel pricing options."
+    if borrowed and city:
+        return f"{rng} / night", (
+            f"No online hotel rates in {city}; range from the trip's other cities: {rng}."
+        )
     where = f"in {city}" if city else "found for this trip"
     return f"{rng} / night", f"Nightly rate range across hotel options {where}: {rng}."
 

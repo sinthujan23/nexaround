@@ -66,8 +66,9 @@ def test_each_leg_keeps_its_own_range(japan):
 def test_the_hakone_day_no_longer_advertises_an_osaka_rate(japan, japan_legs):
     """The exact regression, at the day the traveller would have read it."""
     trip, by_leg = nightly_ranges(japan, "INR")
-    rng, city = stay_basis_for_day(9, japan_legs, by_leg, trip)
+    rng, city, borrowed = stay_basis_for_day(9, japan_legs, by_leg, trip)
     assert city == "Hakone"
+    assert not borrowed
     assert rng == "INR 14,932 - 28,232"
     assert "4,507" not in rng, "an Osaka floor 400 km away"
 
@@ -84,7 +85,7 @@ def test_the_hakone_day_no_longer_advertises_an_osaka_rate(japan, japan_legs):
 ])
 def test_every_day_maps_to_the_city_it_sleeps_in(japan, japan_legs, day, city, low):
     trip, by_leg = nightly_ranges(japan, "INR")
-    rng, got = stay_basis_for_day(day, japan_legs, by_leg, trip)
+    rng, got, _ = stay_basis_for_day(day, japan_legs, by_leg, trip)
     assert got == city
     assert rng.startswith(f"INR {low}")
 
@@ -97,7 +98,7 @@ def test_a_leg_whose_search_came_back_empty_falls_back_to_the_trip(japan_legs):
     """
     stays = {"strategies": [_room(4507, 0, "Osaka"), _room(28232, 3, "Hakone")]}
     trip, by_leg = nightly_ranges(stays, "INR")
-    assert stay_basis_for_day(5, japan_legs, by_leg, trip) == (trip, "Kyoto")
+    assert stay_basis_for_day(5, japan_legs, by_leg, trip) == (trip, "Kyoto", True)
     assert stay_basis_for_day(9, japan_legs, by_leg, trip)[0] == "INR 28,232"
 
 
@@ -110,8 +111,8 @@ def test_a_single_city_plan_is_unchanged(japan_legs):
 
 def test_a_day_outside_every_leg_still_prices(japan, japan_legs):
     trip, by_leg = nightly_ranges(japan, "INR")
-    rng, city = stay_basis_for_day(99, japan_legs, by_leg, trip)
-    assert (rng, city) == (trip, "")
+    rng, city, borrowed = stay_basis_for_day(99, japan_legs, by_leg, trip)
+    assert (rng, city, borrowed) == (trip, "", False)
     assert stay_cost_row(rng, city)[1].endswith("found for this trip: INR 4,507 - 28,232.")
 
 
