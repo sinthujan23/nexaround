@@ -763,7 +763,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
       );
       return;
     }
-    if (_includeFlights && !_hasVisa && (_nationality == null || _nationality!.isEmpty)) {
+    if (!_hasVisa && (_nationality == null || _nationality!.isEmpty)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please select your nationality for visa guidance.')),
       );
@@ -810,8 +810,8 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
         includeFlights: _includeFlights,
         departureCity: _departureCity,
         departureCountry: _departureCountry,
-        nationality: (_includeFlights && !_hasVisa) ? (_nationality ?? '') : '',
-        hasVisa: !_includeFlights || _hasVisa,
+        nationality: !_hasVisa ? (_nationality ?? '') : '',
+        hasVisa: _hasVisa,
         flightStartDate: _formatDate(_flightStartDate),
         flightEndDate: _formatDate(_flightEndDate),
         includeHotels: _includeHotels,
@@ -1609,12 +1609,11 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
               ],
             ),
           ).animate().fade(delay: 200.ms),
-          if (_includeFlights) ...[
-            const SizedBox(height: 12),
-            const Text(
-              'VISA STATUS & GUIDANCE',
-              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1.5, color: Colors.black54),
-            ),
+          const SizedBox(height: 12),
+          const Text(
+            'VISA STATUS & GUIDANCE',
+            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1.5, color: Colors.black54),
+          ),
             const SizedBox(height: 6),
             Container(
               padding: const EdgeInsets.all(14),
@@ -1733,7 +1732,6 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
                 ],
               ),
             ).animate().fade(delay: 250.ms),
-          ],
         ],
       ),
     );

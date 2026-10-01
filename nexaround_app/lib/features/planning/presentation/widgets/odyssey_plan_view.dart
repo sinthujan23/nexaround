@@ -125,7 +125,8 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
   Widget build(BuildContext context) {
     final bool hasFlights = widget.odyssey.flightStrategies.isNotEmpty ||
         widget.odyssey.flightGeneralTips.isNotEmpty ||
-        widget.odyssey.flightBestMonths.isNotEmpty;
+        widget.odyssey.flightBestMonths.isNotEmpty ||
+        widget.odyssey.flightUnavailableMessage.isNotEmpty;
     final bool hasHotels = widget.odyssey.hotelStrategies.isNotEmpty ||
         widget.odyssey.hotelGeneralTips.isNotEmpty ||
         widget.odyssey.hotelBestAreas.isNotEmpty;
@@ -505,8 +506,7 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
               '${widget.odyssey.travelers} ${widget.odyssey.travelers == 1 ? 'Traveler (1 Pax)' : 'Travelers (${widget.odyssey.travelers} Pax)'}',
               Icons.people_rounded,
             ),
-          if (widget.odyssey.flightStrategies.isNotEmpty &&
-              widget.odyssey.visaInfo.status != 'already_have' &&
+          if (widget.odyssey.visaInfo.status != 'already_have' &&
               (widget.odyssey.visa.isNotEmpty || widget.odyssey.visaInfo.status != 'unknown'))
             _buildVisaCard(context),
           if (widget.odyssey.budgetSplit.isNotEmpty)
