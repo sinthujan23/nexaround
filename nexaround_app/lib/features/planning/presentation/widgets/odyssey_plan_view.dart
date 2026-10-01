@@ -88,6 +88,9 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
   List<RideApp> _rideApps = const [];
   String? _rideAppsCountry;
 
+  /// Day indices that are currently collapsed in the itinerary tab.
+  final Set<int> _collapsedDays = <int>{};
+
   @override
   void initState() {
     super.initState();
@@ -100,7 +103,47 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     if (widget.odyssey.budgetScenarios.containsKey('minimum')) {
       _selectedScenario = 'minimum';
     }
+    _initCollapsedDays();
     _loadRideApps();
+  }
+
+  /// By default, expand the active day (or Day 1) and collapse other days to
+  /// maintain a clean, compact overview without long scroll fatigue.
+  void _initCollapsedDays() {
+    _collapsedDays.clear();
+    final days = widget.odyssey.dayPlans;
+    if (days.length <= 1) return;
+
+    // Find the first day with pending/unvisited activities to keep it open,
+    // or default to Day 1.
+    int activeDayIndex = 0;
+    for (int d = 0; d < days.length; d++) {
+      final hasUnvisited = days[d].activities.any((a) => !a.visited);
+      if (hasUnvisited) {
+        activeDayIndex = d;
+        break;
+      }
+    }
+
+    for (int d = 0; d < days.length; d++) {
+      if (d != activeDayIndex) {
+        _collapsedDays.add(d);
+      }
+    }
+  }
+
+  void _toggleAllDays() {
+    setState(() {
+      if (_collapsedDays.isNotEmpty) {
+        // Expand all days
+        _collapsedDays.clear();
+      } else {
+        // Collapse all days
+        for (var i = 0; i < widget.odyssey.dayPlans.length; i++) {
+          _collapsedDays.add(i);
+        }
+      }
+    });
   }
 
   @override
@@ -109,6 +152,15 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     // The detail screen re-polls while a plan generates, and the country is
     // only known once the finished plan's legs arrive.
     if (_tripCountryCode != _rideAppsCountry) _loadRideApps();
+
+    // Re-initialize collapsed days if switching to a new plan or if days first arrived.
+    if (widget.odyssey.id != oldWidget.odyssey.id ||
+        (oldWidget.odyssey.dayPlans.isEmpty && widget.odyssey.dayPlans.isNotEmpty)) {
+      _initCollapsedDays();
+    } else {
+      // Remove any day indices that are now out of bounds.
+      _collapsedDays.removeWhere((i) => i >= widget.odyssey.dayPlans.length);
+    }
   }
 
   Future<void> _loadRideApps() async {
@@ -1480,13 +1532,53 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
                   const SizedBox(height: 12),
                 ],
                 if (widget.odyssey.dayPlans.isNotEmpty) ...[
-                  const Text(
-                    'DAY-BY-DAY ITINERARY',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 2,
-                    ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      const Text(
+                        'DAY-BY-DAY ITINERARY',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 2,
+                        ),
+                      ),
+                      if (widget.odyssey.dayPlans.length > 1)
+                        GestureDetector(
+                          onTap: _toggleAllDays,
+                          behavior: HitTestBehavior.opaque,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF1F5F9),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: Colors.black12),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  _collapsedDays.isNotEmpty
+                                      ? Icons.unfold_more_rounded
+                                      : Icons.unfold_less_rounded,
+                                  size: 14,
+                                  color: Colors.black87,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  _collapsedDays.isNotEmpty ? 'Expand All' : 'Collapse All',
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.black87,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                   if (widget.odyssey.legs.length > 1) ...[
                     _buildRouteCard(),
@@ -1527,13 +1619,14 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
               final row = rows[index];
               if (row is _DayHeadingRow) {
                 final day = widget.odyssey.dayPlans[row.dayIndex];
+                final isCollapsed = _collapsedDays.contains(row.dayIndex);
                 return Column(
                   key: ValueKey('day-heading-${row.dayIndex}'),
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     if (row.dayIndex > 0) const SizedBox(height: 16),
-                    _dayHeadingRow(row.dayIndex, day),
-                    if (day.activities.isEmpty) _emptyDayFooter(),
+                    _dayHeadingRow(row.dayIndex, day, isCollapsed: isCollapsed),
+                    if (!isCollapsed && day.activities.isEmpty) _emptyDayFooter(),
                   ],
                 );
               }
@@ -2368,6 +2461,10 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     final rows = <_PlanRow>[];
     for (var d = 0; d < widget.odyssey.dayPlans.length; d++) {
       rows.add(_DayHeadingRow(d));
+      // Activities are hidden when day is collapsed
+      if (_collapsedDays.contains(d)) {
+        continue;
+      }
       final acts = widget.odyssey.dayPlans[d].activities;
       for (var a = 0; a < acts.length; a++) {
         rows.add(_ActivityPlanRow(d, a, a == acts.length - 1));
@@ -2381,7 +2478,7 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
   int _rowIndexOf(int dayIndex, int activityIndex) {
     var index = 0;
     for (var d = 0; d < dayIndex; d++) {
-      index += 1 + widget.odyssey.dayPlans[d].activities.length;
+      index += 1 + (_collapsedDays.contains(d) ? 0 : widget.odyssey.dayPlans[d].activities.length);
     }
     return index + 1 + activityIndex;
   }
@@ -2430,51 +2527,160 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     if (currentDay == moved.dayIndex && positionInDay == moved.activityIndex) {
       return; // nothing actually moved
     }
+
+    // If an activity is moved into a collapsed day, expand that day so the user sees it.
+    if (_collapsedDays.contains(currentDay)) {
+      _collapsedDays.remove(currentDay);
+    }
+
     reorder(moved.dayIndex, moved.activityIndex, currentDay, positionInDay);
   }
 
   /// The "DAY n — theme" strip that opens each day's block.
-  Widget _dayHeadingRow(int dayIndex, OdysseyDay day) {
+  /// Tapping toggles expand/collapse for this day.
+  Widget _dayHeadingRow(int dayIndex, OdysseyDay day, {required bool isCollapsed}) {
+    final visitedCount = day.activities.where((a) => a.visited).length;
+    final allVisitedOfDay = day.activities.isNotEmpty && visitedCount == day.activities.length;
+    final hasActivities = day.activities.isNotEmpty;
+
     return Container(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: Colors.white,
-        border: Border(
-          top: BorderSide(color: Colors.black12),
-          left: BorderSide(color: Colors.black12),
-          right: BorderSide(color: Colors.black12),
-        ),
-        borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(24),
-          topRight: Radius.circular(24),
-        ),
-      ),
-      padding: const EdgeInsets.fromLTRB(16, 18, 16, 12),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-            decoration: BoxDecoration(
-              color: Colors.black,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(
-              'DAY ${day.day}',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 10,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 1,
+        border: isCollapsed
+            ? Border.all(color: Colors.black12)
+            : const Border(
+                top: BorderSide(color: Colors.black12),
+                left: BorderSide(color: Colors.black12),
+                right: BorderSide(color: Colors.black12),
               ),
+        borderRadius: isCollapsed
+            ? BorderRadius.circular(24)
+            : const BorderRadius.only(
+                topLeft: Radius.circular(24),
+                topRight: Radius.circular(24),
+              ),
+        boxShadow: isCollapsed
+            ? [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.03),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ]
+            : null,
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () {
+            setState(() {
+              if (_collapsedDays.contains(dayIndex)) {
+                _collapsedDays.remove(dayIndex);
+              } else {
+                _collapsedDays.add(dayIndex);
+              }
+            });
+          },
+          borderRadius: isCollapsed
+              ? BorderRadius.circular(24)
+              : const BorderRadius.only(
+                  topLeft: Radius.circular(24),
+                  topRight: Radius.circular(24),
+                ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 14, 16),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: Colors.black,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    'DAY ${day.day}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    day.theme,
+                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (hasActivities) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3.5),
+                    decoration: BoxDecoration(
+                      color: isCollapsed ? const Color(0xFFF1F5F9) : const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: Colors.black.withValues(alpha: 0.06)),
+                    ),
+                    child: Text(
+                      '${day.activities.length} ${day.activities.length == 1 ? 'place' : 'places'}',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.black54,
+                      ),
+                    ),
+                  ),
+                ],
+                if (visitedCount > 0 && widget.onToggleVisited != null) ...[
+                  const SizedBox(width: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3.5),
+                    decoration: BoxDecoration(
+                      color: allVisitedOfDay ? const Color(0xFFECFDF5) : const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                        color: allVisitedOfDay ? const Color(0xFFA7F3D0) : Colors.black.withValues(alpha: 0.06),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.check_rounded,
+                          size: 11,
+                          color: allVisitedOfDay ? const Color(0xFF059669) : Colors.black45,
+                        ),
+                        const SizedBox(width: 2),
+                        Text(
+                          '$visitedCount/${day.activities.length}',
+                          style: TextStyle(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w700,
+                            color: allVisitedOfDay ? const Color(0xFF059669) : Colors.black54,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+                const SizedBox(width: 4),
+                AnimatedRotation(
+                  turns: isCollapsed ? 0.0 : 0.5,
+                  duration: const Duration(milliseconds: 200),
+                  child: const Icon(
+                    Icons.keyboard_arrow_down_rounded,
+                    size: 20,
+                    color: Colors.black45,
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              day.theme,
-              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
