@@ -37,6 +37,8 @@ class AttractionEntity {
   final DateTime createdAt;
   final bool excludedByKeyword;
 
+  String? get category => categoryName;
+
   const AttractionEntity({
     required this.id,
     required this.name,

@@ -1556,7 +1556,7 @@ class _ChatMessage {
       'places': places!.map((p) => {
         'id': p.id,
         'name': p.name,
-        'category': p.category,
+        'category': p.categoryName ?? p.category,
         'latitude': p.latitude,
         'longitude': p.longitude,
         'rating': p.rating,
@@ -1580,13 +1580,14 @@ class _ChatMessage {
           plcs.add(AttractionEntity(
             id: (p['id'] ?? '').toString(),
             name: (p['name'] ?? '').toString(),
-            category: (p['category'] ?? '').toString(),
+            categoryName: (p['category'] ?? p['categoryName'] ?? '').toString(),
             latitude: (p['latitude'] as num?)?.toDouble() ?? 0.0,
             longitude: (p['longitude'] as num?)?.toDouble() ?? 0.0,
-            rating: (p['rating'] as num?)?.toDouble(),
-            reviewCount: (p['reviewCount'] as num?)?.toInt(),
+            rating: (p['rating'] as num?)?.toDouble() ?? 0.0,
+            reviewCount: (p['reviewCount'] as num?)?.toInt() ?? 0,
             distanceM: (p['distanceM'] as num?)?.toDouble(),
             address: (p['address'] ?? '').toString(),
+            createdAt: DateTime.now(),
           ));
         }
       }
