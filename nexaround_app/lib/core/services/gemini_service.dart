@@ -30,17 +30,42 @@ class GeminiService {
     double? temperature,
     int? maxOutputTokens,
     String? responseMimeType,
+    List<Map<String, String>>? history,
   }) async {
     final path = ApiConstants.geminiProxy;
 
-    final Map<String, dynamic> requestBody = {
-      "contents": [
-        {
-          "parts": [
-            {"text": context != null ? "Context: $context\n\nUser Question: $prompt" : prompt}
-          ]
+    final contentsList = <Map<String, dynamic>>[];
+    if (history != null && history.isNotEmpty) {
+      for (final h in history) {
+        final role = (h['role'] == 'model' || h['role'] == 'assistant') ? 'model' : 'user';
+        final text = h['text'] ?? '';
+        if (text.trim().isEmpty) continue;
+        if (contentsList.isNotEmpty && contentsList.last['role'] == role) {
+          final parts = contentsList.last['parts'] as List;
+          parts[0]['text'] = '${parts[0]['text']}\n$text';
+        } else {
+          contentsList.add({
+            'role': role,
+            'parts': [{'text': text}],
+          });
         }
+      }
+      while (contentsList.isNotEmpty && contentsList.first['role'] != 'user') {
+        contentsList.removeAt(0);
+      }
+      if (contentsList.isNotEmpty && contentsList.last['role'] == 'user') {
+        contentsList.removeLast();
+      }
+    }
+    contentsList.add({
+      'role': 'user',
+      'parts': [
+        {'text': context != null ? "Context: $context\n\nUser Question: $prompt" : prompt}
       ],
+    });
+
+    final Map<String, dynamic> requestBody = {
+      "contents": contentsList,
     };
 
     if (systemInstruction != null) {

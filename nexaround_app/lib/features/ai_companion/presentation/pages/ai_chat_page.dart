@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -28,12 +29,16 @@ class AiChatPage extends StatefulWidget {
   final String? autoFetchCategoryId;
   final String? autoFetchCategoryLabel;
 
+  /// Optional callback to switch tabs or open features in the main app shell.
+  final void Function(int tabIndex, {int? subTab})? onNavigateTab;
+
   const AiChatPage({
     super.key,
     this.initialPrompt,
     this.placeContext,
     this.autoFetchCategoryId,
     this.autoFetchCategoryLabel,
+    this.onNavigateTab,
   });
 
   @override
@@ -87,6 +92,24 @@ HOW TO FORMAT EVERY REPLY (this controls how beautiful it looks in the app, so f
 - Do NOT use markdown headings (#), tables, or code blocks — only short text, **bold**, and "* " bullets.
 - When it feels natural, end with a warm, inviting question.
 
+NEXAROUND APP KNOWLEDGE & ASSISTANCE:
+You know every feature inside NexAround and guide travelers on how to make the most of the app:
+- **AR Camera & Scanner** (AR tab): Users can point their camera at historic landmarks, monuments, and buildings to get instant AI visual recognition, fascinating historical stories, and audio guides. Recommend this whenever the user wants to identify or learn about what's physically in front of them.
+- **Odyssey AI Trip Planner** (Plans tab): Generates custom day-by-day itineraries tailored to pace, budget, and travel vibe, plus analyzes visa & passport entry requirements. Mention this when travelers want a complete multi-day schedule or visa advice.
+- **Interactive Food Radar & Trending** (Discover tab): Real-time radar for local delicacies, trending dining spots, authentic street food, and experiences tailored to the weather.
+- **Interactive Living Map** (Home tab): Interactive map with curated attraction pins, walking routes, and category filters (Dining, Culture, Nature, Nightlife, Shopping).
+- **Travel Budget Tracker** (Plans tab -> Budget): Multi-currency expense tracker, daily spending limits, and currency conversion.
+- **Travel Stories & Journal**: Personal travel log and insider recommendations from local explorers.
+
+ACTION CHIPS (Deep Links):
+When you recommend an app tool, you can attach an action tag at the very end of your response on its own line:
+- AR Scanner: `[action:ar|Open AR Scanner]`
+- Odyssey Trip Planner: `[action:plans|Open Odyssey Planner]`
+- Food Radar: `[action:food|Open Food Radar]`
+- Living Map: `[action:map|Explore Living Map]`
+- Budget Tracker: `[action:budget|Open Budget Tracker]`
+Use at most ONE action chip per message, only when it directly assists the user.
+
 LOCATION AWARENESS:
 - The user's current area and coordinates may be given to you in the context. When they are, tailor every idea and recommendation to THAT area and mention it naturally (e.g. "Since you're around Colombo, ...").
 - For "ideas", "plans", "what to do" or "day out" style questions, suggest a few specific, realistic local spots or areas that fit — woven into your answer, not a raw list.
@@ -102,10 +125,12 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
 ''';
 
   final List<String> _quickPrompts = [
+    '✨ Plan a 3-day itinerary',
+    '📸 How to scan landmarks',
+    '💸 Track travel budget',
+    '🍜 Authentic food spots',
+    '🏛 Hidden history nearby',
     '🌙 Safe night spots',
-    '🍜 Authentic hoppers',
-    '🏛 Hidden history',
-    '💸 Local prices',
   ];
 
   @override
@@ -113,32 +138,157 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
     super.initState();
     // Kick off location resolution early so the very first answer is local.
     _resolveUserLocation();
-    _messages.add(
-      _ChatMessage(
-        text:
-            "Hey! I'm Neva ✨ Your personal travel companion. Whether you need hidden gems, local food tips, or a full itinerary — I've got you covered.\n\nWhat are we exploring today?",
-        isUser: false,
-        timestamp: DateTime.now(),
-      ),
-    );
+    _loadMessagesFromStorage().then((_) {
+      if (widget.initialPrompt != null && mounted) {
+        Future.delayed(const Duration(milliseconds: 600), () {
+          if (mounted) _sendMessage(widget.initialPrompt!);
+        });
+      }
 
-    if (widget.initialPrompt != null) {
-      Future.delayed(const Duration(milliseconds: 600), () {
-        if (mounted) _sendMessage(widget.initialPrompt!);
-      });
+      if (widget.autoFetchCategoryId != null && _hasPlaceContext && mounted) {
+        Future.delayed(const Duration(milliseconds: 400), () {
+          if (!mounted) return;
+          _fetchNearbyForCategory(
+            widget.autoFetchCategoryId!,
+            widget.autoFetchCategoryLabel ?? widget.autoFetchCategoryId!,
+          );
+        });
+      }
+    });
+  }
+
+  Future<void> _loadMessagesFromStorage() async {
+    try {
+      final box = Hive.isBoxOpen('neva_chat_box')
+          ? Hive.box('neva_chat_box')
+          : await Hive.openBox('neva_chat_box');
+      final raw = box.get('messages');
+      if (raw is List && raw.isNotEmpty) {
+        final loaded = <_ChatMessage>[];
+        for (final item in raw) {
+          if (item is Map) {
+            loaded.add(_ChatMessage.fromMap(item));
+          }
+        }
+        if (loaded.isNotEmpty && mounted) {
+          setState(() {
+            _messages.clear();
+            _messages.addAll(loaded);
+            _showSuggestions = false;
+          });
+          _scrollToBottom();
+          return;
+        }
+      }
+    } catch (e) {
+      debugPrint('Failed to load Neva chat history: $e');
     }
 
-    // If launched from an AR "NEARBY" tile, auto-run the matching fetch so the
-    // user sees results immediately rather than having to tap a chip.
-    if (widget.autoFetchCategoryId != null && _hasPlaceContext) {
-      Future.delayed(const Duration(milliseconds: 400), () {
-        if (!mounted) return;
-        _fetchNearbyForCategory(
-          widget.autoFetchCategoryId!,
-          widget.autoFetchCategoryLabel ?? widget.autoFetchCategoryId!,
+    if (_messages.isEmpty && mounted) {
+      setState(() {
+        _messages.add(
+          _ChatMessage(
+            text:
+                "Hey! I'm Neva ✨ Your personal travel companion. Whether you need hidden gems, local food tips, or a full itinerary — I've got you covered.\n\nWhat are we exploring today?",
+            isUser: false,
+            timestamp: DateTime.now(),
+          ),
         );
       });
     }
+  }
+
+  Future<void> _saveMessagesToStorage() async {
+    try {
+      final box = Hive.isBoxOpen('neva_chat_box')
+          ? Hive.box('neva_chat_box')
+          : await Hive.openBox('neva_chat_box');
+      final toSave = _messages.length > 60
+          ? _messages.sublist(_messages.length - 60)
+          : _messages;
+      final list = toSave.map((m) => m.toMap()).toList();
+      await box.put('messages', list);
+    } catch (e) {
+      debugPrint('Failed to save Neva chat history: $e');
+    }
+  }
+
+  Future<void> _startNewChat() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: const [
+            Icon(Icons.auto_awesome_rounded, color: AppColors.primary, size: 22),
+            SizedBox(width: 8),
+            Text(
+              'New Conversation',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+            ),
+          ],
+        ),
+        content: const Text(
+          'Start a fresh conversation with Neva? Your current chat will be cleared.',
+          style: TextStyle(fontSize: 14, color: Colors.black87),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel', style: TextStyle(color: Colors.black54)),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('New Chat'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true && mounted) {
+      setState(() {
+        _messages.clear();
+        _showSuggestions = true;
+        _messages.add(
+          _ChatMessage(
+            text:
+                "Hey! I'm Neva ✨ Your personal travel companion. Whether you need hidden gems, local food tips, or a full itinerary — I've got you covered.\n\nWhat are we exploring today?",
+            isUser: false,
+            timestamp: DateTime.now(),
+          ),
+        );
+      });
+      try {
+        final box = Hive.isBoxOpen('neva_chat_box')
+            ? Hive.box('neva_chat_box')
+            : await Hive.openBox('neva_chat_box');
+        await box.delete('messages');
+      } catch (_) {}
+    }
+  }
+
+  List<Map<String, String>> _buildRecentHistory() {
+    final history = <Map<String, String>>[];
+    final prior = _messages.length > 1
+        ? _messages.sublist(0, _messages.length - 1)
+        : <_ChatMessage>[];
+    final recent = prior.length > 8 ? prior.sublist(prior.length - 8) : prior;
+
+    for (final m in recent) {
+      final t = m.text.trim();
+      if (t.isNotEmpty) {
+        history.add({
+          'role': m.isUser ? 'user' : 'model',
+          'text': t,
+        });
+      }
+    }
+    return history;
   }
 
   @override
@@ -189,6 +339,7 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
         ),
       );
     });
+    _saveMessagesToStorage();
     _scrollToBottom();
 
     try {
@@ -217,6 +368,7 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
             ),
           );
         });
+        _saveMessagesToStorage();
         _scrollToBottom();
       }
     } catch (e) {
@@ -233,6 +385,7 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
             ),
           );
         });
+        _saveMessagesToStorage();
         _scrollToBottom();
       }
     }
@@ -300,11 +453,14 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
       _showSuggestions = false;
       _isTyping = true;
     });
+    _saveMessagesToStorage();
     _controller.clear();
     _scrollToBottom();
 
     // Make sure Neva knows where the user is so the answer is local.
     if (!_locationResolved) await _resolveUserLocation();
+
+    final history = _buildRecentHistory();
 
     try {
       // The backend answers "where is…" questions with real places, which are
@@ -315,14 +471,17 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
         latitude: _userLat,
         longitude: _userLng,
         area: _userArea,
+        history: history,
       );
-      final response = reply?.text ??
+      final rawResponse = reply?.text ??
           await _geminiService.getResponse(
             text,
             systemInstruction: _nevaSystemPrompt,
             context: _locationContext(),
             temperature: 0.85,
+            history: history,
           );
+      final parsed = _extractActions(rawResponse);
       final places = reply?.places ?? const <AttractionEntity>[];
 
       if (mounted) {
@@ -330,14 +489,16 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
           _isTyping = false;
           _messages.add(
             _ChatMessage(
-              text: response,
+              text: parsed.cleanText,
               isUser: false,
               timestamp: DateTime.now(),
               places: places.isEmpty ? null : places,
               placesCategoryLabel: reply?.query,
+              actions: parsed.actions.isEmpty ? null : parsed.actions,
             ),
           );
         });
+        _saveMessagesToStorage();
         _scrollToBottom();
       }
     } catch (e) {
@@ -354,6 +515,7 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
             ),
           );
         });
+        _saveMessagesToStorage();
         _scrollToBottom();
       }
     }
@@ -574,6 +736,29 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
               ],
             ),
           ),
+          Tooltip(
+            message: 'New Chat',
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(20),
+                onTap: _startNewChat,
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.black.withValues(alpha: 0.04),
+                    border: Border.all(color: Colors.black12, width: 0.8),
+                  ),
+                  child: const Icon(
+                    Icons.restart_alt_rounded,
+                    color: Colors.black87,
+                    size: 20,
+                  ),
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -652,6 +837,10 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
                           ),
                         ),
                 ),
+                if (message.actions != null && message.actions!.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  _buildActionChips(message.actions!),
+                ],
                 if (message.places != null && message.places!.isNotEmpty) ...[
                   const SizedBox(height: 10),
                   _NevaPlacesMap(
@@ -670,6 +859,104 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
         ],
       ),
     ).animate().fade().slideY(begin: 0.1, end: 0);
+  }
+
+  Widget _buildActionChips(List<_NevaAction> actions) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 6,
+      children: actions.map((act) {
+        IconData icon;
+        Color color;
+        switch (act.type) {
+          case 'ar':
+            icon = Icons.view_in_ar_rounded;
+            color = const Color(0xFF6C5CE7);
+            break;
+          case 'plans':
+          case 'itinerary':
+            icon = Icons.auto_mode_rounded;
+            color = const Color(0xFF0984E3);
+            break;
+          case 'food':
+          case 'discover':
+            icon = Icons.restaurant_rounded;
+            color = const Color(0xFFE17055);
+            break;
+          case 'budget':
+            icon = Icons.account_balance_wallet_rounded;
+            color = const Color(0xFF00B894);
+            break;
+          case 'map':
+          default:
+            icon = Icons.explore_rounded;
+            color = const Color(0xFF2D3436);
+            break;
+        }
+
+        return Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(16),
+            onTap: () => _handleAction(act),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: color.withValues(alpha: 0.3), width: 1),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(icon, size: 16, color: color),
+                  const SizedBox(width: 6),
+                  Text(
+                    act.label,
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                      color: color,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Icon(Icons.arrow_forward_ios_rounded, size: 10, color: color),
+                ],
+              ),
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  void _handleAction(_NevaAction action) {
+    if (widget.onNavigateTab != null) {
+      switch (action.type) {
+        case 'ar':
+          widget.onNavigateTab!(1);
+          break;
+        case 'plans':
+        case 'itinerary':
+          widget.onNavigateTab!(4, subTab: 0);
+          break;
+        case 'budget':
+          widget.onNavigateTab!(4, subTab: 1);
+          break;
+        case 'food':
+        case 'discover':
+          widget.onNavigateTab!(3);
+          break;
+        case 'map':
+        default:
+          widget.onNavigateTab!(0);
+          break;
+      }
+    } else {
+      if (Navigator.canPop(context)) {
+        Navigator.pop(context);
+      }
+    }
   }
 
   Widget _buildTypingIndicator() {
@@ -1227,12 +1514,27 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
   }
 }
 
+class _NevaAction {
+  final String type; // 'ar', 'plans', 'itinerary', 'food', 'discover', 'budget', 'map'
+  final String label;
+
+  const _NevaAction({required this.type, required this.label});
+
+  Map<String, dynamic> toMap() => {'type': type, 'label': label};
+
+  factory _NevaAction.fromMap(Map map) => _NevaAction(
+    type: (map['type'] ?? '').toString(),
+    label: (map['label'] ?? '').toString(),
+  );
+}
+
 class _ChatMessage {
   final String text;
   final bool isUser;
   final DateTime timestamp;
   final List<AttractionEntity>? places;
   final String? placesCategoryLabel;
+  final List<_NevaAction>? actions;
 
   _ChatMessage({
     required this.text,
@@ -1240,7 +1542,85 @@ class _ChatMessage {
     required this.timestamp,
     this.places,
     this.placesCategoryLabel,
+    this.actions,
   });
+
+  Map<String, dynamic> toMap() => {
+    'text': text,
+    'isUser': isUser,
+    'timestamp': timestamp.toIso8601String(),
+    'placesCategoryLabel': placesCategoryLabel,
+    if (actions != null && actions!.isNotEmpty)
+      'actions': actions!.map((a) => a.toMap()).toList(),
+    if (places != null && places!.isNotEmpty)
+      'places': places!.map((p) => {
+        'id': p.id,
+        'name': p.name,
+        'category': p.category,
+        'latitude': p.latitude,
+        'longitude': p.longitude,
+        'rating': p.rating,
+        'reviewCount': p.reviewCount,
+        'distanceM': p.distanceM,
+        'address': p.address,
+      }).toList(),
+  };
+
+  factory _ChatMessage.fromMap(Map map) {
+    final acts = <_NevaAction>[];
+    if (map['actions'] is List) {
+      for (final a in map['actions']) {
+        if (a is Map) acts.add(_NevaAction.fromMap(a));
+      }
+    }
+    final plcs = <AttractionEntity>[];
+    if (map['places'] is List) {
+      for (final p in map['places']) {
+        if (p is Map) {
+          plcs.add(AttractionEntity(
+            id: (p['id'] ?? '').toString(),
+            name: (p['name'] ?? '').toString(),
+            category: (p['category'] ?? '').toString(),
+            latitude: (p['latitude'] as num?)?.toDouble() ?? 0.0,
+            longitude: (p['longitude'] as num?)?.toDouble() ?? 0.0,
+            rating: (p['rating'] as num?)?.toDouble(),
+            reviewCount: (p['reviewCount'] as num?)?.toInt(),
+            distanceM: (p['distanceM'] as num?)?.toDouble(),
+            address: (p['address'] ?? '').toString(),
+          ));
+        }
+      }
+    }
+    return _ChatMessage(
+      text: (map['text'] ?? '').toString(),
+      isUser: map['isUser'] == true,
+      timestamp: DateTime.tryParse(map['timestamp']?.toString() ?? '') ?? DateTime.now(),
+      places: plcs.isEmpty ? null : plcs,
+      placesCategoryLabel: map['placesCategoryLabel']?.toString(),
+      actions: acts.isEmpty ? null : acts,
+    );
+  }
+}
+
+class _ParsedMessage {
+  final String cleanText;
+  final List<_NevaAction> actions;
+
+  const _ParsedMessage({required this.cleanText, required this.actions});
+}
+
+_ParsedMessage _extractActions(String raw) {
+  final actions = <_NevaAction>[];
+  final reg = RegExp(r'\[action:([a-zA-Z0-9_\-]+)\|([^\]]+)\]');
+  for (final m in reg.allMatches(raw)) {
+    final type = m.group(1)?.toLowerCase().trim() ?? '';
+    final label = m.group(2)?.trim() ?? '';
+    if (type.isNotEmpty && label.isNotEmpty) {
+      actions.add(_NevaAction(type: type, label: label));
+    }
+  }
+  final clean = raw.replaceAll(reg, '').trim();
+  return _ParsedMessage(cleanText: clean, actions: actions);
 }
 
 /// Renders Neva's replies with light Markdown so the chat looks polished

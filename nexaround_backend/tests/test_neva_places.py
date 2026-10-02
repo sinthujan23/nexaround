@@ -171,3 +171,31 @@ def test_the_prompt_forbids_answering_place_questions_from_memory():
     prompt = neva_service.NEVA_SYSTEM_PROMPT
     assert "ALWAYS call the find_places tool" in prompt
     assert "Never invent a place" in prompt
+
+
+def test_conversation_history_is_passed_to_gemini(scripted):
+    calls, script, _ = scripted
+    script.append(_reply(text="The second one is open until 10 PM! ✨"))
+    history = [
+        {"role": "user", "text": "What are some good coffee spots near me?"},
+        {"role": "model", "text": "Try **Café Arabica** or **Brew Bar**! ☕"},
+    ]
+    reply = _chat("Are they open late?", history=history)
+    assert reply["text"] == "The second one is open until 10 PM! ✨"
+    assert len(calls["gemini"]) == 1
+    contents = calls["gemini"][0]["body"]["contents"]
+    assert len(contents) == 3
+    assert contents[0] == {"role": "user", "parts": [{"text": "What are some good coffee spots near me?"}]}
+    assert contents[1] == {"role": "model", "parts": [{"text": "Try **Café Arabica** or **Brew Bar**! ☕"}]}
+    assert "Are they open late?" in contents[2]["parts"][0]["text"]
+
+
+def test_system_prompt_includes_app_features_and_actions():
+    prompt = neva_service.NEVA_SYSTEM_PROMPT
+    assert "AR Camera & Scanner" in prompt
+    assert "Odyssey AI Trip Planner" in prompt
+    assert "Interactive Food Radar" in prompt
+    assert "Interactive Living Map" in prompt
+    assert "Travel Budget Tracker" in prompt
+    assert "[action:ar|Open AR Scanner]" in prompt
+

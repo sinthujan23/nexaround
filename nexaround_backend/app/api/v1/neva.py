@@ -18,11 +18,17 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/neva", tags=["neva"])
 
 
+class ChatMessageItem(BaseModel):
+    role: str = Field(..., pattern="^(user|model|assistant)$")
+    text: str = Field(..., min_length=1, max_length=4000)
+
+
 class NevaChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=2000)
     latitude: Optional[float] = Field(None, ge=-90.0, le=90.0)
     longitude: Optional[float] = Field(None, ge=-180.0, le=180.0)
     area: Optional[str] = Field(None, max_length=200)
+    history: Optional[list[ChatMessageItem]] = Field(None, description="Recent conversation history")
 
 
 class NevaChatResponse(BaseModel):
@@ -45,6 +51,7 @@ async def neva_chat(
     if not api_key:
         raise HTTPException(status_code=500, detail="Gemini API Key not configured")
     has_location = body.latitude is not None and body.longitude is not None
+    history_list = [h.model_dump() for h in body.history] if body.history else None
     try:
         reply = await neva_service.chat(
             body.message,
@@ -52,6 +59,7 @@ async def neva_chat(
             latitude=body.latitude if has_location else None,
             longitude=body.longitude if has_location else None,
             area=body.area or "",
+            history=history_list,
             user_id=current_user.id,
         )
     except neva_service.NevaUnavailable as e:
@@ -61,3 +69,4 @@ async def neva_chat(
     if not reply["text"]:
         raise HTTPException(status_code=503, detail="Neva returned an empty reply.")
     return NevaChatResponse(**reply)
+

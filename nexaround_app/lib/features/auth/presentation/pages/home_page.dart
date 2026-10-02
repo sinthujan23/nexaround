@@ -345,7 +345,17 @@ class HomePageState extends State<HomePage> with WidgetsBindingObserver {
     final pages = [
       LivingMapPage(isActive: _selectedIndex == 0),
       ArCameraPage(isActive: _selectedIndex == 1),
-      AiChatPage(initialPrompt: _pendingPrompt, placeContext: _pendingPlaceContext),
+      AiChatPage(
+        initialPrompt: _pendingPrompt,
+        placeContext: _pendingPlaceContext,
+        onNavigateTab: (tabIndex, {subTab}) {
+          if (tabIndex == 0) switchToExplore();
+          else if (tabIndex == 1) switchToAr();
+          else if (tabIndex == 3) switchToDiscover(initialTab: subTab ?? 0);
+          else if (tabIndex == 4) switchToPlans(initialTab: subTab ?? 0);
+          else if (tabIndex == 5) switchToProfile();
+        },
+      ),
       DiscoverPage(
         initialTab: _discoverInitialTab,
         isActive: _selectedIndex == 3,

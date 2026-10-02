@@ -94,10 +94,11 @@ void main() async {
   unawaited(NotificationService.instance.init());
 }
 
-/// Initialize Hive Local Database for Travel Stories
+/// Initialize Hive Local Database for Travel Stories & Neva Chat
 Future<void> _openLocalDatabase() async {
   await Hive.initFlutter();
   await Hive.openBox('travel_stories_box');
+  await Hive.openBox('neva_chat_box');
 }
 
 /// Non-fatal if it fails, so the app still runs without notifications.

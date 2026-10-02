@@ -53,6 +53,24 @@ HOW TO FORMAT EVERY REPLY (this controls how beautiful it looks in the app, so f
 - Do NOT use markdown headings (#), tables, or code blocks — only short text, **bold**, and "* " bullets.
 - When it feels natural, end with a warm, inviting question.
 
+NEXAROUND APP KNOWLEDGE & ASSISTANCE:
+You know every feature inside NexAround and guide travelers on how to make the most of the app:
+- **AR Camera & Scanner** (AR tab): Users can point their camera at historic landmarks, monuments, and buildings to get instant AI visual recognition, fascinating historical stories, and audio guides. Recommend this whenever the user wants to identify or learn about what's physically in front of them.
+- **Odyssey AI Trip Planner** (Plans tab): Generates custom day-by-day itineraries tailored to pace, budget, and travel vibe, plus analyzes visa & passport entry requirements. Mention this when travelers want a complete multi-day schedule or visa advice.
+- **Interactive Food Radar & Trending** (Discover tab): Real-time radar for local delicacies, trending dining spots, authentic street food, and experiences tailored to the weather.
+- **Interactive Living Map** (Home tab): Interactive map with curated attraction pins, walking routes, and category filters (Dining, Culture, Nature, Nightlife, Shopping).
+- **Travel Budget Tracker** (Plans tab -> Budget): Multi-currency expense tracker, daily spending limits, and currency conversion.
+- **Travel Stories & Journal**: Personal travel log and insider recommendations from local explorers.
+
+ACTION CHIPS (Deep Links):
+When you recommend an app tool, you can attach an action tag at the very end of your response on its own line:
+- AR Scanner: `[action:ar|Open AR Scanner]`
+- Odyssey Trip Planner: `[action:plans|Open Odyssey Planner]`
+- Food Radar: `[action:food|Open Food Radar]`
+- Living Map: `[action:map|Explore Living Map]`
+- Budget Tracker: `[action:budget|Open Budget Tracker]`
+Use at most ONE action chip per message, only when it directly assists the user.
+
 LOCATION AWARENESS:
 - The user's current area and coordinates may be given to you in the context. When they are, tailor every idea and recommendation to THAT area and mention it naturally (e.g. "Since you're around Colombo, ...").
 - For "ideas", "plans", "what to do" or "day out" style questions, suggest a few specific, realistic local spots or areas that fit — woven into your answer, not a raw list.
@@ -121,6 +139,41 @@ def _distance_text(metres: Optional[float]) -> str:
     if metres is None:
         return "distance unknown"
     return f"{metres:,.0f} m" if metres < 1000 else f"{metres / 1000:.1f} km"
+
+
+def _format_history(history: Optional[list[dict]], max_turns: int = 8) -> list[dict]:
+    """Format sanitized, alternating user/model turns for Gemini contents.
+
+    Caps at `max_turns` (default 8 messages) to strictly control token costs while
+    maintaining conversational context. Gemini requires alternating roles and
+    must start with 'user'.
+    """
+    if not history:
+        return []
+
+    cleaned: list[dict] = []
+    # Take the most recent max_turns
+    recent = history[-max_turns:]
+
+    for item in recent:
+        if not isinstance(item, dict):
+            continue
+        raw_role = str(item.get("role", "")).lower().strip()
+        role = "model" if raw_role in ("model", "assistant") else "user"
+        text = str(item.get("text", "")).strip()
+        if not text:
+            continue
+        # Avoid duplicate consecutive roles by merging text
+        if cleaned and cleaned[-1]["role"] == role:
+            cleaned[-1]["parts"][0]["text"] += f"\n{text}"
+        else:
+            cleaned.append({"role": role, "parts": [{"text": text}]})
+
+    # Gemini contents must start with a 'user' turn
+    while cleaned and cleaned[0]["role"] != "user":
+        cleaned.pop(0)
+
+    return cleaned
 
 
 async def _generate(body: dict, api_key: str, operation: str) -> dict:
@@ -204,6 +257,7 @@ async def chat(
     latitude: Optional[float] = None,
     longitude: Optional[float] = None,
     area: str = "",
+    history: Optional[list[dict]] = None,
     user_id=None,
 ) -> dict[str, Any]:
     """Neva's reply: {"text", "places", "query", "radius_m"}.
@@ -213,7 +267,12 @@ async def chat(
     """
     context = _context(latitude, longitude, area)
     question = f"Context: {context}\n\nUser Question: {message}" if context else message
-    contents: list[dict] = [{"role": "user", "parts": [{"text": question}]}]
+
+    contents = _format_history(history)
+    if contents and contents[-1]["role"] == "user":
+        contents.pop()
+    contents.append({"role": "user", "parts": [{"text": question}]})
+
     config = {
         "temperature": 0.85,
         "maxOutputTokens": 1024,
@@ -233,6 +292,7 @@ async def chat(
     call = _function_call(first)
     if call is None:
         return {"text": _text(first), "places": [], "query": "", "radius_m": 0}
+
 
     query = str((call.get("args") or {}).get("query") or "").strip()[:80] or message[:80]
     places: list = []

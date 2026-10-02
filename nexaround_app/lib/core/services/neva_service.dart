@@ -33,6 +33,7 @@ class NevaService {
     double? latitude,
     double? longitude,
     String? area,
+    List<Map<String, String>>? history,
   }) async {
     try {
       final response = await ApiClient.instance.post(
@@ -42,6 +43,7 @@ class NevaService {
           if (latitude != null && longitude != null) 'latitude': latitude,
           if (latitude != null && longitude != null) 'longitude': longitude,
           if (area != null && area.isNotEmpty && area != 'Nearby') 'area': area,
+          if (history != null && history.isNotEmpty) 'history': history,
         },
         options: _options,
       );
