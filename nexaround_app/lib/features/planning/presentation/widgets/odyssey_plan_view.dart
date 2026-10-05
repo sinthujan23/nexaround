@@ -14,6 +14,7 @@ import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/core/error/user_message.dart';
 import 'package:nexaround_app/core/constants/trip_cost_floor.dart';
 import 'package:nexaround_app/features/planning/data/odyssey_repository.dart';
+import 'package:nexaround_app/features/planning/presentation/widgets/odyssey_disclaimer_sheet.dart';
 
 
 /// Renders a generated/saved [Odyssey] as a scrollable blueprint. Shared by the
@@ -577,6 +578,59 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
             _buildBookingPlanSection(context),
           if (_dynamicPartners.isNotEmpty)
             _buildOverviewBookingPartnersSection(context),
+          _buildLegalDisclaimerSection(context),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLegalDisclaimerSection(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: AppColors.brandGreen.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.verified_user_outlined,
+                  size: 16,
+                  color: AppColors.brandGreen,
+                ),
+              ),
+              const SizedBox(width: 10),
+              const Text(
+                'TRAVEL PLANNING DISCLAIMER',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.2,
+                  color: Color(0xFF64748B),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          const Text(
+            kOdysseyDisclaimerText,
+            style: TextStyle(
+              fontSize: 11.5,
+              height: 1.45,
+              color: Color(0xFF475569),
+            ),
+          ),
         ],
       ),
     );

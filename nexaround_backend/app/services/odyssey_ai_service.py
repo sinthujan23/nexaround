@@ -4745,7 +4745,15 @@ Rules:
   day in the smaller town, name the smaller town.
 - Prefer fewer, longer legs. Do not move city more often than every 2 days
   unless {destination} is small enough that it makes sense.
-{ends_rule}{region_rule}{avoid_rule}- CLUSTER THE ROUTE: order the legs so the trip never backtracks, and keep each
+{ends_rule}{region_rule}{avoid_rule}- MUST-VISIT DESTINATIONS CLUBBED BY PROXIMITY:
+  First, identify the top must-visit destinations and cultural/natural highlights of {destination}
+  appropriate for a {days}-day trip and {mood or "balanced"} style.
+  Club (cluster) these must-visit destinations strictly by geographical proximity based on
+  the {days} days provided, so the traveller visits top attractions without spending
+  excessive time transit-bound.
+  For shorter trips (<= 4 days), cluster tightly into 1 compact area or corridor.
+  For longer trips, connect adjacent clusters in a smooth, continuous geographic flow.
+- CLUSTER THE ROUTE & AVOID BACKTRACKING: order the legs so the trip never backtracks, and keep each
   leg within about {_LEG_HOP_MAX_KM:.0f} km by road of the previous one unless "arrive_by"
   for that leg is "flight" or "train".
 - "latitude"/"longitude": the city's coordinates to 2 decimal places.
@@ -4753,7 +4761,7 @@ Rules:
   airport for the first leg, from the previous city for the others. Use "none"
   only when the first leg IS the arrival airport's own city.
 - "from_previous_km": approximate travel distance in km for that hop (0 when
-  arrive_by is "none").
+  arrive_by is "none"). Ensure the distance is realistic between the consecutive stops.
 - "arrival_airport": the airport with scheduled commercial flights that is
   NEAREST to the FIRST leg's city — not the capital and not the country's
   biggest hub by default. The first leg's city must be within about
@@ -5076,21 +5084,33 @@ def route_preview_payload(plan: "RoutePlan") -> dict:
     left out: it is recomputed from the days on the way back in, so an app that
     edits the city list cannot put the stay budget out of step with the route.
     """
+    legs_out = []
+    prev_leg = None
+    for leg in (plan.legs or []):
+        km = leg.get("from_previous_km")
+        if (km is None or km <= 0) and prev_leg is not None:
+            d = _airport_leg_km(prev_leg, leg)
+            if d is not None and d > 0:
+                # Road/transit distance is typically ~1.2x to 1.3x straight-line distance
+                km = int(round(d * 1.25))
+            else:
+                km = 0
+        elif km is None:
+            km = 0
+        legs_out.append({
+            "city": leg.get("city", ""),
+            "country": leg.get("country", ""),
+            "start_day": leg.get("start_day"),
+            "end_day": leg.get("end_day"),
+            "nights": leg.get("nights"),
+            "latitude": leg.get("latitude"),
+            "longitude": leg.get("longitude"),
+            "arrive_by": leg.get("arrive_by", ""),
+            "from_previous_km": km,
+        })
+        prev_leg = leg
     return {
-        "legs": [
-            {
-                "city": leg.get("city", ""),
-                "country": leg.get("country", ""),
-                "start_day": leg.get("start_day"),
-                "end_day": leg.get("end_day"),
-                "nights": leg.get("nights"),
-                "latitude": leg.get("latitude"),
-                "longitude": leg.get("longitude"),
-                "arrive_by": leg.get("arrive_by", ""),
-                "from_previous_km": leg.get("from_previous_km", 0),
-            }
-            for leg in (plan.legs or [])
-        ],
+        "legs": legs_out,
         "arrival_airport": plan.arrival,
         "departure_airport": plan.departure,
         "region": plan.region,
@@ -6789,6 +6809,9 @@ country. Rewrite the ENTIRE plan from scratch using only real places in
 CRITICAL - FIXED ROUTE (do not change it, do not add or drop a city):
 {table}
 
+- Prioritize the must-visit highlights and top attractions of each destination,
+  clubbing/grouping daily activities by walking or local transit proximity so
+  the traveller does not crisscross the area on the same day.
 - Every activity on a day must be in, or a day trip from, that day's city
   above, and within roughly {_PLACE_ANCHOR_KM} km of that city's coordinates.
 - The first day of each leg after the first MUST open with a "transport"

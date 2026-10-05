@@ -15,6 +15,7 @@ import 'package:nexaround_app/features/living_map/presentation/widgets/location_
 import 'package:nexaround_app/core/constants/countries.dart';
 import 'package:nexaround_app/core/widgets/country_picker_sheet.dart';
 import 'package:nexaround_app/core/error/user_message.dart';
+import 'package:nexaround_app/features/planning/presentation/widgets/odyssey_disclaimer_sheet.dart';
 
 class OdysseyPlannerPage extends StatefulWidget {
   const OdysseyPlannerPage({super.key});
@@ -2118,36 +2119,46 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
         color: Colors.white,
         border: Border(top: BorderSide(color: Colors.black.withValues(alpha: 0.05))),
       ),
-      child: SizedBox(
-        width: double.infinity,
-        height: 52,
-        child: Container(
-          decoration: BoxDecoration(
-            color: blocked ? Colors.black26 : Colors.black,
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: blocked
-                ? null
-                : [BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 16, offset: const Offset(0, 6))],
-          ),
-          child: ElevatedButton(
-            onPressed: (_isSubmitting || blocked) ? null : _onPrimaryAction,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.transparent,
-              shadowColor: Colors.transparent,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (_currentStep == 3) ...[
+            const OdysseyConsentBanner(
+              padding: EdgeInsets.only(bottom: 12),
             ),
-            child: _isSubmitting
-                ? const SizedBox(
-                    width: 22,
-                    height: 22,
-                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                  )
-                : Text(
-                    label,
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13, letterSpacing: 1.5),
-                  ),
+          ],
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: Container(
+              decoration: BoxDecoration(
+                color: blocked ? Colors.black26 : Colors.black,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: blocked
+                    ? null
+                    : [BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 16, offset: const Offset(0, 6))],
+              ),
+              child: ElevatedButton(
+                onPressed: (_isSubmitting || blocked) ? null : _onPrimaryAction,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.transparent,
+                  shadowColor: Colors.transparent,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                ),
+                child: _isSubmitting
+                    ? const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                      )
+                    : Text(
+                        label,
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13, letterSpacing: 1.5),
+                      ),
+              ),
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -2212,8 +2223,8 @@ class _RoutePreviewSheetState extends State<_RoutePreviewSheet> {
   int _current = 0;
   bool _busy = false;
 
-  /// A two-line ListTile plus the divider under it.
-  static const double _legRowHeight = 73;
+  /// A two-line ListTile plus the divider and transit badge under it.
+  static const double _legRowHeight = 94;
 
   @override
   void dispose() {
@@ -2328,13 +2339,18 @@ class _RoutePreviewSheetState extends State<_RoutePreviewSheet> {
     final tabbed = _previews.length > 1;
     final atLimit = _previews.length >= _RoutePreviewSheet.maxRoutes;
 
+    int totalDistanceKm = 0;
+    for (var i = 1; i < legs.length; i++) {
+      totalDistanceKm += (legs[i]['from_previous_km'] as num?)?.toInt() ?? 0;
+    }
+
     // A PageView needs one height for every page. Sized to the longest route
     // so no tab has to scroll, and capped so the actions stay on screen on a
     // short phone — a longer list scrolls inside its page.
     final longest = _previews.fold<int>(1, (n, p) => math.max(n, _legsOf(p).length));
     final listHeight = math.min(
-      longest * _legRowHeight + 8,
-      MediaQuery.sizeOf(context).height * 0.45,
+      longest * _legRowHeight + 12,
+      MediaQuery.sizeOf(context).height * 0.48,
     );
 
     return Container(
@@ -2400,8 +2416,12 @@ class _RoutePreviewSheetState extends State<_RoutePreviewSheet> {
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
               child: Text(
                 region.isNotEmpty
-                    ? '$region · ${widget.days} days'
-                    : 'Nothing is booked yet — change it before we build the plan.',
+                    ? (totalDistanceKm > 0
+                        ? '$region · ${widget.days} days · ~$totalDistanceKm km total travel'
+                        : '$region · ${widget.days} days')
+                    : (totalDistanceKm > 0
+                        ? '~$totalDistanceKm km total travel · change it before we build the plan.'
+                        : 'Nothing is booked yet — change it before we build the plan.'),
                 style: const TextStyle(fontSize: 13, color: Colors.black54),
               ),
             ),
@@ -2446,8 +2466,11 @@ class _RoutePreviewSheetState extends State<_RoutePreviewSheet> {
                 ),
               ),
             const Divider(height: 1, color: Color(0xFFEEF1F5)),
+            const OdysseyConsentBanner(
+              padding: EdgeInsets.fromLTRB(16, 6, 16, 4),
+            ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+              padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
               child: Row(
                 children: [
                   if (legs.length > 1) ...[
@@ -2539,8 +2562,72 @@ class _RoutePreviewSheetState extends State<_RoutePreviewSheet> {
     return ListView.separated(
       padding: const EdgeInsets.symmetric(horizontal: 12),
       itemCount: legs.length,
-      separatorBuilder: (context, index) => const Divider(
-          height: 1, indent: 56, color: Color(0xFFEEF1F5)),
+      separatorBuilder: (context, index) {
+        final nextLeg = index + 1 < legs.length ? legs[index + 1] : null;
+        final km = (nextLeg?['from_previous_km'] as num?)?.toInt() ?? 0;
+        final arriveBy = (nextLeg?['arrive_by']?.toString() ?? '').trim().toLowerCase();
+
+        IconData modeIcon = Icons.directions_car_rounded;
+        String modeName = 'road';
+        if (arriveBy == 'train') {
+          modeIcon = Icons.train_rounded;
+          modeName = 'train';
+        } else if (arriveBy == 'flight') {
+          modeIcon = Icons.flight_takeoff_rounded;
+          modeName = 'flight';
+        } else if (arriveBy == 'bus') {
+          modeIcon = Icons.directions_bus_rounded;
+          modeName = 'bus';
+        } else if (arriveBy == 'ferry') {
+          modeIcon = Icons.directions_boat_rounded;
+          modeName = 'ferry';
+        }
+
+        final String distanceLabel = km > 0
+            ? (arriveBy.isNotEmpty && arriveBy != 'none' ? '$km km by $modeName' : '$km km')
+            : (arriveBy.isNotEmpty && arriveBy != 'none' ? 'by $modeName' : '');
+
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            children: [
+              Container(
+                margin: const EdgeInsets.only(left: 12),
+                width: 2,
+                height: 28,
+                color: const Color(0xFFCBD5E1),
+              ),
+              const SizedBox(width: 18),
+              if (distanceLabel.isNotEmpty)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF1F5F9),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(modeIcon, size: 12, color: const Color(0xFF64748B)),
+                      const SizedBox(width: 4),
+                      Text(
+                        distanceLabel,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF475569),
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              else
+                const Expanded(child: Divider(height: 1, color: Color(0xFFEEF1F5))),
+            ],
+          ),
+        );
+      },
       itemBuilder: (_, i) {
         final leg = legs[i];
         final city = leg['city']?.toString() ?? '';
@@ -2548,6 +2635,8 @@ class _RoutePreviewSheetState extends State<_RoutePreviewSheet> {
         final end = leg['end_day'];
         final nights = leg['nights'];
         return ListTile(
+          dense: true,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 4),
           leading: CircleAvatar(
             radius: 14,
             backgroundColor: AppColors.brandGreen.withValues(alpha: 0.12),
@@ -2560,7 +2649,7 @@ class _RoutePreviewSheetState extends State<_RoutePreviewSheet> {
             ),
           ),
           title: Text(city,
-              style: const TextStyle(fontWeight: FontWeight.w600)),
+              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
           subtitle: Text(
             start == end
                 ? 'Day $start'
