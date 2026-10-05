@@ -1539,7 +1539,9 @@ def _strategy_payload(
         "estimated_price_range": f"{currency.upper()} {per_traveler:,.0f}",
         "airlines": list(m.get("airlines") or []),
         "route": (
-            f"{outbound['origin']} → {outbound['destination']}"
+            f"{outbound['origin']} → {outbound['destination']} → {outbound['origin']}"
+            if trip_type == "round_trip" and outbound.get("origin") and outbound.get("destination")
+            else f"{outbound['origin']} → {outbound['destination']}"
             if outbound.get("origin") and outbound.get("destination") else ""
         ),
         "stops": int(outbound.get("stops") or 0),
@@ -2059,6 +2061,12 @@ def attach_return_leg(
         f"{ret_leg['origin']} → {ret_leg['destination']}"
         if ret_leg["origin"] and ret_leg["destination"] else ""
     )
+    if strategy.get("trip_type") == "round_trip" and strategy.get("outbound"):
+        out_orig = (strategy["outbound"] or {}).get("origin")
+        out_dest = (strategy["outbound"] or {}).get("destination")
+        ret_dest = ret_leg.get("destination") or out_orig
+        if out_orig and out_dest:
+            strategy["route"] = f"{out_orig} → {out_dest} → {ret_dest}"
     strategy["return_duration_minutes"] = ret_leg["duration_minutes"]
     # The whole journey, for anything that wants it — but NOT the figure the
     # header quotes, and not `total_duration_minutes`.

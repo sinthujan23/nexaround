@@ -802,9 +802,7 @@ class FlightStrategiesSection extends StatelessWidget {
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          fs.returnRoute.isNotEmpty && fs.isOpenJaw
-                              ? '${fs.route}  ·  ${fs.returnRoute}'
-                              : fs.route,
+                          _formatStrategyRoute(fs),
                           style: const TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w800,
@@ -1014,7 +1012,9 @@ class FlightStrategiesSection extends StatelessWidget {
                         ),
                         icon: const Icon(Icons.open_in_new_rounded, size: 16),
                         label: Text(
-                          fs.isOpenJaw ? 'Check outbound on $provider' : 'Check on $provider',
+                          fs.isOpenJaw
+                              ? 'Check outbound on $provider'
+                              : (fs.isRoundTrip ? 'Check round trip on $provider' : 'Check on $provider'),
                           style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -1056,7 +1056,9 @@ class FlightStrategiesSection extends StatelessWidget {
                           ],
                           Flexible(
                             child: Text(
-                              fs.isOpenJaw ? 'Book Outbound on $provider' : 'Book Flight on $provider',
+                              fs.isOpenJaw
+                                  ? 'Book Outbound on $provider'
+                                  : (fs.isRoundTrip ? 'Book Round Trip on $provider' : 'Book Flight on $provider'),
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.w700,
@@ -1102,11 +1104,64 @@ class FlightStrategiesSection extends StatelessWidget {
     );
   }
 
-  /// "Book on Aviasales"; "Book both flights …" when it is two tickets; and
+  /// "Book on Aviasales"; "Book both flights …" when it is two tickets;
+  /// "Book round trip on Aviasales" for round trips; and
   /// "Find live fares …" when the fare on the card is only an estimate.
   static String _aviasalesLabel(FlightStrategy fs) {
     if (!fs.isLivePrice) return 'Find live fares on Aviasales';
-    return fs.isOpenJaw ? 'Book both flights on Aviasales' : 'Book on Aviasales';
+    if (fs.isOpenJaw) return 'Book both flights on Aviasales';
+    if (fs.isRoundTrip || (fs.coversBothLegs && !fs.isOpenJaw)) {
+      return 'Book round trip on Aviasales';
+    }
+    return 'Book on Aviasales';
+  }
+
+  /// Formats the card headline route.
+  /// For round trips, displays ORIGIN → DESTINATION → ORIGIN (e.g. COK → EVN → COK).
+  /// For open-jaw trips, displays ORIGIN → DEST1 · DEST2 → RETURN_ORIGIN.
+  /// For one-way trips, displays ORIGIN → DESTINATION.
+  static String _formatStrategyRoute(FlightStrategy fs) {
+    if (fs.isOpenJaw) {
+      return fs.returnRoute.isNotEmpty
+          ? '${fs.route}  ·  ${fs.returnRoute}'
+          : fs.route;
+    }
+
+    final isRound = fs.isRoundTrip ||
+        (fs.coversBothLegs && !fs.isOpenJaw) ||
+        (fs.returnLeg != null && !fs.isOpenJaw) ||
+        (fs.returnRoute.isNotEmpty && !fs.isOpenJaw);
+
+    if (isRound) {
+      final parts = fs.route
+          .split(RegExp(r'\s*(?:→|->|➔|-)\s*'))
+          .where((p) => p.isNotEmpty)
+          .toList();
+
+      if (parts.length >= 3) {
+        return parts.join(' → ');
+      }
+
+      if (fs.outbound != null &&
+          fs.outbound!.origin.isNotEmpty &&
+          fs.outbound!.destination.isNotEmpty) {
+        final origin = fs.outbound!.origin;
+        final dest = fs.outbound!.destination;
+        final returnDest = (fs.returnLeg != null && fs.returnLeg!.destination.isNotEmpty)
+            ? fs.returnLeg!.destination
+            : origin;
+        return '$origin → $dest → $returnDest';
+      }
+
+      if (parts.length == 2) {
+        final returnDest = (fs.returnLeg != null && fs.returnLeg!.destination.isNotEmpty)
+            ? fs.returnLeg!.destination
+            : parts[0];
+        return '${parts[0]} → ${parts[1]} → $returnDest';
+      }
+    }
+
+    return fs.route;
   }
 
   /// Returns the asset path for a provider logo, or null if none exists yet.

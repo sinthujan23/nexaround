@@ -103,5 +103,22 @@ void main() {
       expect(url, contains('google.com/travel/flights'));
       expect(url, contains('flights%20from%20COK%20to%20ADD%20with%20IndiGo%2C%20Ethiopian%20Airlines'));
     });
+
+    test('3-part round-trip route resolves correct destination and origin', () {
+      final url = BookingUrlHelper.buildFlightUrl(
+        rawUrl: '',
+        providerName: 'Google Flights',
+        strategyTitle: 'Kochi to Yerevan Round Trip',
+        destination: 'Armenia',
+        departureCity: 'Kochi',
+        startDate: '2026-10-15',
+        endDate: '2026-10-22',
+        travelers: 1,
+        route: 'COK → EVN → COK',
+      );
+
+      expect(url, contains('google.com/travel/flights'));
+      expect(url, contains('flights%20from%20COK%20to%20EVN'));
+    });
   });
 }

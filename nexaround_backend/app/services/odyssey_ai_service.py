@@ -784,7 +784,10 @@ def _enforce_route_destination(
         left = origin_first or (parts[0].upper() if parts else "")
         if not left:
             continue
-        strat["route"] = f"{left} → {dest_first}"
+        if strat.get("trip_type") == "round_trip" or (return_first == dest_first and strat.get("trip_type") != "one_way"):
+            strat["route"] = f"{left} → {dest_first} → {left}"
+        else:
+            strat["route"] = f"{left} → {dest_first}"
         if strat.get("trip_type") != "one_way":
             strat["return_route"] = f"{return_first} → {left}"
     return data
@@ -831,7 +834,9 @@ def _apply_flight_booking_urls(
             r_parts = [p.strip() for p in route_str.replace("->", "→").split("→") if p.strip()]
             if r_parts and _AIRPORT_CODE_RE.match(r_parts[0].upper()):
                 route_origin = r_parts[0].upper()
-            if len(r_parts) > 1 and _AIRPORT_CODE_RE.match(r_parts[-1].upper()):
+            if len(r_parts) == 3 and r_parts[0].upper() == r_parts[-1].upper() and _AIRPORT_CODE_RE.match(r_parts[1].upper()):
+                route_dest = r_parts[1].upper()
+            elif len(r_parts) > 1 and _AIRPORT_CODE_RE.match(r_parts[-1].upper()):
                 route_dest = r_parts[-1].upper()
 
         strat["provider_name"] = "Google Flights"
@@ -1006,9 +1011,10 @@ def _structure_ai_flight_strategies(
         parts = [p.strip().upper() for p in str(route_str or "").replace("->", "→").split("→") if p.strip()]
         if len(parts) < 2:
             return None
+        dest = parts[1] if (len(parts) == 3 and parts[0] == parts[-1]) else parts[-1]
         return {
             "origin": parts[0],
-            "destination": parts[-1],
+            "destination": dest,
             "date": date or "",
             "departure_time": "",
             "arrival_time": "",
@@ -2149,7 +2155,7 @@ INSTRUCTION: Base your strategies on the real Google Flights data above. Extract
     ex_o = (origin_code.split(",")[0].strip().upper() if origin_code else "AAA")
     ex_d = (dest_code.split(",")[0].strip().upper() if dest_code else "BBB")
     ex_r = (departure_code.split(",")[0].strip().upper() if departure_code else ex_d)
-    ex_route = f"{ex_o} → {ex_d}"
+    ex_route = f"{ex_o} → {ex_d} → {ex_o}" if (return_date and not is_open_jaw) else f"{ex_o} → {ex_d}"
     ex_return = f"{ex_r} → {ex_o}"
     return_rule = ""
     if return_date:
@@ -2288,7 +2294,8 @@ Return ONLY a JSON object with this exact shape (note every strategy has a price
                 leg = strat.get(key)
                 parts = [p.strip() for p in str(strat.get(route_key) or "").replace("->", "→").split("→") if p.strip()]
                 if isinstance(leg, dict) and len(parts) >= 2:
-                    leg["origin"], leg["destination"] = parts[0], parts[-1]
+                    target_dest = parts[1] if (key == "outbound" and len(parts) == 3 and parts[0] == parts[-1]) else parts[-1]
+                    leg["origin"], leg["destination"] = parts[0], target_dest
         data = _apply_flight_booking_urls(
             data,
             departure_city=departure_city,
@@ -6936,12 +6943,16 @@ CRITICAL — GETTING THERE AND BACK (no flight on this route):
             )
         else:
             ret_line = ""
+        dest_display = (arrival_airport or {}).get("iata")
+        if not dest_display and f_route:
+            f_parts = [p.strip() for p in f_route.replace("->", "→").split("→") if p.strip()]
+            dest_display = f_parts[1] if (len(f_parts) == 3 and f_parts[0] == f_parts[-1]) else (f_parts[-1] if f_parts else "?")
         shape = {
             "open_jaw": (
                 f"open-jaw — land at {(arrival_airport or {}).get('iata') or '?'}, fly home from "
                 f"{(departure_airport or {}).get('iata') or '?'}"
             ),
-            "round_trip": f"round trip via {(arrival_airport or {}).get('iata') or (f_route.split('→')[-1].strip() if f_route else '?')}",
+            "round_trip": f"round trip via {dest_display or '?'}",
         }.get(f_type, "one way")
         flight_rules = f"""
 CRITICAL — CONFIRMED FLIGHTS (live Google Flights; do not change the airports or dates):

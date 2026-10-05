@@ -322,7 +322,9 @@ class BookingUrlHelper {
       if (parts.isNotEmpty) {
         origin = cleanDestination(parts.first);
       }
-      if (parts.length > 1) {
+      if (parts.length == 3 && parts.first.toLowerCase() == parts.last.toLowerCase()) {
+        dest = cleanDestination(parts[1]);
+      } else if (parts.length > 1) {
         dest = cleanDestination(parts.last);
       }
     }
