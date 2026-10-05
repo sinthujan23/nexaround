@@ -5667,6 +5667,12 @@ async def generate_odyssey(
         travelers=travelers,
         legs=city_legs,
         international=home_here is False,
+        departure_country=departure_country,
+        start_date=flight_start_date or start_date,
+        end_date=(
+            flight_end_date or end_date
+            or _derive_return_date(flight_start_date or start_date, days)
+        ),
     )
 
     # 2. Build grounded prompt using confirmed live inventory

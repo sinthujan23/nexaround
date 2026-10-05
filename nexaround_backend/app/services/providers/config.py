@@ -17,7 +17,7 @@ import time
 
 logger = logging.getLogger(__name__)
 
-PROVIDERS = ("gettransfer", "airalo", "wegotrip", "aviasales", "klook", "gocity", "kiwi", "ekta")
+PROVIDERS = ("gettransfer", "airalo", "wegotrip", "aviasales", "klook", "gocity", "kiwi", "ekta", "atlas")
 
 OFF, SHADOW, LIVE = "off", "shadow", "live"
 MODES = (OFF, SHADOW, LIVE)
@@ -29,12 +29,16 @@ TRAVELPAYOUTS_API_TOKEN = "travelpayouts_api_token"
 TRAVELPAYOUTS_MARKER = "travelpayouts_marker"
 TRAVELPAYOUTS_PROJECT_ID = "travelpayouts_project_id"
 GETTRANSFER_API_TOKEN = "gettransfer_api_token"
+ATLAS_KEY_ID = "atlas_key_id"
+ATLAS_SIGNING_SECRET = "atlas_signing_secret"
 
 KEYS = (
     TRAVELPAYOUTS_API_TOKEN,
     TRAVELPAYOUTS_MARKER,
     TRAVELPAYOUTS_PROJECT_ID,
     GETTRANSFER_API_TOKEN,
+    ATLAS_KEY_ID,
+    ATLAS_SIGNING_SECRET,
 )
 
 CONFIG_TTL_S = 60

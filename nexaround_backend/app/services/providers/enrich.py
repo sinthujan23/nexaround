@@ -28,6 +28,7 @@ runs and leaves transport out of its food/activities split anyway.
 from __future__ import annotations
 
 import asyncio
+import datetime as dt
 import logging
 import re
 import time
@@ -35,7 +36,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from app.services import airports_service
-from app.services.providers import airalo, aviasales, config, ekta, gettransfer, gocity, kiwi, klook, wegotrip
+from app.services.providers import airalo, atlas, aviasales, config, ekta, gettransfer, gocity, kiwi, klook, wegotrip
 from app.services.providers.money import format_amount, format_range, usd_rate
 
 logger = logging.getLogger(__name__)
@@ -78,6 +79,26 @@ class Pending:
     international: bool = False
 
 
+def _origin_country_code(departure_country: str, origin_point: Optional[tuple] = None) -> str:
+    dep = str(departure_country or "").strip()
+    if len(dep) == 2 and dep.isalpha():
+        return dep.upper()
+    if origin_point and len(origin_point) >= 2:
+        try:
+            near = airports_service.nearest(float(origin_point[0]), float(origin_point[1]), limit=1)
+            if near and near[0][0].country:
+                return near[0][0].country.upper()
+        except Exception:
+            pass
+    name_map = {
+        "united arab emirates": "AE", "uae": "AE", "united states": "US", "usa": "US",
+        "united kingdom": "GB", "uk": "GB", "france": "FR", "germany": "DE",
+        "india": "IN", "sri lanka": "LK", "singapore": "SG", "canada": "CA",
+        "australia": "AU", "spain": "ES", "italy": "IT", "thailand": "TH", "japan": "JP",
+    }
+    return name_map.get(dep.lower(), "US")
+
+
 async def start(
     *,
     transfers: list[Transfer],
@@ -87,11 +108,14 @@ async def start(
     travelers: int,
     legs: Optional[list[dict]] = None,
     international: bool = False,
+    departure_country: str = "",
+    start_date: str = "",
+    end_date: str = "",
 ) -> Optional[Pending]:
     """Begin every fetch this plan's switches allow. None when all are off."""
     try:
         modes = {p: await config.mode(p) for p in (
-            "gettransfer", "airalo", "aviasales", "wegotrip", "klook", "gocity", "kiwi", "ekta",
+            "gettransfer", "airalo", "aviasales", "wegotrip", "klook", "gocity", "kiwi", "ekta", "atlas",
         )}
     except Exception as e:
         logger.warning("providers: could not read switches: %s", e)
@@ -117,6 +141,20 @@ async def start(
     if modes["wegotrip"] != config.OFF and cities:
         pending.tasks["wegotrip"] = asyncio.create_task(
             _timed(wegotrip.catalogue_for(cities, country_name))
+        )
+    if modes.get("atlas", config.OFF) != config.OFF and international and country_code:
+        today = dt.date.today()
+        s_date = start_date or today.strftime("%Y-%m-%d")
+        e_date = end_date or (today + dt.timedelta(days=max(1, days))).strftime("%Y-%m-%d")
+        orig_cc = _origin_country_code(departure_country, transfers[0].origin if transfers else None)
+        pending.tasks["atlas"] = asyncio.create_task(
+            _timed(atlas.quote_and_mint(
+                origin_country=orig_cc,
+                dest_country=country_code,
+                start_date=s_date,
+                end_date=e_date,
+                travelers=travelers,
+            ))
         )
     return pending
 
@@ -287,7 +325,27 @@ async def _finish(pending: Pending, day_items, meta, *, currency: str, travelers
             if isinstance(p, dict) and any(b in str(p.get("name") or "").lower() for b in monetized_brands)
         ]
 
-    if pending.modes.get("ekta", config.OFF) != config.OFF and pending.international:
+    if pending.modes.get("atlas", config.OFF) != config.OFF and pending.international:
+        atlas_task = pending.tasks.get("atlas")
+        atlas_res = None
+        if atlas_task is not None:
+            try:
+                res, _ = await asyncio.wait_for(atlas_task, timeout=min(2.0, FINISH_WAIT_S))
+                atlas_res = res
+            except Exception as e:
+                logger.warning("providers: atlas wait failed: %s", e)
+        audit["atlas"] = _apply_atlas_insurance(
+            meta,
+            atlas_res,
+            live=pending.modes["atlas"] == config.LIVE,
+            currency=currency,
+        )
+
+    if (
+        pending.modes.get("ekta", config.OFF) != config.OFF
+        and pending.international
+        and pending.modes.get("atlas", config.OFF) == config.OFF
+    ):
         audit["ekta"] = _apply_insurance(
             meta,
             live=pending.modes["ekta"] == config.LIVE,
@@ -667,6 +725,57 @@ def _apply_insurance(meta: dict, *, live: bool, marker: str, project_id: str) ->
     info = meta.setdefault("practical_info", {})
     info["safety_url"] = link
     info["safety_cta"] = ekta.BUTTON_LABEL
+    entry["applied"] = True
+    return entry
+
+
+def _apply_atlas_insurance(
+    meta: dict,
+    result: Optional[dict],
+    *,
+    live: bool,
+    currency: str = "USD",
+) -> dict:
+    """A HelloSafe Atlas travel-insurance row in the Booking Plan and under Safety.
+
+    In shadow mode: records the quote, link, and offer details in provider_audit.
+    In live mode: injects the priced row into booking_plan and sets safety_url/safety_cta.
+    """
+    visa_needed = str((meta.get("visa") or {}).get("status") or "") == "needed"
+    entry: dict = {"mode": config.LIVE if live else config.SHADOW, "visa_needed": visa_needed}
+    if not result:
+        entry["skipped"] = "no_quote"
+        return entry
+
+    link = str(result.get("link") or "").strip()
+    price = result.get("price")
+    quote_currency = result.get("currency") or currency
+    insurer = result.get("insurer") or "HelloSafe"
+    entry.update({
+        "link": link,
+        "price": price,
+        "currency": quote_currency,
+        "insurer": insurer,
+        "session_id": result.get("session_id"),
+        "offer_id": result.get("offer_id"),
+    })
+
+    if not live:
+        return entry
+
+    rows = [
+        r for r in (meta.get("booking_plan") or [])
+        if not (isinstance(r, dict) and (atlas.is_atlas_link(str(r.get("url") or "")) or ekta.is_ekta_link(str(r.get("url") or ""))))
+    ]
+    rows.append(atlas.plan_item(link, visa_needed=visa_needed, insurer=insurer, price=price, currency=quote_currency))
+    meta["booking_plan"] = rows
+
+    info = meta.setdefault("practical_info", {})
+    info["safety_url"] = link
+    if price is not None:
+        info["safety_cta"] = f"Get travel insurance · from {format_amount(price, quote_currency)}"
+    else:
+        info["safety_cta"] = atlas.DEFAULT_BUTTON_LABEL
     entry["applied"] = True
     return entry
 

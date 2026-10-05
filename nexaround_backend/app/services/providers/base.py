@@ -280,6 +280,7 @@ async def fetch(
     params: Any = None,
     headers: Optional[dict] = None,
     json_body: Any = None,
+    raw_body: Optional[str] = None,
     parse: str = "json",
     transform: Optional[Callable[[Any], Any]] = None,
     is_empty: Optional[Callable[[Any], bool]] = None,
@@ -316,7 +317,7 @@ async def fetch(
             provider, operation, key=key, url=url, cache_params=cache_params,
             fresh_ttl=fresh_ttl, stale_ttl=stale_ttl, empty_ttl=empty_ttl,
             timeout_s=timeout_s, method=method, params=params, headers=headers,
-            json_body=json_body, parse=parse, transform=transform,
+            json_body=json_body, raw_body=raw_body, parse=parse, transform=transform,
             is_empty=is_empty, sku=sku,
         )
 
@@ -337,6 +338,7 @@ async def _upstream(
     provider: str, operation: str, *, key: str, url: str, cache_params: dict,
     fresh_ttl: int, stale_ttl: int, empty_ttl: int, timeout_s: float,
     method: str, params: Any, headers: Optional[dict], json_body: Any,
+    raw_body: Optional[str] = None,
     parse: str, transform: Optional[Callable[[Any], Any]],
     is_empty: Optional[Callable[[Any], bool]], sku: Optional[str],
 ) -> Fetched:
@@ -345,9 +347,14 @@ async def _upstream(
         async with telemetry.track(provider, operation, sku=sku, cache_key=key,
                                    params=cache_params) as t:
             # httpx's own timeout covers each phase; wait_for caps the whole.
+            kwargs: dict[str, Any] = {}
+            if raw_body is not None:
+                kwargs["content"] = raw_body.encode("utf-8")
+            elif json_body is not None:
+                kwargs["json"] = json_body
             resp = await asyncio.wait_for(
                 client.request(method, url, params=params, headers=headers,
-                               json=json_body, timeout=timeout_s),
+                               timeout=timeout_s, **kwargs),
                 timeout=timeout_s,
             )
             t.upstream(resp)

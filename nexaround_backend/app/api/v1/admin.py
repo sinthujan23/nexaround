@@ -86,6 +86,9 @@ class SettingsResponse(BaseModel):
     provider_mode_gocity: str = "off"
     provider_mode_kiwi: str = "off"
     provider_mode_ekta: str = "off"
+    provider_mode_atlas: str = "off"
+    atlas_key_id: str = ""
+    atlas_signing_secret: str = ""
 
 ProviderMode = Literal["off", "shadow", "live"]
 
@@ -103,6 +106,8 @@ class SettingsUpdateRequest(BaseModel):
     travelpayouts_marker: Optional[str] = None
     travelpayouts_project_id: Optional[str] = None
     gettransfer_api_token: Optional[str] = None
+    atlas_key_id: Optional[str] = None
+    atlas_signing_secret: Optional[str] = None
     provider_mode_gettransfer: Optional[ProviderMode] = None
     provider_mode_airalo: Optional[ProviderMode] = None
     provider_mode_wegotrip: Optional[ProviderMode] = None
@@ -111,6 +116,7 @@ class SettingsUpdateRequest(BaseModel):
     provider_mode_gocity: Optional[ProviderMode] = None
     provider_mode_kiwi: Optional[ProviderMode] = None
     provider_mode_ekta: Optional[ProviderMode] = None
+    provider_mode_atlas: Optional[ProviderMode] = None
 
 
 # --- Dependency to protect admin routes ---
@@ -643,6 +649,8 @@ _PROVIDER_SETTINGS = {
     provider_config.TRAVELPAYOUTS_MARKER: "Travelpayouts partner ID stamped on affiliate links",
     provider_config.TRAVELPAYOUTS_PROJECT_ID: "Travelpayouts Project ID (trs) that affiliate links are credited to",
     provider_config.GETTRANSFER_API_TOKEN: "GetTransfer API token (issued by Travelpayouts support)",
+    provider_config.ATLAS_KEY_ID: "HelloSafe Atlas key ID (ak_test_... or ak_live_...)",
+    provider_config.ATLAS_SIGNING_SECRET: "HelloSafe Atlas signing secret (server-side only)",
     **{
         provider_config.mode_key(p): f"{p} data in Odyssey plans: off | shadow | live"
         for p in provider_config.PROVIDERS

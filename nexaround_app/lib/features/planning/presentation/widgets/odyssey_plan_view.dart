@@ -673,11 +673,13 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
           ],
           if (rows[i].key == safetyTitle && info.safetyUrl.isNotEmpty) ...[
             const SizedBox(height: 10),
-            // EKTA is a paid partner: the solid partner button, with its logo.
+            // Travel insurance (HelloSafe / EKTA) is a paid partner: the solid partner button, with its logo.
             SizedBox(
               width: double.infinity,
               child: _partnerPill(
-                logoAsset: 'assets/images/ekta_logo.png',
+                logoAsset: _isHelloSafe(info.safetyUrl)
+                    ? 'assets/images/hellosafe_logo.png'
+                    : 'assets/images/ekta_logo.png',
                 fallbackIcon: Icons.health_and_safety_outlined,
                 label: info.safetyCta.isNotEmpty ? info.safetyCta : 'Get travel insurance',
                 onTap: () => _launchExternalUrl(info.safetyUrl),
@@ -942,11 +944,20 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
       'gocity.com': 'assets/images/gocity_logo.png',
       'kiwi.com': 'assets/images/kiwi_logo.png',
       'ektatraveling.com': 'assets/images/ekta_logo.png',
+      'hellosafe.com': 'assets/images/hellosafe_logo.png',
+      'atlas.hellosafe.com': 'assets/images/hellosafe_logo.png',
     };
     for (final entry in byHost.entries) {
       if (host == entry.key || host.endsWith('.${entry.key}')) return entry.value;
     }
     return null;
+  }
+
+  static bool _isHelloSafe(String url) {
+    final uri = Uri.tryParse(url.trim());
+    if (uri == null) return false;
+    final host = uri.host.toLowerCase();
+    return host == 'hellosafe.com' || host.endsWith('.hellosafe.com');
   }
 
   /// A Booking Plan row that opens a paid partner: its logo on a white tile,

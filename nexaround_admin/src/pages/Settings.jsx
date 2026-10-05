@@ -53,6 +53,9 @@ const PROVIDER_FIELDS = {
   provider_mode_gocity: 'off',
   provider_mode_kiwi: 'off',
   provider_mode_ekta: 'off',
+  provider_mode_atlas: 'off',
+  atlas_key_id: '',
+  atlas_signing_secret: '',
 };
 
 const PROVIDER_SWITCHES = [
@@ -64,6 +67,7 @@ const PROVIDER_SWITCHES = [
   { key: 'provider_mode_gocity', name: 'Go City', use: 'Sightseeing-pass link for big cities (2+ days)' },
   { key: 'provider_mode_kiwi', name: 'Kiwi.com', use: 'Second flight link beside Aviasales (no prices)' },
   { key: 'provider_mode_ekta', name: 'EKTA', use: 'Travel-insurance link on trips abroad (no prices)' },
+  { key: 'provider_mode_atlas', name: 'HelloSafe Atlas', use: 'Travel-insurance comparison & live prices on trips abroad' },
 ];
 
 function SecretField({ label, tag, value, onChange, placeholder }) {
@@ -464,6 +468,20 @@ export default function Settings() {
             value={providers.gettransfer_api_token}
             onChange={(v) => setProviders({ ...providers, gettransfer_api_token: v })}
             placeholder="Request from support@travelpayouts.com"
+          />
+          <SecretField
+            label="HelloSafe Atlas Key ID"
+            tag="ak_test_... or ak_live_..."
+            value={providers.atlas_key_id}
+            onChange={(v) => setProviders({ ...providers, atlas_key_id: v })}
+            placeholder="e.g. ak_test_470d1308358faebf04"
+          />
+          <SecretField
+            label="HelloSafe Atlas Signing Secret"
+            tag="HMAC-SHA256 signature secret"
+            value={providers.atlas_signing_secret}
+            onChange={(v) => setProviders({ ...providers, atlas_signing_secret: v })}
+            placeholder="e.g. sk_test_..."
           />
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', marginBottom: '16px' }}>
             <div className="form-group">
