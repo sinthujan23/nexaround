@@ -139,6 +139,11 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
   }
 
   void _openExperiences() {
+    if (ExperiencesPage.isComingSoon) {
+      // Do nothing when tapped while feature is coming soon
+      return;
+    }
+
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const ExperiencesPage()),
@@ -322,12 +327,21 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
               tag: 'EXPERIENCES',
               tagIcon: Icons.sailing_rounded,
               tagColor: const Color(0xFF00E676),
-              badge: '120+ TOURS',
+              badge: ExperiencesPage.isComingSoon ? 'COMING SOON' : '120+ TOURS',
+              badgeBgColor: ExperiencesPage.isComingSoon
+                  ? const Color(0xFFFFB800).withValues(alpha: 0.22)
+                  : null,
+              badgeTextColor: ExperiencesPage.isComingSoon
+                  ? const Color(0xFFFFD54F)
+                  : null,
               title: 'Handcrafted Tours & Trips',
               subtitle:
                   'Vetted boat excursions, safari adventures, and private day tours hosted by expert local guides.',
               imageAsset: 'assets/images/experiences_banner_bg.png',
-              ctaText: 'Explore',
+              ctaText: ExperiencesPage.isComingSoon ? 'Coming Soon' : 'Explore',
+              ctaIcon: ExperiencesPage.isComingSoon
+                  ? Icons.schedule_rounded
+                  : Icons.arrow_forward_rounded,
               onTap: _openExperiences,
             ),
             const SizedBox(height: 10),
@@ -380,12 +394,15 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
     required IconData tagIcon,
     required Color tagColor,
     required String badge,
+    Color? badgeBgColor,
+    Color? badgeTextColor,
     required String title,
     required String subtitle,
     String? imageAsset,
     Uint8List? imageBytes,
     LinearGradient? gradient,
     required String ctaText,
+    IconData? ctaIcon,
     required VoidCallback onTap,
   }) {
     return GestureDetector(
@@ -476,16 +493,16 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
                           padding: const EdgeInsets.symmetric(
                               horizontal: 7.5, vertical: 3),
                           decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.14),
+                            color: badgeBgColor ?? Colors.white.withValues(alpha: 0.14),
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Text(
                             badge,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 8.5,
                               fontWeight: FontWeight.w700,
                               letterSpacing: 0.8,
-                              color: Colors.white,
+                              color: badgeTextColor ?? Colors.white,
                             ),
                           ),
                         ),
@@ -555,11 +572,11 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
                                   color: Color(0xFF0F172A),
                                 ),
                               ),
-                              const SizedBox(width: 3),
-                              const Icon(
-                                Icons.arrow_forward_rounded,
+                              const SizedBox(width: 3.5),
+                              Icon(
+                                ctaIcon ?? Icons.arrow_forward_rounded,
                                 size: 11,
-                                color: Color(0xFF0F172A),
+                                color: const Color(0xFF0F172A),
                               ),
                             ],
                           ),

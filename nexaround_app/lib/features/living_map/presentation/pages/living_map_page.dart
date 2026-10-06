@@ -2572,7 +2572,9 @@ class _LivingMapPageState extends State<LivingMapPage>
                     ),
                     const SizedBox(height: 5),
                     Text(
-                      '— Book Handcrafted Tours',
+                      ExperiencesPage.isComingSoon
+                          ? '— Explore Curated Guides & Hubs'
+                          : '— Book Handcrafted Tours',
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
