@@ -21,6 +21,10 @@ from app.models.experience import (
     VendorActivity,
 )
 
+from app.models.forum import (
+    ForumCategory, ForumTopic, ForumPost, ForumLike, ForumBookmark,
+)
+
 __all__ = [
     "User", "Attraction", "Category", "Review", "Itinerary", "Media",
     "Budget", "Expense", "SystemSetting", "ApiRequestLog", "Broadcast",
@@ -31,5 +35,6 @@ __all__ = [
     "ExcludedKeyword", "CountryCity",
     "ExperienceVendor", "ExperiencePackage", "ExperienceEnquiry", "VendorUser",
     "VendorActivity",
+    "ForumCategory", "ForumTopic", "ForumPost", "ForumLike", "ForumBookmark",
 ]
 

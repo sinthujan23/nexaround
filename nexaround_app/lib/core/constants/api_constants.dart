@@ -54,6 +54,17 @@ class ApiConstants {
   static const String experienceVendors = '$apiVersion/experiences/vendors';
   static const String experienceEnquiries = '$apiVersion/experiences/enquiries';
   static const String discoveryGenerate = '$apiVersion/discovery/generate';
+
+  // Forum endpoints
+  static const String forumHome = '$apiVersion/forums/home';
+  static const String forumCategories = '$apiVersion/forums/categories';
+  static const String forumTopics = '$apiVersion/forums/topics';
+  static String forumTopicDetail(String id) => '$apiVersion/forums/topics/$id';
+  static String forumTopicReplies(String id) => '$apiVersion/forums/topics/$id/replies';
+  static String forumTopicLike(String id) => '$apiVersion/forums/topics/$id/like';
+  static String forumPostLike(String id) => '$apiVersion/forums/posts/$id/like';
+  static String forumTopicBookmark(String id) => '$apiVersion/forums/topics/$id/bookmark';
+  static String forumBestAnswer(String topicId, String postId) => '$apiVersion/forums/topics/$topicId/best-answer/$postId';
   
   // Mapbox Configuration
   static String mapboxAccessToken = '';
