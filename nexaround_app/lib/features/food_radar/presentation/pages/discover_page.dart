@@ -39,6 +39,7 @@ import 'package:nexaround_app/core/constants/api_constants.dart';
 import 'package:nexaround_app/core/network/api_client.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:http/http.dart' as http;
+import 'package:nexaround_app/features/forum/presentation/pages/forum_home_view.dart';
 
 class DiscoverPage extends StatefulWidget {
   final int initialTab;
@@ -51,7 +52,7 @@ class DiscoverPage extends StatefulWidget {
     this.requestCount = 0,
   });
 
-  /// The Discovery tabs, in order. POI leads, Emergency sits apart at the end.
+  /// The Discovery tabs, in order. POI leads, Forum sits before Emergency at the end.
   static const List<String> tabs = [
     'POI',
     'Nature',
@@ -59,10 +60,12 @@ class DiscoverPage extends StatefulWidget {
     'Shopping',
     'Medical',
     'Hospital',
+    'Forum',
     'Emergency',
   ];
 
   static final int emergencyTabIndex = tabs.indexOf('Emergency');
+  static final int forumTabIndex = tabs.indexOf('Forum');
 
   /// Tab index for an Around You section name.
   ///
@@ -90,6 +93,13 @@ class DiscoverPage extends StatefulWidget {
         return tabs.indexOf('Medical');
       case 'Hospital':
         return tabs.indexOf('Hospital');
+      case 'Forum':
+      case 'Forums':
+      case 'Community':
+      case 'Q&A':
+        return tabs.indexOf('Forum');
+      case 'Emergency':
+        return tabs.indexOf('Emergency');
       default:
         // POI, not index 0: index 0 is the vendor marketplace now, and an
         // unmapped Around You category is a place, not a package.
@@ -544,6 +554,13 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
                       itemCount: _tabs.length,
                       itemBuilder: (context, pageIndex) {
                         final pageTab = _tabs[pageIndex];
+                        if (pageTab == 'Forum') {
+                          return const ForumHomeView(
+                            key: ValueKey('discover_content_tab_forum'),
+                            padding: EdgeInsets.fromLTRB(16, 16, 16, 100),
+                          );
+                        }
+
                         final activeSectionKey = pageTab == 'Food' ? 'Food & Drink' : pageTab;
                         final isCategoryLoading =
                             state.loadingBandCategories.contains(activeSectionKey) ||
@@ -600,6 +617,7 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
       case 'Shopping': return _buildShoppingTab(isLoading);
       case 'Medical': return _buildMedicalTab(isLoading);
       case 'Hospital': return _buildHospitalTab(isLoading);
+      case 'Forum': return const ForumHomeView(padding: EdgeInsets.fromLTRB(16, 16, 16, 100));
       case 'Emergency': return _buildEmergencyTab();
       default: return _buildPoiTab(isLoading);
     }

@@ -17,7 +17,6 @@ import 'package:nexaround_app/features/experiences/presentation/pages/experience
 import 'package:nexaround_app/features/auth/presentation/pages/home_page.dart';
 import 'dart:typed_data';
 import 'package:nexaround_app/features/planning/presentation/widgets/walking_challenge_asset.dart';
-import 'package:nexaround_app/features/forum/presentation/pages/forum_home_view.dart';
 
 class MyOdysseysPage extends StatefulWidget {
   final int initialTabIndex;
@@ -169,7 +168,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
             child: _buildSegmentButton(
               index: 0,
               icon: Icons.bookmark_outline_rounded,
-              title: 'Blueprints',
+              title: 'My Blueprints',
               badgeText: '${_activeOdysseys.length}',
             ),
           ),
@@ -180,15 +179,6 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
               icon: Icons.explore_outlined,
               title: 'Curated Hubs',
               badgeText: 'Explore',
-            ),
-          ),
-          const SizedBox(width: 4),
-          Expanded(
-            child: _buildSegmentButton(
-              index: 2,
-              icon: Icons.forum_outlined,
-              title: 'Forums',
-              badgeText: 'Q&A',
             ),
           ),
         ],
@@ -215,7 +205,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         curve: Curves.easeOutCubic,
-        padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 4),
+        padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 8),
         decoration: BoxDecoration(
           color: isSelected ? const Color(0xFF0F172A) : Colors.transparent,
           borderRadius: BorderRadius.circular(12),
@@ -234,34 +224,28 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
           children: [
             Icon(
               icon,
-              size: 14,
+              size: 15,
               color: isSelected ? Colors.white : const Color(0xFF1E293B),
             ),
-            const SizedBox(width: 4),
-            Flexible(
-              child: Text(
-                title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w700,
-                  color: isSelected ? Colors.white : const Color(0xFF1E293B),
-                ),
+            const SizedBox(width: 6),
+            Text(
+              title,
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+                color: isSelected ? Colors.white : const Color(0xFF1E293B),
               ),
             ),
-            const SizedBox(width: 4),
+            const SizedBox(width: 6),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
                 color: isSelected
                     ? (index == 0
                         ? AppColors.brandGreen
-                        : (index == 1
-                            ? const Color(0xFF00E5FF).withValues(alpha: 0.25)
-                            : const Color(0xFFFFB800).withValues(alpha: 0.25)))
+                        : const Color(0xFF00E5FF).withValues(alpha: 0.25))
                     : Colors.white,
-                borderRadius: BorderRadius.circular(7),
+                borderRadius: BorderRadius.circular(8),
                 border: isSelected
                     ? null
                     : Border.all(color: const Color(0xFFCBD5E1), width: 0.8),
@@ -269,14 +253,12 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
               child: Text(
                 badgeText,
                 style: TextStyle(
-                  fontSize: 9.5,
+                  fontSize: 10,
                   fontWeight: FontWeight.w800,
                   color: isSelected
                       ? (index == 0
                           ? Colors.white
-                          : (index == 1
-                              ? const Color(0xFF00E5FF)
-                              : const Color(0xFFFFD54F)))
+                          : const Color(0xFF00E5FF))
                       : const Color(0xFF1E293B),
                 ),
               ),
@@ -289,7 +271,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
 
   Widget _buildCuratedHubsSliver() {
     return SliverPadding(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 120),
       sliver: SliverToBoxAdapter(
         child: Column(
           children: [
@@ -327,7 +309,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
                     ],
                   ),
                   const Text(
-                    '4 Portals Available',
+                    '3 Portals Available',
                     style: TextStyle(
                       fontSize: 9.5,
                       fontWeight: FontWeight.w600,
@@ -393,31 +375,6 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
               imageAsset: 'assets/images/walking_challenge_bg.jpg',
               ctaText: 'Start',
               onTap: _openMiniTour,
-            ),
-            const SizedBox(height: 10),
-
-            // 4. Community Travel Forums Card
-            _buildCuratedHubCard(
-              tag: 'TRAVEL FORUMS',
-              tagIcon: Icons.forum_rounded,
-              tagColor: const Color(0xFF00E5FF),
-              badge: 'GLOBAL Q&A',
-              title: 'Traveler Community Forums',
-              subtitle:
-                  'TripAdvisor-style discussions, local expert advice, and recommendations from fellow wanderers.',
-              gradient: const LinearGradient(
-                begin: Alignment.bottomCenter,
-                end: Alignment.topCenter,
-                colors: [
-                  Color(0xFF0F172A),
-                  Color(0xFF004D40),
-                ],
-              ),
-              ctaText: 'Open Forums',
-              ctaIcon: Icons.arrow_forward_rounded,
-              onTap: () {
-                setState(() => _selectedTabIndex = 2);
-              },
             ),
           ],
         ).animate(key: ValueKey('curated_hub_$_selectedTabIndex')).fade(duration: 220.ms).slideX(
@@ -838,7 +795,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
     final homeState = context.findAncestorStateOfType<HomePageState>() ??
         HomePage.homeKey.currentState;
     if (homeState != null) {
-      if (_selectedTabIndex != 0) {
+      if (_selectedTabIndex == 1) {
         return Padding(
           padding: const EdgeInsets.only(left: 12, top: 6, bottom: 6),
           child: Container(
@@ -906,17 +863,17 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
         onHorizontalDragEnd: (details) {
           final velocity = details.primaryVelocity ?? 0.0;
           if (_horizontalDragDistance < -45 || velocity < -200) {
-            // Swiped Left -> advance tab (max 2)
-            if (_selectedTabIndex < 2) {
+            // Swiped Left -> advance to Curated Hubs (index 1)
+            if (_selectedTabIndex < 1) {
               setState(() {
-                _selectedTabIndex++;
+                _selectedTabIndex = 1;
               });
             }
           } else if (_horizontalDragDistance > 45 || velocity > 200) {
-            // Swiped Right -> previous tab (min 0)
+            // Swiped Right -> back to My Blueprints (index 0)
             if (_selectedTabIndex > 0) {
               setState(() {
-                _selectedTabIndex--;
+                _selectedTabIndex = 0;
               });
             }
           }
@@ -925,8 +882,10 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
         child: RefreshIndicator(
           onRefresh: _load,
           color: Colors.black,
-          child: CustomScrollView(
-          physics: const BouncingScrollPhysics(),
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(
+            parent: BouncingScrollPhysics(),
+          ),
           slivers: [
             SliverAppBar(
               pinned: true,
@@ -1032,9 +991,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      _selectedTabIndex == 2
-                          ? 'GLOBAL COMMUNITY'
-                          : (_selectedTabIndex == 1 ? 'CURATED PORTALS' : 'MY ODYSSEYS'),
+                      _selectedTabIndex == 1 ? 'CURATED PORTALS' : 'MY ODYSSEYS',
                       style: const TextStyle(
                         fontSize: 9,
                         fontWeight: FontWeight.w800,
@@ -1047,9 +1004,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      _selectedTabIndex == 2
-                          ? 'Travel Forums'
-                          : (_selectedTabIndex == 1 ? 'Curated Hubs' : 'Trip Blueprints'),
+                      _selectedTabIndex == 1 ? 'Curated Hubs' : 'Trip Blueprints',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
@@ -1127,28 +1082,15 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
               ),
               // Trip blueprints list cards
               _buildSliverContent(),
-            ] else if (_selectedTabIndex == 1) ...[
+            ] else ...[
               // Curated Exploration Hubs & Guides
               _buildCuratedHubsSliver(),
-            ] else ...[
-              // Travel Forums (TripAdvisor-style Q&A)
-              _buildForumHomeSliver(),
             ],
           ],
         ),
       ),
     ),
   );
-  }
-
-  Widget _buildForumHomeSliver() {
-    return const SliverToBoxAdapter(
-      child: ForumHomeView(
-        shrinkWrap: true,
-        physics: NeverScrollableScrollPhysics(),
-        padding: EdgeInsets.fromLTRB(16, 8, 16, 100),
-      ),
-    );
   }
 
   /// Completed trips move to the History page, so the main list shows only

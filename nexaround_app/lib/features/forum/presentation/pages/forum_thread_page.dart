@@ -285,9 +285,6 @@ class _ForumThreadPageState extends State<ForumThreadPage> {
                             _buildOpCard(topic),
                             const SizedBox(height: 16),
 
-                            // ── Neva AI Insight Banner ───────────────────────
-                            _buildNevaInsight(topic),
-                            const SizedBox(height: 20),
 
                             // ── Replies Section Header ──────────────────────
                             Row(
@@ -588,67 +585,6 @@ class _ForumThreadPageState extends State<ForumThreadPage> {
     );
   }
 
-  Widget _buildNevaInsight(ForumTopic topic) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            const Color(0xFF007A7C).withValues(alpha: 0.08),
-            const Color(0xFF0F172A).withValues(alpha: 0.05),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: AppColors.brandGreen.withValues(alpha: 0.3),
-          width: 1,
-        ),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(6),
-            decoration: const BoxDecoration(
-              color: AppColors.brandGreen,
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(
-              Icons.auto_awesome_rounded,
-              color: Colors.white,
-              size: 14,
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Neva AI Tip',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.5,
-                    color: AppColors.brandGreen,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  'Check verified recommendations below. You can save any mentioned attraction directly to your NexAround Odyssey!',
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    color: const Color(0xFF334155).withValues(alpha: 0.9),
-                    height: 1.35,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
   Widget _buildReplyCard(ForumPost post, ForumTopic topic) {
     return Container(

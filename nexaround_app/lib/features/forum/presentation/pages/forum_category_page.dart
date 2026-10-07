@@ -78,7 +78,17 @@ class _ForumCategoryPageState extends State<ForumCategoryPage> {
       availableCategories: [widget.category],
     );
     if (newTopic != null && mounted) {
+      setState(() {
+        _topics = [newTopic, ..._topics.where((t) => t.id != newTopic.id)];
+      });
       _loadTopics();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('🎉 Your question has been posted to the travel community!'),
+          backgroundColor: AppColors.brandGreen,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
     }
   }
 

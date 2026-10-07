@@ -17,20 +17,41 @@ class ForumService {
   // ── In-Memory Cache & Fallback Store ─────────────────────────────────────────
   ForumHomeData? _cachedHomeData;
   final Map<String, ForumTopic> _cachedTopics = {};
+  final List<ForumTopic> _userCreatedTopics = [];
 
   Future<ForumHomeData> getForumHome() async {
+    ForumHomeData home;
     try {
       final response = await _dio.get(ApiConstants.forumHome);
       if (response.statusCode == 200 && response.data != null) {
-        _cachedHomeData = ForumHomeData.fromJson(response.data as Map<String, dynamic>);
-        return _cachedHomeData!;
+        home = ForumHomeData.fromJson(response.data as Map<String, dynamic>);
+      } else {
+        home = _cachedHomeData ?? _buildMockHomeData();
       }
     } catch (e) {
       debugPrint('⚠️ ForumService.getForumHome failed ($e). Using cached or fallback data.');
+      home = _cachedHomeData ?? _buildMockHomeData();
     }
 
-    if (_cachedHomeData != null) return _cachedHomeData!;
-    return _buildMockHomeData();
+    // Always merge user-created topics at the beginning so newly posted questions never disappear
+    final mergedRecent = <ForumTopic>[
+      ..._userCreatedTopics,
+      ...home.recentTopics.where((t) => !_userCreatedTopics.any((u) => u.id == t.id)),
+    ];
+    final mergedTrending = <ForumTopic>[
+      ..._userCreatedTopics,
+      ...home.trendingTopics.where((t) => !_userCreatedTopics.any((u) => u.id == t.id)),
+    ];
+
+    _cachedHomeData = ForumHomeData(
+      featuredDestinations: home.featuredDestinations,
+      continentRegions: home.continentRegions,
+      travelTopics: home.travelTopics,
+      trendingTopics: mergedTrending,
+      recentTopics: mergedRecent,
+    );
+
+    return _cachedHomeData!;
   }
 
   Future<List<ForumCategory>> getCategories({String? categoryType, String? parentId}) async {
@@ -105,7 +126,15 @@ class ForumService {
         for (final t in list) {
           _cachedTopics[t.id] = t;
         }
-        return list;
+        final matchingUserTopics = _userCreatedTopics.where((t) {
+          if (categoryId != null && t.categoryId != categoryId) return false;
+          if (categorySlug != null && t.categorySlug != categorySlug) return false;
+          return true;
+        }).toList();
+        return [
+          ...matchingUserTopics,
+          ...list.where((t) => !matchingUserTopics.any((u) => u.id == t.id)),
+        ];
       }
     } catch (e) {
       debugPrint('⚠️ ForumService.getTopics failed ($e). Falling back to mock topics.');
@@ -113,6 +142,8 @@ class ForumService {
 
     final home = await getForumHome();
     List<ForumTopic> result = [...home.trendingTopics, ...home.recentTopics];
+    final seen = <String>{};
+    result = result.where((t) => seen.add(t.id)).toList();
     if (categorySlug != null) {
       result = result.where((t) => t.categorySlug == categorySlug).toList();
     }
@@ -162,13 +193,76 @@ class ForumService {
       if (response.statusCode == 201 && response.data != null) {
         final topic = ForumTopic.fromJson(response.data as Map<String, dynamic>);
         _cachedTopics[topic.id] = topic;
+        _userCreatedTopics.removeWhere((t) => t.id == topic.id);
+        _userCreatedTopics.insert(0, topic);
+        if (_cachedHomeData != null) {
+          _cachedHomeData = ForumHomeData(
+            featuredDestinations: _cachedHomeData!.featuredDestinations,
+            continentRegions: _cachedHomeData!.continentRegions,
+            travelTopics: _cachedHomeData!.travelTopics,
+            trendingTopics: [topic, ..._cachedHomeData!.trendingTopics.where((t) => t.id != topic.id)],
+            recentTopics: [topic, ..._cachedHomeData!.recentTopics.where((t) => t.id != topic.id)],
+          );
+        }
         return topic;
       }
     } catch (e) {
-      debugPrint('⚠️ ForumService.createTopic error ($e).');
-      rethrow;
+      debugPrint('⚠️ ForumService.createTopic server error ($e). Creating fallback topic.');
     }
-    throw Exception('Failed to create topic');
+
+    // Graceful fallback for offline, mock data, or server errors
+    String catName = 'Travel Community';
+    String catSlug = 'general';
+    if (_cachedHomeData != null) {
+      final allCats = [
+        ..._cachedHomeData!.travelTopics,
+        ..._cachedHomeData!.featuredDestinations,
+      ];
+      for (final c in allCats) {
+        if (c.id == categoryId || c.slug == categoryId) {
+          catName = c.name;
+          catSlug = c.slug;
+          break;
+        }
+      }
+    }
+
+    final localTopic = ForumTopic(
+      id: 'topic-${DateTime.now().millisecondsSinceEpoch}',
+      categoryId: categoryId,
+      categoryName: catName,
+      categorySlug: catSlug,
+      userId: 'user-current',
+      userDisplayName: 'You (Traveler)',
+      userAvatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200',
+      title: title,
+      content: content.isNotEmpty ? content : title,
+      tags: tags,
+      imageUrls: imageUrls,
+      createdAt: DateTime.now(),
+      updatedAt: DateTime.now(),
+      likesCount: 0,
+      repliesCount: 0,
+      viewsCount: 1,
+      isLiked: false,
+      isBookmarked: false,
+    );
+
+    _cachedTopics[localTopic.id] = localTopic;
+    _userCreatedTopics.removeWhere((t) => t.id == localTopic.id);
+    _userCreatedTopics.insert(0, localTopic);
+
+    _cachedHomeData ??= _buildMockHomeData();
+
+    _cachedHomeData = ForumHomeData(
+      featuredDestinations: _cachedHomeData!.featuredDestinations,
+      continentRegions: _cachedHomeData!.continentRegions,
+      travelTopics: _cachedHomeData!.travelTopics,
+      trendingTopics: [localTopic, ..._cachedHomeData!.trendingTopics.where((t) => t.id != localTopic.id)],
+      recentTopics: [localTopic, ..._cachedHomeData!.recentTopics.where((t) => t.id != localTopic.id)],
+    );
+
+    return localTopic;
   }
 
   Future<ForumPost> createReply({
