@@ -52,6 +52,7 @@ import 'package:nexaround_app/features/living_map/presentation/widgets/discovery
 import 'package:nexaround_app/features/planning/presentation/pages/museums_list_page.dart';
 import 'package:nexaround_app/features/planning/presentation/pages/my_odysseys_page.dart';
 import 'package:nexaround_app/features/experiences/presentation/pages/experiences_page.dart';
+import 'package:nexaround_app/features/forum/presentation/pages/forum_home_page.dart';
 import 'package:nexaround_app/core/services/avatar_service.dart';
 
 class _LocalEvent {
@@ -1090,7 +1091,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                         SliverToBoxAdapter(
                           child: Padding(
                             padding: const EdgeInsets.only(top: 4, bottom: 8),
-                            child: _buildMuseumBanner(),
+                            child: _buildForumBanner(),
                           ),
                         ),
 
@@ -1223,7 +1224,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                       SliverToBoxAdapter(
                         child: Padding(
                           padding: const EdgeInsets.only(top: 4, bottom: 14),
-                          child: _buildMuseumBanner(),
+                          child: _buildForumBanner(),
                         ),
                       ),
 
@@ -1312,31 +1313,23 @@ class _LivingMapPageState extends State<LivingMapPage>
     );
   }
 
-  Widget _buildMuseumBanner() {
+  Widget _buildForumBanner() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: GestureDetector(
         onTap: () => Navigator.push(
           context,
-          MaterialPageRoute(builder: (_) => const MuseumsListPage()),
+          MaterialPageRoute(builder: (_) => const ForumHomePage()),
         ),
         child: Container(
-          height: 102,
+          height: 104,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(20),
-            gradient: const LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                Color(0xFF0F172A),
-                Color(0xFF020617),
-              ],
-            ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.3),
+                color: Colors.black.withValues(alpha: 0.22),
                 blurRadius: 16,
-                offset: const Offset(0, 8),
+                offset: const Offset(0, 6),
               ),
             ],
           ),
@@ -1344,79 +1337,97 @@ class _LivingMapPageState extends State<LivingMapPage>
             borderRadius: BorderRadius.circular(20),
             child: Stack(
               children: [
-                // Right side: modern museum image fading into the dark card background
-                Positioned(
-                  right: 0,
-                  top: 0,
-                  bottom: 0,
-                  width: 150,
-                  child: ClipRRect(
-                    borderRadius: const BorderRadius.only(
-                      topRight: Radius.circular(20),
-                      bottomRight: Radius.circular(20),
+                // Background Image: forum banner
+                Positioned.fill(
+                  child: Image.asset(
+                    'assets/images/forum_banner_bg.jpg',
+                    fit: BoxFit.cover,
+                    alignment: Alignment.center,
+                    errorBuilder: (context, error, stackTrace) => Container(
+                      color: const Color(0xFF0F172A),
                     ),
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        Image.asset(
-                          'assets/images/museum_banner_bg.png',
-                          fit: BoxFit.cover,
-                        ),
-                        // Linear gradient overlay to fade the image out to the left
-                        const DecoratedBox(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.centerRight,
-                              end: Alignment.centerLeft,
-                              colors: [
-                                Colors.transparent,
-                                Color(0xFF0F172A), // Matches start color of card gradient
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
+                  ),
+                ),
+                // Cinematic dark gradient overlay for optimal text readability
+                Positioned.fill(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.bottomCenter,
+                        end: Alignment.topCenter,
+                        colors: [
+                          const Color(0xFF0F172A).withValues(alpha: 0.92),
+                          const Color(0xFF0F172A).withValues(alpha: 0.65),
+                          Colors.black.withValues(alpha: 0.35),
+                        ],
+                        stops: const [0.0, 0.55, 1.0],
+                      ),
                     ),
                   ),
                 ),
                 // Content Row
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
                   child: Row(
                     children: [
-                      const Expanded(
+                      Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Text(
-                              'TOP MUSEUMS OF THE WORLD',
-                              style: TextStyle(
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: 2,
-                                  color: AppColors.brandGreen),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: AppColors.brandGreen,
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.forum_rounded, size: 11, color: Colors.white),
+                                  SizedBox(width: 4),
+                                  Text(
+                                    'COMMUNITY',
+                                    style: TextStyle(
+                                      fontSize: 8.5,
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: 1.0,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
-                            SizedBox(height: 4),
-                            Text(
-                              'Curated Master Guides',
+                            const SizedBox(height: 6),
+                            const Text(
+                              'Travel Community & Forums',
                               style: TextStyle(
                                 fontSize: 15,
                                 fontWeight: FontWeight.w800,
                                 color: Colors.white,
-                                wordSpacing: 4.0,
+                                letterSpacing: -0.2,
                               ),
                             ),
-                            SizedBox(height: 2),
-                            Text(
-                              'Expert routes for 5h, 1 day or 2 days',
-                              style: TextStyle(fontSize: 11, color: Colors.white54),
+                            const SizedBox(height: 2),
+                            const Text(
+                              'Ask questions, get local tips & share stories',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.white70,
+                                fontWeight: FontWeight.w500,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ],
                         ),
                       ),
-                      const Icon(Icons.arrow_forward_ios_rounded,
-                          color: Colors.white38, size: 16),
+                      const SizedBox(width: 10),
+                      const Icon(
+                        Icons.arrow_forward_ios_rounded,
+                        color: Colors.white54,
+                        size: 15,
+                      ),
                     ],
                   ),
                 ),

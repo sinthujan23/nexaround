@@ -16,14 +16,26 @@ class UserService:
         self, 
         page: int = 1, 
         page_size: int = 20, 
-        search_query: Optional[str] = None
+        search_query: Optional[str] = None,
+        status: Optional[str] = None,
+        verification: Optional[str] = None,
+        date_filter: Optional[str] = None,
+        start_from: Optional[str] = None,
+        end_to: Optional[str] = None,
+        sort_order: Optional[str] = "desc"
     ) -> Tuple[List[User], int]:
-        """List users with pagination."""
+        """List users with pagination and filters."""
         skip = (page - 1) * page_size
         users, total = await self.repo.list_users(
             skip=skip, 
             limit=page_size, 
-            search_query=search_query
+            search_query=search_query,
+            status=status,
+            verification=verification,
+            date_filter=date_filter,
+            start_from=start_from,
+            end_to=end_to,
+            sort_order=sort_order
         )
         return users, total
         

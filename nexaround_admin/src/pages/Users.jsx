@@ -6,6 +6,12 @@ export default function Users() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [status, setStatus] = useState('all');
+  const [verification, setVerification] = useState('all');
+  const [dateFilter, setDateFilter] = useState('all');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [sortOrder, setSortOrder] = useState('desc');
 
   // Debounce search query to avoid spamming requests
   useEffect(() => {
@@ -16,7 +22,20 @@ export default function Users() {
     return () => clearTimeout(handler);
   }, [search]);
 
-  const { data, loading, error, refetch } = useApi(`/admin/users?page=${page}&page_size=10&search=${encodeURIComponent(debouncedSearch)}`);
+  // Build query string for API
+  const queryParams = new URLSearchParams({
+    page: String(page),
+    page_size: '10',
+  });
+  if (debouncedSearch) queryParams.set('search', debouncedSearch);
+  if (status !== 'all') queryParams.set('status', status);
+  if (verification !== 'all') queryParams.set('verification', verification);
+  if (dateFilter !== 'all' && dateFilter !== 'custom') queryParams.set('date_filter', dateFilter);
+  if (startDate) queryParams.set('start_from', startDate);
+  if (endDate) queryParams.set('end_to', endDate);
+  if (sortOrder !== 'desc') queryParams.set('sort_order', sortOrder);
+
+  const { data, loading, error, refetch } = useApi(`/admin/users?${queryParams.toString()}`);
 
   const handleVerify = async (userId) => {
     try {
@@ -36,6 +55,35 @@ export default function Users() {
     }
   };
 
+  const formatJoinedDateTime = (isoStr) => {
+    if (!isoStr) return 'Unknown';
+    try {
+      let s = String(isoStr).trim();
+      // Ensure UTC ISO strings without explicit timezone offsets are correctly parsed
+      if (!s.endsWith('Z') && !/[+-]\d{2}(:\d{2})?$/.test(s)) {
+        s += 'Z';
+      }
+      const d = new Date(s);
+      if (isNaN(d.getTime())) return isoStr;
+
+      const dateStr = d.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        timeZone: 'Asia/Colombo',
+      });
+      const timeStr = d.toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+        timeZone: 'Asia/Colombo',
+      });
+      return `${dateStr} at ${timeStr} (SLST)`;
+    } catch {
+      return isoStr;
+    }
+  };
+
   if (error) {
     return (
       <div className="login-error" style={{ margin: '20px' }}>
@@ -47,6 +95,7 @@ export default function Users() {
   const users = data?.users || [];
   const total = data?.total || 0;
   const totalPages = Math.ceil(total / 10) || 1;
+  const hasActiveFilters = status !== 'all' || verification !== 'all' || dateFilter !== 'all' || Boolean(startDate) || Boolean(endDate) || sortOrder !== 'desc' || Boolean(search);
 
   return (
     <div className="approvals-modern-container">
@@ -86,6 +135,131 @@ export default function Users() {
           </div>
         </div>
 
+        {/* Filter and Sort Toolbar */}
+        <div style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: '10px',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginTop: '16px',
+          padding: '12px 16px',
+          background: 'var(--bg-card, #ffffff)',
+          borderRadius: '12px',
+          border: '1px solid var(--border, #e2e8f0)'
+        }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+            <select
+              className="xp-select"
+              value={status}
+              onChange={e => { setStatus(e.target.value); setPage(1); }}
+              title="Filter by status"
+            >
+              <option value="all">All Statuses</option>
+              <option value="active">Active Only</option>
+              <option value="suspended">Suspended Only</option>
+            </select>
+
+            <select
+              className="xp-select"
+              value={verification}
+              onChange={e => { setVerification(e.target.value); setPage(1); }}
+              title="Filter by verification"
+            >
+              <option value="all">All Verification</option>
+              <option value="verified">Verified Pro Only</option>
+              <option value="unverified">Unverified Only</option>
+            </select>
+
+            <select
+              className="xp-select"
+              value={dateFilter}
+              onChange={e => {
+                const val = e.target.value;
+                setDateFilter(val);
+                if (val !== 'custom') {
+                  setStartDate('');
+                  setEndDate('');
+                }
+                setPage(1);
+              }}
+              title="Filter by join date"
+            >
+              <option value="all">All Time</option>
+              <option value="today">Joined Today</option>
+              <option value="this_week">Joined Last 7 Days</option>
+              <option value="this_month">Joined Last 30 Days</option>
+              <option value="custom">Custom Date Range...</option>
+            </select>
+
+            {dateFilter === 'custom' && (
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'var(--bg, #f8fafc)', padding: '2px 8px', borderRadius: '8px', border: '1px solid var(--border, #e2e8f0)' }}>
+                <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>From:</label>
+                <input
+                  type="date"
+                  className="xp-select"
+                  style={{ padding: '4px 8px', fontSize: '12px', height: 'auto' }}
+                  value={startDate}
+                  onChange={e => { setStartDate(e.target.value); setPage(1); }}
+                  max={endDate || undefined}
+                />
+                <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>To:</label>
+                <input
+                  type="date"
+                  className="xp-select"
+                  style={{ padding: '4px 8px', fontSize: '12px', height: 'auto' }}
+                  value={endDate}
+                  onChange={e => { setEndDate(e.target.value); setPage(1); }}
+                  min={startDate || undefined}
+                />
+              </div>
+            )}
+
+            <select
+              className="xp-select"
+              value={sortOrder}
+              onChange={e => { setSortOrder(e.target.value); setPage(1); }}
+              title="Sort order"
+            >
+              <option value="desc">Newest First</option>
+              <option value="asc">Oldest First</option>
+            </select>
+
+            {hasActiveFilters && (
+              <button
+                className="btn btn-ghost"
+                style={{ padding: '6px 12px', fontSize: '12px' }}
+                onClick={() => {
+                  setStatus('all');
+                  setVerification('all');
+                  setDateFilter('all');
+                  setStartDate('');
+                  setEndDate('');
+                  setSortOrder('desc');
+                  setSearch('');
+                  setPage(1);
+                }}
+              >
+                Reset Filters
+              </button>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <span
+              className="badge badge-ghost"
+              style={{ fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '3px 8px', fontWeight: 600 }}
+              title="All dates and times are presented in Sri Lanka Standard Time (Asia/Colombo, UTC+5:30)"
+            >
+              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--accent, #007a7c)' }}></span>
+              SLST (UTC+5:30)
+            </span>
+            <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+              Showing <strong>{users.length}</strong> of <strong>{total}</strong> explorers
+            </span>
+          </div>
+        </div>
+
         <div className="modern-list-container" style={{ marginTop: '20px' }}>
           {loading && users.length === 0 ? (
             <div className="empty-state">
@@ -98,15 +272,17 @@ export default function Users() {
                 <SearchIcon size={28} />
               </div>
               <h3 style={{ margin: '0 0 4px 0', fontSize: '16px', color: 'var(--text-primary)' }}>No explorers found</h3>
-              <p style={{ margin: 0, fontSize: '13px' }}>We couldn't find any users matching your search query.</p>
+              <p style={{ margin: 0, fontSize: '13px' }}>
+                {hasActiveFilters
+                  ? "We couldn't find any users matching your active filters or search query."
+                  : "We couldn't find any users registered on the platform yet."}
+              </p>
             </div>
           ) : (
             <>
               <div className="modern-list">
                 {users.map(u => {
-                  const joinedDate = u.created_at
-                    ? new Date(u.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'Asia/Colombo' })
-                    : 'Unknown';
+                  const joinedDateTime = formatJoinedDateTime(u.created_at);
                   const avatarLetter = u.display_name ? u.display_name[0].toUpperCase() : 'E';
                   const travelStyle = u.preferences?.travel_style
                     ? u.preferences.travel_style.charAt(0).toUpperCase() + u.preferences.travel_style.slice(1)
@@ -131,7 +307,12 @@ export default function Users() {
                             <span style={{ fontSize: '10px', color: 'var(--border-hover)', opacity: 0.5 }}>•</span>
                             <span className="badge badge-ghost" style={{ fontSize: '9px', padding: '2px 6px' }}>{u.is_verified ? 'Pro Master' : travelStyle}</span>
                             <span style={{ fontSize: '10px', color: 'var(--border-hover)', opacity: 0.5 }}>•</span>
-                            <span className="list-item-loc">Joined {joinedDate}</span>
+                            <span
+                              className="list-item-loc"
+                              title="Sri Lanka Standard Time (Asia/Colombo, UTC+5:30)"
+                            >
+                              Joined {joinedDateTime}
+                            </span>
                           </div>
                         </div>
                       </div>

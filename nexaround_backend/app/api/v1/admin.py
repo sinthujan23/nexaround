@@ -318,12 +318,28 @@ async def list_users(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     search: Optional[str] = None,
+    status: Optional[str] = Query(None, description="Filter by account status: active, suspended, or all"),
+    verification: Optional[str] = Query(None, description="Filter by verification: verified, unverified, or all"),
+    date_filter: Optional[str] = Query(None, description="Filter by join date: today, this_week, this_month, custom, or all"),
+    start_from: Optional[str] = Query(None, description="Start date from (YYYY-MM-DD)"),
+    end_to: Optional[str] = Query(None, description="End date to (YYYY-MM-DD)"),
+    sort_order: Optional[str] = Query("desc", description="Sort order: desc (newest first) or asc (oldest first)"),
     db: AsyncSession = Depends(get_db),
     _ = Depends(verify_admin_token)
 ):
-    """Retrieve users for management."""
+    """Retrieve users for management with optional filters."""
     service = UserService(db)
-    users, total = await service.list_users(page=page, page_size=page_size, search_query=search)
+    users, total = await service.list_users(
+        page=page, 
+        page_size=page_size, 
+        search_query=search,
+        status=status,
+        verification=verification,
+        date_filter=date_filter,
+        start_from=start_from,
+        end_to=end_to,
+        sort_order=sort_order
+    )
     return {
         "users": [UserResponse.model_validate(u) for u in users],
         "total": total,
