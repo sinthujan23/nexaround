@@ -140,7 +140,26 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
 
   void _openExperiences() {
     if (ExperiencesPage.isComingSoon) {
-      // Do nothing when tapped while feature is coming soon
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Row(
+            children: [
+              Icon(Icons.schedule_rounded, color: Colors.white, size: 16),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Handcrafted Tours & Trips are launching soon! Stay tuned.',
+                  style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: const Color(0xFF1E293B),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          duration: const Duration(seconds: 2),
+        ),
+      );
       return;
     }
 
@@ -334,6 +353,16 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
               ctaIcon: ExperiencesPage.isComingSoon
                   ? Icons.schedule_rounded
                   : Icons.arrow_forward_rounded,
+              isCtaDisabled: ExperiencesPage.isComingSoon,
+              ctaBgColor: ExperiencesPage.isComingSoon
+                  ? const Color(0xFF334155).withValues(alpha: 0.75)
+                  : null,
+              ctaTextColor: ExperiencesPage.isComingSoon
+                  ? const Color(0xFF94A3B8)
+                  : null,
+              ctaBorderColor: ExperiencesPage.isComingSoon
+                  ? const Color(0xFF64748B).withValues(alpha: 0.45)
+                  : null,
               onTap: _openExperiences,
             ),
             const SizedBox(height: 10),
@@ -395,6 +424,10 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
     LinearGradient? gradient,
     required String ctaText,
     IconData? ctaIcon,
+    Color? ctaBgColor,
+    Color? ctaTextColor,
+    Color? ctaBorderColor,
+    bool isCtaDisabled = false,
     required VoidCallback onTap,
   }) {
     return GestureDetector(
@@ -544,33 +577,55 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
                           padding: const EdgeInsets.symmetric(
                               horizontal: 11, vertical: 6.5),
                           decoration: BoxDecoration(
-                            color: Colors.white,
+                            color: ctaBgColor ??
+                                (isCtaDisabled
+                                    ? const Color(0xFF334155).withValues(alpha: 0.75)
+                                    : Colors.white),
                             borderRadius: BorderRadius.circular(16),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.15),
-                                blurRadius: 4,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
+                            border: isCtaDisabled
+                                ? Border.all(
+                                    color: ctaBorderColor ??
+                                        const Color(0xFF64748B).withValues(alpha: 0.45),
+                                    width: 0.8,
+                                  )
+                                : null,
+                            boxShadow: isCtaDisabled
+                                ? null
+                                : [
+                                    BoxShadow(
+                                      color: Colors.black.withValues(alpha: 0.15),
+                                      blurRadius: 4,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
                           ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Text(
                                 ctaText,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 10.5,
-                                  fontWeight: FontWeight.w800,
-                                  color: Color(0xFF0F172A),
+                                  fontWeight: isCtaDisabled
+                                      ? FontWeight.w700
+                                      : FontWeight.w800,
+                                  color: ctaTextColor ??
+                                      (isCtaDisabled
+                                          ? const Color(0xFF94A3B8)
+                                          : const Color(0xFF0F172A)),
                                 ),
                               ),
-                              const SizedBox(width: 3.5),
-                              Icon(
-                                ctaIcon ?? Icons.arrow_forward_rounded,
-                                size: 11,
-                                color: const Color(0xFF0F172A),
-                              ),
+                              if (ctaIcon != null) ...[
+                                const SizedBox(width: 3.5),
+                                Icon(
+                                  ctaIcon,
+                                  size: 11,
+                                  color: ctaTextColor ??
+                                      (isCtaDisabled
+                                          ? const Color(0xFF94A3B8)
+                                          : const Color(0xFF0F172A)),
+                                ),
+                              ],
                             ],
                           ),
                         ),

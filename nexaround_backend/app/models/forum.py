@@ -43,7 +43,7 @@ class ForumCategory(Base):
     )
 
     parent = relationship("ForumCategory", remote_side=[id], back_populates="subcategories")
-    subcategories = relationship("ForumCategory", back_populates="parent", cascade="all, delete-orphan")
+    subcategories = relationship("ForumCategory", back_populates="parent", cascade="all, delete-orphan", lazy="selectin")
     topics = relationship("ForumTopic", back_populates="category", cascade="all, delete-orphan")
 
 

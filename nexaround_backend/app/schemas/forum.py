@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from typing import List, Optional, Dict, Any
 from uuid import UUID
 from datetime import datetime
@@ -30,6 +30,33 @@ class ForumCategoryResponse(ForumCategoryBase):
     posts_count: int = 0
     created_at: datetime
     subcategories: List["ForumCategoryResponse"] = []
+
+    @model_validator(mode="before")
+    @classmethod
+    def handle_orm(cls, data: Any) -> Any:
+        if hasattr(data, "__dict__"):
+            subcats = []
+            if "subcategories" in data.__dict__ and data.__dict__["subcategories"]:
+                subcats = data.__dict__["subcategories"]
+            return {
+                "id": getattr(data, "id", None),
+                "name": getattr(data, "name", ""),
+                "slug": getattr(data, "slug", ""),
+                "category_type": getattr(data, "category_type", "destination"),
+                "parent_id": getattr(data, "parent_id", None),
+                "description": getattr(data, "description", None),
+                "image_url": getattr(data, "image_url", None),
+                "icon": getattr(data, "icon", None),
+                "country_code": getattr(data, "country_code", None),
+                "city_name": getattr(data, "city_name", None),
+                "is_featured": getattr(data, "is_featured", False),
+                "display_order": getattr(data, "display_order", 0),
+                "topics_count": getattr(data, "topics_count", 0),
+                "posts_count": getattr(data, "posts_count", 0),
+                "created_at": getattr(data, "created_at", None),
+                "subcategories": subcats,
+            }
+        return data
 
     class Config:
         from_attributes = True

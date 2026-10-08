@@ -15,7 +15,7 @@ import ApiUsage from './pages/ApiUsage';
 import Experiences from './pages/Experiences';
 import ExperienceEnquiries from './pages/ExperienceEnquiries';
 import ErrorBoundary from './components/ErrorBoundary';
-import { CompassIcon, UsersIcon, MapPinIcon, CreditCardIcon, MegaphoneIcon, FolderIcon, ImageIcon, SettingsIcon, ClipboardCheckIcon, TrendingUpIcon, EyeOffIcon, TicketIcon, InboxIcon } from './components/Icons';
+import { CompassIcon, UsersIcon, MapPinIcon, CreditCardIcon, MegaphoneIcon, FolderIcon, ImageIcon, SettingsIcon, ClipboardCheckIcon, TrendingUpIcon, EyeOffIcon, TicketIcon, InboxIcon, LogOutIcon } from './components/Icons';
 
 function App() {
   const [token, setToken] = useState(localStorage.getItem('admin_token'));
@@ -180,95 +180,140 @@ function App() {
       {/* Sidebar */}
       <aside className="sidebar">
         <div className="sidebar-logo">
-          <img 
-            src="/logo_2.png" 
-            alt="nexARound" 
-            className="sidebar-logo-img" 
-            onError={(e) => { e.currentTarget.style.display = 'none'; }} 
-          />
+          <span className="logo-tile">
+            <img 
+              src="/logo_2.png" 
+              alt="nexARound" 
+              onError={(e) => { e.currentTarget.style.display = 'none'; }} 
+            />
+          </span>
           <div>
             <div className="brand">nexARound</div>
-            <div className="brand-sub">nexARound Admin</div>
+            <div className="brand-sub">ADMIN PORTAL</div>
           </div>
         </div>
         <nav className="sidebar-nav">
           <div className="nav-section-label">Main Menu</div>
-          <div className={`nav-item ${activePage === 'dashboard' ? 'active' : ''}`} onClick={() => setActivePage('dashboard')}>
-            <CompassIcon className="icon" /> Dashboard
-          </div>
-          <div className={`nav-item ${activePage === 'attractions' ? 'active' : ''}`} onClick={() => setActivePage('attractions')}>
-            <MapPinIcon className="icon" /> Attractions
-          </div>
-          <div className={`nav-item ${activePage === 'approvals' ? 'active' : ''}`} onClick={() => setActivePage('approvals')}>
-            <ClipboardCheckIcon className="icon" /> Place Approvals
-          </div>
-          <div className={`nav-item ${activePage === 'categories' ? 'active' : ''}`} onClick={() => setActivePage('categories')}>
-            <FolderIcon className="icon" /> Categories
-          </div>
-          <div className={`nav-item ${activePage === 'excludekeywords' ? 'active' : ''}`} onClick={() => setActivePage('excludekeywords')}>
-            <EyeOffIcon className="icon" /> Exclude Keywords
-          </div>
-          <div className={`nav-item ${activePage === 'media' ? 'active' : ''}`} onClick={() => setActivePage('media')}>
-            <ImageIcon className="icon" /> Media Library
-          </div>
+          <button
+            type="button"
+            className={`nav-item ${activePage === 'dashboard' ? 'active' : ''}`}
+            aria-current={activePage === 'dashboard' ? 'page' : undefined}
+            onClick={() => setActivePage('dashboard')}
+          >
+            <span className="icon"><CompassIcon size={18} /></span> Dashboard
+          </button>
+          <button
+            type="button"
+            className={`nav-item ${activePage === 'attractions' ? 'active' : ''}`}
+            aria-current={activePage === 'attractions' ? 'page' : undefined}
+            onClick={() => setActivePage('attractions')}
+          >
+            <span className="icon"><MapPinIcon size={18} /></span> Attractions
+          </button>
+          <button
+            type="button"
+            className={`nav-item ${activePage === 'approvals' ? 'active' : ''}`}
+            aria-current={activePage === 'approvals' ? 'page' : undefined}
+            onClick={() => setActivePage('approvals')}
+          >
+            <span className="icon"><ClipboardCheckIcon size={18} /></span> Place Approvals
+          </button>
+          <button
+            type="button"
+            className={`nav-item ${activePage === 'categories' ? 'active' : ''}`}
+            aria-current={activePage === 'categories' ? 'page' : undefined}
+            onClick={() => setActivePage('categories')}
+          >
+            <span className="icon"><FolderIcon size={18} /></span> Categories
+          </button>
+          <button
+            type="button"
+            className={`nav-item ${activePage === 'excludekeywords' ? 'active' : ''}`}
+            aria-current={activePage === 'excludekeywords' ? 'page' : undefined}
+            onClick={() => setActivePage('excludekeywords')}
+          >
+            <span className="icon"><EyeOffIcon size={18} /></span> Exclude Keywords
+          </button>
+          <button
+            type="button"
+            className={`nav-item ${activePage === 'media' ? 'active' : ''}`}
+            aria-current={activePage === 'media' ? 'page' : undefined}
+            onClick={() => setActivePage('media')}
+          >
+            <span className="icon"><ImageIcon size={18} /></span> Media Library
+          </button>
           
           <div className="nav-section-label" style={{ marginTop: '8px' }}>Business</div>
-          <div className={`nav-item ${activePage === 'experiences' ? 'active' : ''}`} onClick={() => setActivePage('experiences')}>
-            <TicketIcon className="icon" /> Experiences
-          </div>
-          <div className={`nav-item ${activePage === 'experienceenquiries' ? 'active' : ''}`} onClick={() => setActivePage('experienceenquiries')}>
-            <InboxIcon className="icon" /> Enquiries
-          </div>
-          <div className={`nav-item ${activePage === 'payments' ? 'active' : ''}`} onClick={() => setActivePage('payments')}>
-            <CreditCardIcon className="icon" /> Payments & Plans
-          </div>
+          <button
+            type="button"
+            className={`nav-item ${activePage === 'experiences' ? 'active' : ''}`}
+            aria-current={activePage === 'experiences' ? 'page' : undefined}
+            onClick={() => setActivePage('experiences')}
+          >
+            <span className="icon"><TicketIcon size={18} /></span> Experiences
+          </button>
+          <button
+            type="button"
+            className={`nav-item ${activePage === 'experienceenquiries' ? 'active' : ''}`}
+            aria-current={activePage === 'experienceenquiries' ? 'page' : undefined}
+            onClick={() => setActivePage('experienceenquiries')}
+          >
+            <span className="icon"><InboxIcon size={18} /></span> Enquiries
+          </button>
+          <button
+            type="button"
+            className={`nav-item ${activePage === 'payments' ? 'active' : ''}`}
+            aria-current={activePage === 'payments' ? 'page' : undefined}
+            onClick={() => setActivePage('payments')}
+          >
+            <span className="icon"><CreditCardIcon size={18} /></span> Payments & Plans
+          </button>
           
           <div className="nav-section-label" style={{ marginTop: '8px' }}>System</div>
-          <div className={`nav-item ${activePage === 'users' ? 'active' : ''}`} onClick={() => setActivePage('users')}>
-            <UsersIcon className="icon" /> User Management
-          </div>
-          <div className={`nav-item ${activePage === 'engagement' ? 'active' : ''}`} onClick={() => setActivePage('engagement')}>
-            <MegaphoneIcon className="icon" /> Engagement
-          </div>
-          <div className={`nav-item ${activePage === 'apiusage' ? 'active' : ''}`} onClick={() => setActivePage('apiusage')}>
-            <TrendingUpIcon className="icon" /> API Usage
-          </div>
-          <div className={`nav-item ${activePage === 'settings' ? 'active' : ''}`} onClick={() => setActivePage('settings')}>
-            <SettingsIcon className="icon" /> Settings
-          </div>
+          <button
+            type="button"
+            className={`nav-item ${activePage === 'users' ? 'active' : ''}`}
+            aria-current={activePage === 'users' ? 'page' : undefined}
+            onClick={() => setActivePage('users')}
+          >
+            <span className="icon"><UsersIcon size={18} /></span> User Management
+          </button>
+          <button
+            type="button"
+            className={`nav-item ${activePage === 'engagement' ? 'active' : ''}`}
+            aria-current={activePage === 'engagement' ? 'page' : undefined}
+            onClick={() => setActivePage('engagement')}
+          >
+            <span className="icon"><MegaphoneIcon size={18} /></span> Engagement
+          </button>
+          <button
+            type="button"
+            className={`nav-item ${activePage === 'apiusage' ? 'active' : ''}`}
+            aria-current={activePage === 'apiusage' ? 'page' : undefined}
+            onClick={() => setActivePage('apiusage')}
+          >
+            <span className="icon"><TrendingUpIcon size={18} /></span> API Usage
+          </button>
+          <button
+            type="button"
+            className={`nav-item ${activePage === 'settings' ? 'active' : ''}`}
+            aria-current={activePage === 'settings' ? 'page' : undefined}
+            onClick={() => setActivePage('settings')}
+          >
+            <span className="icon"><SettingsIcon size={18} /></span> Settings
+          </button>
         </nav>
         <div className="sidebar-footer">
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <div className="admin-avatar" style={{ width: '32px', height: '32px', fontSize: '12px' }}>A</div>
-              <div className="user-info" style={{ display: 'flex', flexDirection: 'column' }}>
-                <span className="admin-name" style={{ color: 'var(--text-primary)', fontWeight: 700, fontSize: '13px' }}>Admin</span>
-                <span className="admin-role" style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>Administrator</span>
-              </div>
+          <div className="admin-user">
+            <div className="admin-avatar">A</div>
+            <div className="user-info" style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1, gap: '2px' }}>
+              <div className="admin-name" title="Admin">Admin</div>
+              <div className="admin-role" title="Administrator">Administrator</div>
             </div>
-            <button
-              onClick={handleLogout}
-              style={{
-                border: 'none',
-                background: 'rgba(229,57,53,0.08)',
-                color: 'var(--danger)',
-                padding: '8px',
-                borderRadius: '8px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
-                transition: 'background 0.2s ease'
-              }}
-              title="Sign Out"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                <polyline points="16 17 21 12 16 7" />
-                <line x1="21" y1="12" x2="9" y2="12" />
-              </svg>
-            </button>
           </div>
+          <button className="logout-btn" title="Sign out" onClick={handleLogout}>
+            <LogOutIcon size={16} />
+          </button>
         </div>
       </aside>
 

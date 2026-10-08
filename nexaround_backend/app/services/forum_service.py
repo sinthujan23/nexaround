@@ -21,6 +21,19 @@ from app.schemas.forum import (
 logger = logging.getLogger(__name__)
 
 
+def _get_user_display_name(user: Optional[User]) -> str:
+    """Format and retrieve the display name of a user or fall back gracefully."""
+    if not user:
+        return "Traveler"
+    if getattr(user, "display_name", None) and user.display_name.strip():
+        return user.display_name.strip()
+    if getattr(user, "email", None) and "@" in user.email:
+        name_part = user.email.split("@")[0].replace(".", " ").title()
+        return name_part if name_part else "Traveler"
+    return "Traveler"
+
+
+
 # ── Seed Categories & Starter Data ──────────────────────────────────────────
 
 DEFAULT_DESTINATIONS = [
@@ -291,127 +304,8 @@ async def seed_forum_data(db: AsyncSession) -> None:
         await db.flush()
         category_map[cat.slug] = cat
 
-    # 3. Find or use a system user for starter discussions
-    user_res = await db.execute(select(User).limit(1))
-    sys_user = user_res.scalars().first()
-
-    if sys_user and "rome" in category_map:
-        rome_cat = category_map["rome"]
-        # Seed realistic Rome starter discussion
-        topic1 = ForumTopic(
-            category_id=rome_cat.id,
-            user_id=sys_user.id,
-            title="Colosseum & Roman Forum: Best time of day and ticket advice for first-timers?",
-            content=(
-                "Visiting Rome for the first time in May! I want to know if it's better to book "
-                "the Colosseum first thing in the morning (8:30 AM) or late afternoon around sunset. "
-                "Also, does the standard ticket include the Arena Floor, and is the Roma Pass worth it?"
-            ),
-            tags=["Colosseum", "Tickets", "Itinerary", "First-time"],
-            views_count=184,
-            replies_count=2,
-            likes_count=18,
-            is_pinned=True,
-        )
-        db.add(topic1)
-        await db.flush()
-        rome_cat.topics_count += 1
-
-        # Seed replies
-        p1 = ForumPost(
-            topic_id=topic1.id,
-            user_id=sys_user.id,
-            content=(
-                "Definitely aim for 8:30 AM or 4:30 PM! Midday heat and crowds on the Roman Forum "
-                "can be intense as there is very little shade. Standard tickets cover the Roman Forum "
-                "and Palatine Hill within 24 hours. The Full Experience ticket is required for the Arena and Underground."
-            ),
-            likes_count=12,
-            is_best_answer=True,
-        )
-        db.add(p1)
-        await db.flush()
-        topic1.best_answer_id = p1.id
-
-        p2 = ForumPost(
-            topic_id=topic1.id,
-            user_id=sys_user.id,
-            content=(
-                "Pro tip: Enter via the Palatine Hill entrance on Via di San Gregorio rather than "
-                "the main Colosseum gate — the security line is usually much shorter!"
-            ),
-            likes_count=7,
-        )
-        db.add(p2)
-
-    if sys_user and "tokyo" in category_map:
-        tokyo_cat = category_map["tokyo"]
-        topic2 = ForumTopic(
-            category_id=tokyo_cat.id,
-            user_id=sys_user.id,
-            title="Digital Welcome Suica vs Physical IC Card in 2026: What's working best?",
-            content=(
-                "Planning 10 days across Tokyo and Kyoto. Is it currently easier to load a digital "
-                "Suica on Apple Wallet / Google Wallet with a Visa or Mastercard, or should I pick up "
-                "a physical tourist IC card at Haneda Airport upon arrival?"
-            ),
-            tags=["Transport", "Suica", "Tokyo", "Payment"],
-            views_count=240,
-            replies_count=1,
-            likes_count=24,
-        )
-        db.add(topic2)
-        await db.flush()
-        tokyo_cat.topics_count += 1
-
-        p3 = ForumPost(
-            topic_id=topic2.id,
-            user_id=sys_user.id,
-            content=(
-                "If you have an iPhone, Apple Wallet digital Suica is instantaneous! Mastercard and Amex "
-                "work smoothly for top-ups. Visa sometimes has 3D-Secure blocks, so Amex or Mastercard is best. "
-                "For Android devices without Osaifu-Keitai, grab the Welcome Suica at Haneda or Narita."
-            ),
-            likes_count=15,
-            is_best_answer=True,
-        )
-        db.add(p3)
-
-    if sys_user and "solo-travel" in category_map:
-        solo_cat = category_map["solo-travel"]
-        topic3 = ForumTopic(
-            category_id=solo_cat.id,
-            user_id=sys_user.id,
-            title="First solo trip to Europe: How do you handle dinner alone without feeling awkward?",
-            content=(
-                "I am doing my first solo trip next month. Daytime sightseeing feels great, but I get "
-                "slightly nervous about dining alone in sit-down restaurants in the evening. "
-                "Any mindset tips or recommendations for dining spots that feel welcoming?"
-            ),
-            tags=["Solo", "Dining", "Tips", "Beginners"],
-            views_count=310,
-            replies_count=1,
-            likes_count=39,
-        )
-        db.add(topic3)
-        await db.flush()
-        solo_cat.topics_count += 1
-
-        p4 = ForumPost(
-            topic_id=topic3.id,
-            user_id=sys_user.id,
-            content=(
-                "Sit at the bar or communal tables! Tapas bars in Spain and trattorias with outdoor terraces "
-                "are amazing for people-watching. Bring a journal or book, or chat with the bartender. "
-                "Remember: nobody is watching you or judging — solo dining is totally normal everywhere!"
-            ),
-            likes_count=21,
-            is_best_answer=True,
-        )
-        db.add(p4)
-
     await db.commit()
-    logger.info("✅ Forum categories and starter topics successfully seeded.")
+    logger.info("✅ Forum categories successfully seeded.")
 
 
 # ── Forum Service Queries ───────────────────────────────────────────────────
@@ -430,6 +324,7 @@ class ForumService:
         featured_dest_res = await db.execute(
             select(ForumCategory)
             .where(ForumCategory.is_featured == True)
+            .options(selectinload(ForumCategory.subcategories))
             .order_by(ForumCategory.display_order.asc(), ForumCategory.topics_count.desc())
         )
         featured_destinations = [
@@ -451,6 +346,7 @@ class ForumService:
         topics_cats_res = await db.execute(
             select(ForumCategory)
             .where(ForumCategory.category_type == "topic")
+            .options(selectinload(ForumCategory.subcategories))
             .order_by(ForumCategory.display_order.asc())
         )
         travel_topics = [
@@ -501,7 +397,7 @@ class ForumService:
                 category_slug=t.category.slug if t.category else "",
                 category_type=t.category.category_type if t.category else "destination",
                 user_id=t.user_id,
-                user_display_name=t.user.display_name if t.user else "Traveler",
+                user_display_name=_get_user_display_name(t.user),
                 user_avatar_url=t.user.avatar_url if t.user else None,
                 title=t.title,
                 content=t.content,
@@ -634,7 +530,7 @@ class ForumService:
                 category_slug=t.category.slug if t.category else "",
                 category_type=t.category.category_type if t.category else "destination",
                 user_id=t.user_id,
-                user_display_name=t.user.display_name if t.user else "Traveler",
+                user_display_name=_get_user_display_name(t.user),
                 user_avatar_url=t.user.avatar_url if t.user else None,
                 title=t.title,
                 content=t.content,
@@ -720,7 +616,7 @@ class ForumService:
                     id=c.id,
                     topic_id=c.topic_id,
                     user_id=c.user_id,
-                    user_display_name=c.user.display_name if c.user else "Traveler",
+                    user_display_name=_get_user_display_name(c.user),
                     user_avatar_url=c.user.avatar_url if c.user else None,
                     parent_post_id=c.parent_post_id,
                     content=c.content,
@@ -738,7 +634,7 @@ class ForumService:
                 id=p.id,
                 topic_id=p.topic_id,
                 user_id=p.user_id,
-                user_display_name=p.user.display_name if p.user else "Traveler",
+                user_display_name=_get_user_display_name(p.user),
                 user_avatar_url=p.user.avatar_url if p.user else None,
                 parent_post_id=p.parent_post_id,
                 content=p.content,
@@ -758,7 +654,7 @@ class ForumService:
             category_slug=topic.category.slug if topic.category else "",
             category_type=topic.category.category_type if topic.category else "destination",
             user_id=topic.user_id,
-            user_display_name=topic.user.display_name if topic.user else "Traveler",
+            user_display_name=_get_user_display_name(topic.user),
             user_avatar_url=topic.user.avatar_url if topic.user else None,
             title=topic.title,
             content=topic.content,
@@ -807,7 +703,7 @@ class ForumService:
             category_slug=cat.slug,
             category_type=cat.category_type,
             user_id=user.id,
-            user_display_name=user.display_name,
+            user_display_name=_get_user_display_name(user),
             user_avatar_url=user.avatar_url,
             title=topic.title,
             content=topic.content,
@@ -860,7 +756,7 @@ class ForumService:
             id=post.id,
             topic_id=post.topic_id,
             user_id=user.id,
-            user_display_name=user.display_name,
+            user_display_name=_get_user_display_name(user),
             user_avatar_url=user.avatar_url,
             parent_post_id=post.parent_post_id,
             content=post.content,
