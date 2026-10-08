@@ -7,7 +7,6 @@ import Approvals from './pages/Approvals';
 import Payments from './pages/Payments';
 import Engagement from './pages/Engagement';
 import Attractions from './pages/Attractions';
-import Categories from './pages/Categories';
 import ExcludeKeywords from './pages/ExcludeKeywords';
 import Media from './pages/Media';
 import Settings from './pages/Settings';
@@ -15,7 +14,7 @@ import ApiUsage from './pages/ApiUsage';
 import Experiences from './pages/Experiences';
 import ExperienceEnquiries from './pages/ExperienceEnquiries';
 import ErrorBoundary from './components/ErrorBoundary';
-import { CompassIcon, UsersIcon, MapPinIcon, CreditCardIcon, MegaphoneIcon, FolderIcon, ImageIcon, SettingsIcon, ClipboardCheckIcon, TrendingUpIcon, EyeOffIcon, TicketIcon, InboxIcon, LogOutIcon } from './components/Icons';
+import { CompassIcon, UsersIcon, MapPinIcon, CreditCardIcon, MegaphoneIcon, ImageIcon, SettingsIcon, ClipboardCheckIcon, TrendingUpIcon, EyeOffIcon, TicketIcon, InboxIcon, LogOutIcon } from './components/Icons';
 
 function App() {
   const [token, setToken] = useState(localStorage.getItem('admin_token'));
@@ -115,8 +114,6 @@ function App() {
         return <Dashboard />;
       case 'attractions':
         return <Attractions />;
-      case 'categories':
-        return <Categories />;
       case 'excludekeywords':
         return <ExcludeKeywords />;
       case 'media':
@@ -148,8 +145,6 @@ function App() {
         return 'Dashboard Overview';
       case 'attractions':
         return 'Manage Attractions';
-      case 'categories':
-        return 'Manage Categories';
       case 'excludekeywords':
         return 'Exclude Keywords';
       case 'media':
@@ -217,14 +212,6 @@ function App() {
             onClick={() => setActivePage('approvals')}
           >
             <span className="icon"><ClipboardCheckIcon size={18} /></span> Place Approvals
-          </button>
-          <button
-            type="button"
-            className={`nav-item ${activePage === 'categories' ? 'active' : ''}`}
-            aria-current={activePage === 'categories' ? 'page' : undefined}
-            onClick={() => setActivePage('categories')}
-          >
-            <span className="icon"><FolderIcon size={18} /></span> Categories
           </button>
           <button
             type="button"
