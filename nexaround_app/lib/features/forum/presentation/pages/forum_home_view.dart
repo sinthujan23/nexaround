@@ -318,30 +318,31 @@ class _ForumHomeViewState extends State<ForumHomeView> {
   Widget _buildHeroHeader() {
     return Container(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.16),
-            blurRadius: 18,
-            offset: const Offset(0, 6),
+            blurRadius: 16,
+            offset: const Offset(0, 5),
           ),
         ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(20),
         child: Stack(
           children: [
-            // Background Image (same as Curated Hubs card)
+            // Background Image
             Positioned.fill(
               child: Image.asset(
                 'assets/images/forum_banner_bg.jpg',
                 fit: BoxFit.cover,
+                alignment: Alignment.center,
                 errorBuilder: (context, error, stackTrace) => Container(
                   color: const Color(0xFF0F172A),
                 ),
               ),
             ),
-            // Cinematic dark gradient overlay for optimal text readability
+            // Cinematic dark gradient overlay for optimal text readability & showing landmarks
             Positioned.fill(
               child: DecoratedBox(
                 decoration: BoxDecoration(
@@ -349,40 +350,40 @@ class _ForumHomeViewState extends State<ForumHomeView> {
                     begin: Alignment.bottomCenter,
                     end: Alignment.topCenter,
                     colors: [
-                      const Color(0xFF0F172A).withValues(alpha: 0.95),
-                      const Color(0xFF0F172A).withValues(alpha: 0.82),
-                      const Color(0xFF0F172A).withValues(alpha: 0.58),
+                      const Color(0xFF0F172A).withValues(alpha: 0.90),
+                      const Color(0xFF0F172A).withValues(alpha: 0.68),
+                      Colors.black.withValues(alpha: 0.35),
                     ],
                     stops: const [0.0, 0.55, 1.0],
                   ),
                 ),
               ),
             ),
-            // Card Content
+            // Card Content (compact vertical height)
             Padding(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     children: [
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(horizontal: 7.5, vertical: 3.5),
                         decoration: BoxDecoration(
                           color: AppColors.brandGreen,
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius: BorderRadius.circular(7),
                         ),
                         child: const Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.forum_rounded, size: 12, color: Colors.white),
+                            Icon(Icons.forum_rounded, size: 11.5, color: Colors.white),
                             SizedBox(width: 4),
                             Text(
                               'COMMUNITY',
                               style: TextStyle(
-                                fontSize: 9.5,
+                                fontSize: 9,
                                 fontWeight: FontWeight.w900,
-                                letterSpacing: 1.0,
+                                letterSpacing: 0.9,
                                 color: Colors.white,
                               ),
                             ),
@@ -391,33 +392,35 @@ class _ForumHomeViewState extends State<ForumHomeView> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 8),
                   const Text(
                     'Travel Forums',
                     style: TextStyle(
-                      fontSize: 22,
+                      fontSize: 20,
                       fontWeight: FontWeight.w900,
                       color: Colors.white,
-                      letterSpacing: -0.5,
+                      letterSpacing: -0.4,
                     ),
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 3),
                   const Text(
-                    'Ask questions, compare itineraries, and get tips from travelers who have been there.',
+                    'Ask questions, compare itineraries, and get tips from fellow travelers.',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: 13,
+                      fontSize: 12,
                       color: Color(0xFFE2E8F0),
-                      height: 1.4,
+                      height: 1.3,
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 12),
 
                   // Universal Forum Search Bar
                   Container(
-                    height: 46,
+                    height: 40,
                     decoration: BoxDecoration(
                       color: Colors.black.withValues(alpha: 0.35),
-                      borderRadius: BorderRadius.circular(14),
+                      borderRadius: BorderRadius.circular(12),
                       border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
                     ),
                     child: TextField(
@@ -428,14 +431,14 @@ class _ForumHomeViewState extends State<ForumHomeView> {
                         }
                       },
                       onSubmitted: _onSearch,
-                      style: const TextStyle(fontSize: 14, color: Colors.white),
+                      style: const TextStyle(fontSize: 13, color: Colors.white),
                       decoration: InputDecoration(
                         hintText: 'Search destinations, hotels, tips...',
-                        hintStyle: TextStyle(fontSize: 13, color: Colors.white.withValues(alpha: 0.65)),
-                        prefixIcon: const Icon(Icons.search_rounded, size: 20, color: Colors.white70),
+                        hintStyle: TextStyle(fontSize: 12.5, color: Colors.white.withValues(alpha: 0.65)),
+                        prefixIcon: const Icon(Icons.search_rounded, size: 18, color: Colors.white70),
                         suffixIcon: _searchController.text.isNotEmpty
                             ? IconButton(
-                                icon: const Icon(Icons.clear_rounded, size: 18, color: Colors.white70),
+                                icon: const Icon(Icons.clear_rounded, size: 16, color: Colors.white70),
                                 onPressed: () {
                                   _searchController.clear();
                                   setState(() => _isSearching = false);
@@ -443,19 +446,19 @@ class _ForumHomeViewState extends State<ForumHomeView> {
                               )
                             : null,
                         border: InputBorder.none,
-                        contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                        contentPadding: const EdgeInsets.symmetric(vertical: 10),
                       ),
                     ),
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 10),
 
-                  // Primary "Ask a Question" Button (Unclipped, clean vertical centering)
+                  // Primary "Ask a Question" Button
                   Container(
                     width: double.infinity,
-                    height: 46,
+                    height: 40,
                     decoration: BoxDecoration(
                       color: AppColors.brandGreen,
-                      borderRadius: BorderRadius.circular(14),
+                      borderRadius: BorderRadius.circular(12),
                       boxShadow: [
                         BoxShadow(
                           color: AppColors.brandGreen.withValues(alpha: 0.35),
@@ -468,16 +471,16 @@ class _ForumHomeViewState extends State<ForumHomeView> {
                       color: Colors.transparent,
                       child: InkWell(
                         onTap: _openAskQuestion,
-                        borderRadius: BorderRadius.circular(14),
+                        borderRadius: BorderRadius.circular(12),
                         child: const Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.add_comment_rounded, size: 18, color: Colors.white),
-                            SizedBox(width: 8),
+                            Icon(Icons.add_comment_rounded, size: 16, color: Colors.white),
+                            SizedBox(width: 7),
                             Text(
                               'Ask a Question',
                               style: TextStyle(
-                                fontSize: 14.5,
+                                fontSize: 13.5,
                                 fontWeight: FontWeight.w800,
                                 color: Colors.white,
                                 letterSpacing: 0.2,
