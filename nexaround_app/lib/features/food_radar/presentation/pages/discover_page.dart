@@ -39,7 +39,7 @@ import 'package:nexaround_app/core/constants/api_constants.dart';
 import 'package:nexaround_app/core/network/api_client.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:http/http.dart' as http;
-import 'package:nexaround_app/features/forum/presentation/pages/forum_home_view.dart';
+import 'package:nexaround_app/features/forum/presentation/pages/forum_home_page.dart';
 
 class DiscoverPage extends StatefulWidget {
   final int initialTab;
@@ -52,7 +52,7 @@ class DiscoverPage extends StatefulWidget {
     this.requestCount = 0,
   });
 
-  /// The Discovery tabs, in order. POI leads, Forum sits before Emergency at the end.
+  /// The Discovery tabs, in order. The place sections come first, Emergency sits at the end.
   static const List<String> tabs = [
     'POI',
     'Nature',
@@ -60,12 +60,10 @@ class DiscoverPage extends StatefulWidget {
     'Shopping',
     'Medical',
     'Hospital',
-    'Forum',
     'Emergency',
   ];
 
   static final int emergencyTabIndex = tabs.indexOf('Emergency');
-  static final int forumTabIndex = tabs.indexOf('Forum');
 
   /// Tab index for an Around You section name.
   ///
@@ -97,7 +95,7 @@ class DiscoverPage extends StatefulWidget {
       case 'Forums':
       case 'Community':
       case 'Q&A':
-        return tabs.indexOf('Forum');
+        return tabs.indexOf('POI');
       case 'Emergency':
         return tabs.indexOf('Emergency');
       default:
@@ -455,12 +453,58 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
               Padding(
                 padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
                 child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     ShaderMask(
                       shaderCallback: (b) => AppColors.primaryGradient.createShader(Rect.fromLTWH(0, 0, b.width, b.height)),
                       child: const Text(
                         'Discover',
                         style: TextStyle(fontSize: 28, fontWeight: FontWeight.w700, color: Colors.white, letterSpacing: -0.5),
+                      ),
+                    ),
+                    Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(20),
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const ForumHomePage()),
+                        ),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7.5),
+                          decoration: BoxDecoration(
+                            color: AppColors.surfaceVariant,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: AppColors.border),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.04),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.forum_rounded,
+                                size: 16.5,
+                                color: AppColors.brandGreen,
+                              ),
+                              SizedBox(width: 5.5),
+                              Text(
+                                'Forum',
+                                style: TextStyle(
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.textPrimary,
+                                  letterSpacing: -0.2,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
                   ],
@@ -554,12 +598,6 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
                       itemCount: _tabs.length,
                       itemBuilder: (context, pageIndex) {
                         final pageTab = _tabs[pageIndex];
-                        if (pageTab == 'Forum') {
-                          return const ForumHomeView(
-                            key: ValueKey('discover_content_tab_forum'),
-                            padding: EdgeInsets.fromLTRB(16, 16, 16, 100),
-                          );
-                        }
 
                         final activeSectionKey = pageTab == 'Food' ? 'Food & Drink' : pageTab;
                         final isCategoryLoading =
@@ -617,7 +655,6 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
       case 'Shopping': return _buildShoppingTab(isLoading);
       case 'Medical': return _buildMedicalTab(isLoading);
       case 'Hospital': return _buildHospitalTab(isLoading);
-      case 'Forum': return const ForumHomeView(padding: EdgeInsets.fromLTRB(16, 16, 16, 100));
       case 'Emergency': return _buildEmergencyTab();
       default: return _buildPoiTab(isLoading);
     }

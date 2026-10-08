@@ -325,13 +325,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
               tag: 'EXPERIENCES',
               tagIcon: Icons.sailing_rounded,
               tagColor: const Color(0xFF00E676),
-              badge: ExperiencesPage.isComingSoon ? 'COMING SOON' : '120+ TOURS',
-              badgeBgColor: ExperiencesPage.isComingSoon
-                  ? const Color(0xFFFFB800).withValues(alpha: 0.22)
-                  : null,
-              badgeTextColor: ExperiencesPage.isComingSoon
-                  ? const Color(0xFFFFD54F)
-                  : null,
+              badge: ExperiencesPage.isComingSoon ? null : '120+ TOURS',
               title: 'Handcrafted Tours & Trips',
               subtitle:
                   'Vetted boat excursions, safari adventures, and private day tours hosted by expert local guides.',
@@ -391,7 +385,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
     required String tag,
     required IconData tagIcon,
     required Color tagColor,
-    required String badge,
+    String? badge,
     Color? badgeBgColor,
     Color? badgeTextColor,
     required String title,
@@ -487,23 +481,24 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
                             ],
                           ),
                         ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 7.5, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: badgeBgColor ?? Colors.white.withValues(alpha: 0.14),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            badge,
-                            style: TextStyle(
-                              fontSize: 8.5,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 0.8,
-                              color: badgeTextColor ?? Colors.white,
+                        if (badge != null)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 7.5, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: badgeBgColor ?? Colors.white.withValues(alpha: 0.14),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              badge,
+                              style: TextStyle(
+                                fontSize: 8.5,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.8,
+                                color: badgeTextColor ?? Colors.white,
+                              ),
                             ),
                           ),
-                        ),
                       ],
                     ),
 
