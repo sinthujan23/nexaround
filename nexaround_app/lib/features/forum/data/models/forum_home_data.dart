@@ -63,4 +63,15 @@ class ForumHomeData {
       stats: json['stats'] is Map<String, dynamic> ? json['stats'] : {},
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'featured_destinations': featuredDestinations.map((e) => e.toJson()).toList(),
+      'continent_regions': continentRegions.map((e) => e.toJson()).toList(),
+      'travel_topics': travelTopics.map((e) => e.toJson()).toList(),
+      'trending_topics': trendingTopics.map((e) => e.toJson()).toList(),
+      'recent_topics': recentTopics.map((e) => e.toJson()).toList(),
+      'stats': stats,
+    };
+  }
 }

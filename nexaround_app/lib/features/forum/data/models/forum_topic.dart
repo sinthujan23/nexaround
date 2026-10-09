@@ -153,4 +153,33 @@ class ForumTopic {
       posts: posts ?? this.posts,
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'category_id': categoryId,
+      'category_name': categoryName,
+      'category_slug': categorySlug,
+      'category_type': categoryType,
+      'user_id': userId,
+      'user_display_name': userDisplayName,
+      'user_avatar_url': userAvatarUrl,
+      'title': title,
+      'content': content,
+      'tags': tags,
+      'image_urls': imageUrls,
+      'views_count': viewsCount,
+      'replies_count': repliesCount,
+      'likes_count': likesCount,
+      'is_pinned': isPinned,
+      'is_locked': isLocked,
+      'best_answer_id': bestAnswerId,
+      'ai_summary': aiSummary,
+      'is_liked': isLiked,
+      'is_bookmarked': isBookmarked,
+      'created_at': createdAt.toIso8601String(),
+      'updated_at': updatedAt.toIso8601String(),
+      'posts': posts.map((p) => p.toJson()).toList(),
+    };
+  }
 }

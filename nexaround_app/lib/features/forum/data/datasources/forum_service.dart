@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/constants/api_constants.dart';
+import '../../../../core/services/cache_service.dart';
 import '../models/forum_category.dart';
 import '../models/forum_topic.dart';
 import '../models/forum_post.dart';
@@ -14,22 +15,52 @@ class ForumService {
 
   final Dio _dio = ApiClient.instance;
 
-  // ── In-Memory Cache Store ──────────────────────────────────────────────────
+  // ── Multi-Tier Cache Store (Memory + SharedPreferences) ───────────────────
   ForumHomeData? _cachedHomeData;
   final Map<String, ForumTopic> _cachedTopics = {};
+  final Map<String, List<ForumTopic>> _cachedCategoryTopics = {};
+
+  /// Fast synchronous lookup for Forum Home (zero-latency instant render)
+  ForumHomeData? getCachedForumHome() {
+    if (_cachedHomeData != null) return _cachedHomeData;
+    final diskJson = CacheService.getCachedForumHome();
+    if (diskJson != null) {
+      try {
+        final data = ForumHomeData.fromJson(diskJson);
+        _cachedHomeData = data;
+        for (final t in data.trendingTopics) {
+          _cachedTopics[t.id] = t;
+        }
+        for (final t in data.recentTopics) {
+          _cachedTopics[t.id] = t;
+        }
+        return data;
+      } catch (_) {}
+    }
+    return null;
+  }
 
   Future<ForumHomeData> getForumHome() async {
     try {
       final response = await _dio.get(ApiConstants.forumHome);
       if (response.statusCode == 200 && response.data != null) {
-        _cachedHomeData = ForumHomeData.fromJson(response.data as Map<String, dynamic>);
+        final rawMap = response.data as Map<String, dynamic>;
+        _cachedHomeData = ForumHomeData.fromJson(rawMap);
+        CacheService.cacheForumHome(rawMap);
+        for (final t in _cachedHomeData!.trendingTopics) {
+          _cachedTopics[t.id] = t;
+        }
+        for (final t in _cachedHomeData!.recentTopics) {
+          _cachedTopics[t.id] = t;
+        }
         return _cachedHomeData!;
       }
     } catch (e) {
       debugPrint('⚠️ ForumService.getForumHome failed ($e).');
     }
 
-    if (_cachedHomeData != null) return _cachedHomeData!;
+    final cached = getCachedForumHome();
+    if (cached != null) return cached;
     return const ForumHomeData(
       featuredDestinations: [],
       continentRegions: [],
@@ -84,6 +115,27 @@ class ForumService {
     return null;
   }
 
+  /// Fast synchronous lookup for Category Topics (zero-latency instant render)
+  List<ForumTopic>? getCachedTopics({String? categorySlug}) {
+    if (categorySlug != null) {
+      if (_cachedCategoryTopics.containsKey(categorySlug)) {
+        return _cachedCategoryTopics[categorySlug];
+      }
+      final rawList = CacheService.getCachedForumCategoryTopics(categorySlug);
+      if (rawList != null && rawList.isNotEmpty) {
+        try {
+          final list = rawList.map((e) => ForumTopic.fromJson(e)).toList();
+          _cachedCategoryTopics[categorySlug] = list;
+          for (final t in list) {
+            _cachedTopics[t.id] = t;
+          }
+          return list;
+        } catch (_) {}
+      }
+    }
+    return null;
+  }
+
   Future<List<ForumTopic>> getTopics({
     String? categoryId,
     String? categorySlug,
@@ -106,11 +158,14 @@ class ForumService {
 
       final response = await _dio.get(ApiConstants.forumTopics, queryParameters: params);
       if (response.statusCode == 200 && response.data != null) {
-        final list = (response.data as List)
-            .map((e) => ForumTopic.fromJson(e as Map<String, dynamic>))
-            .toList();
+        final rawList = (response.data as List).cast<Map<String, dynamic>>();
+        final list = rawList.map((e) => ForumTopic.fromJson(e)).toList();
         for (final t in list) {
           _cachedTopics[t.id] = t;
+        }
+        if (categorySlug != null && (query == null || query.isEmpty) && tag == null && skip == 0) {
+          _cachedCategoryTopics[categorySlug] = list;
+          CacheService.cacheForumCategoryTopics(categorySlug, rawList);
         }
         return list;
       }
@@ -118,25 +173,45 @@ class ForumService {
       debugPrint('⚠️ ForumService.getTopics failed ($e).');
     }
 
+    if (categorySlug != null) {
+      final fallback = getCachedTopics(categorySlug: categorySlug);
+      if (fallback != null) return fallback;
+    }
     return [];
+  }
+
+  /// Fast synchronous lookup for Question Thread & Replies
+  ForumTopic? getCachedTopicDetail(String topicId) {
+    if (_cachedTopics.containsKey(topicId)) {
+      final t = _cachedTopics[topicId]!;
+      if (t.posts.isNotEmpty) return t;
+    }
+    final diskJson = CacheService.getCachedForumTopicDetail(topicId);
+    if (diskJson != null) {
+      try {
+        final t = ForumTopic.fromJson(diskJson);
+        _cachedTopics[topicId] = t;
+        return t;
+      } catch (_) {}
+    }
+    return _cachedTopics[topicId];
   }
 
   Future<ForumTopic?> getTopicDetail(String topicId) async {
     try {
       final response = await _dio.get(ApiConstants.forumTopicDetail(topicId));
       if (response.statusCode == 200 && response.data != null) {
-        final topic = ForumTopic.fromJson(response.data as Map<String, dynamic>);
+        final rawMap = response.data as Map<String, dynamic>;
+        final topic = ForumTopic.fromJson(rawMap);
         _cachedTopics[topic.id] = topic;
+        CacheService.cacheForumTopicDetail(topic.id, rawMap);
         return topic;
       }
     } catch (e) {
       debugPrint('⚠️ ForumService.getTopicDetail failed ($e).');
     }
 
-    if (_cachedTopics.containsKey(topicId)) {
-      return _cachedTopics[topicId];
-    }
-    return null;
+    return getCachedTopicDetail(topicId);
   }
 
   Future<ForumTopic> createTopic({
@@ -158,8 +233,36 @@ class ForumService {
         },
       );
       if (response.statusCode == 201 && response.data != null) {
-        final topic = ForumTopic.fromJson(response.data as Map<String, dynamic>);
+        final rawMap = response.data as Map<String, dynamic>;
+        final topic = ForumTopic.fromJson(rawMap);
         _cachedTopics[topic.id] = topic;
+        CacheService.cacheForumTopicDetail(topic.id, rawMap);
+
+        // Optimistically update home cache
+        if (_cachedHomeData != null) {
+          _cachedHomeData = ForumHomeData(
+            featuredDestinations: _cachedHomeData!.featuredDestinations,
+            continentRegions: _cachedHomeData!.continentRegions,
+            travelTopics: _cachedHomeData!.travelTopics,
+            trendingTopics: [topic, ..._cachedHomeData!.trendingTopics],
+            recentTopics: [topic, ..._cachedHomeData!.recentTopics],
+            stats: _cachedHomeData!.stats,
+          );
+          CacheService.cacheForumHome(_cachedHomeData!.toJson());
+        }
+
+        // Optimistically update category topics cache
+        if (topic.categorySlug.isNotEmpty && _cachedCategoryTopics.containsKey(topic.categorySlug)) {
+          _cachedCategoryTopics[topic.categorySlug] = [
+            topic,
+            ..._cachedCategoryTopics[topic.categorySlug]!.where((t) => t.id != topic.id)
+          ];
+          CacheService.cacheForumCategoryTopics(
+            topic.categorySlug,
+            _cachedCategoryTopics[topic.categorySlug]!.map((e) => e.toJson()).toList(),
+          );
+        }
+
         return topic;
       }
     } catch (e) {
@@ -186,6 +289,18 @@ class ForumService {
       );
       if (response.statusCode == 201 && response.data != null) {
         final post = ForumPost.fromJson(response.data as Map<String, dynamic>);
+
+        // Optimistically update cached topic with the new reply
+        final existingTopic = _cachedTopics[topicId];
+        if (existingTopic != null) {
+          final updatedTopic = existingTopic.copyWith(
+            posts: [...existingTopic.posts, post],
+            repliesCount: existingTopic.repliesCount + 1,
+          );
+          _cachedTopics[topicId] = updatedTopic;
+          CacheService.cacheForumTopicDetail(topicId, updatedTopic.toJson());
+        }
+
         return post;
       }
     } catch (e) {
@@ -245,7 +360,10 @@ class ForumService {
     try {
       final response = await _dio.delete(ApiConstants.forumTopicDelete(topicId));
       if (response.statusCode == 200 || response.statusCode == 204) {
-        _cachedTopics.remove(topicId);
+        final removed = _cachedTopics.remove(topicId);
+        if (removed != null && removed.categorySlug.isNotEmpty) {
+          _cachedCategoryTopics[removed.categorySlug]?.removeWhere((t) => t.id == topicId);
+        }
         return true;
       }
     } catch (e) {

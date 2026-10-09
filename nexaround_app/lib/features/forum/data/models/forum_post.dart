@@ -93,4 +93,23 @@ class ForumPost {
       replies: replies,
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'topic_id': topicId,
+      'user_id': userId,
+      'user_display_name': userDisplayName,
+      'user_avatar_url': userAvatarUrl,
+      'parent_post_id': parentPostId,
+      'content': content,
+      'image_urls': imageUrls,
+      'likes_count': likesCount,
+      'is_best_answer': isBestAnswer,
+      'is_ai_generated': isAiGenerated,
+      'is_liked': isLiked,
+      'created_at': createdAt.toIso8601String(),
+      'replies': replies.map((r) => r.toJson()).toList(),
+    };
+  }
 }

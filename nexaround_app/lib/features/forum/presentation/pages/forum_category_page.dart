@@ -40,6 +40,14 @@ class _ForumCategoryPageState extends State<ForumCategoryPage> {
   @override
   void initState() {
     super.initState();
+    // Industry standard stale-while-revalidate: paint cached topics immediately
+    final cached = _service.getCachedTopics(categorySlug: widget.category.slug);
+    if (cached != null && cached.isNotEmpty) {
+      _topics = cached;
+      _isLoading = false;
+    } else {
+      _isLoading = true;
+    }
     _loadTopics();
   }
 
@@ -50,7 +58,9 @@ class _ForumCategoryPageState extends State<ForumCategoryPage> {
   }
 
   Future<void> _loadTopics() async {
-    setState(() => _isLoading = true);
+    if (_topics.isEmpty) {
+      setState(() => _isLoading = true);
+    }
     try {
       final list = await _service.getTopics(
         categorySlug: widget.category.slug,
@@ -255,7 +265,7 @@ class _ForumCategoryPageState extends State<ForumCategoryPage> {
 
               // Topics Stream
               Expanded(
-                child: _isLoading
+                child: (_isLoading && _topics.isEmpty)
                     ? const Center(
                         child: CircularProgressIndicator(color: AppColors.brandGreen),
                       )

@@ -860,6 +860,71 @@ class CacheService {
     }
   }
 
+  // ── Forum Caching (Stale-While-Revalidate disk storage) ───────────────
+  static const String _forumHomeCacheKey = 'forum_home_cache_v1';
+  static const String _forumCategoryPrefix = 'forum_category_v1_';
+  static const String _forumTopicPrefix = 'forum_topic_v1_';
+
+  static Future<void> cacheForumHome(Map<String, dynamic> raw) async {
+    if (_prefsOrNull == null) return;
+    try {
+      await _prefs.setString(_forumHomeCacheKey, json.encode(raw));
+    } catch (_) {}
+  }
+
+  static Map<String, dynamic>? getCachedForumHome() {
+    if (_prefsOrNull == null) return null;
+    final str = _prefs.getString(_forumHomeCacheKey);
+    if (str == null || str.isEmpty) return null;
+    try {
+      return json.decode(str) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<void> cacheForumCategoryTopics(String categorySlug, List<Map<String, dynamic>> raw) async {
+    if (_prefsOrNull == null) return;
+    try {
+      final key = '$_forumCategoryPrefix$categorySlug';
+      await _prefs.setStringList(key, raw.map((e) => json.encode(e)).toList());
+    } catch (_) {}
+  }
+
+  static List<Map<String, dynamic>>? getCachedForumCategoryTopics(String categorySlug) {
+    if (_prefsOrNull == null) return null;
+    final key = '$_forumCategoryPrefix$categorySlug';
+    final list = _prefs.getStringList(key);
+    if (list == null) return null;
+    return list.map((s) {
+      try {
+        return json.decode(s) as Map<String, dynamic>;
+      } catch (_) {
+        return <String, dynamic>{};
+      }
+    }).where((m) => m.isNotEmpty).toList();
+  }
+
+  static Future<void> cacheForumTopicDetail(String topicId, Map<String, dynamic> raw) async {
+    if (_prefsOrNull == null) return;
+    try {
+      final key = '$_forumTopicPrefix$topicId';
+      await _prefs.setString(key, json.encode(raw));
+    } catch (_) {}
+  }
+
+  static Map<String, dynamic>? getCachedForumTopicDetail(String topicId) {
+    if (_prefsOrNull == null) return null;
+    final key = '$_forumTopicPrefix$topicId';
+    final str = _prefs.getString(key);
+    if (str == null || str.isEmpty) return null;
+    try {
+      return json.decode(str) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
+  }
+
   static Future<void> clearAll() async {
     await _prefs.clear();
   }

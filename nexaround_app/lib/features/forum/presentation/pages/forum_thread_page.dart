@@ -178,7 +178,15 @@ class _ForumThreadPageState extends State<ForumThreadPage> {
   @override
   void initState() {
     super.initState();
-    _topic = widget.initialTopic;
+    // Industry standard stale-while-revalidate: paint cached topic detail immediately
+    final cached = _service.getCachedTopicDetail(widget.topicId);
+    if (cached != null) {
+      _topic = cached;
+      _isLoading = false;
+    } else {
+      _topic = widget.initialTopic;
+      _isLoading = _topic == null;
+    }
     _loadTopic();
   }
 
@@ -190,6 +198,9 @@ class _ForumThreadPageState extends State<ForumThreadPage> {
   }
 
   Future<void> _loadTopic() async {
+    if (_topic == null) {
+      setState(() => _isLoading = true);
+    }
     try {
       final detailed = await _service.getTopicDetail(widget.topicId);
       if (mounted) {
@@ -233,31 +244,6 @@ class _ForumThreadPageState extends State<ForumThreadPage> {
     } catch (_) {}
   }
 
-  Future<void> _toggleBookmark() async {
-    if (_topic == null) return;
-    final currentBm = _topic!.isBookmarked;
-
-    setState(() {
-      _topic = _topic!.copyWith(isBookmarked: !currentBm);
-    });
-
-    try {
-      final res = await _service.toggleBookmark(_topic!.id);
-      if (mounted) {
-        setState(() {
-          _topic = _topic!.copyWith(isBookmarked: res['is_bookmarked'] == true);
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              _topic!.isBookmarked ? 'Saved to bookmarks' : 'Removed from bookmarks',
-            ),
-            duration: const Duration(seconds: 1),
-          ),
-        );
-      }
-    } catch (_) {}
-  }
 
   Future<void> _togglePostLike(ForumPost post) async {
     final currentLiked = post.isLiked;
@@ -383,18 +369,6 @@ class _ForumThreadPageState extends State<ForumThreadPage> {
           ),
         ),
         actions: [
-          IconButton(
-            icon: Icon(
-              topic?.isBookmarked == true
-                  ? Icons.bookmark_rounded
-                  : Icons.bookmark_border_rounded,
-              color: topic?.isBookmarked == true
-                  ? AppColors.brandGreen
-                  : const Color(0xFF64748B),
-            ),
-            tooltip: 'Bookmark discussion',
-            onPressed: _toggleBookmark,
-          ),
           if (_isTopicAuthor)
             IconButton(
               icon: const Icon(Icons.delete_outline_rounded, color: Color(0xFFEF4444)),
@@ -461,7 +435,18 @@ class _ForumThreadPageState extends State<ForumThreadPage> {
                             const SizedBox(height: 12),
 
                             // ── Replies Stream ──────────────────────────────
-                            if (topic.posts.isEmpty)
+                            if (topic.posts.isEmpty && _isLoading)
+                              Container(
+                                padding: const EdgeInsets.symmetric(vertical: 36),
+                                child: const Center(
+                                  child: SizedBox(
+                                    width: 24,
+                                    height: 24,
+                                    child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.brandGreen),
+                                  ),
+                                ),
+                              )
+                            else if (topic.posts.isEmpty)
                               Container(
                                 padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 20),
                                 decoration: BoxDecoration(

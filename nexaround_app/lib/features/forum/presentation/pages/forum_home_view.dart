@@ -40,6 +40,14 @@ class _ForumHomeViewState extends State<ForumHomeView> {
   @override
   void initState() {
     super.initState();
+    // Industry standard stale-while-revalidate: paint cached data instantly
+    final cached = _service.getCachedForumHome();
+    if (cached != null) {
+      _homeData = cached;
+      _isLoading = false;
+    } else {
+      _isLoading = true;
+    }
     _loadData();
   }
 

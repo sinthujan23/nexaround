@@ -13,81 +13,81 @@ dependencies:
     sdk: flutter
 
   # State Management
-  flutter_bloc: ^9.1.1
-  equatable: ^2.0.0
-  freezed_annotation: ^3.1.0
+  flutter_bloc: 9.1.1
+  equatable: 2.0.8
+  freezed_annotation: 3.1.0
 
   # Routing
-  go_router: ^17.2.1
+  go_router: 17.2.3
 
   # Networking
-  dio: ^5.4.0
-  retrofit: ^4.1.0
+  dio: 5.9.2
+  retrofit: 4.9.2
 
   # Dependency Injection
-  get_it: ^9.2.1
-  injectable: ^2.3.0
+  get_it: 9.2.1
+  injectable: 2.7.1+4
 
   # Location & Maps
-  geolocator: ^9.0.2
-  google_maps_flutter: ^2.6.0
-  google_maps_flutter_android: ^2.14.0
-  google_maps_flutter_platform_interface: ^2.15.0
-  camera: ^0.11.0+2
-  image_picker: ^1.1.2
+  geolocator: 9.0.2
+  google_maps_flutter: 2.17.0
+  google_maps_flutter_android: 2.19.8
+  google_maps_flutter_platform_interface: 2.15.0
+  camera: 0.11.4
+  image_picker: 1.2.2
 
   # Local Storage
-  hive_flutter: ^1.1.0
-  shared_preferences: ^2.2.0
+  hive_flutter: 1.1.0
+  shared_preferences: 2.5.5
 
   # Firebase
-  firebase_core: ^4.7.0
-  firebase_auth: ^6.4.0
-  firebase_messaging: ^16.2.0
+  firebase_core: 4.9.0
+  firebase_auth: 6.5.1
+  firebase_messaging: 16.2.2
 
   # UI
-  cached_network_image: ^3.3.0
-  shimmer: ^3.0.0
-  lottie: ^3.1.0
-  video_player: ^2.8.2
-  flutter_animate: ^4.5.0
+  cached_network_image: 3.4.1
+  shimmer: 3.0.0
+  lottie: 3.3.3
+  video_player: 2.11.1
+  flutter_animate: 4.5.2
 
   # Utilities
-  dartz: ^0.10.1
-  json_annotation: ^4.8.0
-  intl: ^0.20.2
-  permission_handler: ^12.0.0
-  speech_to_text: ^7.4.0
-  connectivity_plus: ^6.1.0
-  cupertino_icons: ^1.0.6
-  uuid: ^4.3.3
-  flutter_map: ^8.3.0
-  latlong2: ^0.9.1
-  google_fonts: ^8.0.2
-  google_mlkit_object_detection: ^0.15.1
-  mapbox_maps_flutter: ^2.5.1
-  url_launcher: ^6.2.5
+  dartz: 0.10.1
+  json_annotation: 4.12.0
+  intl: 0.20.2
+  permission_handler: 12.0.1
+  speech_to_text: 7.4.0
+  connectivity_plus: 6.1.5
+  cupertino_icons: 1.0.9
+  uuid: 4.5.3
+  flutter_map: 8.3.0
+  latlong2: 0.9.1
+  google_fonts: 8.1.0
+  google_mlkit_object_detection: 0.15.1
+  mapbox_maps_flutter: 2.24.2
+  url_launcher: 6.3.2
   # The phone's own share menu, for "More" in experience_share_sheet.dart.
-  share_plus: ^13.3.0
+  share_plus: 13.3.0
   # Direct Facebook / Instagram Stories sharing. A local plugin because its iOS
   # side needs Facebook's share kit (see packages/nexaround_share).
   nexaround_share:
     path: packages/nexaround_share
-  flutter_compass: ^0.8.1
-  sensors_plus: ^6.0.0
-  google_generative_ai: ^0.4.5
-  http: ^1.2.1
+  flutter_compass: 0.8.1
+  sensors_plus: 6.1.2
+  google_generative_ai: 0.4.7
+  http: 1.6.0
   # Social Auth
-  google_sign_in: ^7.2.0
-  sign_in_with_apple: ^6.1.1
-  flutter_markdown: ^0.7.7+1
-  flutter_appauth: ^12.0.1
-  googleapis: ^16.0.0
-  googleapis_auth: ^2.3.2
-  extension_google_sign_in_as_googleapis_auth: ^3.0.0
-  image: ^4.8.0
+  google_sign_in: 7.2.0
+  sign_in_with_apple: 6.1.4
+  flutter_markdown: 0.7.7+1
+  flutter_appauth: 12.0.1
+  googleapis: 16.0.0
+  googleapis_auth: 2.3.2
+  extension_google_sign_in_as_googleapis_auth: 3.0.0
+  image: 4.9.1
   # Analytics & Ad Attribution
-  facebook_app_events: ^0.30.5
+  facebook_app_events: 0.30.5
 
 dependency_overrides:
   latlong2:
@@ -96,14 +96,14 @@ dependency_overrides:
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^6.0.0
-  build_runner: ^2.4.0
-  freezed: ^3.2.5
-  json_serializable: ^6.7.0
-  injectable_generator: ^2.4.0
-  bloc_test: ^10.0.0
-  mocktail: ^1.0.0
-  flutter_launcher_icons: ^0.13.1
+  flutter_lints: 6.0.0
+  build_runner: 2.15.0
+  freezed: 3.2.5
+  json_serializable: 6.14.0
+  injectable_generator: 2.12.1
+  bloc_test: 10.0.0
+  mocktail: 1.0.5
+  flutter_launcher_icons: 0.13.1
 
 flutter:
   uses-material-design: true

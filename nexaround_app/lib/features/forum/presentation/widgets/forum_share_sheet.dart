@@ -11,7 +11,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../data/models/forum_topic.dart';
 
 /// The link for a shared forum topic. Opens the app directly when installed,
-/// or a web preview page on nexaround.com/f/<id>.
+/// or a web preview page on `nexaround.com/f/<id>`.
 String forumShareLink(ForumTopic topic) =>
     'https://nexaround.com/f/${topic.id}';
 
