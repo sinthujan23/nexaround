@@ -23,6 +23,7 @@ from app.models.experience import (
 
 from app.models.forum import (
     ForumCategory, ForumTopic, ForumPost, ForumLike, ForumBookmark,
+    ForumTopicView,
 )
 
 __all__ = [
@@ -36,5 +37,6 @@ __all__ = [
     "ExperienceVendor", "ExperiencePackage", "ExperienceEnquiry", "VendorUser",
     "VendorActivity",
     "ForumCategory", "ForumTopic", "ForumPost", "ForumLike", "ForumBookmark",
+    "ForumTopicView",
 ]
 

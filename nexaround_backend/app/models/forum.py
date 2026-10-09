@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 from typing import Optional, List
-from sqlalchemy import String, Text, DateTime, ForeignKey, Boolean, Integer, JSON
+from sqlalchemy import String, Text, DateTime, ForeignKey, Boolean, Integer, JSON, Index
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
@@ -98,6 +98,12 @@ class ForumTopic(Base):
         foreign_keys="[ForumPost.topic_id]",
     )
     best_answer = relationship("ForumPost", foreign_keys=[best_answer_id], post_update=True)
+    views = relationship(
+        "ForumTopicView",
+        back_populates="topic",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
 
 class ForumPost(Base):
@@ -194,3 +200,35 @@ class ForumBookmark(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
+
+
+class ForumTopicView(Base):
+    __tablename__ = "forum_topic_views"
+    __table_args__ = (
+        Index("ix_forum_topic_views_topic_user", "topic_id", "user_id"),
+        Index("ix_forum_topic_views_topic_ip", "topic_id", "ip_address"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    topic_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("forum_topics.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    ip_address: Mapped[Optional[str]] = mapped_column(
+        String(45),
+        nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+
+    topic = relationship("ForumTopic", back_populates="views")
+    user = relationship("User", lazy="selectin")

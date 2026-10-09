@@ -2,11 +2,11 @@ import uuid
 import logging
 from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
-from sqlalchemy import select, func, or_, desc, update
+from sqlalchemy import select, func, or_, desc, update, text
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.forum import ForumCategory, ForumTopic, ForumPost, ForumLike, ForumBookmark
+from app.models.forum import ForumCategory, ForumTopic, ForumPost, ForumLike, ForumBookmark, ForumTopicView
 from app.models.user import User
 from app.schemas.forum import (
     ForumCategoryResponse,
@@ -19,6 +19,32 @@ from app.schemas.forum import (
 )
 
 logger = logging.getLogger(__name__)
+
+_views_table_initialized: bool = False
+
+
+async def _ensure_views_table(db: AsyncSession) -> None:
+    global _views_table_initialized
+    if _views_table_initialized:
+        return
+    try:
+        await db.execute(text("""
+            CREATE TABLE IF NOT EXISTS forum_topic_views (
+                id UUID PRIMARY KEY,
+                topic_id UUID NOT NULL REFERENCES forum_topics(id) ON DELETE CASCADE,
+                user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+                ip_address VARCHAR(45),
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+            CREATE INDEX IF NOT EXISTS ix_forum_topic_views_topic_user ON forum_topic_views(topic_id, user_id);
+            CREATE INDEX IF NOT EXISTS ix_forum_topic_views_topic_ip ON forum_topic_views(topic_id, ip_address);
+        """))
+        await db.commit()
+        _views_table_initialized = True
+    except Exception as e:
+        logger.debug("Forum topic views table ensure skipped or already created: %s", e)
+        await db.rollback()
+        _views_table_initialized = True
 
 
 def _get_user_display_name(user: Optional[User]) -> str:
@@ -556,6 +582,7 @@ class ForumService:
         db: AsyncSession,
         topic_id: uuid.UUID,
         current_user_id: Optional[uuid.UUID] = None,
+        client_ip: Optional[str] = None,
         increment_views: bool = True,
     ) -> Optional[ForumTopicDetailResponse]:
         """Fetch full topic with its responses stream."""
@@ -575,8 +602,55 @@ class ForumService:
             return None
 
         if increment_views:
-            topic.views_count += 1
-            await db.commit()
+            try:
+                await _ensure_views_table(db)
+                should_increment = False
+                if current_user_id:
+                    check_stmt = (
+                        select(ForumTopicView.id)
+                        .where(
+                            ForumTopicView.topic_id == topic.id,
+                            ForumTopicView.user_id == current_user_id,
+                        )
+                        .limit(1)
+                    )
+                    view_res = await db.execute(check_stmt)
+                    if view_res.scalars().first() is None:
+                        db.add(
+                            ForumTopicView(
+                                topic_id=topic.id,
+                                user_id=current_user_id,
+                                ip_address=client_ip,
+                            )
+                        )
+                        should_increment = True
+                elif client_ip:
+                    check_stmt = (
+                        select(ForumTopicView.id)
+                        .where(
+                            ForumTopicView.topic_id == topic.id,
+                            ForumTopicView.user_id.is_(None),
+                            ForumTopicView.ip_address == client_ip,
+                        )
+                        .limit(1)
+                    )
+                    view_res = await db.execute(check_stmt)
+                    if view_res.scalars().first() is None:
+                        db.add(
+                            ForumTopicView(
+                                topic_id=topic.id,
+                                user_id=None,
+                                ip_address=client_ip,
+                            )
+                        )
+                        should_increment = True
+
+                if should_increment:
+                    topic.views_count += 1
+                    await db.commit()
+            except Exception as e:
+                logger.warning("Failed to record unique topic view for %s: %s", topic.id, e)
+                await db.rollback()
 
         # User interactions
         is_liked = False
@@ -870,3 +944,46 @@ class ForumService:
         topic.best_answer_id = post_id
         await db.commit()
         return {"success": True, "best_answer_id": str(post_id)}
+
+    @staticmethod
+    async def delete_topic(
+        db: AsyncSession, user: User, topic_id: uuid.UUID
+    ) -> bool:
+        """Delete a topic and associated posts/views/likes if owned by user or superuser."""
+        topic = await db.get(ForumTopic, topic_id)
+        if not topic:
+            raise ValueError("Topic not found")
+        if topic.user_id != user.id and not getattr(user, "is_superuser", False):
+            raise PermissionError("You can only delete your own topics")
+
+        cat = await db.get(ForumCategory, topic.category_id)
+        if cat:
+            cat.topics_count = max(0, cat.topics_count - 1)
+            cat.posts_count = max(0, cat.posts_count - topic.replies_count)
+
+        await db.delete(topic)
+        await db.commit()
+        return True
+
+    @staticmethod
+    async def delete_post(
+        db: AsyncSession, user: User, post_id: uuid.UUID
+    ) -> bool:
+        """Delete a reply if owned by user or superuser."""
+        post = await db.get(ForumPost, post_id)
+        if not post:
+            raise ValueError("Reply not found")
+        if post.user_id != user.id and not getattr(user, "is_superuser", False):
+            raise PermissionError("You can only delete your own replies")
+
+        topic = await db.get(ForumTopic, post.topic_id)
+        if topic:
+            topic.replies_count = max(0, topic.replies_count - 1)
+            topic.updated_at = datetime.now(timezone.utc)
+            cat = await db.get(ForumCategory, topic.category_id)
+            if cat:
+                cat.posts_count = max(0, cat.posts_count - 1)
+
+        await db.delete(post)
+        await db.commit()
+        return True

@@ -19,7 +19,11 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import HTMLResponse
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.forum import ForumTopic
 
 from app.core.config import settings
 from app.core.database import get_db
@@ -264,3 +268,75 @@ async def share_experience(package_id: str, db: AsyncSession = Depends(get_db)):
         return HTMLResponse(render_not_found_page(), status_code=404, headers=_HEADERS)
 
     return HTMLResponse(render_experience_page(package_to_card(package)), headers=_HEADERS)
+
+
+def topic_share_url(topic_id: uuid.UUID) -> str:
+    return f"{settings.PUBLIC_SITE_URL.rstrip('/')}/f/{topic_id}"
+
+
+def render_topic_page(topic: ForumTopic) -> str:
+    url = topic_share_url(topic.id)
+    category_name = topic.category.name if topic.category else "Travel Forum"
+    author_name = getattr(topic.user, "display_name", "Traveler") if topic.user else "Traveler"
+    summary = _truncate(topic.content, 220) if topic.content else "Join the discussion on nexARound!"
+
+    og_title = f"{topic.title} · nexARound Forum"
+    og_description = summary
+
+    image = topic.image_urls[0] if (topic.image_urls and len(topic.image_urls) > 0) else None
+    if image:
+        image = absolute_image_url(image)
+
+    e = lambda s: escape(s or "", quote=True)
+
+    image_meta = (
+        f'<meta property="og:image" content="{e(image)}">\n'
+        f'  <meta name="twitter:image" content="{e(image)}">'
+        if image else ""
+    )
+    photo = (
+        f'<img class="photo" src="{e(image)}" alt="">'
+        if image else '<div class="photo placeholder">💬</div>'
+    )
+
+    body = f"""
+    <article class="card">
+      {photo}
+      <div class="body">
+        <span class="pill">{e(category_name)}</span>
+        <h1>{e(topic.title)}</h1>
+        <p class="vendor">Asked by {e(author_name)}</p>
+        <p class="summary">{e(topic.content)}</p>
+      </div>
+    </article>"""
+
+    return _page(
+        title=og_title,
+        description=og_description,
+        url=url,
+        head_extra=image_meta,
+        twitter_card="summary_large_image" if image else "summary",
+        app_argument=url,
+        body=body,
+        open_path=f"forum/{topic.id}",
+    )
+
+
+@router.get("/f/{topic_id}", response_class=HTMLResponse)
+async def share_topic(topic_id: str, db: AsyncSession = Depends(get_db)):
+    try:
+        tid = uuid.UUID(topic_id)
+    except ValueError:
+        return HTMLResponse(render_not_found_page(), status_code=404, headers=_HEADERS)
+
+    stmt = (
+        select(ForumTopic)
+        .where(ForumTopic.id == tid)
+        .options(selectinload(ForumTopic.category), selectinload(ForumTopic.user))
+    )
+    res = await db.execute(stmt)
+    topic = res.scalars().first()
+    if topic is None:
+        return HTMLResponse(render_not_found_page(), status_code=404, headers=_HEADERS)
+
+    return HTMLResponse(render_topic_page(topic), headers=_HEADERS)

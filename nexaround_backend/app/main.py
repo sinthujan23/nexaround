@@ -4,7 +4,7 @@ import logging
 import uuid
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse
 from app.core.config import settings
 from app.api.v1.router import api_router
 from app.api.share import router as share_router
@@ -12,7 +12,8 @@ from app.services.google_lens_service import google_lens_service
 from app.api.deps import get_current_user
 from app.models.user import User
 
-from app.core.database import engine, Base
+from app.core.database import engine, Base, get_db
+from sqlalchemy.ext.asyncio import AsyncSession
 
 app = FastAPI(
     title="NexAround API",
@@ -198,8 +199,20 @@ async def add_security_headers(request: Request, call_next):
     return response
 # Include routes
 app.include_router(api_router)
-# Public share pages (HTML), reached at nexaround.com/e/<id> via nginx.
+# Public share pages (HTML), reached at nexaround.com/e/<id> and nexaround.com/f/<id> via nginx.
 app.include_router(share_router)
+
+
+@app.get("/f/{topic_id}", response_class=HTMLResponse, include_in_schema=False)
+async def public_topic_share(topic_id: str, db: AsyncSession = Depends(get_db)):
+    from app.api.share import share_topic
+    return await share_topic(topic_id, db)
+
+
+@app.get("/e/{package_id}", response_class=HTMLResponse, include_in_schema=False)
+async def public_experience_share(package_id: str, db: AsyncSession = Depends(get_db)):
+    from app.api.share import share_experience
+    return await share_experience(package_id, db)
 
 
 @app.get("/", tags=["Health"])

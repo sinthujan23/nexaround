@@ -1,9 +1,10 @@
 import uuid
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.rate_limiter import get_client_ip
 from app.api.deps import get_current_user, get_current_user_optional
 from app.models.user import User
 from app.schemas.forum import (
@@ -95,12 +96,17 @@ async def create_topic(
 @router.get("/topics/{topic_id}", response_model=ForumTopicDetailResponse)
 async def get_topic_detail(
     topic_id: uuid.UUID,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: Optional[User] = Depends(get_current_user_optional),
 ):
     """Get full discussion thread and replies stream."""
+    client_ip = get_client_ip(request)
     topic = await ForumService.get_topic_detail(
-        db, topic_id, current_user_id=current_user.id if current_user else None
+        db,
+        topic_id,
+        current_user_id=current_user.id if current_user else None,
+        client_ip=client_ip,
     )
     if not topic:
         raise HTTPException(status_code=404, detail="Forum topic not found")
@@ -175,3 +181,37 @@ async def set_best_answer(
         raise HTTPException(status_code=403, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.delete("/topics/{topic_id}")
+async def delete_topic(
+    topic_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Delete a discussion topic (creator or admin only)."""
+    try:
+        await ForumService.delete_topic(db, current_user, topic_id)
+        return {"status": "success", "message": "Topic deleted successfully"}
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.delete("/posts/{post_id}")
+@router.delete("/topics/{topic_id}/replies/{post_id}")
+async def delete_post(
+    post_id: uuid.UUID,
+    topic_id: Optional[uuid.UUID] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Delete a discussion reply (creator or admin only)."""
+    try:
+        await ForumService.delete_post(db, current_user, post_id)
+        return {"status": "success", "message": "Reply deleted successfully"}
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))

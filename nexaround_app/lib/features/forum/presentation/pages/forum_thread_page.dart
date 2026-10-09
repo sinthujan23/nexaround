@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../../../app/theme/app_colors.dart';
+import '../../../../core/services/cache_service.dart';
 import '../../data/datasources/forum_service.dart';
 import '../../data/models/forum_topic.dart';
 import '../../data/models/forum_post.dart';
@@ -29,6 +30,150 @@ class _ForumThreadPageState extends State<ForumThreadPage> {
   bool _isLoading = true;
   bool _isSendingReply = false;
   String? _errorMessage;
+
+  String? get _currentUserId => CacheService.getCachedUser()?.id;
+
+  bool get _isTopicAuthor =>
+      _topic != null &&
+      _currentUserId != null &&
+      _topic!.userId.isNotEmpty &&
+      _topic!.userId == _currentUserId;
+
+  bool _isPostAuthor(ForumPost post) =>
+      _currentUserId != null &&
+      post.userId.isNotEmpty &&
+      post.userId == _currentUserId;
+
+  Future<void> _confirmDeleteTopic() async {
+    if (_topic == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.delete_outline_rounded, color: Color(0xFFEF4444)),
+            SizedBox(width: 8),
+            Text(
+              'Delete Topic',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+            ),
+          ],
+        ),
+        content: const Text(
+          'Are you sure you want to delete this discussion topic? All replies and reactions will be permanently removed.',
+          style: TextStyle(fontSize: 14, color: Color(0xFF475569)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B))),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFEF4444),
+              foregroundColor: Colors.white,
+              elevation: 0,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      final success = await _service.deleteTopic(_topic!.id);
+      if (mounted) {
+        if (success) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Topic deleted successfully'),
+              backgroundColor: Color(0xFF0F172A),
+            ),
+          );
+          Navigator.of(context).pop(true);
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Failed to delete topic. Please try again.'),
+              backgroundColor: Color(0xFFEF4444),
+            ),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _confirmDeletePost(ForumPost post) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.delete_outline_rounded, color: Color(0xFFEF4444)),
+            SizedBox(width: 8),
+            Text(
+              'Delete Reply',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+            ),
+          ],
+        ),
+        content: const Text(
+          'Are you sure you want to delete your reply?',
+          style: TextStyle(fontSize: 14, color: Color(0xFF475569)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B))),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFEF4444),
+              foregroundColor: Colors.white,
+              elevation: 0,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      final success = await _service.deletePost(post.id);
+      if (mounted) {
+        if (success) {
+          setState(() {
+            if (_topic != null) {
+              final updatedPosts = _topic!.posts.where((p) => p.id != post.id).toList();
+              _topic = _topic!.copyWith(
+                posts: updatedPosts,
+                repliesCount: (_topic!.repliesCount - 1).clamp(0, 99999),
+              );
+            }
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Reply deleted'),
+              backgroundColor: Color(0xFF0F172A),
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Failed to delete reply. Please try again.'),
+              backgroundColor: Color(0xFFEF4444),
+            ),
+          );
+        }
+      }
+    }
+  }
 
   @override
   void initState() {
@@ -238,23 +383,20 @@ class _ForumThreadPageState extends State<ForumThreadPage> {
           ),
         ),
         actions: [
-          IconButton(
-            icon: Icon(
-              topic?.isBookmarked == true
-                  ? Icons.bookmark_rounded
-                  : Icons.bookmark_border_rounded,
-              color: topic?.isBookmarked == true
-                  ? AppColors.brandGreen
-                  : const Color(0xFF64748B),
+          if (_isTopicAuthor)
+            IconButton(
+              icon: const Icon(Icons.delete_outline_rounded, color: Color(0xFFEF4444)),
+              tooltip: 'Delete topic',
+              onPressed: _confirmDeleteTopic,
             ),
-            onPressed: _toggleBookmark,
-          ),
           IconButton(
             icon: const Icon(Icons.share_outlined, color: Color(0xFF64748B)),
+            tooltip: 'Share discussion',
             onPressed: () {
               if (topic != null) {
+                final topicUrl = 'https://nexaround.com/f/${topic.id}';
                 SharePlus.instance.share(ShareParams(
-                  text: '${topic.title}\n\nJoin the discussion on NexAround!',
+                  text: '${topic.title}\n\nJoin the discussion on NexAround: $topicUrl',
                   subject: topic.title,
                 ));
               }
@@ -468,6 +610,17 @@ class _ForumThreadPageState extends State<ForumThreadPage> {
                   ),
                 ),
               ),
+              if (_isTopicAuthor) ...[
+                const SizedBox(width: 8),
+                IconButton(
+                  icon: const Icon(Icons.delete_outline_rounded, size: 20, color: Color(0xFFEF4444)),
+                  tooltip: 'Delete topic',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  splashRadius: 18,
+                  onPressed: _confirmDeleteTopic,
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 14),
@@ -683,6 +836,15 @@ class _ForumThreadPageState extends State<ForumThreadPage> {
                   ],
                 ),
               ),
+              if (_isPostAuthor(post))
+                IconButton(
+                  icon: const Icon(Icons.delete_outline_rounded, size: 18, color: Color(0xFF94A3B8)),
+                  tooltip: 'Delete reply',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  splashRadius: 18,
+                  onPressed: () => _confirmDeletePost(post),
+                ),
             ],
           ),
           const SizedBox(height: 10),

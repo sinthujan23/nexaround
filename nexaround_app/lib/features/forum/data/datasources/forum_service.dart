@@ -240,4 +240,27 @@ class ForumService {
       return false;
     }
   }
+
+  Future<bool> deleteTopic(String topicId) async {
+    try {
+      final response = await _dio.delete(ApiConstants.forumTopicDelete(topicId));
+      if (response.statusCode == 200 || response.statusCode == 204) {
+        _cachedTopics.remove(topicId);
+        return true;
+      }
+    } catch (e) {
+      debugPrint('⚠️ ForumService.deleteTopic error ($e).');
+    }
+    return false;
+  }
+
+  Future<bool> deletePost(String postId) async {
+    try {
+      final response = await _dio.delete(ApiConstants.forumPostDelete(postId));
+      return response.statusCode == 200 || response.statusCode == 204;
+    } catch (e) {
+      debugPrint('⚠️ ForumService.deletePost error ($e).');
+    }
+    return false;
+  }
 }

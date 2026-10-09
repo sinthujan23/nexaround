@@ -65,6 +65,8 @@ class ApiConstants {
   static String forumPostLike(String id) => '$apiVersion/forums/posts/$id/like';
   static String forumTopicBookmark(String id) => '$apiVersion/forums/topics/$id/bookmark';
   static String forumBestAnswer(String topicId, String postId) => '$apiVersion/forums/topics/$topicId/best-answer/$postId';
+  static String forumPostDelete(String id) => '$apiVersion/forums/posts/$id';
+  static String forumTopicDelete(String id) => '$apiVersion/forums/topics/$id';
   
   // Mapbox Configuration
   static String mapboxAccessToken = '';
