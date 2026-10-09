@@ -1,7 +1,7 @@
 // FAQ Knowledge Base and Intent Search Engine for NexAround & Neva AI Concierge
 
 export const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.nexaround.app&pli=1';
-export const APP_STORE_URL = 'https://apps.apple.com/lk/app/nexaround/id6806252363';
+export const APP_STORE_URL = 'https://apps.apple.com/app/nexaround/id6806252363';
 
 export const FAQ_CATEGORIES = [
   { id: 'all', label: 'All Topics' },

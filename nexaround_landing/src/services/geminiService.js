@@ -101,7 +101,7 @@ export async function askGemini(prompt, conversationHistory = []) {
         const actionLinks = [];
         const lowerText = candidateText.toLowerCase();
         if (lowerText.includes('app store') || lowerText.includes('ios') || lowerText.includes('iphone') || lowerText.includes('apple')) {
-          actionLinks.push({ text: 'Apple App Store', url: 'https://apps.apple.com/lk/app/nexaround/id6806252363' });
+          actionLinks.push({ text: 'Apple App Store', url: 'https://apps.apple.com/app/nexaround/id6806252363' });
         }
         if (lowerText.includes('google play') || lowerText.includes('play store') || lowerText.includes('android')) {
           actionLinks.push({ text: 'Google Play Store', url: 'https://play.google.com/store/apps/details?id=com.nexaround.app&pli=1' });

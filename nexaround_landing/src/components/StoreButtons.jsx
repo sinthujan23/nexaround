@@ -1,7 +1,7 @@
 import React from 'react';
 
 export const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.nexaround.app&pli=1';
-export const APP_STORE_URL = 'https://apps.apple.com/lk/app/nexaround/id6806252363';
+export const APP_STORE_URL = 'https://apps.apple.com/app/nexaround/id6806252363';
 
 export default function StoreButtons({ 
   theme = 'dark',        // 'dark' (black pill for light bg), 'light' (white pill), 'glass'/'onDark' (for dark footer/hero)
