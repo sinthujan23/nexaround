@@ -164,14 +164,22 @@ def _page(
       var btn = document.getElementById('open-app');
       var ua = navigator.userAgent || '';
       var fallback = encodeURIComponent('{PLAY_STORE_URL}');
+      var targetUrl = '';
       if (/android/i.test(ua)) {{
-        btn.href = 'intent://{e(_host())}/{open_path}#Intent;scheme=https;package={ANDROID_PACKAGE};S.browser_fallback_url=' + fallback + ';end';
+        targetUrl = 'intent://{e(_host())}/{open_path}#Intent;scheme=https;package={ANDROID_PACKAGE};S.browser_fallback_url=' + fallback + ';end';
+        btn.href = targetUrl;
         btn.hidden = false;
       }} else if (/iphone|ipad|ipod/i.test(ua)) {{
         // Empty host (three slashes): Flutter routes by the URL's path, and
         // with nexaround://e/<id> the "e" would be read as the host.
-        btn.href = 'nexaround:///{open_path}';
+        targetUrl = 'nexaround:///{open_path}';
+        btn.href = targetUrl;
         btn.hidden = false;
+      }}
+      if (targetUrl) {{
+        try {{
+          window.location.replace(targetUrl);
+        }} catch (_) {{}}
       }}
     }})();
   </script>"""
