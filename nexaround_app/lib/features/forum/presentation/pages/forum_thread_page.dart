@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:share_plus/share_plus.dart';
 import '../../../../app/theme/app_colors.dart';
 import '../../../../core/services/cache_service.dart';
 import '../../data/datasources/forum_service.dart';
 import '../../data/models/forum_topic.dart';
 import '../../data/models/forum_post.dart';
+import '../widgets/forum_share_sheet.dart';
 
 class ForumThreadPage extends StatefulWidget {
   final String topicId;
@@ -383,6 +383,18 @@ class _ForumThreadPageState extends State<ForumThreadPage> {
           ),
         ),
         actions: [
+          IconButton(
+            icon: Icon(
+              topic?.isBookmarked == true
+                  ? Icons.bookmark_rounded
+                  : Icons.bookmark_border_rounded,
+              color: topic?.isBookmarked == true
+                  ? AppColors.brandGreen
+                  : const Color(0xFF64748B),
+            ),
+            tooltip: 'Bookmark discussion',
+            onPressed: _toggleBookmark,
+          ),
           if (_isTopicAuthor)
             IconButton(
               icon: const Icon(Icons.delete_outline_rounded, color: Color(0xFFEF4444)),
@@ -394,11 +406,7 @@ class _ForumThreadPageState extends State<ForumThreadPage> {
             tooltip: 'Share discussion',
             onPressed: () {
               if (topic != null) {
-                final topicUrl = 'https://nexaround.com/f/${topic.id}';
-                SharePlus.instance.share(ShareParams(
-                  text: '${topic.title}\n\nJoin the discussion on NexAround: $topicUrl',
-                  subject: topic.title,
-                ));
+                showForumShareSheet(context, topic);
               }
             },
           ),
@@ -610,17 +618,6 @@ class _ForumThreadPageState extends State<ForumThreadPage> {
                   ),
                 ),
               ),
-              if (_isTopicAuthor) ...[
-                const SizedBox(width: 8),
-                IconButton(
-                  icon: const Icon(Icons.delete_outline_rounded, size: 20, color: Color(0xFFEF4444)),
-                  tooltip: 'Delete topic',
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                  splashRadius: 18,
-                  onPressed: _confirmDeleteTopic,
-                ),
-              ],
             ],
           ),
           const SizedBox(height: 14),

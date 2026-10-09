@@ -146,6 +146,7 @@ def render_not_found_page() -> str:
 
 def _page(
     *, title, description, url, head_extra, twitter_card, app_argument, body, open_path,
+    note: str = "Get the nexARound app to see details, contact the operator and send a booking request.",
 ) -> str:
     e = lambda s: escape(s or "", quote=True)  # noqa: E731
     smart_banner = f"app-id={APP_STORE_ID}" + (f", app-argument={app_argument}" if app_argument else "")
@@ -235,7 +236,7 @@ def _page(
     <a class="btn store" href="{PLAY_STORE_URL}">Get it on Google Play</a>
     <a class="btn store" href="{APP_STORE_URL}">Download on the App Store</a>
   </div>
-  <p class="note">Get the nexARound app to see details, contact the operator and send a booking request.</p>
+  <p class="note">{e(note)}</p>
   {open_script}
 </body>
 </html>"""
@@ -318,7 +319,30 @@ def render_topic_page(topic: ForumTopic) -> str:
         twitter_card="summary_large_image" if image else "summary",
         app_argument=url,
         body=body,
-        open_path=f"forum/{topic.id}",
+        open_path=f"f/{topic.id}",
+        note="Get the nexARound app to read replies, join discussions, and share travel advice.",
+    )
+
+
+def render_topic_not_found_page() -> str:
+    body = """
+    <article class="card">
+      <div class="photo placeholder">💬</div>
+      <div class="body">
+        <h1>This discussion is no longer available</h1>
+        <p class="summary">The topic may have been removed or deleted. Explore more travel discussions and tips in the nexARound app.</p>
+      </div>
+    </article>"""
+    return _page(
+        title="Discussion not available · nexARound Forum",
+        description="Join travel discussions and connect with locals on nexARound.",
+        url=settings.PUBLIC_SITE_URL,
+        head_extra="",
+        twitter_card="summary",
+        app_argument=None,
+        body=body,
+        open_path=None,
+        note="Get the nexARound app to browse community forums and travel advice.",
     )
 
 
@@ -327,7 +351,7 @@ async def share_topic(topic_id: str, db: AsyncSession = Depends(get_db)):
     try:
         tid = uuid.UUID(topic_id)
     except ValueError:
-        return HTMLResponse(render_not_found_page(), status_code=404, headers=_HEADERS)
+        return HTMLResponse(render_topic_not_found_page(), status_code=404, headers=_HEADERS)
 
     stmt = (
         select(ForumTopic)
@@ -337,6 +361,6 @@ async def share_topic(topic_id: str, db: AsyncSession = Depends(get_db)):
     res = await db.execute(stmt)
     topic = res.scalars().first()
     if topic is None:
-        return HTMLResponse(render_not_found_page(), status_code=404, headers=_HEADERS)
+        return HTMLResponse(render_topic_not_found_page(), status_code=404, headers=_HEADERS)
 
     return HTMLResponse(render_topic_page(topic), headers=_HEADERS)

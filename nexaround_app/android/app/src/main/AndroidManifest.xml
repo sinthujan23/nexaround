@@ -39,6 +39,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="https" android:host="nexaround.com" android:pathPrefix="/e/" />
+                <data android:scheme="https" android:host="nexaround.com" android:pathPrefix="/f/" />
             </intent-filter>
             <!-- Hand incoming links to go_router. Set explicitly: the default
                  has changed between Flutter releases. -->

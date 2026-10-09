@@ -165,6 +165,37 @@ server {
         proxy_send_timeout 300s;
     }
 }
+
+# nexaround.com public website & share links (/e/<id> and /f/<id>)
+server {
+    listen 443 ssl;
+    server_name nexaround.com www.nexaround.com;
+
+    root /var/www/nexaround/nexaround_landing/dist;
+    index index.html;
+
+    # Shared experience preview pages
+    location /e/ {
+        proxy_pass http://127.0.0.1:8010;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Shared forum discussion preview pages
+    location /f/ {
+        proxy_pass http://127.0.0.1:8010;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}
 ```
 
 ---

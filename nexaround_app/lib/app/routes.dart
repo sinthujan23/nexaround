@@ -12,17 +12,26 @@ import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
 import 'package:nexaround_app/core/utils/go_router_refresh_stream.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/features/experiences/presentation/pages/experience_link_page.dart';
+import 'package:nexaround_app/features/forum/presentation/pages/forum_link_page.dart';
 
 class AppRouter {
   /// A shared package (nexaround.com/e/<id>) opened while signed out. Held
   /// until sign-in completes, then opened over Home. In memory only: if the
   /// app is killed during sign-in, the user lands on Home as usual.
   static String? _pendingPackageId;
+  static String? _pendingTopicId;
 
   /// The package id in /e/<id> or /home/e/<id>.
   static String? _sharedPackageId(GoRouterState state) {
     final segments = state.uri.pathSegments;
     final i = segments.indexOf('e');
+    return (i >= 0 && i + 1 < segments.length) ? segments[i + 1] : null;
+  }
+
+  /// The topic id in /f/<id> or /home/f/<id>.
+  static String? _sharedTopicId(GoRouterState state) {
+    final segments = state.uri.pathSegments;
+    final i = segments.indexOf('f');
     return (i >= 0 && i + 1 < segments.length) ? segments[i + 1] : null;
   }
 
@@ -49,6 +58,16 @@ class AppRouter {
           return CacheService.isFirstTime() ? '/onboarding' : '/login';
         }
 
+        // A shared forum topic link, https://nexaround.com/f/<id>, which Android
+        // App Links and iOS Universal Links hand to the router as /f/<id>.
+        if (location.startsWith('/f/')) {
+          if (CacheService.isLoggedIn() && authState is! AuthUnauthenticated) {
+            return '/home$location';
+          }
+          _pendingTopicId = _sharedTopicId(state);
+          return CacheService.isFirstTime() ? '/onboarding' : '/login';
+        }
+
         // Just signed in with a shared package waiting: open it over Home.
         // The OTP and social sign-in screens are pushed on top of these
         // routes, so the router still reports login, register or onboarding.
@@ -60,6 +79,17 @@ class AppRouter {
           final id = _pendingPackageId;
           _pendingPackageId = null;
           return '/home/e/$id';
+        }
+
+        // Just signed in with a shared forum topic waiting: open it over Home.
+        if (authState is AuthAuthenticated &&
+            _pendingTopicId != null &&
+            (location == '/login' ||
+                location == '/register' ||
+                location == '/onboarding')) {
+          final id = _pendingTopicId;
+          _pendingTopicId = null;
+          return '/home/f/$id';
         }
 
         // Define public routes that don't require authentication
@@ -75,6 +105,9 @@ class AppRouter {
           // once the user signs back in.
           if (location.startsWith('/home/e/')) {
             _pendingPackageId = _sharedPackageId(state);
+          }
+          if (location.startsWith('/home/f/')) {
+            _pendingTopicId = _sharedTopicId(state);
           }
           return '/login';
         }
@@ -136,6 +169,11 @@ class AppRouter {
               builder: (context, state) =>
                   ExperienceLinkPage(packageId: state.pathParameters['id']!),
             ),
+            GoRoute(
+              path: 'f/:id',
+              builder: (context, state) =>
+                  ForumLinkPage(topicId: state.pathParameters['id']!),
+            ),
           ],
         ),
         // Matched so the redirect above can act on /e/<id>; it always sends
@@ -145,6 +183,13 @@ class AppRouter {
           path: '/e/:id',
           builder: (context, state) => ExperienceLinkPage(
             packageId: state.pathParameters['id']!,
+            standalone: true,
+          ),
+        ),
+        GoRoute(
+          path: '/f/:id',
+          builder: (context, state) => ForumLinkPage(
+            topicId: state.pathParameters['id']!,
             standalone: true,
           ),
         ),

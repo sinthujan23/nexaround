@@ -411,7 +411,7 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
           markerId: const MarkerId('dest'),
           position: LatLng(_destLat, _destLng),
           icon: BitmapDescriptor.defaultMarkerWithHue(
-              BitmapDescriptor.hueViolet),
+              BitmapDescriptor.hueRed),
           infoWindow: InfoWindow(
             title: _destName ?? 'Destination',
             snippet: 'Tap to navigate',
@@ -451,14 +451,28 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
 
         setState(() {
           _polylines.clear();
+          // Dark blue casing underneath for crisp Google Maps border
+          if (_travelMode != 'walking') {
+            _polylines.add(
+              Polyline(
+                polylineId: const PolylineId('route_casing'),
+                points: points,
+                color: const Color(0xFF0F2B9C),
+                width: 9,
+                jointType: JointType.round,
+                startCap: Cap.roundCap,
+                endCap: Cap.roundCap,
+              ),
+            );
+          }
           _polylines.add(
             Polyline(
               polylineId: const PolylineId('route'),
               points: points,
-              color: const Color(0xFF4285F4),
-              width: _travelMode == 'walking' ? 6 : 5,
+              color: const Color(0xFF1A3CD8),
+              width: _travelMode == 'walking' ? 6 : 7,
               patterns: _travelMode == 'walking'
-                  ? [PatternItem.dot, PatternItem.gap(12)]
+                  ? [PatternItem.dot, PatternItem.gap(10)]
                   : [],
               jointType: JointType.round,
               startCap: Cap.roundCap,
@@ -782,11 +796,11 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A73E8),
+        color: const Color(0xFF1A3CD8),
         borderRadius: BorderRadius.circular(18),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF1A73E8).withValues(alpha: 0.4),
+            color: const Color(0xFF1A3CD8).withValues(alpha: 0.4),
             blurRadius: 16,
             offset: const Offset(0, 6),
           ),
@@ -1190,7 +1204,7 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
                       final item = _suggestions[index];
                       return ListTile(
                         dense: true,
-                        leading: const Icon(Icons.location_on_rounded, color: Color(0xFF4285F4), size: 16),
+                        leading: const Icon(Icons.location_on_rounded, color: Color(0xFFEA4335), size: 16),
                         title: Text(
                           item['main_text'] ?? '',
                           style: const TextStyle(color: Color(0xFF202124), fontWeight: FontWeight.bold, fontSize: 13),
@@ -1279,10 +1293,10 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
                 height: 40,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: const Color(0xFF4285F4).withValues(alpha: 0.12),
+                  color: const Color(0xFFEA4335).withValues(alpha: 0.12),
                 ),
                 child: const Icon(Icons.place_rounded,
-                    color: Color(0xFF4285F4), size: 22),
+                    color: Color(0xFFEA4335), size: 22),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -1303,12 +1317,12 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
                     Row(
                       children: [
                         const Icon(Icons.access_time_rounded,
-                            size: 13, color: Color(0xFF4285F4)),
+                            size: 13, color: Color(0xFF1A3CD8)),
                         const SizedBox(width: 4),
                         Text(
                           _duration,
                           style: const TextStyle(
-                              color: Color(0xFF4285F4),
+                              color: Color(0xFF1A3CD8),
                               fontSize: 13,
                               fontWeight: FontWeight.w700),
                         ),
@@ -1380,13 +1394,13 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(16),
                 gradient: const LinearGradient(
-                  colors: [Color(0xFF4285F4), Color(0xFF1A73E8)],
+                  colors: [Color(0xFF1A3CD8), Color(0xFF1531B8)],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: const Color(0xFF4285F4).withValues(alpha: 0.35),
+                    color: const Color(0xFF1A3CD8).withValues(alpha: 0.35),
                     blurRadius: 16,
                     offset: const Offset(0, 6),
                   ),
@@ -1424,7 +1438,7 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
           duration: const Duration(milliseconds: 200),
           padding: const EdgeInsets.symmetric(vertical: 10),
           decoration: BoxDecoration(
-            color: selected ? const Color(0xFF4285F4) : Colors.transparent,
+            color: selected ? const Color(0xFF1A3CD8) : Colors.transparent,
             borderRadius: BorderRadius.circular(10),
           ),
           child: Row(

@@ -8,7 +8,10 @@ import uuid
 
 from app.api.share import (
     absolute_image_url, render_experience_page, render_not_found_page, share_url,
+    topic_share_url, render_topic_page, render_topic_not_found_page,
 )
+from app.models.forum import ForumTopic, ForumCategory
+from app.models.user import User
 from app.schemas.experience import ExperiencePackageCard
 
 
@@ -79,3 +82,34 @@ def test_not_found_page_offers_the_stores_but_no_open_button_script():
     assert "no longer available" in html
     assert "play.google.com/store/apps/details?id=com.nexaround.app" in html
     assert "intent://" not in html
+
+
+def test_topic_share_url_and_page():
+    tid = uuid.UUID("b0ca06c4-3046-4388-8ab7-cf7bfe3a5cac")
+    assert topic_share_url(tid) == "https://nexaround.com/f/b0ca06c4-3046-4388-8ab7-cf7bfe3a5cac"
+
+    cat = ForumCategory(name="Air Travel & Flights", slug="air-travel")
+    user = User(display_name="Sinthujan")
+    topic = ForumTopic(
+        id=tid,
+        title="Best way to travel around Sri Lanka?",
+        content="Looking for tips on trains vs buses.",
+        category=cat,
+        user=user,
+        image_urls=["https://example.com/sl.jpg"],
+    )
+
+    html = render_topic_page(topic)
+    assert '<meta property="og:title" content="Best way to travel around Sri Lanka? · nexARound Forum">' in html
+    assert 'https://example.com/sl.jpg' in html
+    assert "intent://nexaround.com/f/b0ca06c4-3046-4388-8ab7-cf7bfe3a5cac#Intent;scheme=https;package=com.nexaround.app" in html
+    assert "nexaround:///f/b0ca06c4-3046-4388-8ab7-cf7bfe3a5cac" in html
+    assert "Asked by Sinthujan" in html
+    assert "Air Travel &amp; Flights" in html
+
+
+def test_topic_not_found_page():
+    html = render_topic_not_found_page()
+    assert "This discussion is no longer available" in html
+    assert "play.google.com/store/apps/details?id=com.nexaround.app" in html
+

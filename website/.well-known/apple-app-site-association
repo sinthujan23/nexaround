@@ -5,9 +5,10 @@
       {
         "appID": "R9YFWBF946.com.nexaround.app",
         "appIDs": ["R9YFWBF946.com.nexaround.app"],
-        "paths": ["/e/*"],
+        "paths": ["/e/*", "/f/*"],
         "components": [
-          { "/": "/e/*", "comment": "Shared experience packages" }
+          { "/": "/e/*", "comment": "Shared experience packages" },
+          { "/": "/f/*", "comment": "Shared forum topics" }
         ]
       }
     ]
