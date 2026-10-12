@@ -1,23 +1,16 @@
 import { useApi } from '../api';
 import { DollarIcon, UsersIcon, TrendingDownIcon, TrendingUpIcon, RefreshIcon } from '../components/Icons';
+import { Card, StatCard, Badge, PageLoading, PageError } from '../components/Kit';
 
 export default function Payments() {
   const { data, loading, error } = useApi('/admin/payments');
 
   if (loading) {
-    return (
-      <div style={{ textAlign: 'center', padding: '50px', color: 'var(--text-secondary)' }}>
-        <span style={{ fontSize: '18px' }}>Accessing ledger... Loading financial metrics...</span>
-      </div>
-    );
+    return <PageLoading>Accessing ledger... Loading financial metrics...</PageLoading>;
   }
 
   if (error) {
-    return (
-      <div className="login-error" style={{ margin: '20px' }}>
-        Failed to fetch payment details: {error}
-      </div>
-    );
+    return <PageError>Failed to fetch payment details: {error}</PageError>;
   }
 
   const { mrr, subscribers_count, churn_rate, arpu, plans, transactions } = data;
@@ -28,54 +21,19 @@ export default function Payments() {
   return (
     <div>
       <div className="stats-grid">
-        <div className="stat-card">
-          <div className="stat-icon">
-            <DollarIcon size={24} style={{ color: 'var(--accent)' }} />
-          </div>
-          <div className="stat-value">${mrr.toLocaleString()}</div>
-          <div className="stat-label">Monthly Revenue (MRR)</div>
-          <span className="stat-change up" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-            <TrendingUpIcon size={12} /> 5.2% vs last month
-          </span>
-        </div>
-        <div className="stat-card">
-          <div className="stat-icon">
-            <UsersIcon size={24} style={{ color: 'var(--accent)' }} />
-          </div>
-          <div className="stat-value">{subscribers_count.toLocaleString()}</div>
-          <div className="stat-label">Active Subscribers</div>
-          <span className="stat-change up" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-            <TrendingUpIcon size={12} /> Pro & Annual users
-          </span>
-        </div>
-        <div className="stat-card">
-          <div className="stat-icon">
-            <TrendingDownIcon size={24} style={{ color: 'var(--danger)' }} />
-          </div>
-          <div className="stat-value">{churn_rate}</div>
-          <div className="stat-label">Churn Rate</div>
-          <span className="stat-change up" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-            <TrendingDownIcon size={12} /> Stable retention
-          </span>
-        </div>
-        <div className="stat-card">
-          <div className="stat-icon">
-            <RefreshIcon size={24} style={{ color: 'var(--accent)' }} />
-          </div>
-          <div className="stat-value">{arpu}</div>
-          <div className="stat-label">Avg Revenue Per User</div>
-          <span className="stat-change up" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-            <TrendingUpIcon size={12} /> Active ARPU
-          </span>
-        </div>
+        <StatCard icon={DollarIcon} value={`$${mrr.toLocaleString()}`} label="Monthly Revenue (MRR)"
+          changeIcon={TrendingUpIcon} change="5.2% vs last month" />
+        <StatCard icon={UsersIcon} value={subscribers_count.toLocaleString()} label="Active Subscribers"
+          changeIcon={TrendingUpIcon} change="Pro & Annual users" />
+        <StatCard icon={TrendingDownIcon} iconColor="var(--danger)" value={churn_rate} label="Churn Rate"
+          changeIcon={TrendingDownIcon} change="Stable retention" />
+        <StatCard icon={RefreshIcon} value={arpu} label="Avg Revenue Per User"
+          changeIcon={TrendingUpIcon} change="Active ARPU" />
       </div>
 
       <div className="two-col">
         {/* Subscription Plans */}
-        <div className="card">
-          <div className="card-header">
-            <div className="card-title">Subscription Plans</div>
-          </div>
+        <Card title="Subscription Plans">
           {plans.map(p => (
             <div key={p.name} style={{ marginBottom: '16px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
@@ -91,14 +49,10 @@ export default function Payments() {
               </div>
             </div>
           ))}
-        </div>
+        </Card>
 
         {/* Revenue MRR Chart */}
-        <div className="card">
-          <div className="card-header">
-            <div className="card-title">Revenue Trend</div>
-            <span className="badge badge-green">+5.2%</span>
-          </div>
+        <Card title="Revenue Trend" action={<Badge tone="green">+5.2%</Badge>}>
           <div className="chart-wrap">
             {[2800, 3200, 3500, 3800, 4100, mrr].map((v, i) => (
               <div className="chart-bar-col" key={i}>
@@ -107,15 +61,14 @@ export default function Payments() {
               </div>
             ))}
           </div>
-        </div>
+        </Card>
       </div>
 
       {/* Transactions */}
-      <div className="card">
-        <div className="card-header">
-          <div className="card-title">Recent Transactions</div>
-          <button className="btn btn-ghost" style={{ fontSize: '12px', padding: '6px 12px' }} onClick={() => alert('Exporting transaction logs...')}>Export CSV</button>
-        </div>
+      <Card
+        title="Recent Transactions"
+        action={<button className="btn btn-ghost" style={{ fontSize: '12px', padding: '6px 12px' }} onClick={() => alert('Exporting transaction logs...')}>Export CSV</button>}
+      >
         <div className="table-wrap">
           <table>
             <thead>
@@ -138,21 +91,18 @@ export default function Payments() {
                       <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-primary)' }}>{t.user}</span>
                     </div>
                   </td>
-                  <td><span className="badge badge-blue">{t.plan}</span></td>
+                  <td><Badge tone="blue">{t.plan}</Badge></td>
                   <td style={{ fontWeight: 700, color: 'var(--text-primary)' }}>${t.amount.toFixed(2)}</td>
                   <td style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>{t.date}</td>
                   <td>
-                    <span className={`badge ${
-                      t.status === 'Completed' ? 'badge-green' :
-                      t.status === 'Failed' ? 'badge-red' : 'badge-yellow'
-                    }`}>{t.status}</span>
+                    <Badge tone={t.status === 'Completed' ? 'green' : t.status === 'Failed' ? 'red' : 'yellow'}>{t.status}</Badge>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-      </div>
+      </Card>
     </div>
   );
 }
