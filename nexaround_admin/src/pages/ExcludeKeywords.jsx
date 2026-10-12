@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { PlusIcon, TrashIcon } from '../components/Icons';
+import { Card } from '../components/Kit';
 import { useApi, apiPost, apiDelete } from '../api';
 
 export default function ExcludeKeywords() {
@@ -38,7 +39,7 @@ export default function ExcludeKeywords() {
 
   return (
     <div>
-      <div className="card" style={{ padding: '16px', marginBottom: '16px' }}>
+      <Card style={{ padding: '16px', marginBottom: '16px' }}>
         <p style={{ margin: '0 0 16px 0', color: 'var(--text-secondary)', fontSize: '13px' }}>
           A place whose name matches a keyword here (whole word, e.g. "pond" matches
           "Pond View" but not "Pondicherry Cafe") is hidden from the Around You cards.
@@ -57,7 +58,7 @@ export default function ExcludeKeywords() {
             <PlusIcon size={16} /> Add Keyword
           </button>
         </form>
-      </div>
+      </Card>
 
       {error && (
         <div className="login-error" style={{ margin: '0 0 16px 0' }}>
@@ -65,7 +66,7 @@ export default function ExcludeKeywords() {
         </div>
       )}
 
-      <div className="card">
+      <Card>
         <div className="table-wrap">
           <table>
             <thead>
@@ -103,7 +104,7 @@ export default function ExcludeKeywords() {
             </tbody>
           </table>
         </div>
-      </div>
+      </Card>
     </div>
   );
 }
