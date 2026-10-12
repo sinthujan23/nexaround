@@ -4,6 +4,7 @@ import {
   CompassIcon, DollarIcon, TrendingUpIcon, TrendingDownIcon,
   RefreshIcon, ClockIcon, SearchIcon,
 } from '../components/Icons';
+import { Card, StatCard, Badge, EmptyState } from '../components/Kit';
 
 /**
  * API Usage — where every third-party call went, and what it cost.
@@ -51,7 +52,7 @@ function pctDelta(now, prev) {
  *  and adding a dependency for them would be the more expensive choice. */
 function StackedBars({ points, height = 180 }) {
   if (!points || points.length === 0) {
-    return <div className="empty-state" style={{ padding: '32px 0' }}>No activity in this window.</div>;
+    return <EmptyState style={{ padding: '32px 0' }}>No activity in this window.</EmptyState>;
   }
   const buckets = [...new Set(points.map((p) => p.t))].sort();
   const keys = [...new Set(points.map((p) => p.key))];
@@ -346,17 +347,16 @@ export default function ApiUsage() {
       {openAlerts.length > 0 && (
         <div style={{ display: 'grid', gap: '10px', marginBottom: '20px' }}>
           {openAlerts.map((a) => (
-            <div
+            <Card
               key={a.id}
-              className="card"
               style={{
                 borderLeft: `4px solid ${a.severity === 'critical' ? 'var(--danger)' : 'var(--warning)'}`,
                 display: 'flex', alignItems: 'center', gap: '14px', padding: '16px 20px',
               }}
             >
-              <span className={`badge ${a.severity === 'critical' ? 'badge-red' : 'badge-yellow'}`}>
+              <Badge tone={a.severity === 'critical' ? 'red' : 'yellow'}>
                 {a.severity}
-              </span>
+              </Badge>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: '13.5px', fontWeight: 600 }}>{a.message}</div>
                 <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', marginTop: '2px' }}>
@@ -366,21 +366,22 @@ export default function ApiUsage() {
               <button className="btn btn-ghost" style={{ padding: '6px 12px', fontSize: '12px' }} onClick={() => ackAlert(a.id)}>
                 Dismiss
               </button>
-            </div>
+            </Card>
           ))}
         </div>
       )}
 
       {/* ── Billing reconciliation ───────────────────────────────── */}
-      <div className="card" style={{ marginBottom: '20px',
-        borderLeft: `4px solid ${recon?.configured ? 'var(--accent)' : 'var(--danger)'}` }}>
-        <div className="card-header">
-          <div className="card-title">Estimated cost vs actual bill</div>
+      <Card
+        title="Estimated cost vs actual bill"
+        style={{ marginBottom: '20px', borderLeft: `4px solid ${recon?.configured ? 'var(--accent)' : 'var(--danger)'}` }}
+        action={
           <label className="btn btn-ghost" style={{ padding: '8px 14px', cursor: 'pointer', margin: 0 }}>
             {uploading ? 'Importing…' : 'Import billing CSV'}
             <input type="file" accept=".csv" onChange={uploadBilling} style={{ display: 'none' }} />
           </label>
-        </div>
+        }
+      >
 
         {!recon?.configured ? (
           <>
@@ -417,9 +418,9 @@ export default function ApiUsage() {
                       <td style={{ fontWeight: 700 }}>{usd(o.actual_gross_usd)}</td>
                       <td>
                         {o.ratio == null ? '—' : (
-                          <span className={`badge ${o.ratio > 2 || o.ratio < 0.5 ? 'badge-red' : 'badge-green'}`}>
+                          <Badge tone={o.ratio > 2 || o.ratio < 0.5 ? 'red' : 'green'}>
                             {o.ratio}×
-                          </span>
+                          </Badge>
                         )}
                       </td>
                       <td style={{ fontFamily: 'ui-monospace, Menlo, monospace', fontSize: '11.5px' }}>
@@ -432,19 +433,18 @@ export default function ApiUsage() {
             </div>
           </>
         )}
-      </div>
+      </Card>
 
       {/* ── Data coverage ────────────────────────────────────────── */}
       {coverage.some((c) => c.ingest === 'legacy' && c.rows > 0) && (
-        <div className="card" style={{ marginBottom: '20px', borderLeft: '4px solid var(--warning)' }}>
-          <div className="card-header"><div className="card-title">What this data can tell you</div></div>
+        <Card title="What this data can tell you" style={{ marginBottom: '20px', borderLeft: '4px solid var(--warning)' }}>
           <div className="table-wrap">
             <table>
               <thead><tr><th>Source</th><th>Rows</th><th>Period</th><th>Cost basis</th><th>Cache tier</th><th>Tokens</th><th>Dedup</th></tr></thead>
               <tbody>
                 {coverage.map((c) => (
                   <tr key={c.ingest}>
-                    <td><span className={`badge ${c.ingest === 'live' ? 'badge-green' : 'badge-yellow'}`}>{c.ingest}</span></td>
+                    <td><Badge tone={c.ingest === 'live' ? 'green' : 'yellow'}>{c.ingest}</Badge></td>
                     <td>{num(c.rows)}</td>
                     <td style={{ fontSize: '12px' }}>
                       {c.lo ? new Date(c.lo).toLocaleDateString() : '—'} → {c.hi ? new Date(c.hi).toLocaleDateString() : '—'}
@@ -467,18 +467,20 @@ export default function ApiUsage() {
             that period. Switch the filter to <strong>Measured only</strong> for figures that
             come from recorded outcomes.
           </p>
-        </div>
+        </Card>
       )}
 
       {/* ── Budget ───────────────────────────────────────────────── */}
       {spend && spend.monthly_budget_usd > 0 && (
-        <div className="card" style={{ marginBottom: '20px' }}>
-          <div className="card-header">
-            <div className="card-title">Monthly budget</div>
-            <span className={`badge ${spend.enforcing ? 'badge-green' : 'badge-yellow'}`}>
+        <Card
+          title="Monthly budget"
+          style={{ marginBottom: '20px' }}
+          action={
+            <Badge tone={spend.enforcing ? 'green' : 'yellow'}>
               {spend.enforcing ? 'enforcing' : 'alerts only'}
-            </span>
-          </div>
+            </Badge>
+          }
+        >
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '8px' }}>
             <span>{usd(spend.month_to_date_usd)} of {usd(spend.monthly_budget_usd)}</span>
             <span style={{ color: spend.over_budget ? 'var(--danger)' : 'var(--text-secondary)', fontWeight: 700 }}>
@@ -497,11 +499,11 @@ export default function ApiUsage() {
                 : 'Budget reached, but enforcement is off — calls are still being paid for.'}
             </p>
           )}
-        </div>
+        </Card>
       )}
 
       {/* ── Controls ─────────────────────────────────────────────── */}
-      <div className="card" style={{ marginBottom: '20px' }}>
+      <Card style={{ marginBottom: '20px' }}>
         <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
           <div style={{ display: 'flex', gap: '6px' }}>
             {RANGES.map((r) => (
@@ -555,27 +557,26 @@ export default function ApiUsage() {
           </select>
           <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px', alignItems: 'center' }}>
             {summary && (
-              <span className="badge badge-ghost" title="Wide ranges read the hourly rollup rather than raw events">
+              <Badge tone="ghost" title="Wide ranges read the hourly rollup rather than raw events">
                 {summary.source === 'rollup' ? 'rollup' : 'live rows'}
-              </span>
+              </Badge>
             )}
             <button className="btn btn-ghost" style={{ padding: '8px 14px' }} onClick={refresh}>
               <RefreshIcon size={14} /> Refresh
             </button>
           </div>
         </div>
-      </div>
+      </Card>
 
       {err && (
-        <div className="card" style={{ marginBottom: '20px', borderColor: 'rgba(229,57,53,0.3)' }}>
+        <Card style={{ marginBottom: '20px', borderColor: 'rgba(229,57,53,0.3)' }}>
           <span style={{ color: 'var(--danger)', fontWeight: 700 }}>{err}</span>
-        </div>
+        </Card>
       )}
 
       {userFilter && (
-        <div className="card" style={{ marginBottom: '20px', borderLeft: '4px solid var(--accent)',
-                                       display: 'flex', alignItems: 'center', gap: '14px' }}>
-          <span className="badge badge-blue">Filtered to one user</span>
+        <Card style={{ marginBottom: '20px', borderLeft: '4px solid var(--accent)', display: 'flex', alignItems: 'center', gap: '14px' }}>
+          <Badge tone="blue">Filtered to one user</Badge>
           <span style={{ fontSize: '13.5px', color: 'var(--text-secondary)' }}>
             {(users.find((u) => u.user_id === userFilter) || {}).email || userFilter}
           </span>
@@ -589,93 +590,86 @@ export default function ApiUsage() {
               Clear
             </button>
           </div>
-        </div>
+        </Card>
       )}
 
       {/* ── Tiles ────────────────────────────────────────────────── */}
       <div className="stats-grid">
-        <div className="stat-card">
-          <div className="stat-icon"><CompassIcon size={24} style={{ color: 'var(--accent)' }} /></div>
-          <div className="stat-value">{num(summary?.requests)}</div>
-          <div className="stat-label">Requests</div>
-          {reqDelta !== null && (
-            <span className={`stat-change ${reqDelta >= 0 ? 'up' : 'down'}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-              {reqDelta >= 0 ? <TrendingUpIcon size={12} /> : <TrendingDownIcon size={12} />}
-              {Math.abs(reqDelta).toFixed(1)}% vs previous
-            </span>
-          )}
-        </div>
+        <StatCard
+          icon={CompassIcon}
+          value={num(summary?.requests)}
+          label="Requests"
+          trend={reqDelta >= 0 ? 'up' : 'down'}
+          changeIcon={reqDelta >= 0 ? TrendingUpIcon : TrendingDownIcon}
+          change={reqDelta !== null ? `${Math.abs(reqDelta).toFixed(1)}% vs previous` : null}
+        />
 
-        <div className="stat-card">
-          <div className="stat-icon"><DollarIcon size={24} style={{ color: 'var(--danger)' }} /></div>
-          <div className="stat-value">{num(summary?.billable_calls)}</div>
-          <div className="stat-label">Billable calls</div>
-          <span className="stat-change" style={{ background: 'rgba(229,57,53,0.06)', color: 'var(--danger)' }}>
-            {summary && summary.requests
-              ? `${((summary.billable_calls / summary.requests) * 100).toFixed(1)}% of requests`
-              : '—'}
-          </span>
-        </div>
+        <StatCard
+          icon={DollarIcon}
+          iconColor="var(--danger)"
+          value={num(summary?.billable_calls)}
+          label="Billable calls"
+          trend={null}
+          changeStyle={{ background: 'rgba(229,57,53,0.06)', color: 'var(--danger)' }}
+          change={summary && summary.requests
+            ? `${((summary.billable_calls / summary.requests) * 100).toFixed(1)}% of requests`
+            : '—'}
+        />
 
-        <div className="stat-card">
-          <div className="stat-icon"><DollarIcon size={24} style={{ color: 'var(--warning)' }} /></div>
-          <div className="stat-value">{usd(summary?.est_cost_usd)}</div>
-          <div className="stat-label">
-            {ingest === 'live' ? 'Measured cost' : 'Estimated cost'}
-          </div>
-          {costDelta !== null && (
-            <span className={`stat-change ${costDelta >= 0 ? 'down' : 'up'}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-              {costDelta >= 0 ? <TrendingUpIcon size={12} /> : <TrendingDownIcon size={12} />}
-              {Math.abs(costDelta).toFixed(1)}% vs previous
-            </span>
-          )}
-        </div>
+        <StatCard
+          icon={DollarIcon}
+          iconColor="var(--warning)"
+          value={usd(summary?.est_cost_usd)}
+          label={ingest === 'live' ? 'Measured cost' : 'Estimated cost'}
+          trend={costDelta >= 0 ? 'down' : 'up'}
+          changeIcon={costDelta >= 0 ? TrendingUpIcon : TrendingDownIcon}
+          change={costDelta !== null ? `${Math.abs(costDelta).toFixed(1)}% vs previous` : null}
+        />
 
-        <div className="stat-card">
-          <div className="stat-icon"><TrendingUpIcon size={24} style={{ color: 'var(--success)' }} /></div>
-          <div className="stat-value">{summary ? `${summary.served_free_pct}%` : '—'}</div>
-          <div className="stat-label">Served without paying</div>
-          <span className="stat-change up">
-            {summary ? `${summary.error_pct}% errors` : '—'}
-          </span>
-        </div>
+        <StatCard
+          icon={TrendingUpIcon}
+          iconColor="var(--success)"
+          value={summary ? `${summary.served_free_pct}%` : '—'}
+          label="Served without paying"
+          change={summary ? `${summary.error_pct}% errors` : '—'}
+        />
       </div>
 
       {/* ── Uncached spend callout ───────────────────────────────── */}
       {uncached.length > 0 && (
-        <div className="card" style={{ marginTop: '20px', borderLeft: '4px solid var(--danger)' }}>
-          <div className="card-header"><div className="card-title">Paid operations with no cache</div></div>
+        <Card title="Paid operations with no cache" style={{ marginTop: '20px', borderLeft: '4px solid var(--danger)' }}>
           <p style={{ color: 'var(--text-secondary)', fontSize: '13.5px', marginBottom: '12px' }}>
             Every one of these requests reached a provider. Putting a cache in front of the
             busiest is the highest-value change available.
           </p>
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
             {uncached.map((o) => (
-              <span key={o.operation} className="badge badge-red">
+              <Badge key={o.operation} tone="red">
                 {o.operation} — {num(o.total)} calls, {usd(o.est_cost_usd)}
-              </span>
+              </Badge>
             ))}
           </div>
-        </div>
+        </Card>
       )}
 
       {/* ── Timeseries ───────────────────────────────────────────── */}
-      <div className="card" style={{ marginTop: '20px' }}>
-        <div className="card-header">
-          <div className="card-title">Requests over time</div>
+      <Card
+        title="Requests over time"
+        style={{ marginTop: '20px' }}
+        action={
           <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
             stacked by source · per {series?.bucket || 'hour'}
           </span>
-        </div>
+        }
+      >
         <StackedBars points={series?.points} />
-      </div>
+      </Card>
 
       {/* ── Funnel + SKU cost ────────────────────────────────────── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '20px', marginTop: '20px' }}>
-        <div className="card">
-          <div className="card-header"><div className="card-title">Where requests were served from</div></div>
+        <Card title="Where requests were served from">
           <div style={{ display: 'grid', gap: '16px' }}>
-            {funnel.length === 0 && <div className="empty-state">No data in this window.</div>}
+            {funnel.length === 0 && <EmptyState>No data in this window.</EmptyState>}
             {funnel.map((o) => (
               <div key={o.operation}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '13px' }}>
@@ -700,19 +694,16 @@ export default function ApiUsage() {
               </div>
             ))}
           </div>
-        </div>
+        </Card>
 
-        <div className="card">
-          <div className="card-header">
-            <div className="card-title">Free tier consumed this month</div>
-          </div>
+        <Card title="Free tier consumed this month">
           <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginBottom: '14px' }}>
             Spend stays low while these bars are short. An operation crossing 100% starts
             billing every further call.
           </p>
           <div style={{ display: 'grid', gap: '14px' }}>
             {breakdown.free_tier.filter((t) => t.used_this_month > 0).length === 0 && (
-              <div className="empty-state">Nothing billable yet this month.</div>
+              <EmptyState>Nothing billable yet this month.</EmptyState>
             )}
             {breakdown.free_tier
               .filter((t) => t.used_this_month > 0)
@@ -732,17 +723,19 @@ export default function ApiUsage() {
                 </div>
               ))}
           </div>
-        </div>
+        </Card>
       </div>
 
       {/* ── Routes & fan-out ─────────────────────────────────────── */}
-      <div className="card" style={{ marginTop: '20px' }}>
-        <div className="card-header">
-          <div className="card-title">Which screens generate the work</div>
+      <Card
+        title="Which screens generate the work"
+        style={{ marginTop: '20px' }}
+        action={
           <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
             fan-out = upstream calls per user action
           </span>
-        </div>
+        }
+      >
         <p style={{ color: 'var(--text-secondary)', fontSize: '13.5px', marginBottom: '14px' }}>
           A high fan-out is a design problem, not a traffic problem: one tap firing fifteen
           paid lookups costs fifteen times what it looks like it should.
@@ -754,7 +747,7 @@ export default function ApiUsage() {
             </thead>
             <tbody>
               {routes.length === 0 && (
-                <tr><td colSpan={7}><div className="empty-state">No routed traffic in this window.</div></td></tr>
+                <tr><td colSpan={7}><EmptyState>No routed traffic in this window.</EmptyState></td></tr>
               )}
               {routes.slice(0, 15).map((r) => (
                 <tr key={r.route}>
@@ -762,9 +755,9 @@ export default function ApiUsage() {
                   <td>{num(r.actions)}</td>
                   <td>{num(r.calls)}</td>
                   <td>
-                    <span className={`badge ${r.fan_out > 5 ? 'badge-red' : r.fan_out > 2 ? 'badge-yellow' : 'badge-ghost'}`}>
+                    <Badge tone={r.fan_out > 5 ? 'red' : r.fan_out > 2 ? 'yellow' : 'ghost'}>
                       {r.fan_out ?? '—'}×
-                    </span>
+                    </Badge>
                   </td>
                   <td style={{ color: r.upstream ? 'var(--danger)' : 'var(--text-muted)' }}>{num(r.upstream)}</td>
                   <td>{r.tokens ? num(r.tokens) : '—'}</td>
@@ -774,14 +767,14 @@ export default function ApiUsage() {
             </tbody>
           </table>
         </div>
-      </div>
+      </Card>
 
       {/* ── AI tokens ────────────────────────────────────────────── */}
-      <div className="card" style={{ marginTop: '20px' }}>
-        <div className="card-header">
-          <div className="card-title">AI token usage</div>
-          <span className="badge badge-ghost">{num(tokens.total_tokens)} tokens</span>
-        </div>
+      <Card
+        title="AI token usage"
+        style={{ marginTop: '20px' }}
+        action={<Badge tone="ghost">{num(tokens.total_tokens)} tokens</Badge>}
+      >
         <p style={{ color: 'var(--text-secondary)', fontSize: '13.5px', marginBottom: '14px' }}>
           Gemini bills per token, not per call — one long itinerary prompt can cost more than a
           hundred short lookups, so a call count says nothing useful here.
@@ -794,11 +787,11 @@ export default function ApiUsage() {
             <tbody>
               {tokens.usage.length === 0 && (
                 <tr><td colSpan={7}>
-                  <div className="empty-state">
+                  <EmptyState>
                     No token data for this period. Historical rows never captured token
                     counts, and no AI call has succeeded since token recording went live —
                     the Gemini key is currently invalid.
-                  </div>
+                  </EmptyState>
                 </td></tr>
               )}
               {tokens.usage.map((t, i) => (
@@ -815,14 +808,14 @@ export default function ApiUsage() {
             </tbody>
           </table>
         </div>
-      </div>
+      </Card>
 
       {/* ── Duplicates ───────────────────────────────────────────── */}
-      <div className="card" style={{ marginTop: '20px' }}>
-        <div className="card-header">
-          <div className="card-title">Paid for more than once</div>
-          <span className="badge badge-yellow">{usd(dupes.total_recoverable_usd)} recoverable</span>
-        </div>
+      <Card
+        title="Paid for more than once"
+        style={{ marginTop: '20px' }}
+        action={<Badge tone="yellow">{usd(dupes.total_recoverable_usd)} recoverable</Badge>}
+      >
         <p style={{ color: 'var(--text-secondary)', fontSize: '13.5px', marginBottom: '14px' }}>
           These lookups were bought from a provider repeatedly. A working cache on the
           operation would have served every call after the first.
@@ -834,17 +827,17 @@ export default function ApiUsage() {
             </thead>
             <tbody>
               {dupes.keys.length === 0 && (
-                <tr><td colSpan={5}><div className="empty-state">
+                <tr><td colSpan={5}><EmptyState>
                     {ingest === 'live'
                       ? 'No repeat purchases — caching is holding.'
                       : 'Historical rows never captured cache keys, so repeats cannot be detected before today. This fills in as live traffic accumulates.'}
-                  </div></td></tr>
+                  </EmptyState></td></tr>
               )}
               {dupes.keys.map((k) => (
                 <tr key={`${k.operation}:${k.cache_key}`}>
                   <td style={{ fontFamily: 'ui-monospace, Menlo, monospace', fontSize: '12px' }}>{k.cache_key}</td>
                   <td>{k.operation}</td>
-                  <td><span className="badge badge-red">{k.paid_times}×</span></td>
+                  <td><Badge tone="red">{k.paid_times}×</Badge></td>
                   <td>{usd(k.spent_usd)}</td>
                   <td style={{ fontWeight: 700 }}>{usd(k.recoverable_usd)}</td>
                 </tr>
@@ -852,18 +845,17 @@ export default function ApiUsage() {
             </tbody>
           </table>
         </div>
-      </div>
+      </Card>
 
       {/* ── Top consumers + provider health ──────────────────────── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '20px', marginTop: '20px' }}>
-        <div className="card">
-          <div className="card-header"><div className="card-title">Top consumers</div></div>
+        <Card title="Top consumers">
           <div className="table-wrap">
             <table>
               <thead><tr><th>User</th><th>Calls</th><th>Billable</th><th>Cost</th></tr></thead>
               <tbody>
                 {users.length === 0 && (
-                  <tr><td colSpan={4}><div className="empty-state">No attributed usage yet.</div></td></tr>
+                  <tr><td colSpan={4}><EmptyState>No attributed usage yet.</EmptyState></td></tr>
                 )}
                 {users.map((u) => (
                   <tr key={u.user_id} className="clickable-row"
@@ -881,10 +873,9 @@ export default function ApiUsage() {
               </tbody>
             </table>
           </div>
-        </div>
+        </Card>
 
-        <div className="card">
-          <div className="card-header"><div className="card-title">Provider health</div></div>
+        <Card title="Provider health">
           <div className="table-wrap">
             <table>
               <thead><tr><th>Provider</th><th>Status</th><th>Calls</th></tr></thead>
@@ -894,13 +885,13 @@ export default function ApiUsage() {
                   return (
                     <tr key={i}>
                       <td>{s.provider}</td>
-                      <td><span className={`badge ${bad ? 'badge-red' : 'badge-green'}`}>{s.status}</span></td>
+                      <td><Badge tone={bad ? 'red' : 'green'}>{s.status}</Badge></td>
                       <td>{num(s.calls)}</td>
                     </tr>
                   );
                 })}
                 {health.by_status.length === 0 && (
-                  <tr><td colSpan={3}><div className="empty-state">No provider calls in this window.</div></td></tr>
+                  <tr><td colSpan={3}><EmptyState>No provider calls in this window.</EmptyState></td></tr>
                 )}
               </tbody>
             </table>
@@ -910,13 +901,14 @@ export default function ApiUsage() {
               REQUEST_DENIED present — an API key is invalid, restricted, or over quota.
             </p>
           )}
-        </div>
+        </Card>
       </div>
 
       {/* ── Live tail ────────────────────────────────────────────── */}
-      <div className="card" style={{ marginTop: '20px' }}>
-        <div className="card-header">
-          <div className="card-title">Recent events</div>
+      <Card
+        title="Recent events"
+        style={{ marginTop: '20px' }}
+        action={
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             <div style={{ position: 'relative' }}>
               <SearchIcon size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
@@ -932,7 +924,8 @@ export default function ApiUsage() {
               {exporting ? 'Exporting…' : 'Export CSV'}
             </button>
           </div>
-        </div>
+        }
+      >
         <div className="table-wrap">
           <table>
             <thead>
@@ -940,7 +933,7 @@ export default function ApiUsage() {
             </thead>
             <tbody>
               {events.length === 0 && (
-                <tr><td colSpan={8}><div className="empty-state">No events recorded.</div></td></tr>
+                <tr><td colSpan={8}><EmptyState>No events recorded.</EmptyState></td></tr>
               )}
               {events.map((e, i) => (
                 <tr key={i} className="clickable-row"
@@ -954,15 +947,14 @@ export default function ApiUsage() {
                   <td style={{ fontSize: '12.5px' }}>{e.provider}</td>
                   <td style={{ fontSize: '12.5px' }}>{e.operation}</td>
                   <td>
-                    <span
-                      className="badge"
+                    <Badge
                       style={{
                         background: `${SOURCE_COLOR[e.served_from]}14`,
                         color: SOURCE_COLOR[e.served_from] || 'var(--text-secondary)',
                       }}
                     >
                       {e.served_from}
-                    </span>
+                    </Badge>
                   </td>
                   <td style={{ fontSize: '12px' }}>{e.provider_status || e.http_status || '—'}</td>
                   <td style={{ fontSize: '12px' }}>
@@ -981,12 +973,11 @@ export default function ApiUsage() {
             </tbody>
           </table>
         </div>
-      </div>
+      </Card>
 
       {/* ── Pipeline health ──────────────────────────────────────── */}
       {pipeline && (
-        <div className="card" style={{ marginTop: '20px' }}>
-          <div className="card-header"><div className="card-title">Telemetry pipeline</div></div>
+        <Card title="Telemetry pipeline" style={{ marginTop: '20px' }}>
           <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginBottom: '12px' }}>
             Counters for the recorder itself. Non-zero drops mean this page is under-reporting,
             which is worse than it showing nothing.
@@ -1001,7 +992,7 @@ export default function ApiUsage() {
               </span>
             ))}
           </div>
-        </div>
+        </Card>
       )}
 
       <p style={{ marginTop: '18px', fontSize: '12px', color: 'var(--text-muted)' }}>
@@ -1047,9 +1038,9 @@ export default function ApiUsage() {
                     <td>{c.provider}</td>
                     <td style={{ fontSize: '12.5px' }}>{c.operation}</td>
                     <td>
-                      <span className="badge" style={{ background: `${SOURCE_COLOR[c.served_from]}14`, color: SOURCE_COLOR[c.served_from] }}>
+                      <Badge style={{ background: `${SOURCE_COLOR[c.served_from]}14`, color: SOURCE_COLOR[c.served_from] }}>
                         {c.served_from}
-                      </span>
+                      </Badge>
                     </td>
                     <td style={{ fontSize: '12px' }}>{c.provider_status || c.http_status || '—'}</td>
                     <td style={{ fontSize: '12px' }}>{c.latency_ms ?? '—'} ms</td>
