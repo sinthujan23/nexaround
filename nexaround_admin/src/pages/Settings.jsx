@@ -1,43 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { apiGet, apiPut } from '../api';
-
-const EyeIcon = ({ size = 20, ...props }) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    {...props}
-  >
-    <path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0z" />
-    <circle cx="12" cy="12" r="3" />
-  </svg>
-);
-
-const EyeOffIcon = ({ size = 20, ...props }) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    {...props}
-  >
-    <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" />
-    <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" />
-    <path d="M6.61 6.61A13.52 13.52 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" />
-    <line x1="2" y1="2" x2="22" y2="22" />
-  </svg>
-);
+import { SecretField, PageLoading } from '../components/Kit';
 
 // Travel-data providers feeding Odyssey plans (backend: app/services/providers).
 const PROVIDER_FIELDS = {
@@ -68,40 +31,6 @@ const PROVIDER_SWITCHES = [
   { key: 'provider_mode_atlas', name: 'HelloSafe Atlas', use: 'Travel-insurance comparison & live prices on trips abroad' },
 ];
 
-function SecretField({ label, tag, value, onChange, placeholder }) {
-  const [show, setShow] = useState(false);
-  return (
-    <div className="form-group" style={{ marginBottom: '16px' }}>
-      <label className="form-label">
-        {label}{' '}
-        {tag && <span style={{ fontSize: '11px', color: 'var(--accent)', fontWeight: 700 }}>{tag}</span>}
-      </label>
-      <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-        <input
-          type="text"
-          className="form-input"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder}
-          autoComplete="off"
-          style={{ paddingRight: '46px', WebkitTextSecurity: show ? 'none' : 'disc' }}
-        />
-        <button
-          type="button"
-          onClick={() => setShow(!show)}
-          style={{
-            position: 'absolute', right: '12px', background: 'none',
-            border: 'none', cursor: 'pointer', color: 'var(--text-secondary)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4px',
-          }}
-        >
-          {show ? <EyeOffIcon size={18} /> : <EyeIcon size={18} />}
-        </button>
-      </div>
-    </div>
-  );
-}
-
 export default function Settings() {
   const [platformName, setPlatformName] = useState('');
   const [contactEmail, setContactEmail] = useState('');
@@ -114,45 +43,31 @@ export default function Settings() {
   const [serpapiKey, setSerpapiKey] = useState('');
   const [providers, setProviders] = useState(PROVIDER_FIELDS);
 
-  const [showGoogleKey, setShowGoogleKey] = useState(false);
-  const [showMapboxToken, setShowMapboxToken] = useState(false);
-  const [showGeminiKey, setShowGeminiKey] = useState(false);
-  const [showGeoapifyKey, setShowGeoapifyKey] = useState(false);
-  const [showUnsplashKey, setShowUnsplashKey] = useState(false);
-  const [showSerpapiKey, setShowSerpapiKey] = useState(false);
-
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
 
+  // Loaded once on open; loading starts true, so nothing is set before the reply.
   useEffect(() => {
-    fetchSettings();
+    apiGet('/admin/settings')
+      .then((res) => {
+        setPlatformName(res.platform_name || '');
+        setContactEmail(res.contact_email || '');
+        setGoogleMapsApiKey(res.google_maps_api_key || '');
+        setMapboxAccessToken(res.mapbox_access_token || '');
+        setGeminiApiKey(res.gemini_api_key || '');
+        setGeoapifyApiKey(res.geoapify_api_key || '');
+        setDefaultGeofenceRadius(res.default_geofence_radius || '100');
+        setUnsplashApiKey(res.unsplash_api_key || '');
+        setSerpapiKey(res.serpapi_key || '');
+        setProviders(Object.fromEntries(
+          Object.entries(PROVIDER_FIELDS).map(([k, dflt]) => [k, res[k] || dflt])
+        ));
+      })
+      .catch((err) => setError(err.message || 'Failed to load system settings.'))
+      .finally(() => setLoading(false));
   }, []);
-
-  const fetchSettings = async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const res = await apiGet('/admin/settings');
-      setPlatformName(res.platform_name || '');
-      setContactEmail(res.contact_email || '');
-      setGoogleMapsApiKey(res.google_maps_api_key || '');
-      setMapboxAccessToken(res.mapbox_access_token || '');
-      setGeminiApiKey(res.gemini_api_key || '');
-      setGeoapifyApiKey(res.geoapify_api_key || '');
-      setDefaultGeofenceRadius(res.default_geofence_radius || '100');
-      setUnsplashApiKey(res.unsplash_api_key || '');
-      setSerpapiKey(res.serpapi_key || '');
-      setProviders(Object.fromEntries(
-        Object.entries(PROVIDER_FIELDS).map(([k, dflt]) => [k, res[k] || dflt])
-      ));
-    } catch (err) {
-      setError(err.message || 'Failed to load system settings.');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleSave = async (e) => {
     e.preventDefault();
@@ -182,11 +97,7 @@ export default function Settings() {
   };
 
   if (loading) {
-    return (
-      <div style={{ textAlign: 'center', padding: '50px', color: 'var(--text-secondary)' }}>
-        <span style={{ fontSize: '16px' }}>Fetching platform configurations...</span>
-      </div>
-    );
+    return <PageLoading>Fetching platform configurations...</PageLoading>;
   }
 
   return (
@@ -230,212 +141,48 @@ export default function Settings() {
           <p style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
             Keys entered below are stored safely in the database and never transmitted to client devices.
           </p>
-          <div className="form-group" style={{ marginBottom: '16px' }}>
-            <label className="form-label">Google Maps API Key</label>
-            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-              <input
-                type="text"
-                className="form-input"
-                value={googleMapsApiKey}
-                onChange={(e) => setGoogleMapsApiKey(e.target.value)}
-                placeholder="Google Maps Secret API Key"
-                autoComplete="off"
-                required
-                style={{
-                  paddingRight: '46px',
-                  WebkitTextSecurity: showGoogleKey ? 'none' : 'disc',
-                }}
-              />
-              <button
-                type="button"
-                onClick={() => setShowGoogleKey(!showGoogleKey)}
-                style={{
-                  position: 'absolute',
-                  right: '12px',
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  color: 'var(--text-secondary)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  padding: '4px',
-                }}
-              >
-                {showGoogleKey ? <EyeOffIcon size={18} /> : <EyeIcon size={18} />}
-              </button>
-            </div>
-          </div>
-          <div className="form-group" style={{ marginBottom: '16px' }}>
-            <label className="form-label">Mapbox Access Token</label>
-            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-              <input
-                type="text"
-                className="form-input"
-                value={mapboxAccessToken}
-                onChange={(e) => setMapboxAccessToken(e.target.value)}
-                placeholder="Mapbox API Access Token"
-                autoComplete="off"
-                required
-                style={{
-                  paddingRight: '46px',
-                  WebkitTextSecurity: showMapboxToken ? 'none' : 'disc',
-                }}
-              />
-              <button
-                type="button"
-                onClick={() => setShowMapboxToken(!showMapboxToken)}
-                style={{
-                  position: 'absolute',
-                  right: '12px',
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  color: 'var(--text-secondary)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  padding: '4px',
-                }}
-              >
-                {showMapboxToken ? <EyeOffIcon size={18} /> : <EyeIcon size={18} />}
-              </button>
-            </div>
-          </div>
-          <div className="form-group" style={{ marginBottom: '16px' }}>
-            <label className="form-label">Gemini API Key</label>
-            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-              <input
-                type="text"
-                className="form-input"
-                value={geminiApiKey}
-                onChange={(e) => setGeminiApiKey(e.target.value)}
-                placeholder="Google Gemini API Key"
-                autoComplete="off"
-                required
-                style={{
-                  paddingRight: '46px',
-                  WebkitTextSecurity: showGeminiKey ? 'none' : 'disc',
-                }}
-              />
-              <button
-                type="button"
-                onClick={() => setShowGeminiKey(!showGeminiKey)}
-                style={{
-                  position: 'absolute',
-                  right: '12px',
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  color: 'var(--text-secondary)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  padding: '4px',
-                }}
-              >
-                {showGeminiKey ? <EyeOffIcon size={18} /> : <EyeIcon size={18} />}
-              </button>
-            </div>
-          </div>
-          <div className="form-group" style={{ marginBottom: '16px' }}>
-            <label className="form-label">SerpApi Key <span style={{ fontSize: '11px', color: 'var(--accent)', fontWeight: 700 }}>Live Google Flight & Hotel Search</span></label>
-            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-              <input
-                type="text"
-                className="form-input"
-                value={serpapiKey}
-                onChange={(e) => setSerpapiKey(e.target.value)}
-                placeholder="SerpApi Private Key (Google Flights & Hotels)"
-                autoComplete="off"
-                style={{
-                  paddingRight: '46px',
-                  WebkitTextSecurity: showSerpapiKey ? 'none' : 'disc',
-                }}
-              />
-              <button
-                type="button"
-                onClick={() => setShowSerpapiKey(!showSerpapiKey)}
-                style={{
-                  position: 'absolute',
-                  right: '12px',
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  color: 'var(--text-secondary)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  padding: '4px',
-                }}
-              >
-                {showSerpapiKey ? <EyeOffIcon size={18} /> : <EyeIcon size={18} />}
-              </button>
-            </div>
-          </div>
-          <div className="form-group" style={{ marginBottom: '16px' }}>
-            <label className="form-label">Unsplash API Key <span style={{ fontSize: '11px', color: 'var(--accent)', fontWeight: 700 }}>Destination Photos</span></label>
-            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-              <input
-                type="text"
-                className="form-input"
-                value={unsplashApiKey}
-                onChange={(e) => setUnsplashApiKey(e.target.value)}
-                placeholder="Unsplash API Access Key"
-                autoComplete="off"
-                style={{
-                  paddingRight: '46px',
-                  WebkitTextSecurity: showUnsplashKey ? 'none' : 'disc',
-                }}
-              />
-              <button
-                type="button"
-                onClick={() => setShowUnsplashKey(!showUnsplashKey)}
-                style={{
-                  position: 'absolute',
-                  right: '12px',
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  color: 'var(--text-secondary)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  padding: '4px',
-                }}
-              >
-                {showUnsplashKey ? <EyeOffIcon size={18} /> : <EyeIcon size={18} />}
-              </button>
-            </div>
-          </div>
-          <div className="form-group" style={{ marginBottom: '16px' }}>
-            <label className="form-label">Geoapify API Key <span style={{ fontSize: '11px', color: 'var(--accent)', fontWeight: 700 }}>Reverse Geocoding</span></label>
-            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-              <input
-                type="text"
-                className="form-input"
-                value={geoapifyApiKey}
-                onChange={(e) => setGeoapifyApiKey(e.target.value)}
-                placeholder="Geoapify API Key"
-                autoComplete="off"
-                style={{
-                  paddingRight: '46px',
-                  WebkitTextSecurity: showGeoapifyKey ? 'none' : 'disc',
-                }}
-              />
-              <button
-                type="button"
-                onClick={() => setShowGeoapifyKey(!showGeoapifyKey)}
-                style={{
-                  position: 'absolute', right: '12px', background: 'none',
-                  border: 'none', cursor: 'pointer', color: 'var(--text-secondary)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4px',
-                }}
-              >
-                {showGeoapifyKey ? <EyeOffIcon size={18} /> : <EyeIcon size={18} />}
-              </button>
-            </div>
-          </div>
+          <SecretField
+            label="Google Maps API Key"
+            value={googleMapsApiKey}
+            onChange={setGoogleMapsApiKey}
+            placeholder="Google Maps Secret API Key"
+            required
+          />
+          <SecretField
+            label="Mapbox Access Token"
+            value={mapboxAccessToken}
+            onChange={setMapboxAccessToken}
+            placeholder="Mapbox API Access Token"
+            required
+          />
+          <SecretField
+            label="Gemini API Key"
+            value={geminiApiKey}
+            onChange={setGeminiApiKey}
+            placeholder="Google Gemini API Key"
+            required
+          />
+          <SecretField
+            label="SerpApi Key"
+            tag="Live Google Flight & Hotel Search"
+            value={serpapiKey}
+            onChange={setSerpapiKey}
+            placeholder="SerpApi Private Key (Google Flights & Hotels)"
+          />
+          <SecretField
+            label="Unsplash API Key"
+            tag="Destination Photos"
+            value={unsplashApiKey}
+            onChange={setUnsplashApiKey}
+            placeholder="Unsplash API Access Key"
+          />
+          <SecretField
+            label="Geoapify API Key"
+            tag="Reverse Geocoding"
+            value={geoapifyApiKey}
+            onChange={setGeoapifyApiKey}
+            placeholder="Geoapify API Key"
+          />
           <div className="form-group">
             <label className="form-label">Default Geofence Radius (meters)</label>
             <input
