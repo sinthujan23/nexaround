@@ -22,8 +22,8 @@ const BASE_TITLE = document.title;
 /**
  * The partner portal shell.
  *
- * Same hand-rolled routing as the admin panel — one page-name in state, no
- * react-router — with one addition it needs and the admin does not: two pages
+ * Hand-rolled routing — one page-name in state, no react-router (the admin
+ * panel has since moved to react-router, one URL per page) — plus two pages
  * that must render *before* the token gate. The invite link is the first URL
  * any vendor ever opens, and they have no token when they open it.
  */
