@@ -727,13 +727,11 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
           ],
           if (rows[i].key == safetyTitle && info.safetyUrl.isNotEmpty) ...[
             const SizedBox(height: 10),
-            // Travel insurance (HelloSafe / EKTA) is a paid partner: the solid partner button, with its logo.
+            // Travel insurance (HelloSafe) is a paid partner: the solid partner button, with its logo.
             SizedBox(
               width: double.infinity,
               child: _partnerPill(
-                logoAsset: _isHelloSafe(info.safetyUrl)
-                    ? 'assets/images/hellosafe_logo.png'
-                    : 'assets/images/ekta_logo.png',
+                logoAsset: 'assets/images/hellosafe_logo.png',
                 fallbackIcon: Icons.health_and_safety_outlined,
                 label: info.safetyCta.isNotEmpty ? info.safetyCta : 'Get travel insurance',
                 onTap: () => _launchExternalUrl(info.safetyUrl),
@@ -977,6 +975,8 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     final uri = Uri.tryParse(url.trim());
     if (uri == null) return null;
     final host = uri.host.toLowerCase();
+    // HelloSafe's link is made on tap, by our backend, which then forwards there.
+    if (uri.path == '/api/v1/go/insurance') return 'assets/images/hellosafe_logo.png';
     if (host == 'tp.media') {
       return const {
         '4114': 'assets/images/aviasales_logo.png',
@@ -986,7 +986,6 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
         '4110': 'assets/images/klook_logo.png',
         '1942': 'assets/images/gocity_logo.png',
         '4136': 'assets/images/kiwi_logo.png',
-        '5869': 'assets/images/ekta_logo.png',
       }[uri.queryParameters['p']];
     }
     const byHost = {
@@ -997,7 +996,6 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
       'klook.com': 'assets/images/klook_logo.png',
       'gocity.com': 'assets/images/gocity_logo.png',
       'kiwi.com': 'assets/images/kiwi_logo.png',
-      'ektatraveling.com': 'assets/images/ekta_logo.png',
       'hellosafe.com': 'assets/images/hellosafe_logo.png',
       'atlas.hellosafe.com': 'assets/images/hellosafe_logo.png',
     };
@@ -1005,13 +1003,6 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
       if (host == entry.key || host.endsWith('.${entry.key}')) return entry.value;
     }
     return null;
-  }
-
-  static bool _isHelloSafe(String url) {
-    final uri = Uri.tryParse(url.trim());
-    if (uri == null) return false;
-    final host = uri.host.toLowerCase();
-    return host == 'hellosafe.com' || host.endsWith('.hellosafe.com');
   }
 
   /// A Booking Plan row that opens a paid partner: its logo on a white tile,

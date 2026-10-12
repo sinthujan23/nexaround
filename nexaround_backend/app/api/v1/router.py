@@ -20,6 +20,7 @@ from app.api.v1.experiences import router as experiences_router
 from app.api.v1.experiences_admin import router as experiences_admin_router
 from app.api.v1.partner import router as partner_router
 from app.api.v1.forum import router as forum_router
+from app.api.v1.go import router as go_router
 
 api_router = APIRouter(prefix="/api/v1")
 
@@ -43,5 +44,6 @@ api_router.include_router(experiences_router)
 api_router.include_router(experiences_admin_router)
 api_router.include_router(partner_router)
 api_router.include_router(forum_router)
+api_router.include_router(go_router)
 api_router.include_router(ar_router, prefix="/ar", tags=["AR"])
 

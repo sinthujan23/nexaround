@@ -52,7 +52,6 @@ const PROVIDER_FIELDS = {
   provider_mode_klook: 'off',
   provider_mode_gocity: 'off',
   provider_mode_kiwi: 'off',
-  provider_mode_ekta: 'off',
   provider_mode_atlas: 'off',
   atlas_key_id: '',
   atlas_signing_secret: '',
@@ -66,7 +65,6 @@ const PROVIDER_SWITCHES = [
   { key: 'provider_mode_klook', name: 'Klook', use: 'Things-to-do link for cities WeGoTrip has no tickets in' },
   { key: 'provider_mode_gocity', name: 'Go City', use: 'Sightseeing-pass link for big cities (2+ days)' },
   { key: 'provider_mode_kiwi', name: 'Kiwi.com', use: 'Second flight link beside Aviasales (no prices)' },
-  { key: 'provider_mode_ekta', name: 'EKTA', use: 'Travel-insurance link on trips abroad (no prices)' },
   { key: 'provider_mode_atlas', name: 'HelloSafe Atlas', use: 'Travel-insurance comparison & live prices on trips abroad' },
 ];
 
@@ -474,7 +472,7 @@ export default function Settings() {
             tag="ak_test_... or ak_live_..."
             value={providers.atlas_key_id}
             onChange={(v) => setProviders({ ...providers, atlas_key_id: v })}
-            placeholder="e.g. ak_test_470d1308358faebf04"
+            placeholder="From HelloSafe Atlas → API keys"
           />
           <SecretField
             label="HelloSafe Atlas Signing Secret"

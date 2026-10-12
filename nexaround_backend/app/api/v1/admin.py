@@ -85,7 +85,6 @@ class SettingsResponse(BaseModel):
     provider_mode_klook: str = "off"
     provider_mode_gocity: str = "off"
     provider_mode_kiwi: str = "off"
-    provider_mode_ekta: str = "off"
     provider_mode_atlas: str = "off"
     atlas_key_id: str = ""
     atlas_signing_secret: str = ""
@@ -115,7 +114,6 @@ class SettingsUpdateRequest(BaseModel):
     provider_mode_klook: Optional[ProviderMode] = None
     provider_mode_gocity: Optional[ProviderMode] = None
     provider_mode_kiwi: Optional[ProviderMode] = None
-    provider_mode_ekta: Optional[ProviderMode] = None
     provider_mode_atlas: Optional[ProviderMode] = None
 
 

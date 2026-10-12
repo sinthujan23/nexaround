@@ -372,7 +372,8 @@ async def _upstream(
         _succeeded(provider)
         await _write(key, None, empty=True, ttl=empty_ttl)
         return Fetched(source="upstream", fetched_at=time.time())
-    if status != 200:
+    if status not in (200, 201):
+        # 201 is a resource made on request (Atlas mints a link that way).
         # 401/403 is a bad or revoked key and will not fix itself; 5xx is the
         # provider having a bad minute. Either way, stop asking soon.
         await _failed(provider, f"HTTP {status}")

@@ -559,7 +559,7 @@ class OdysseyPracticalInfo {
   // eSIM offer for the destination (providers/enrich.py); empty otherwise.
   final String connectivityUrl;
   final String connectivityCta;
-  // The "Get travel insurance" button under Safety & Health (EKTA), on trips
+  // The travel-insurance button under Safety & Health (HelloSafe), on trips
   // to another country; empty otherwise.
   final String safetyUrl;
   final String safetyCta;
