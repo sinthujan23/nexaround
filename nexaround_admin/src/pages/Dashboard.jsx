@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { useApi, apiGet } from '../api';
 import { CompassIcon, MapPinIcon, CreditCardIcon, ClockIcon, TrendingUpIcon, TrendingDownIcon } from '../components/Icons';
+import { Card, StatCard, HeroBanner, Badge, PageLoading, PageError } from '../components/Kit';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -200,19 +201,11 @@ export default function Dashboard() {
   };
 
   if (loading) {
-    return (
-      <div style={{ textAlign: 'center', padding: '50px', color: 'var(--text-secondary)' }}>
-        <span style={{ fontSize: '18px' }}>Scanning systems... Loading dashboard data...</span>
-      </div>
-    );
+    return <PageLoading>Scanning systems... Loading dashboard data...</PageLoading>;
   }
 
   if (error) {
-    return (
-      <div className="login-error" style={{ margin: '20px' }}>
-        Failed to fetch dashboard metrics: {error}
-      </div>
-    );
+    return <PageError>Failed to fetch dashboard metrics: {error}</PageError>;
   }
 
   const {
@@ -220,7 +213,6 @@ export default function Dashboard() {
     attractions_count,
     pending_approvals_count,
     monthly_revenue,
-    growth_data,
     recent_activity,
     api_usage
   } = data;
@@ -241,84 +233,45 @@ export default function Dashboard() {
       )}
 
       {/* Premium Hero Banner */}
-      <div className="approvals-hero" style={{
-        background: 'linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%)',
-        borderRadius: '16px',
-        padding: '20px 24px',
-        color: 'white',
-        marginBottom: '24px',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        boxShadow: '0 8px 24px rgba(0, 122, 124, 0.12)'
-      }}>
-        <div>
-          <h2 style={{ fontSize: '24px', fontWeight: 800, margin: 0, letterSpacing: '-0.5px' }}>Welcome back, Admin!</h2>
-          <p style={{ margin: '6px 0 0 0', opacity: 0.9, fontSize: '14px', fontWeight: 500 }}>
-            Here is what's happening with NexARound today.
-          </p>
-        </div>
-        <div style={{ display: 'flex', gap: '12px' }}>
-          <div style={{ background: 'rgba(255,255,255,0.15)', padding: '10px 16px', borderRadius: '12px', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-            <span style={{ fontSize: '11px', opacity: 0.8, textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 700 }}>System Status</span>
-            <span style={{ fontSize: '14px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#4CAF50', boxShadow: '0 0 8px #4CAF50' }}></div>
-              All Systems Operational
-            </span>
+      <HeroBanner
+        large
+        title="Welcome back, Admin!"
+        action={
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <div style={{ background: 'rgba(255,255,255,0.15)', padding: '10px 16px', borderRadius: '12px', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+              <span style={{ fontSize: '11px', opacity: 0.8, textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 700 }}>System Status</span>
+              <span style={{ fontSize: '14px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#4CAF50', boxShadow: '0 0 8px #4CAF50' }}></div>
+                All Systems Operational
+              </span>
+            </div>
           </div>
-        </div>
-      </div>
+        }
+      >
+        Here is what's happening with NexARound today.
+      </HeroBanner>
 
       {/* Stats */}
       <div className="stats-grid">
-        <div className="stat-card">
-          <div className="stat-icon">
-            <CompassIcon size={24} style={{ color: 'var(--accent)' }} />
-          </div>
-          <div className="stat-value">{explorers_count.toLocaleString()}</div>
-          <div className="stat-label">Total Explorers</div>
-          <span className="stat-change up" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-            <TrendingUpIcon size={12} /> Active Members
-          </span>
-        </div>
-        <div className="stat-card">
-          <div className="stat-icon">
-            <MapPinIcon size={24} style={{ color: 'var(--accent)' }} />
-          </div>
-          <div className="stat-value">{attractions_count.toLocaleString()}</div>
-          <div className="stat-label">Total Attractions</div>
-          <span className="stat-change up" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-            <TrendingUpIcon size={12} /> Database Records
-          </span>
-        </div>
-        <div className="stat-card">
-          <div className="stat-icon">
-            <CreditCardIcon size={24} style={{ color: 'var(--accent)' }} />
-          </div>
-          <div className="stat-value">${monthly_revenue.toLocaleString()}</div>
-          <div className="stat-label">Monthly Revenue</div>
-          <span className="stat-change up" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-            <TrendingUpIcon size={12} /> Estimated MRR
-          </span>
-        </div>
-        <div className="stat-card">
-          <div className="stat-icon">
-            <ClockIcon size={24} style={{ color: pending_approvals_count > 0 ? 'var(--warning)' : 'var(--accent)' }} />
-          </div>
-          <div className="stat-value">{pending_approvals_count}</div>
-          <div className="stat-label">Pending Approvals</div>
-          <span className={pending_approvals_count > 0 ? "stat-change down" : "stat-change up"} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-            {pending_approvals_count > 0 ? (
-              <><TrendingDownIcon size={12} /> Needs review</>
-            ) : (
-              <><TrendingUpIcon size={12} /> All cleared</>
-            )}
-          </span>
-        </div>
+        <StatCard icon={CompassIcon} value={explorers_count.toLocaleString()} label="Total Explorers"
+          changeIcon={TrendingUpIcon} change="Active Members" />
+        <StatCard icon={MapPinIcon} value={attractions_count.toLocaleString()} label="Total Attractions"
+          changeIcon={TrendingUpIcon} change="Database Records" />
+        <StatCard icon={CreditCardIcon} value={`$${monthly_revenue.toLocaleString()}`} label="Monthly Revenue"
+          changeIcon={TrendingUpIcon} change="Estimated MRR" />
+        <StatCard
+          icon={ClockIcon}
+          iconColor={pending_approvals_count > 0 ? 'var(--warning)' : 'var(--accent)'}
+          value={pending_approvals_count}
+          label="Pending Approvals"
+          trend={pending_approvals_count > 0 ? 'down' : 'up'}
+          changeIcon={pending_approvals_count > 0 ? TrendingDownIcon : TrendingUpIcon}
+          change={pending_approvals_count > 0 ? 'Needs review' : 'All cleared'}
+        />
       </div>
 
       {/* API Monitoring & Usage */}
-      <div className="card" style={{ marginBottom: '24px' }}>
+      <Card style={{ marginBottom: '24px' }}>
         <div className="card-header" style={{ marginBottom: '16px', paddingBottom: '12px', borderBottom: '1px solid var(--border)' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
             <div className="card-title">API Usage &amp; Monitoring</div>
@@ -327,7 +280,7 @@ export default function Dashboard() {
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <span className="badge badge-green">Live Tracking</span>
+            <Badge tone="green">Live Tracking</Badge>
             <button
               id="dashboard-refresh-btn"
               onClick={handleRefresh}
@@ -428,22 +381,18 @@ export default function Dashboard() {
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0 2px' }}>
                   {getWeekDayLabels().map((day, i) => (
-                    <span key={i} style={{ fontSize: '9px', color: 'var(--text-secondary)', fontWeight: i === 6 ? 700 : 400, color: i === 6 ? 'var(--text-primary)' : 'var(--text-secondary)' }}>{day}</span>
+                    <span key={i} style={{ fontSize: '9px', fontWeight: i === 6 ? 700 : 400, color: i === 6 ? 'var(--text-primary)' : 'var(--text-secondary)' }}>{day}</span>
                   ))}
                 </div>
               </div>
             );
           })}
         </div>
-      </div>
+      </Card>
 
       <div className="two-col">
         {/* Growth Chart */}
-        <div className="card">
-          <div className="card-header">
-            <div className="card-title">Explorer Growth</div>
-            <span className="badge badge-blue">Last 12 Months</span>
-          </div>
+        <Card title="Explorer Growth" action={<Badge tone="blue">Last 12 Months</Badge>}>
           <div className="chart-wrap">
             {display_growth_data.map((val, i) => (
               <div className="chart-bar-col" key={i}>
@@ -452,13 +401,10 @@ export default function Dashboard() {
               </div>
             ))}
           </div>
-        </div>
+        </Card>
 
         {/* Recent Activity */}
-        <div className="card">
-          <div className="card-header">
-            <div className="card-title">Recent Activity</div>
-          </div>
+        <Card title="Recent Activity">
           {recent_activity.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '30px', color: 'var(--text-secondary)', fontSize: '13px' }}>
               No recent activity found.
@@ -474,7 +420,7 @@ export default function Dashboard() {
               </div>
             ))
           )}
-        </div>
+        </Card>
       </div>
     </div>
   );
