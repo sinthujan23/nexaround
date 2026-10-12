@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useApi, apiPost } from '../api';
 import { SearchIcon, CheckIcon, CrossIcon, UsersIcon } from '../components/Icons';
+import { HeroBanner, HeroCount, SearchBar, Loading, EmptyState, Badge, PageError } from '../components/Kit';
 
 export default function Users() {
   const [search, setSearch] = useState('');
@@ -85,11 +86,7 @@ export default function Users() {
   };
 
   if (error) {
-    return (
-      <div className="login-error" style={{ margin: '20px' }}>
-        Failed to load explorers: {error}
-      </div>
-    );
+    return <PageError>Failed to load explorers: {error}</PageError>;
   }
 
   const users = data?.users || [];
@@ -100,24 +97,9 @@ export default function Users() {
   return (
     <div className="approvals-modern-container">
       {/* Premium Hero Banner (Compact) */}
-      <div className="approvals-hero" style={{
-        background: 'linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%)',
-        borderRadius: '16px',
-        padding: '16px 24px',
-        color: 'white',
-        marginBottom: '16px',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        boxShadow: '0 8px 24px rgba(0, 122, 124, 0.12)'
-      }}>
-        <div>
-          <h2 style={{ fontSize: '20px', fontWeight: 800, margin: 0, letterSpacing: '-0.5px' }}>Registered Explorers</h2>
-          <p style={{ margin: '4px 0 0 0', opacity: 0.9, fontSize: '13px', fontWeight: 500 }}>
-            You have <strong style={{ color: '#fff', background: 'rgba(255,255,255,0.2)', padding: '2px 8px', borderRadius: '12px' }}>{total}</strong> registered explorers on the platform.
-          </p>
-        </div>
-      </div>
+      <HeroBanner title="Registered Explorers">
+        You have <HeroCount>{total}</HeroCount> registered explorers on the platform.
+      </HeroBanner>
 
       <div className="card modern-card" style={{ border: 'none', padding: '0', background: 'transparent', boxShadow: 'none' }}>
         <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: 'none', paddingBottom: 0 }}>
@@ -125,14 +107,7 @@ export default function Users() {
             <UsersIcon size={18} style={{ color: 'var(--accent)' }} />
             All Explorers
           </div>
-          <div className="search-bar">
-            <SearchIcon size={16} style={{ color: 'var(--text-secondary)' }} />
-            <input
-              placeholder="Search by name or email..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-            />
-          </div>
+          <SearchBar value={search} onChange={setSearch} placeholder="Search by name or email..." />
         </div>
 
         {/* Filter and Sort Toolbar */}
@@ -246,14 +221,14 @@ export default function Users() {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <span
-              className="badge badge-ghost"
+            <Badge
+              tone="ghost"
               style={{ fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '3px 8px', fontWeight: 600 }}
               title="All dates and times are presented in Sri Lanka Standard Time (Asia/Colombo, UTC+5:30)"
             >
               <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--accent, #007a7c)' }}></span>
               SLST (UTC+5:30)
-            </span>
+            </Badge>
             <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
               Showing <strong>{users.length}</strong> of <strong>{total}</strong> explorers
             </span>
@@ -262,22 +237,13 @@ export default function Users() {
 
         <div className="modern-list-container" style={{ marginTop: '20px' }}>
           {loading && users.length === 0 ? (
-            <div className="empty-state">
-              <div className="loader"></div>
-              <p>Retrieving explorer profiles...</p>
-            </div>
+            <Loading>Retrieving explorer profiles...</Loading>
           ) : users.length === 0 ? (
-            <div className="empty-state">
-              <div className="empty-icon">
-                <SearchIcon size={28} />
-              </div>
-              <h3 style={{ margin: '0 0 4px 0', fontSize: '16px', color: 'var(--text-primary)' }}>No explorers found</h3>
-              <p style={{ margin: 0, fontSize: '13px' }}>
-                {hasActiveFilters
-                  ? "We couldn't find any users matching your active filters or search query."
-                  : "We couldn't find any users registered on the platform yet."}
-              </p>
-            </div>
+            <EmptyState icon={<SearchIcon size={28} />} title="No explorers found">
+              {hasActiveFilters
+                ? "We couldn't find any users matching your active filters or search query."
+                : "We couldn't find any users registered on the platform yet."}
+            </EmptyState>
           ) : (
             <>
               <div className="modern-list">
@@ -300,12 +266,12 @@ export default function Users() {
                           <div className="list-item-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             {u.display_name || 'Explorer'}
                             {u.is_verified && <CheckIcon size={14} style={{ color: 'var(--accent)' }} title="Verified Pro" />}
-                            {!u.is_active && <span className="badge badge-red" style={{ fontSize: '9px', padding: '2px 6px' }}>Suspended</span>}
+                            {!u.is_active && <Badge tone="red" style={{ fontSize: '9px', padding: '2px 6px' }}>Suspended</Badge>}
                           </div>
                           <div className="list-item-meta">
                             <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{u.email}</span>
                             <span style={{ fontSize: '10px', color: 'var(--border-hover)', opacity: 0.5 }}>•</span>
-                            <span className="badge badge-ghost" style={{ fontSize: '9px', padding: '2px 6px' }}>{u.is_verified ? 'Pro Master' : travelStyle}</span>
+                            <Badge tone="ghost" style={{ fontSize: '9px', padding: '2px 6px' }}>{u.is_verified ? 'Pro Master' : travelStyle}</Badge>
                             <span style={{ fontSize: '10px', color: 'var(--border-hover)', opacity: 0.5 }}>•</span>
                             <span
                               className="list-item-loc"
