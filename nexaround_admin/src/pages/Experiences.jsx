@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useApi, apiGet, apiPost, apiPut, apiPatch, apiDelete, mediaUrl } from '../api';
 import {
-  CompassIcon, UsersIcon, PlusIcon, EditIcon, TrashIcon, SearchIcon, CrossIcon,
+  CompassIcon, UsersIcon, PlusIcon, EditIcon, TrashIcon,
   TicketIcon, PhoneIcon, MailIcon, GlobeIcon, StarIcon, WhatsAppIcon,
 } from '../components/Icons';
+import { Drawer, Switch, SearchBar, Toast } from '../components/Kit';
+import { useToast } from '../hooks';
 import LocationPicker from '../components/LocationPicker';
 import ImageUploader from '../components/ImageUploader';
 import { COUNTRIES, normalizeCountryCode } from '../constants/countries';
@@ -96,43 +98,6 @@ const pickLocation = (form, patch) => {
   return next;
 };
 
-function Switch({ checked, onChange, label, disabled }) {
-  return (
-    <label className="switch" onClick={(e) => e.stopPropagation()}>
-      <input type="checkbox" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
-      <span className="switch-track" />
-      {label}
-    </label>
-  );
-}
-
-function Drawer({ title, subtitle, onClose, footer, children, onSubmit }) {
-  useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
-  const Body = onSubmit ? 'form' : 'div';
-  return (
-    <div className="drawer-overlay" onClick={onClose}>
-      <Body className="drawer" onClick={(e) => e.stopPropagation()} onSubmit={onSubmit}>
-        <div className="drawer-head">
-          <div>
-            <div className="drawer-title">{title}</div>
-            {subtitle && <div className="drawer-sub">{subtitle}</div>}
-          </div>
-          <button type="button" className="icon-btn" onClick={onClose} title="Close">
-            <CrossIcon size={18} />
-          </button>
-        </div>
-        <div className="drawer-body">{children}</div>
-        <div className="drawer-foot">{footer}</div>
-      </Body>
-    </div>
-  );
-}
-
 function VendorAvatar({ vendor, large }) {
   const photo = vendor.logo_url || vendor.photo_urls?.[0];
   return (
@@ -177,7 +142,7 @@ export default function Experiences() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'live' | 'hidden'
   const [categoryFilter, setCategoryFilter] = useState('all');
-  const [toast, setToast] = useState(null);
+  const [toast, notify] = useToast(3500);
 
   // Selected vendor
   const [selected, setSelected] = useState(null);
@@ -214,11 +179,6 @@ export default function Experiences() {
   const vendorKey = vendors.map((v) => v.id).join(',');
   const packagesKey = `${vendorKey}|${allPackagesVersion}`;
   const allPackagesLoading = !!vendorKey && allPackagesKey !== packagesKey;
-
-  const notify = (message, tone = 'ok') => {
-    setToast({ message, tone });
-    setTimeout(() => setToast(null), 3500);
-  };
 
   useEffect(() => {
     if (view !== 'packages' || !vendorKey) return;
@@ -553,13 +513,11 @@ export default function Experiences() {
         </div>
 
         <div className="xp-toolbar-right">
-          <div className="search-bar">
-            <SearchIcon size={16} />
-            <input
-              type="text" value={search} onChange={(e) => setSearch(e.target.value)}
-              placeholder={view === 'vendors' ? 'Search vendors or cities…' : 'Search packages or vendors…'}
-            />
-          </div>
+          <SearchBar
+            value={search}
+            onChange={setSearch}
+            placeholder={view === 'vendors' ? 'Search vendors or cities…' : 'Search packages or vendors…'}
+          />
           {view === 'packages' && (
             <select className="xp-select" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
               <option value="all">All categories</option>
@@ -1340,7 +1298,7 @@ export default function Experiences() {
         </Drawer>
       )}
 
-      {toast && <div className={`xp-toast ${toast.tone === 'error' ? 'error' : ''}`}>{toast.message}</div>}
+      <Toast toast={toast} />
     </div>
   );
 }
