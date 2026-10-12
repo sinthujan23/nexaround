@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { MapPinIcon, PlusIcon, EditIcon, TrashIcon, CrossIcon } from '../components/Icons';
+import { useState, useEffect, useRef, useMemo } from 'react';
+import { MapPinIcon, PlusIcon, EditIcon, TrashIcon } from '../components/Icons';
 import { useApi, apiPost, apiPut, apiDelete } from '../api';
+import { HeroBanner, HeroCount, HeroButton, SearchBar, Modal, Badge, PageError } from '../components/Kit';
 
 export default function Attractions() {
   const [searchVal, setSearchVal] = useState('');
@@ -21,7 +22,7 @@ export default function Attractions() {
   const categoriesRes = useApi('/categories');
   const categories = categoriesRes.data || [];
 
-  const attractions = data?.attractions || [];
+  const attractions = useMemo(() => data?.attractions || [], [data?.attractions]);
   const totalCount = data?.total || 0;
 
   const [selectedAttraction, setSelectedAttraction] = useState(null);
@@ -189,45 +190,19 @@ export default function Attractions() {
   };
 
   if (error) {
-    return (
-      <div className="login-error" style={{ margin: '20px' }}>
-        Failed to load attractions: {error}
-      </div>
-    );
+    return <PageError>Failed to load attractions: {error}</PageError>;
   }
 
   return (
     <div style={{ position: 'relative' }}>
       {/* Premium Hero Banner */}
-      <div className="approvals-hero" style={{
-        background: 'linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%)',
-        borderRadius: '16px',
-        padding: '16px 24px',
-        color: 'white',
-        marginBottom: '16px',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        boxShadow: '0 8px 24px rgba(0, 122, 124, 0.12)'
-      }}>
-        <div>
-          <h2 style={{ fontSize: '22px', fontWeight: 800, margin: 0, letterSpacing: '-0.5px' }}>Saved Places &amp; Attractions</h2>
-          <p style={{ margin: '4px 0 0 0', opacity: 0.9, fontSize: '13px', fontWeight: 500 }}>
-            Visualizing and managing <strong style={{ color: '#fff', background: 'rgba(255,255,255,0.2)', padding: '2px 8px', borderRadius: '12px' }}>{totalCount}</strong> places saved in your backend database.
-          </p>
-        </div>
-        <button className="btn" onClick={openAddModal} style={{ 
-          background: 'white', 
-          color: 'var(--accent)', 
-          padding: '10px 20px', 
-          borderRadius: '10px',
-          fontWeight: 800,
-          fontSize: '13px',
-          boxShadow: '0 4px 14px rgba(0,0,0,0.1)'
-        }}>
-          + Add New Place
-        </button>
-      </div>
+      <HeroBanner
+        title="Saved Places & Attractions"
+        titleSize={22}
+        action={<HeroButton onClick={openAddModal}>+ Add New Place</HeroButton>}
+      >
+        Visualizing and managing <HeroCount>{totalCount}</HeroCount> places saved in your backend database.
+      </HeroBanner>
 
       {/* Split screen content */}
       <div className="approvals-split">
@@ -236,14 +211,13 @@ export default function Attractions() {
           
           {/* Search Bar & Filters */}
           <div className="card" style={{ padding: '16px', marginBottom: '0px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px' }}>
-            <div className="search-bar" style={{ width: '100%', maxWidth: '360px' }}>
-              <input 
-                type="text" 
-                placeholder="Search saved places..." 
-                value={searchVal}
-                onChange={e => setSearchVal(e.target.value)}
-              />
-            </div>
+            <SearchBar
+              icon={false}
+              style={{ width: '100%', maxWidth: '360px' }}
+              placeholder="Search saved places..."
+              value={searchVal}
+              onChange={setSearchVal}
+            />
             {loading && <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Updating list...</div>}
           </div>
 
@@ -286,15 +260,15 @@ export default function Attractions() {
                           {a.name}
                         </div>
                       </td>
-                      <td><span className="badge badge-blue">{a.category_name || 'General'}</span></td>
+                      <td><Badge tone="blue">{a.category_name || 'General'}</Badge></td>
                       <td>{a.address || '—'}</td>
                       <td style={{ fontSize: '11.5px', color: 'var(--text-secondary)', fontFamily: 'monospace', letterSpacing: '0.5px' }}>
                         {a.latitude.toFixed(6)}, {a.longitude.toFixed(6)}
                       </td>
                       <td>
-                        <span className={`badge ${a.is_active ? 'badge-green' : 'badge-yellow'}`}>
+                        <Badge tone={a.is_active ? 'green' : 'yellow'}>
                           {a.is_active ? 'Active' : 'Inactive'}
-                        </span>
+                        </Badge>
                       </td>
                       <td>
                         <div style={{ display: 'flex', gap: '8px' }} onClick={e => e.stopPropagation()}>
@@ -338,79 +312,70 @@ export default function Attractions() {
       </div>
 
       {isModalOpen && (
-        <div className="modal-overlay" onClick={() => setIsModalOpen(false)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '600px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-              <h3 style={{ fontSize: '18px', fontWeight: 800 }}>{editingId ? 'Edit Attraction' : 'Add New Attraction'}</h3>
-              <button className="btn btn-ghost" style={{ padding: '6px', borderRadius: '50%' }} onClick={() => setIsModalOpen(false)}>
-                <CrossIcon size={16} />
-              </button>
+        <Modal title={editingId ? 'Edit Attraction' : 'Add New Attraction'} maxWidth="600px" onClose={() => setIsModalOpen(false)}>
+          <form onSubmit={handleSave}>
+            <div className="form-group">
+              <label className="form-label">Attraction Name</label>
+              <input type="text" className="form-input" placeholder="e.g. Statue of Liberty" required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Attraction Image (Data URL/Link)</label>
+              <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+                {formData.image && (
+                  <div style={{ width: '60px', height: '60px', borderRadius: '10px', backgroundImage: `url(${formData.image})`, backgroundSize: 'cover', backgroundPosition: 'center', border: '1px solid var(--border)', flexShrink: 0 }} />
+                )}
+                <input type="file" accept="image/*" onChange={handleImageChange} className="form-input" style={{ padding: '8px 12px', fontSize: '13px' }} />
+              </div>
             </div>
             
-            <form onSubmit={handleSave}>
+            <div className="form-grid-2">
               <div className="form-group">
-                <label className="form-label">Attraction Name</label>
-                <input type="text" className="form-input" placeholder="e.g. Statue of Liberty" required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
+                <label className="form-label">Category</label>
+                <select className="form-select" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}>
+                  {categories.map(c => (
+                    <option key={c.id} value={c.name}>{c.name}</option>
+                  ))}
+                </select>
               </div>
               <div className="form-group">
-                <label className="form-label">Attraction Image (Data URL/Link)</label>
-                <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
-                  {formData.image && (
-                    <div style={{ width: '60px', height: '60px', borderRadius: '10px', backgroundImage: `url(${formData.image})`, backgroundSize: 'cover', backgroundPosition: 'center', border: '1px solid var(--border)', flexShrink: 0 }} />
-                  )}
-                  <input type="file" accept="image/*" onChange={handleImageChange} className="form-input" style={{ padding: '8px 12px', fontSize: '13px' }} />
-                </div>
+                <label className="form-label">Location (City, Country / Address)</label>
+                <input type="text" className="form-input" placeholder="e.g. New York, USA" required value={formData.location} onChange={e => setFormData({...formData, location: e.target.value})} />
               </div>
-              
-              <div className="form-grid-2">
-                <div className="form-group">
-                  <label className="form-label">Category</label>
-                  <select className="form-select" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}>
-                    {categories.map(c => (
-                      <option key={c.id} value={c.name}>{c.name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Location (City, Country / Address)</label>
-                  <input type="text" className="form-input" placeholder="e.g. New York, USA" required value={formData.location} onChange={e => setFormData({...formData, location: e.target.value})} />
-                </div>
-              </div>
+            </div>
 
-              <div className="form-grid-2">
-                <div className="form-group">
-                  <label className="form-label">Latitude</label>
-                  <input type="number" step="any" className="form-input" placeholder="40.6892" required value={formData.lat} onChange={e => setFormData({...formData, lat: e.target.value})} />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Longitude</label>
-                  <input type="number" step="any" className="form-input" placeholder="-74.0445" required value={formData.lng} onChange={e => setFormData({...formData, lng: e.target.value})} />
-                </div>
+            <div className="form-grid-2">
+              <div className="form-group">
+                <label className="form-label">Latitude</label>
+                <input type="number" step="any" className="form-input" placeholder="40.6892" required value={formData.lat} onChange={e => setFormData({...formData, lat: e.target.value})} />
               </div>
+              <div className="form-group">
+                <label className="form-label">Longitude</label>
+                <input type="number" step="any" className="form-input" placeholder="-74.0445" required value={formData.lng} onChange={e => setFormData({...formData, lng: e.target.value})} />
+              </div>
+            </div>
 
-              <div className="form-grid-2">
-                <div className="form-group">
-                  <label className="form-label">Entry Fee (USD)</label>
-                  <input type="number" step="0.01" className="form-input" value={formData.entry_fee} onChange={e => setFormData({...formData, entry_fee: e.target.value})} />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Status</label>
-                  <select className="form-select" value={formData.status} onChange={e => setFormData({...formData, status: e.target.value})}>
-                    <option value="Active">Active (Visible in App)</option>
-                    <option value="Inactive">Inactive (Hidden)</option>
-                  </select>
-                </div>
+            <div className="form-grid-2">
+              <div className="form-group">
+                <label className="form-label">Entry Fee (USD)</label>
+                <input type="number" step="0.01" className="form-input" value={formData.entry_fee} onChange={e => setFormData({...formData, entry_fee: e.target.value})} />
               </div>
+              <div className="form-group">
+                <label className="form-label">Status</label>
+                <select className="form-select" value={formData.status} onChange={e => setFormData({...formData, status: e.target.value})}>
+                  <option value="Active">Active (Visible in App)</option>
+                  <option value="Inactive">Inactive (Hidden)</option>
+                </select>
+              </div>
+            </div>
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '32px' }}>
-                <button type="button" className="btn btn-ghost" onClick={() => setIsModalOpen(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <PlusIcon size={16} /> Save Attraction
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '32px' }}>
+              <button type="button" className="btn btn-ghost" onClick={() => setIsModalOpen(false)}>Cancel</button>
+              <button type="submit" className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <PlusIcon size={16} /> Save Attraction
+              </button>
+            </div>
+          </form>
+        </Modal>
       )}
     </div>
   );
