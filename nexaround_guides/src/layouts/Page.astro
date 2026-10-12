@@ -1,0 +1,21 @@
+---
+import Base from './Base.astro';
+import Icon from '../components/Icon.astro';
+interface Props { title: string; description: string; badge?: string; noindex?: boolean }
+const { title, description, badge = 'nexARound Guides', noindex = false } = Astro.props;
+---
+<Base title={title} description={description} noindex={noindex}>
+  <section class="hero hero-page">
+    <div class="container hero-inner">
+      <nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span aria-hidden="true">›</span><span aria-current="page">{title}</span></nav>
+      <div class="hero-copy">
+        <span class="badge badge-teal-glow"><Icon name="compass" /> {badge}</span>
+        <h1 style="margin-top: 20px">{title}</h1>
+        <p class="hero-lead">{description}</p>
+      </div>
+    </div>
+  </section>
+  <section class="section">
+    <div class="container"><div class="prose page-body"><slot /></div></div>
+  </section>
+</Base>

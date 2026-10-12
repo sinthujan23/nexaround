@@ -1,0 +1,129 @@
+---
+import { Image } from 'astro:assets';
+import Base from '../layouts/Base.astro';
+import Icon from '../components/Icon.astro';
+import GuideCard from '../components/GuideCard.astro';
+import AppCta from '../components/AppCta.astro';
+import { PILLARS, PILLAR_KEYS } from '../data/pillars';
+import { UPCOMING } from '../data/upcoming';
+import { getGuides, guideUrl } from '../lib/guides';
+import { SITE } from '../site';
+import heroImg from '../assets/guides/adelaide-to-perth-nullarbor/bunda-cliffs-2017-02.jpg';
+
+const guides = await getGuides();
+const [featured, ...rest] = guides;
+const count = (k: string) => guides.filter((g) => g.data.pillar === k).length;
+
+const jsonLd = [
+  {
+    '@context': 'https://schema.org',
+    '@type': 'WebSite',
+    name: SITE.name,
+    url: Astro.site?.href,
+    description: SITE.description,
+    publisher: { '@type': 'Organization', name: SITE.publisher, url: SITE.appSite },
+  },
+];
+---
+<Base title={SITE.name} image={heroImg} jsonLd={jsonLd}>
+  <section class="hero hero-home">
+    <div class="hero-bg">
+      <Image src={heroImg} alt="" widths={[960, 1600, 2000]} sizes="100vw" loading="eager" fetchpriority="high" />
+    </div>
+    <div class="container hero-inner">
+      <div class="hero-copy">
+        <span class="badge badge-teal-glow"><Icon name="compass" /> Remote &amp; unusual places</span>
+        <h1 style="margin-top: 24px">Travel guides for the <span class="text-gradient-teal">far side of the map</span>.</h1>
+        <p class="hero-lead">Long roads, extreme places and villages at the end of the road. Every guide is measured, sourced and dated: distances, fuel gaps, permits, costs, and the stops that cost nothing.</p>
+        <div class="hero-actions">
+          <a class="btn btn-white" href={featured ? guideUrl(featured) : '/road-trips/'}>Read the latest guide <Icon name="arrow-right" /></a>
+          <a class="btn btn-glass" href={`${SITE.appSite}/get-app`}><Icon name="smartphone" /> Get the app</a>
+        </div>
+        <div class="hero-meta">
+          <span><Icon name="route" /> Every distance measured</span>
+          <span><Icon name="calendar-check" /> Every guide dated</span>
+          <span><Icon name="map-pin" /> Free stops marked</span>
+        </div>
+      </div>
+    </div>
+    <p class="hero-credit">Bunda Cliffs, South Australia. Photo: Bahnfrend, <a href="https://commons.wikimedia.org/wiki/File:Bunda_Cliffs,_2017_(02).jpg">CC BY-SA 4.0</a></p>
+  </section>
+
+  {featured && (
+    <section class="section-sm" style="padding-top: 72px">
+      <div class="container">
+        <div class="section-head-row">
+          <div>
+            <span class="badge badge-teal"><Icon name="sparkle" /> Featured guide</span>
+          </div>
+        </div>
+        <GuideCard guide={featured} feature eager />
+      </div>
+    </section>
+  )}
+
+  <section class="section section-light">
+    <div class="container">
+      <div class="section-head-row">
+        <div>
+          <span class="badge badge-teal"><Icon name="book-open" /> {rest.length ? 'Latest guides' : 'In the works'}</span>
+          <h2>{rest.length ? <>New on the <span class="text-teal">map</span></> : <>Being checked <span class="text-teal">right now</span></>}</h2>
+        </div>
+      </div>
+      {rest.length > 0 && (
+        <div class="guide-grid">{rest.slice(0, 6).map((g) => <GuideCard guide={g} />)}</div>
+      )}
+      {rest.length === 0 && (
+        <div class="guide-grid">
+          {UPCOMING.map((u) => (
+            <div class="card card-pad" style="display: flex; flex-direction: column; gap: 10px">
+              <span class="eyebrow">In the works · {u.place}</span>
+              <h3 style="font-size: 1.25rem">{u.title}</h3>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="container">
+      <div class="section-head">
+        <span class="badge badge-teal"><Icon name="compass" /> Five ways in</span>
+        <h2>Explore by <span class="text-gradient-teal">kind of trip</span></h2>
+        <p>Pick the kind of journey you want. Each section starts with the guides we have checked most recently.</p>
+      </div>
+      <div class="pillar-grid">
+        {PILLAR_KEYS.map((k, i) => (
+          <a href={`/${k}/`} class="card pillar-tile">
+            <span class="eyebrow">{String(i + 1).padStart(2, '0')} • {PILLARS[k].short}</span>
+            <h3>{PILLARS[k].name}</h3>
+            <p>{PILLARS[k].intro}</p>
+            <span class="count">{count(k) ? `${count(k)} guide${count(k) > 1 ? 's' : ''}` : 'First guides coming soon'}</span>
+          </a>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <section class="section dark-section">
+    <div class="container">
+      <div class="section-head">
+        <span class="badge badge-teal-glow"><Icon name="shield-check" /> How we work</span>
+        <h2>Measured, sourced <span class="text-gradient-teal">and dated</span></h2>
+        <p>Remote places punish bad information. A wrong fuel distance or an out-of-date permit rule can end a trip, so every guide is measured, sourced and dated.</p>
+      </div>
+      <div class="dark-grid">
+        <div class="dark-card"><span class="dark-icon"><Icon name="route" /></span><h3>Measured routes</h3><p>Distances and driving times come from mapping data on the date we check the guide, not from memory.</p></div>
+        <div class="dark-card"><span class="dark-icon"><Icon name="calendar-check" /></span><h3>Dated</h3><p>Every guide shows the day it was last checked, so you know how fresh it is.</p></div>
+        <div class="dark-card"><span class="dark-icon"><Icon name="book-open" /></span><h3>Sourced</h3><p>Permits, fees and rules link to the official source, so you can check them yourself.</p></div>
+        <div class="dark-card"><span class="dark-icon"><Icon name="users" /></span><h3>Credited photos</h3><p>Photos come from photographers who have been there, used under free licences and credited by name.</p></div>
+      </div>
+      <p style="text-align: center; margin-top: 36px"><a class="link-arrow" style="color: var(--brand-cyan)" href="/editorial-policy/">Read our editorial policy <Icon name="arrow-right" /></a></p>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="container"><AppCta /></div>
+  </section>
+</Base>

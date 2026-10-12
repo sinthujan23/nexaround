@@ -1,0 +1,17 @@
+---
+import Icon from './Icon.astro';
+import StoreButtons from './StoreButtons.astro';
+import { SITE } from '../site';
+interface Props { title?: string; text?: string }
+const {
+  title = 'Plan these trips with Odyssey',
+  text = 'Odyssey, the trip planner in the nexARound app, turns a route like this into a day-by-day plan with stops, stays and costs for your dates.',
+} = Astro.props;
+---
+<div class="soft-card">
+  <span class="badge badge-teal"><Icon name="sparkle" /> Ready to explore?</span>
+  <h2>{title}</h2>
+  <p>{text}</p>
+  <StoreButtons />
+  <a class="link-arrow" href={`${SITE.appSite}/app`}>See everything the app does <Icon name="arrow-right" /></a>
+</div>

@@ -1,0 +1,15 @@
+---
+import Page from '../layouts/Page.astro';
+import { SITE } from '../site';
+---
+<Page title="Affiliate disclosure" description="Some links on this site earn us a commission. Here is how that works.">
+  <p>Some links on nexARound Guides are affiliate links. If you click one and then buy something, such as an eSIM or an airport transfer, the company pays us a commission. You pay the same price either way.</p>
+  <p>Affiliate links are marked "Partner link" and open the partner's own website. Most of our partner links run through the Travelpayouts affiliate network.</p>
+  <h2>What this does not change</h2>
+  <ul>
+    <li>We recommend a service only when it is useful for the trip in the guide.</li>
+    <li>Partners do not pay for coverage and cannot change what we write.</li>
+    <li>Free stops, public transport and other options that earn us nothing are covered just as fully.</li>
+  </ul>
+  <p>Questions: <a href={`mailto:${SITE.email}`}>{SITE.email}</a>. This site is published by {SITE.publisher}.</p>
+</Page>

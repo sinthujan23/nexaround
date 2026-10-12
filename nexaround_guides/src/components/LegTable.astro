@@ -1,0 +1,30 @@
+---
+import { formatKm, formatDuration } from '../lib/guides';
+interface Leg { from: string; to: string; km: number; min: number }
+interface Props { legs: Leg[] }
+const { legs } = Astro.props;
+const totalKm = legs.reduce((s, l) => s + l.km, 0);
+const totalMin = legs.reduce((s, l) => s + l.min, 0);
+let running = 0;
+const rows = legs.map((l) => ({ ...l, at: (running += l.km) }));
+---
+<div class="card table-wrap">
+  <table class="leg-table">
+    <thead>
+      <tr><th scope="col">Leg</th><th scope="col" class="num">Distance</th><th scope="col" class="num">Driving</th><th scope="col" class="num">From start</th></tr>
+    </thead>
+    <tbody>
+      {rows.map((l) => (
+        <tr>
+          <td>{l.from}<span class="arrow" aria-label="to">→</span>{l.to}</td>
+          <td class="num">{formatKm(l.km)}</td>
+          <td class="num">{formatDuration(l.min)}</td>
+          <td class="num">{formatKm(l.at)}</td>
+        </tr>
+      ))}
+    </tbody>
+    <tfoot>
+      <tr><td>Total</td><td class="num">{formatKm(totalKm)}</td><td class="num">{formatDuration(totalMin)}</td><td></td></tr>
+    </tfoot>
+  </table>
+</div>

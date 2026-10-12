@@ -1,0 +1,19 @@
+---
+import Page from '../layouts/Page.astro';
+import { SITE } from '../site';
+---
+<Page title="Editorial policy" description="How we research, check and update every guide, and how we use AI tools.">
+  <h2>Every number is checked</h2>
+  <p>Distances and driving times come from mapping data, measured on the date shown at the top of each guide. Where other sources give different figures, for example roadhouse-to-roadhouse distances, we say so.</p>
+  <p>Permits, entry fees, quarantine rules and opening seasons link to the official source wherever one exists. Each guide ends with a list of its sources.</p>
+  <h2>Every guide is dated</h2>
+  <p>Each guide shows the date it was last checked. When we re-check a guide we update that date, and we correct mistakes as soon as we know about them.</p>
+  <h2>First-hand detail</h2>
+  <p>We welcome first-hand detail from travellers and from people who live in the places we cover, and we add it to guides with credit. Photos are our own or used under a free licence, and the photographer is credited under every photo.</p>
+  <h2>How we use AI</h2>
+  <p>We use AI tools to help research and write our guides. Key facts are checked against the sources listed at the end of each guide, and distances are measured with mapping data on the date shown. We review and update guides over time, and correct mistakes as soon as we know about them.</p>
+  <h2>Money and independence</h2>
+  <p>Some links earn us a commission (see our <a href="/affiliate-disclosure/">affiliate disclosure</a>). Partners do not pay for coverage, do not see guides before they are published, and cannot change what we write.</p>
+  <h2>Corrections</h2>
+  <p>Spotted something out of date or wrong? Email <a href={`mailto:${SITE.email}`}>{SITE.email}</a> with the guide and what has changed.</p>
+</Page>

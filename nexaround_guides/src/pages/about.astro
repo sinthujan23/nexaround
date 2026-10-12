@@ -1,0 +1,20 @@
+---
+import Page from '../layouts/Page.astro';
+import { SITE } from '../site';
+---
+<Page title="About" description="nexARound Guides covers remote and unusual places: the long roads, extreme places and villages that most travel sites skip.">
+  <p>Most travel guides cover the same few hundred places. We cover the others: a 2,702 km road across the Nullarbor, a village where winter falls below −50 °C, an island with no airport. Places where good information is hard to find and bad information can end a trip.</p>
+  <h2>What you'll find here</h2>
+  <ul>
+    <li><strong>Road trips</strong> measured leg by leg, with fuel gaps and free stops marked.</li>
+    <li><strong>Extreme places</strong>: the coldest, wettest, highest and most isolated places people live, and how to get there.</li>
+    <li><strong>Remote villages</strong> at the end of the road, and how to visit them with respect.</li>
+    <li><strong>Free stops</strong>: lookouts, rest areas, ruins and springs that cost nothing.</li>
+    <li><strong>Know-how</strong>: permits, fuel range, water and travelling without phone signal.</li>
+  </ul>
+  <h2>Who we are</h2>
+  <p>nexARound Guides is published by {SITE.publisher}, the team behind the <a href={SITE.appSite}>nexARound app</a>, an AI travel companion with the Odyssey trip planner, Neva and AR landmark recognition. The guides and the app work together: read about a route here, then plan it day by day in the app.</p>
+  <p>How we research and check each guide is set out in our <a href="/editorial-policy/">editorial policy</a>. Some links on this site are affiliate links; see our <a href="/affiliate-disclosure/">affiliate disclosure</a>.</p>
+  <h2>Get in touch</h2>
+  <p>Corrections, tips, photos from a place we cover, or a place you think we should: write to <a href={`mailto:${SITE.email}`}>{SITE.email}</a>.</p>
+</Page>

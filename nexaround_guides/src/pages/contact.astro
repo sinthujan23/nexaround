@@ -1,0 +1,13 @@
+---
+import Page from '../layouts/Page.astro';
+import { SITE } from '../site';
+---
+<Page title="Contact" description="Corrections, tips, photos, partnership questions: one inbox reads them all.">
+  <p>Email <a href={`mailto:${SITE.email}`}>{SITE.email}</a>.</p>
+  <ul>
+    <li><strong>Corrections</strong>: tell us the guide and what has changed. We fix mistakes quickly and update the "checked" date.</li>
+    <li><strong>Tips and photos</strong>: been somewhere we cover, or somewhere we should? We credit every contributor by name.</li>
+    <li><strong>Local businesses</strong> on routes we cover: tell us what you offer travellers.</li>
+  </ul>
+  <p>nexARound Guides is published by {SITE.publisher}.</p>
+</Page>

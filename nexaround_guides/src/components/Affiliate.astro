@@ -1,0 +1,53 @@
+---
+// Partner box. Renders a tracked Travelpayouts link once the guides site has
+// its own Travelpayouts project (TRAVELPAYOUTS.trs). Until then preview builds
+// show where the box will go and the public site shows nothing.
+import Icon from './Icon.astro';
+import { TRAVELPAYOUTS } from '../site';
+import { isPreview } from '../lib/mode';
+
+interface Props { program: 'airalo' | 'gettransfer'; country?: string }
+const { program, country } = Astro.props;
+
+const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+const PROGRAMS = {
+  airalo: {
+    params: { campaign_id: '541', p: '8310' },
+    url: `https://www.airalo.com/${slug(country ?? '')}-esim`,
+    title: `eSIM for ${country ?? 'your trip'}`,
+    body: 'Mobile data without a local SIM card. Install it before you leave home; out on remote roads there is often no signal at all, so download offline maps too.',
+    cta: 'See eSIM plans',
+    partner: 'Airalo',
+  },
+  gettransfer: {
+    params: { p: '4439' },
+    url: 'https://gettransfer.com/en',
+    title: 'Private airport transfer',
+    body: 'A fixed-price car from the airport to your hotel or rental desk, booked before you fly.',
+    cta: 'Get a transfer price',
+    partner: 'GetTransfer',
+  },
+};
+const p = PROGRAMS[program];
+const href = TRAVELPAYOUTS.trs
+  ? 'https://tp.media/r?' +
+    new URLSearchParams({ ...p.params, marker: TRAVELPAYOUTS.marker, trs: TRAVELPAYOUTS.trs, u: p.url }).toString()
+  : null;
+---
+{href ? (
+  <aside class="card affiliate" aria-label={`Partner: ${p.partner}`}>
+    <div>
+      <h3>{p.title}</h3>
+      <p>{p.body}</p>
+      <small>Partner link: we may earn a commission at no cost to you.</small>
+    </div>
+    <a class="btn btn-teal" href={href} target="_blank" rel="sponsored nofollow noopener">{p.cta} <Icon name="arrow-up-right" /></a>
+  </aside>
+) : isPreview ? (
+  <aside class="card affiliate is-slot" aria-label="Partner slot">
+    <div>
+      <h3>{p.title} ({p.partner})</h3>
+      <p>Partner box. It appears here once the guides site has its own Travelpayouts project.</p>
+    </div>
+  </aside>
+) : null}

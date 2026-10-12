@@ -1,0 +1,35 @@
+---
+import { Image } from 'astro:assets';
+import Icon from './Icon.astro';
+import { PILLARS, type PillarKey } from '../data/pillars';
+import { guideUrl, readMinutes, formatDate, type Guide } from '../lib/guides';
+
+interface Props { guide: Guide; feature?: boolean; eager?: boolean }
+const { guide, feature = false, eager = false } = Astro.props;
+const d = guide.data;
+const pillar = PILLARS[d.pillar as PillarKey];
+---
+<a href={guideUrl(guide)} class:list={['card', 'guide-card', { 'feature-guide': feature }]}>
+  <div class="guide-card-img">
+    <Image
+      src={d.cover}
+      alt={d.coverAlt}
+      widths={feature ? [640, 960, 1280] : [480, 720, 960]}
+      sizes={feature ? '(max-width: 1100px) 100vw, 720px' : '(max-width: 700px) 100vw, 420px'}
+      loading={eager ? 'eager' : 'lazy'}
+    />
+  </div>
+  <div class="guide-card-body">
+    {d.draft && <span class="draft-pill">Draft</span>}
+    <span class="eyebrow">{pillar.name} · {d.country}</span>
+    <h3>{d.title}</h3>
+    <p>{d.description}</p>
+    <div class="guide-card-meta">
+      <span>{readMinutes(guide)} min read</span>
+      <span>Checked {formatDate(d.lastChecked)}</span>
+    </div>
+    {feature && (
+      <span class="link-arrow">Read the guide <Icon name="arrow-right" /></span>
+    )}
+  </div>
+</a>

@@ -1,0 +1,15 @@
+---
+interface Stop { name: string; kind: string; note?: string }
+interface Props { stops: Stop[] }
+const { stops } = Astro.props;
+const LABEL: Record<string, string> = { town: 'Town', fuel: 'Roadhouse', free: 'Free stop', paid: 'Paid entry' };
+---
+<ul class="stop-list">
+  {stops.map((s) => (
+    <li class:list={{ 'is-free': s.kind === 'free' }}>
+      <span class:list={['stop-kind', `kind-${s.kind}`]}>{LABEL[s.kind] ?? s.kind}</span>
+      <h3>{s.name}</h3>
+      {s.note && <p>{s.note}</p>}
+    </li>
+  ))}
+</ul>

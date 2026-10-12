@@ -1,0 +1,22 @@
+---
+import { STORES } from '../site';
+interface Props { onDark?: boolean }
+const { onDark = false } = Astro.props;
+---
+<div class:list={['store-row', { 'on-dark': onDark }]}>
+  <a class="store-btn" href={STORES.play} target="_blank" rel="noopener" aria-label="Get nexARound on Google Play">
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M3.609 1.814L13.793 12 3.61 22.186A2.22 2.22 0 0 1 3 20.617V3.383c0-.623.23-1.196.609-1.569z" fill="#00C1A6"></path>
+      <path d="M17.18 8.613L4.74 1.433C4.37 1.22 3.967 1.134 3.609 1.214l10.184 10.186 3.387-2.787z" fill="#FFD400"></path>
+      <path d="M3.609 22.786c.358.08.761-.006 1.131-.22l12.44-7.18-3.387-2.786L3.609 22.786z" fill="#FF3333"></path>
+      <path d="M21.05 10.84l-3.87-2.227-3.387 2.787 3.387 2.786 3.87-2.227a1.36 1.36 0 0 0 0-2.319z" fill="#0083D6"></path>
+    </svg>
+    <div><small>Get it on</small><span>Google Play</span></div>
+  </a>
+  <a class="store-btn" href={STORES.apple} target="_blank" rel="noopener" aria-label="Download nexARound on the App Store">
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M16.365 1.43c0 1.14-.493 2.27-1.177 3.08-.744.9-1.99 1.57-2.987 1.57-.12 0-.23-.02-.3-.03-.01-.06-.04-.22-.04-.39 0-1.15.572-2.27 1.206-2.98.804-.94 2.142-1.64 3.248-1.68.03.13.05.28.05.43zm4.565 15.71c-.03.07-.463 1.58-1.518 3.12-.945 1.34-1.94 2.71-3.43 2.71-1.517 0-1.9-.88-3.63-.88-1.698 0-2.302.91-3.67.91-1.377 0-2.332-1.26-3.428-2.8-1.287-1.82-2.323-4.63-2.323-7.28 0-4.28 2.797-6.55 5.552-6.55 1.448 0 2.675.95 3.6.95.865 0 2.222-1.01 3.902-1.01.613 0 2.886.06 4.374 2.19-.13.09-2.383 1.37-2.383 4.19 0 3.26 2.854 4.42 2.955 4.45z"></path>
+    </svg>
+    <div><small>Download on the</small><span>App Store</span></div>
+  </a>
+</div>

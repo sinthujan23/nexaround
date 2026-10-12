@@ -1,0 +1,11 @@
+---
+import Page from '../layouts/Page.astro';
+import { PILLARS, PILLAR_KEYS } from '../data/pillars';
+---
+<Page title="Off the map" description="This page doesn't exist, or it has moved." badge="404" noindex>
+  <p>Try one of these instead:</p>
+  <ul>
+    <li><a href="/">The home page</a></li>
+    {PILLAR_KEYS.map((k) => <li><a href={`/${k}/`}>{PILLARS[k].name}</a></li>)}
+  </ul>
+</Page>

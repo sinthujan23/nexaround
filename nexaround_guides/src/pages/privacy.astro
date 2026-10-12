@@ -1,0 +1,23 @@
+---
+import Page from '../layouts/Page.astro';
+import { SITE } from '../site';
+---
+<Page title="Privacy" description="What this website collects (very little) and which outside services your browser talks to.">
+  <p>This policy covers the website guides.nexaround.com, published by {SITE.publisher}. The nexARound app has its own <a href={`${SITE.appSite}/privacy`}>privacy policy</a>.</p>
+  <h2>No accounts, no cookies of our own</h2>
+  <p>You can read every guide without signing up. We do not set cookies.</p>
+  <h2>Visitor statistics</h2>
+  <p>We count visits with Cloudflare Web Analytics, which does not use cookies and does not track you across sites. It tells us which pages are read, the referring site, and your browser and country, in aggregate.</p>
+  <h2>Outside services your browser contacts</h2>
+  <ul>
+    <li><strong>Google Fonts</strong>, for the typeface.</li>
+    <li><strong>OpenStreetMap</strong> tile servers, when a guide shows a map.</li>
+  </ul>
+  <p>Like any website request, these see your IP address.</p>
+  <h2>Partner links</h2>
+  <p>When you follow a partner link, you leave this site. The partner and the Travelpayouts network may set cookies to record that you came from us; their privacy policies apply from then on.</p>
+  <h2>Email</h2>
+  <p>If you write to <a href={`mailto:${SITE.email}`}>{SITE.email}</a>, we use your email only to reply and, with your permission, to credit a tip or photo.</p>
+  <h2>Contact</h2>
+  <p>Questions about this policy: <a href={`mailto:${SITE.email}`}>{SITE.email}</a>.</p>
+</Page>
