@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useApi, apiGet, apiPatch } from '../api';
 import {
-  InboxIcon, SearchIcon, PhoneIcon, MailIcon, WhatsAppIcon, RefreshIcon,
+  InboxIcon, PhoneIcon, MailIcon, WhatsAppIcon, RefreshIcon,
 } from '../components/Icons';
+import { SearchBar, Toast } from '../components/Kit';
+import { useToast } from '../hooks';
 
 const PAGE_SIZE = 50;
 const STATUSES = ['new', 'contacted', 'closed', 'spam'];
@@ -54,7 +56,7 @@ export default function ExperienceEnquiries() {
   const [saving, setSaving] = useState(false);
   const [counts, setCounts] = useState({});
   const [countsVersion, setCountsVersion] = useState(0);
-  const [toast, setToast] = useState(null);
+  const [toast, notify] = useToast();
 
   const { data, error, refetch } = useApi(
     `/admin/experiences/enquiries?page=${page}&page_size=${PAGE_SIZE}`
@@ -82,11 +84,6 @@ export default function ExperienceEnquiries() {
   const refresh = () => {
     refetch();
     setCountsVersion((n) => n + 1);
-  };
-
-  const notify = (message, tone = 'ok') => {
-    setToast({ message, tone });
-    setTimeout(() => setToast(null), 3000);
   };
 
   // Search only narrows the page already loaded.
@@ -149,13 +146,7 @@ export default function ExperienceEnquiries() {
         </div>
 
         <div className="xp-toolbar-right">
-          <div className="search-bar">
-            <SearchIcon size={16} />
-            <input
-              type="text" value={search} onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search name, phone, vendor…"
-            />
-          </div>
+          <SearchBar value={search} onChange={setSearch} placeholder="Search name, phone, vendor…" />
           <button className="btn btn-ghost btn-sm" onClick={refresh} title="Refresh">
             <RefreshIcon size={15} /> Refresh
           </button>
@@ -345,7 +336,7 @@ export default function ExperienceEnquiries() {
         </section>
       </div>
 
-      {toast && <div className={`xp-toast ${toast.tone === 'error' ? 'error' : ''}`}>{toast.message}</div>}
+      <Toast toast={toast} />
     </div>
   );
 }
