@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { apiGet, apiPost } from '../api';
 import { UsersIcon, TimerIcon, CompassIcon, MegaphoneIcon, CheckIcon, CrossIcon, TrendingUpIcon } from '../components/Icons';
+import { Card, StatCard, Badge } from '../components/Kit';
 
 const STATUS_LABEL = { sent: 'Received', failed: 'Failed', no_token: 'No device', pending: 'Pending' };
 const STATUS_STYLE = {
@@ -114,42 +115,18 @@ export default function Engagement() {
 
       {/* Stats */}
       <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', marginBottom: '32px' }}>
-        <div className="stat-card">
-          <div className="stat-icon">
-            <UsersIcon size={24} style={{ color: 'var(--accent)' }} />
-          </div>
-          <div className="stat-value">{metrics.daily_active_users.toLocaleString()}</div>
-          <div className="stat-label">Daily Active Users</div>
-          <span className="stat-change up" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-            <TrendingUpIcon size={12} /> 5.1% vs last week
-          </span>
-        </div>
-        <div className="stat-card">
-          <div className="stat-icon">
-            <TimerIcon size={24} style={{ color: 'var(--accent)' }} />
-          </div>
-          <div className="stat-value">{metrics.avg_session_length}</div>
-          <div className="stat-label">Avg Session Length</div>
-          <span className="stat-change up" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-            <TrendingUpIcon size={12} /> 12s vs last week
-          </span>
-        </div>
-        <div className="stat-card">
-          <div className="stat-icon">
-            <CompassIcon size={24} style={{ color: 'var(--accent)' }} />
-          </div>
-          <div className="stat-value">{metrics.places_visited_count.toLocaleString()}</div>
-          <div className="stat-label">Places Visited</div>
-          <span className="stat-change up" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-            <TrendingUpIcon size={12} /> 8.2% vs last month
-          </span>
-        </div>
+        <StatCard icon={UsersIcon} value={metrics.daily_active_users.toLocaleString()} label="Daily Active Users"
+          changeIcon={TrendingUpIcon} change="5.1% vs last week" />
+        <StatCard icon={TimerIcon} value={metrics.avg_session_length} label="Avg Session Length"
+          changeIcon={TrendingUpIcon} change="12s vs last week" />
+        <StatCard icon={CompassIcon} value={metrics.places_visited_count.toLocaleString()} label="Places Visited"
+          changeIcon={TrendingUpIcon} change="8.2% vs last month" />
       </div>
 
       {/* Two Column Layout */}
       <div className="approvals-split">
         {/* Left: Broadcast Form */}
-        <div className="card" style={{ margin: 0 }}>
+        <Card style={{ margin: 0 }}>
           <div className="card-header">
             <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <MegaphoneIcon size={18} style={{ color: 'var(--accent)' }} /> New Broadcast
@@ -226,14 +203,11 @@ export default function Engagement() {
               )}
             </button>
           </form>
-        </div>
+        </Card>
 
         {/* Right: History */}
-        <div className="card" style={{ margin: 0, background: 'var(--bg-dark)' }}>
-          <div className="card-header">
-            <div className="card-title">Broadcast History</div>
-          </div>
-          
+        <Card title="Broadcast History" style={{ margin: 0, background: 'var(--bg-dark)' }}>
+
           <div className="modern-list" style={{ marginTop: '8px' }}>
             {recentBroadcasts.length === 0 && (
               <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px' }}>
@@ -255,7 +229,7 @@ export default function Engagement() {
                   <div className="list-item-content">
                     <div className="list-item-title" style={{ fontSize: '13.5px' }}>{b.title}</div>
                     <div className="list-item-meta" style={{ marginTop: '2px' }}>
-                      <span className="badge badge-blue" style={{ fontSize: '9px', padding: '2px 6px' }}>{b.target}</span>
+                      <Badge tone="blue" style={{ fontSize: '9px', padding: '2px 6px' }}>{b.target}</Badge>
                       <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{b.date}</span>
                       {typeof b.sent === 'number' && (
                         <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>· {b.sent} sent{b.failed ? `, ${b.failed} failed` : ''}</span>
@@ -266,7 +240,7 @@ export default function Engagement() {
               </div>
             ))}
           </div>
-        </div>
+        </Card>
       </div>
 
       {/* Broadcast detail popup: who received it, who failed, with user search */}
