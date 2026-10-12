@@ -81,19 +81,30 @@ export default function Engagement() {
   const [detailStatus, setDetailStatus] = useState(''); // '' | sent | failed | no_token | pending
   const [detailLoading, setDetailLoading] = useState(false);
 
+  // Each of these changes what the popup shows, so the fetch below re-runs;
+  // the popup is marked loading here rather than inside that effect.
   const openDetail = (b) => {
     setDetailBc(b);
     setDetailSearch('');
     setDetailStatus('');
     setDetail(null);
+    setDetailLoading(true);
   };
   const closeDetail = () => { setDetailBc(null); setDetail(null); };
+  const changeDetailSearch = (value) => {
+    setDetailSearch(value);
+    setDetailLoading(true);
+  };
+  const changeDetailStatus = (status) => {
+    if (status === detailStatus) return; // same chip: nothing re-fetches
+    setDetailStatus(status);
+    setDetailLoading(true);
+  };
 
   // Fetch recipients whenever the open broadcast / search / status changes
   // (debounced so typing in the search box doesn't spam the API).
   useEffect(() => {
     if (!detailBc) return;
-    setDetailLoading(true);
     const params = new URLSearchParams();
     if (detailSearch.trim()) params.set('search', detailSearch.trim());
     if (detailStatus) params.set('status', detailStatus);
@@ -277,7 +288,7 @@ export default function Engagement() {
               ].map((s) => (
                 <button
                   key={s.key || 'all'}
-                  onClick={() => setDetailStatus(s.key)}
+                  onClick={() => changeDetailStatus(s.key)}
                   style={{
                     cursor: 'pointer', padding: '7px 12px', borderRadius: '10px', fontSize: '12px',
                     border: detailStatus === s.key ? '2px solid var(--accent)' : '1px solid rgba(0,0,0,0.1)',
@@ -295,7 +306,7 @@ export default function Engagement() {
               className="form-input"
               placeholder="Search recipients by name or email…"
               value={detailSearch}
-              onChange={(e) => setDetailSearch(e.target.value)}
+              onChange={(e) => changeDetailSearch(e.target.value)}
               style={{ marginBottom: '12px' }}
             />
 
