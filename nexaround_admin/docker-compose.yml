@@ -17,3 +17,5 @@ services:
       - "127.0.0.1:8020:80"
     volumes:
       - ./dist:/usr/share/nginx/html
+      # Without this a refresh on any page but / returns 404 — see the file for why.
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
