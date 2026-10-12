@@ -1,11 +1,12 @@
 import uuid
 import secrets
 from typing import List, Literal, Optional
-from datetime import datetime, timezone, date, timedelta
+from datetime import datetime, timezone, date, time, timedelta
+from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Depends, Header, HTTPException, status, Query, BackgroundTasks
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, desc
+from sqlalchemy import select, func, desc, text
 
 from app.core.database import get_db
 from app.core.config import settings
@@ -20,9 +21,14 @@ from app.schemas.attraction import AttractionResponse, AttractionListResponse, A
 from app.schemas.excluded_keyword import ExcludedKeywordResponse, ExcludedKeywordCreate
 from app.models.user import User
 from app.models.attraction import Attraction
-from app.models.system_setting import ApiRequestLog
+from app.models.experience import ExperienceEnquiry
+from app.models.telemetry import ApiAlert
 
 router = APIRouter(prefix="/admin", tags=["Admin REST API"])
+
+# The dashboard counts days and months in Sri Lanka time, like its chart labels.
+DASHBOARD_TZ_NAME = "Asia/Colombo"
+DASHBOARD_TZ = ZoneInfo(DASHBOARD_TZ_NAME)
 
 
 # --- Request/Response Schemas ---
@@ -34,29 +40,41 @@ class AdminLoginRequest(BaseModel):
 class AdminLoginResponse(BaseModel):
     token: str
 
-class ApiUsageStats(BaseModel):
-    name: str
-    total: str
-    color: str
-    data: List[int]
-
-class ApiBreakdownItem(BaseModel):
-    endpoint: str
-    count: int
-
-class ApiBreakdownResponse(BaseModel):
-    api_name: str
-    total: int
-    endpoints: List[ApiBreakdownItem]
+class MonthlySignups(BaseModel):
+    month: str  # YYYY-MM, Sri Lanka time
+    signups: int
 
 class AdminDashboardStats(BaseModel):
     explorers_count: int
+    new_explorers_7d: int
     attractions_count: int
+    new_attractions_7d: int
     pending_approvals_count: int
-    monthly_revenue: float
-    growth_data: List[int]
+    open_api_alerts: int
+    critical_api_alerts: int
+    new_enquiries: int
+    explorer_growth: List[MonthlySignups]
     recent_activity: List[dict]
-    api_usage: List[ApiUsageStats]
+
+class ApiOperationUsage(BaseModel):
+    operation: str
+    calls: int
+    requests: int
+    est_cost_usd: float
+
+class ApiProviderUsage(BaseModel):
+    provider: str
+    calls: int          # requests that reached the provider (what it bills)
+    requests: int       # calls plus the requests our caches answered
+    prev_calls: int     # calls in the preceding window of the same length
+    est_cost_usd: float
+    daily_calls: List[int]
+    operations: List[ApiOperationUsage]
+
+class DashboardApiUsage(BaseModel):
+    days: List[date]
+    providers: List[ApiProviderUsage]
+    generated_at: datetime
 
 class AnnouncementRequest(BaseModel):
     title: str
@@ -158,28 +176,58 @@ async def get_dashboard_stats(
     db: AsyncSession = Depends(get_db),
     _ = Depends(verify_admin_token)
 ):
-    """Aggregate statistics for the dashboard dashboard."""
-    # 1. Total users
-    user_count_stmt = select(func.count(User.id))
-    user_count_res = await db.execute(user_count_stmt)
-    explorers_count = user_count_res.scalar_one_or_none() or 0
+    """Headline counts, monthly signups and recent activity for the dashboard.
 
-    # 2. Total attractions (all)
-    attraction_count_stmt = select(func.count(Attraction.id))
-    attraction_count_res = await db.execute(attraction_count_stmt)
-    attractions_count = attraction_count_res.scalar_one_or_none() or 0
+    API usage has its own endpoint (/dashboard/api-usage) so that card can
+    refresh on its own.
+    """
+    week_ago = datetime.now(timezone.utc) - timedelta(days=7)
 
-    # 3. Pending approvals (inactive attractions)
-    pending_count_stmt = select(func.count(Attraction.id)).where(Attraction.is_active == False)
-    pending_count_res = await db.execute(pending_count_stmt)
-    pending_approvals_count = pending_count_res.scalar_one_or_none() or 0
+    # 1. Explorers, and how many joined this week
+    explorers_count = (await db.execute(select(func.count(User.id)))).scalar_one()
+    new_explorers_7d = (await db.execute(
+        select(func.count(User.id)).where(User.created_at >= week_ago)
+    )).scalar_one()
 
-    # 4. Mock Monthly Revenue
-    monthly_revenue = 4520.0
+    # 2. Attractions (all), and how many were added this week
+    attractions_count = (await db.execute(select(func.count(Attraction.id)))).scalar_one()
+    new_attractions_7d = (await db.execute(
+        select(func.count(Attraction.id)).where(Attraction.created_at >= week_ago)
+    )).scalar_one()
 
-    # 5. Explorer growth over last 12 months
-    # Hardcoded fallback list matching standard months representation, updated dynamically with database data
-    growth_data = [120, 150, 180, 220, 290, 310, 380, 420, 450, 480, 520, explorers_count]
+    # 3. Pending approvals (inactive attractions), the same set /approvals lists
+    pending_approvals_count = (await db.execute(
+        select(func.count(Attraction.id)).where(Attraction.is_active == False)
+    )).scalar_one()
+
+    # 4. What needs a person: unacknowledged API alerts and unanswered enquiries
+    alerts = (await db.execute(
+        select(func.count(ApiAlert.id), func.count(ApiAlert.id).filter(ApiAlert.severity == "critical"))
+        .where(ApiAlert.acknowledged_at.is_(None))
+    )).one()
+    new_enquiries = (await db.execute(
+        select(func.count(ExperienceEnquiry.id)).where(ExperienceEnquiry.status == "new")
+    )).scalar_one()
+
+    # 5. Signups per month for the last 12 months, in Sri Lanka time
+    now_local = datetime.now(DASHBOARD_TZ)
+    months = []
+    year, month = now_local.year, now_local.month
+    for _i in range(12):
+        months.append(f"{year:04d}-{month:02d}")
+        year, month = (year, month - 1) if month > 1 else (year - 1, 12)
+    months.reverse()
+    first_month = datetime(int(months[0][:4]), int(months[0][5:]), 1, tzinfo=DASHBOARD_TZ)
+    signup_rows = await db.execute(text("""
+        SELECT to_char(created_at AT TIME ZONE :tz, 'YYYY-MM') AS month, count(*) AS signups
+        FROM users
+        WHERE created_at >= :start
+        GROUP BY 1
+    """), {"tz": DASHBOARD_TZ_NAME, "start": first_month})
+    signups_by_month = {row.month: row.signups for row in signup_rows}
+    explorer_growth = [
+        MonthlySignups(month=m, signups=signups_by_month.get(m, 0)) for m in months
+    ]
 
     # 6. Recent Activity list
     # Query last 5 users
@@ -217,98 +265,93 @@ async def get_dashboard_stats(
     activity_items.sort(key=lambda x: x["timestamp"], reverse=True)
     recent_activity = activity_items[:6]  # Top 6 latest activities
 
-    # 7. Real API usage stats
-    today = date.today()
-    days = [today - timedelta(days=i) for i in range(6, -1, -1)]
-
-    api_chart_data = {}
-    for api in ["google_maps", "mapbox", "gemini", "geoapify"]:
-        # get total
-        total_stmt = select(func.count(ApiRequestLog.id)).where(ApiRequestLog.api_name == api)
-        total_res = await db.execute(total_stmt)
-        total_count = total_res.scalar_one_or_none() or 0
-
-        # get daily data
-        daily_counts = []
-        for d in days:
-            start_dt = datetime.combine(d, datetime.min.time(), tzinfo=timezone.utc)
-            end_dt = datetime.combine(d, datetime.max.time(), tzinfo=timezone.utc)
-            daily_stmt = select(func.count(ApiRequestLog.id)).where(
-                ApiRequestLog.api_name == api,
-                ApiRequestLog.timestamp >= start_dt,
-                ApiRequestLog.timestamp <= end_dt
-            )
-            daily_res = await db.execute(daily_stmt)
-            daily_counts.append(daily_res.scalar_one_or_none() or 0)
-
-        api_chart_data[api] = {
-            "total": total_count,
-            "data": daily_counts
-        }
-
-    api_usage = [
-        ApiUsageStats(
-            name="Google Maps API",
-            total=f"{api_chart_data['google_maps']['total']:,}",
-            color="#4285F4",
-            data=api_chart_data['google_maps']['data']
-        ),
-        ApiUsageStats(
-            name="Mapbox API",
-            total=f"{api_chart_data['mapbox']['total']:,}",
-            color="#4264fb",
-            data=api_chart_data['mapbox']['data']
-        ),
-        ApiUsageStats(
-            name="Gemini API",
-            total=f"{api_chart_data['gemini']['total']:,}",
-            color="#8e24aa",
-            data=api_chart_data['gemini']['data']
-        ),
-        ApiUsageStats(
-            name="Geoapify API",
-            total=f"{api_chart_data['geoapify']['total']:,}",
-            color="#00897b",
-            data=api_chart_data['geoapify']['data']
-        ),
-    ]
-
     return AdminDashboardStats(
         explorers_count=explorers_count,
+        new_explorers_7d=new_explorers_7d,
         attractions_count=attractions_count,
+        new_attractions_7d=new_attractions_7d,
         pending_approvals_count=pending_approvals_count,
-        monthly_revenue=monthly_revenue,
-        growth_data=growth_data,
+        open_api_alerts=alerts[0],
+        critical_api_alerts=alerts[1],
+        new_enquiries=new_enquiries,
+        explorer_growth=explorer_growth,
         recent_activity=recent_activity,
-        api_usage=api_usage
     )
 
 
-@router.get("/api-breakdown/{api_name}", response_model=ApiBreakdownResponse)
-async def get_api_breakdown(
-    api_name: str,
+@router.get("/dashboard/api-usage", response_model=DashboardApiUsage)
+async def get_dashboard_api_usage(
+    days: int = Query(7, ge=1, le=31),
     db: AsyncSession = Depends(get_db),
     _ = Depends(verify_admin_token)
 ):
-    """Return a per-endpoint breakdown of request counts for a given API name."""
-    # Total count for this api
-    total_stmt = select(func.count(ApiRequestLog.id)).where(ApiRequestLog.api_name == api_name)
-    total_res = await db.execute(total_stmt)
-    total = total_res.scalar_one_or_none() or 0
+    """Third-party API calls per provider per Sri Lanka day, from api_events.
 
-    # Group by endpoint
-    breakdown_stmt = (
-        select(ApiRequestLog.endpoint, func.count(ApiRequestLog.id).label("cnt"))
-        .where(ApiRequestLog.api_name == api_name)
-        .group_by(ApiRequestLog.endpoint)
-        .order_by(func.count(ApiRequestLog.id).desc())
+    Covers the last `days` days including today, plus the window before it for
+    the change figure. `internal` events are Google Places requests our own
+    caches answered (photos, nearby, search, details), so they count as Google
+    Maps requests that never became calls.
+    """
+    today = datetime.now(DASHBOARD_TZ).date()
+    day_list = [today - timedelta(days=i) for i in range(days - 1, -1, -1)]
+    start = datetime.combine(day_list[0], time.min, tzinfo=DASHBOARD_TZ)
+    prev_start = start - timedelta(days=days)
+
+    rows = (await db.execute(text("""
+        SELECT CASE WHEN provider = 'internal' THEN 'google_maps' ELSE provider END AS provider,
+               operation,
+               (ts AT TIME ZONE :tz)::date AS day,
+               count(*) FILTER (WHERE served_from = 'upstream') AS calls,
+               count(*) AS requests,
+               COALESCE(sum(est_cost_usd), 0) AS cost
+        FROM api_events
+        WHERE ts >= :prev_start
+        GROUP BY 1, 2, 3
+    """), {"tz": DASHBOARD_TZ_NAME, "prev_start": prev_start})).mappings().all()
+
+    day_index = {d: i for i, d in enumerate(day_list)}
+    by_provider: dict = {}
+    for row in rows:
+        p = by_provider.setdefault(row["provider"], {
+            "calls": 0, "requests": 0, "prev_calls": 0, "cost": 0.0,
+            "daily": [0] * days, "ops": {},
+        })
+        i = day_index.get(row["day"])
+        if i is None:  # the preceding window
+            p["prev_calls"] += row["calls"]
+            continue
+        cost = float(row["cost"])
+        p["calls"] += row["calls"]
+        p["requests"] += row["requests"]
+        p["cost"] += cost
+        p["daily"][i] += row["calls"]
+        op = p["ops"].setdefault(row["operation"], {"calls": 0, "requests": 0, "cost": 0.0})
+        op["calls"] += row["calls"]
+        op["requests"] += row["requests"]
+        op["cost"] += cost
+
+    providers = [
+        ApiProviderUsage(
+            provider=name,
+            calls=p["calls"],
+            requests=p["requests"],
+            prev_calls=p["prev_calls"],
+            est_cost_usd=round(p["cost"], 4),
+            daily_calls=p["daily"],
+            operations=sorted(
+                (ApiOperationUsage(operation=op_name, calls=op["calls"], requests=op["requests"],
+                                   est_cost_usd=round(op["cost"], 4))
+                 for op_name, op in p["ops"].items()),
+                key=lambda o: (o.calls, o.requests), reverse=True,
+            ),
+        )
+        for name, p in by_provider.items()
+    ]
+    providers.sort(key=lambda p: (p.calls, p.requests), reverse=True)
+
+    return DashboardApiUsage(
+        days=day_list, providers=providers, generated_at=datetime.now(timezone.utc)
     )
-    breakdown_res = await db.execute(breakdown_stmt)
-    rows = breakdown_res.all()
-
-    endpoints = [ApiBreakdownItem(endpoint=row.endpoint, count=row.cnt) for row in rows]
-
-    return ApiBreakdownResponse(api_name=api_name, total=total, endpoints=endpoints)
 
 
 @router.get("/users")

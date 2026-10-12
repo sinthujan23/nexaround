@@ -97,7 +97,7 @@ export default function Settings() {
   };
 
   if (loading) {
-    return <PageLoading>Fetching platform configurations...</PageLoading>;
+    return <PageLoading />;
   }
 
   return (

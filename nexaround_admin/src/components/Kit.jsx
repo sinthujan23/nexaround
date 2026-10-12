@@ -194,11 +194,15 @@ export function Loading({ children }) {
   );
 }
 
-/** A whole page still loading its first data. */
-export function PageLoading({ children }) {
+/** A whole page still loading its first data: a centred spinner, no text. */
+export function PageLoading() {
   return (
-    <div style={{ textAlign: 'center', padding: '50px', color: 'var(--text-secondary)' }}>
-      <span style={{ fontSize: '18px' }}>{children}</span>
+    <div
+      role="status"
+      aria-label="Loading"
+      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '50vh' }}
+    >
+      <div className="loader" style={{ width: '32px', height: '32px', margin: 0 }}></div>
     </div>
   );
 }

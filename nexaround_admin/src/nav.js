@@ -52,3 +52,4 @@ export const NAV_SECTIONS = [
 export const NAV_ITEMS = NAV_SECTIONS.flatMap((section) => section.items);
 
 export const HOME_PATH = '/dashboard';
+export const LOGIN_PATH = '/login';

@@ -6,7 +6,7 @@ export default function Payments() {
   const { data, loading, error } = useApi('/admin/payments');
 
   if (loading) {
-    return <PageLoading>Accessing ledger... Loading financial metrics...</PageLoading>;
+    return <PageLoading />;
   }
 
   if (error) {
