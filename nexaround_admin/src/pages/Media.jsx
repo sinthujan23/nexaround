@@ -1,5 +1,13 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { ImageIcon, PlusIcon, TrashIcon, CheckIcon, CrossIcon, MapPinIcon, UsersIcon } from '../components/Icons';
+import { Modal } from '../components/Kit';
+
+// Colour and text of the pill on each media card.
+const STATUS_PILL = {
+  Pending: { background: 'var(--warning)', text: 'Pending Review' },
+  Approved: { background: 'var(--accent)', text: 'Approved' },
+  Rejected: { background: 'var(--danger)', text: 'Rejected' },
+};
 
 export default function Media() {
   const [media, setMedia] = useState([
@@ -91,19 +99,9 @@ export default function Media() {
               backgroundPosition: 'center',
               position: 'relative'
             }}>
-              {m.status === 'Pending' && (
-                <div style={{ position: 'absolute', top: '12px', right: '12px', background: 'var(--warning)', color: '#fff', fontSize: '10px', fontWeight: 800, padding: '4px 10px', borderRadius: '12px', textTransform: 'uppercase', letterSpacing: '1px' }}>
-                  Pending Review
-                </div>
-              )}
-              {m.status === 'Approved' && (
-                <div style={{ position: 'absolute', top: '12px', right: '12px', background: 'var(--accent)', color: '#fff', fontSize: '10px', fontWeight: 800, padding: '4px 10px', borderRadius: '12px', textTransform: 'uppercase', letterSpacing: '1px' }}>
-                  Approved
-                </div>
-              )}
-              {m.status === 'Rejected' && (
-                <div style={{ position: 'absolute', top: '12px', right: '12px', background: 'var(--danger)', color: '#fff', fontSize: '10px', fontWeight: 800, padding: '4px 10px', borderRadius: '12px', textTransform: 'uppercase', letterSpacing: '1px' }}>
-                  Rejected
+              {STATUS_PILL[m.status] && (
+                <div style={{ position: 'absolute', top: '12px', right: '12px', background: STATUS_PILL[m.status].background, color: '#fff', fontSize: '10px', fontWeight: 800, padding: '4px 10px', borderRadius: '12px', textTransform: 'uppercase', letterSpacing: '1px' }}>
+                  {STATUS_PILL[m.status].text}
                 </div>
               )}
             </div>
@@ -143,55 +141,46 @@ export default function Media() {
       </div>
 
       {isModalOpen && (
-        <div className="modal-overlay" onClick={() => setIsModalOpen(false)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '500px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-              <h3 style={{ fontSize: '18px', fontWeight: 800 }}>Add Media Manually</h3>
-              <button className="btn btn-ghost" style={{ padding: '6px', borderRadius: '50%' }} onClick={() => setIsModalOpen(false)}>
-                <CrossIcon size={16} />
+        <Modal title="Add Media Manually" maxWidth="500px" onClose={() => setIsModalOpen(false)}>
+          <form onSubmit={handleSave}>
+            <div className="form-group">
+              <label className="form-label">Media Image</label>
+              <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+                {formData.image ? (
+                  <div style={{ width: '80px', height: '80px', borderRadius: '12px', backgroundImage: `url(${formData.image})`, backgroundSize: 'cover', backgroundPosition: 'center', border: '1px solid var(--border)', flexShrink: 0 }} />
+                ) : (
+                  <div style={{ width: '80px', height: '80px', borderRadius: '12px', background: 'var(--bg-dark)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', border: '1px dashed var(--border)', flexShrink: 0 }}>
+                    <ImageIcon size={24} />
+                  </div>
+                )}
+                <input type="file" accept="image/*" onChange={handleImageChange} required className="form-input" style={{ padding: '8px 12px', fontSize: '13px' }} />
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Location Name</label>
+              <input type="text" className="form-input" placeholder="e.g. Louvre Museum" required value={formData.location} onChange={e => setFormData({...formData, location: e.target.value})} />
+            </div>
+
+            <div className="form-grid-2">
+              <div className="form-group">
+                <label className="form-label">Latitude</label>
+                <input type="number" step="any" className="form-input" placeholder="48.8606" required value={formData.lat} onChange={e => setFormData({...formData, lat: e.target.value})} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Longitude</label>
+                <input type="number" step="any" className="form-input" placeholder="2.3376" required value={formData.lng} onChange={e => setFormData({...formData, lng: e.target.value})} />
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '32px' }}>
+              <button type="button" className="btn btn-ghost" onClick={() => setIsModalOpen(false)}>Cancel</button>
+              <button type="submit" className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <PlusIcon size={16} /> Upload Media
               </button>
             </div>
-            
-            <form onSubmit={handleSave}>
-              <div className="form-group">
-                <label className="form-label">Media Image</label>
-                <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
-                  {formData.image ? (
-                    <div style={{ width: '80px', height: '80px', borderRadius: '12px', backgroundImage: `url(${formData.image})`, backgroundSize: 'cover', backgroundPosition: 'center', border: '1px solid var(--border)', flexShrink: 0 }} />
-                  ) : (
-                    <div style={{ width: '80px', height: '80px', borderRadius: '12px', background: 'var(--bg-dark)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', border: '1px dashed var(--border)', flexShrink: 0 }}>
-                      <ImageIcon size={24} />
-                    </div>
-                  )}
-                  <input type="file" accept="image/*" onChange={handleImageChange} required className="form-input" style={{ padding: '8px 12px', fontSize: '13px' }} />
-                </div>
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Location Name</label>
-                <input type="text" className="form-input" placeholder="e.g. Louvre Museum" required value={formData.location} onChange={e => setFormData({...formData, location: e.target.value})} />
-              </div>
-
-              <div className="form-grid-2">
-                <div className="form-group">
-                  <label className="form-label">Latitude</label>
-                  <input type="number" step="any" className="form-input" placeholder="48.8606" required value={formData.lat} onChange={e => setFormData({...formData, lat: e.target.value})} />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Longitude</label>
-                  <input type="number" step="any" className="form-input" placeholder="2.3376" required value={formData.lng} onChange={e => setFormData({...formData, lng: e.target.value})} />
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '32px' }}>
-                <button type="button" className="btn btn-ghost" onClick={() => setIsModalOpen(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <PlusIcon size={16} /> Upload Media
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+          </form>
+        </Modal>
       )}
     </div>
   );
