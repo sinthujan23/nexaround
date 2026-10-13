@@ -9,7 +9,8 @@ from app.repositories.review_repository import ReviewRepository
 from app.schemas.review import ReviewCreate, ReviewResponse, AttractionRatingSummary
 import uuid
 
-from app.models.attraction import Attraction
+from app.repositories.attraction_repository import AttractionRepository
+from app.services.attraction_service import AttractionService
 from sqlalchemy import select
 
 router = APIRouter(prefix="/reviews", tags=["reviews"])
@@ -19,6 +20,8 @@ async def get_attraction_reviews(
     attraction_id: uuid.UUID,
     db: AsyncSession = Depends(get_db)
 ):
+    # A merged duplicate's old id reads the reviews of the place that was kept.
+    attraction_id = await AttractionRepository(db).resolve_alias(attraction_id) or attraction_id
     repo = ReviewRepository(db)
     reviews = await repo.get_by_attraction(attraction_id)
     
@@ -35,6 +38,7 @@ async def get_attraction_summary(
     attraction_id: uuid.UUID,
     db: AsyncSession = Depends(get_db)
 ):
+    attraction_id = await AttractionRepository(db).resolve_alias(attraction_id) or attraction_id
     repo = ReviewRepository(db)
     avg, count = await repo.get_rating_summary(attraction_id)
     return AttractionRatingSummary(average_rating=avg, total_reviews=count)
@@ -49,16 +53,13 @@ async def create_review(
     if data.rating < 1.0 or data.rating > 5.0:
         raise HTTPException(status_code=400, detail="Rating must be between 1 and 5")
 
-    # 2. Verify attraction exists
-    stmt_attr = select(Attraction).where(Attraction.id == data.attraction_id)
-    res_attr = await db.execute(stmt_attr)
-    attraction = res_attr.scalar_one_or_none()
-    if not attraction:
-        raise HTTPException(status_code=404, detail="Attraction not found")
+    # 2. Verify the attraction exists and is live (404 otherwise). A merged
+    #    duplicate's old id lands on the place that was kept.
+    attraction = await AttractionService(db).get_live_attraction(data.attraction_id)
 
     # 3. Check for existing review from this user (prevent duplicate spam)
     stmt_existing = select(Review).where(
-        Review.attraction_id == data.attraction_id,
+        Review.attraction_id == attraction.id,
         Review.user_id == current_user.id
     )
     res_existing = await db.execute(stmt_existing)
@@ -72,7 +73,7 @@ async def create_review(
 
     review = Review(
         user_id=current_user.id,
-        attraction_id=data.attraction_id,
+        attraction_id=attraction.id,
         rating=data.rating,
         comment=data.comment
     )

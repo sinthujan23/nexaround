@@ -1,9 +1,9 @@
 import Dashboard from './pages/Dashboard';
 import Users from './pages/Users';
-import Approvals from './pages/Approvals';
 import Payments from './pages/Payments';
 import Engagement from './pages/Engagement';
-import Attractions from './pages/Attractions';
+import Places from './pages/Places';
+import ReviewQueue from './pages/ReviewQueue';
 import ExcludeKeywords from './pages/ExcludeKeywords';
 import Media from './pages/Media';
 import Settings from './pages/Settings';
@@ -18,16 +18,22 @@ import {
 /**
  * Every admin page, in sidebar order. The sidebar, the header title and the
  * routes are all built from this one list — adding a page is one entry here.
+ * `badge` names a live count the sidebar shows next to the item.
  */
 export const NAV_SECTIONS = [
   {
     label: 'Main Menu',
     items: [
       { path: '/dashboard', label: 'Dashboard', title: 'Dashboard Overview', icon: CompassIcon, page: Dashboard },
-      { path: '/attractions', label: 'Attractions', title: 'Manage Attractions', icon: MapPinIcon, page: Attractions },
-      { path: '/approvals', label: 'Place Approvals', title: 'Place Approvals', icon: ClipboardCheckIcon, page: Approvals },
       { path: '/exclude-keywords', label: 'Exclude Keywords', title: 'Exclude Keywords', icon: EyeOffIcon, page: ExcludeKeywords },
       { path: '/media', label: 'Media Library', title: 'Media Library', icon: ImageIcon, page: Media },
+    ],
+  },
+  {
+    label: 'Map Database',
+    items: [
+      { path: '/places', label: 'All places', title: 'Map Database · All places', icon: MapPinIcon, page: Places },
+      { path: '/places/review', label: 'Review queue', title: 'Map Database · Review queue', icon: ClipboardCheckIcon, page: ReviewQueue, badge: 'pending' },
     ],
   },
   {
@@ -50,6 +56,12 @@ export const NAV_SECTIONS = [
 ];
 
 export const NAV_ITEMS = NAV_SECTIONS.flatMap((section) => section.items);
+
+// Old addresses that still arrive from bookmarks: [from, to].
+export const NAV_REDIRECTS = [
+  ['/attractions', '/places'],
+  ['/approvals', '/places/review'],
+];
 
 export const HOME_PATH = '/dashboard';
 export const LOGIN_PATH = '/login';

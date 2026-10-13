@@ -5,10 +5,10 @@ import { ImageIcon, TrashIcon } from './Icons';
 /**
  * Multi-image gallery editor.
  *
- * Deliberately NOT the pattern used by Attractions.jsx, which reads the file
- * with FileReader.readAsDataURL and stores a base64 data URI in photo_urls[].
- * For a vendor gallery that would bloat every database row, every API response
- * and every app payload with megabytes of inlined image. These upload to
+ * Deliberately NOT the pattern the old Attractions page used, which read the
+ * file with FileReader.readAsDataURL and stored a base64 data URI in
+ * photo_urls[]. That bloats every database row, every API response and every
+ * app payload with megabytes of inlined image. These upload to
  * /admin/experiences/upload and store the returned /static/... paths.
  */
 export default function ImageUploader({

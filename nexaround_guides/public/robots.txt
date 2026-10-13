@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://guides.nexaround.com/sitemap-index.xml
+Sitemap: https://guides.nexaround.com/sitemap.xml

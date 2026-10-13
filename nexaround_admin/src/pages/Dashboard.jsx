@@ -370,11 +370,11 @@ function AttentionStrip({ critical, open, enquiries, pending }) {
           <span>{enquiries > 0 ? 'Waiting for a reply' : 'All answered'}</span>
         </div>
       </Link>
-      <Link to="/approvals" className="attention-item">
+      <Link to="/places/review" className="attention-item">
         <MapPinIcon size={20} />
         <div>
           <strong>{pending > 0 ? plural(pending, 'place to review', 'places to review') : 'No places to review'}</strong>
-          <span>Place Approvals</span>
+          <span>Review queue</span>
         </div>
       </Link>
     </section>
@@ -480,7 +480,7 @@ export default function Dashboard() {
         </section>
 
         <section className="bento-tile tint-lavender" aria-labelledby="tile-attractions">
-          <h2 id="tile-attractions">Attractions</h2>
+          <h2 id="tile-attractions">Live places</h2>
           <span className="bento-value">{attractions_count.toLocaleString()}</span>
           <span className="bento-sub">
             {new_attractions_7d > 0 ? `+${new_attractions_7d.toLocaleString()} this week` : 'None new this week'}

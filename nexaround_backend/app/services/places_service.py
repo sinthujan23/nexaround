@@ -9,6 +9,7 @@ from app.services import (
     google_places_client,
     photo_cache_service,
     place_cache_service,
+    place_visibility,
     spend_guard,
     telemetry,
 )
@@ -16,8 +17,9 @@ from app.schemas.place import PlaceResponse, PlacesNearbyResponse
 from app.core.database import async_session
 from app.repositories.attraction_repository import AttractionRepository
 from app.models.category import Category
-from app.models.attraction import Attraction
+from app.models.attraction import Attraction, AttractionAlias
 from app.utils.geo_utils import create_point, get_lat_lng
+from app.utils.place_match import SAME_PLACE_M, is_same_place
 from sqlalchemy import select, update
 
 
@@ -157,7 +159,7 @@ async def _query_nearby_three_zones(
     longitude: float,
     radius: int,
     category_id: Optional[int],
-    is_active: Optional[bool] = None
+    visible_only: bool = True
 ) -> list:
     """Helper to query nearby places from PostgreSQL in three distinct zones."""
     t1 = radius * 0.1
@@ -170,7 +172,7 @@ async def _query_nearby_three_zones(
         radius_m=float(t1),
         category_id=category_id,
         limit=50,
-        is_active=is_active
+        visible_only=visible_only
     )
     
     # Zone 2 (Mid): t1 to t2, limit 40
@@ -180,7 +182,7 @@ async def _query_nearby_three_zones(
         radius_m=float(t2),
         category_id=category_id,
         limit=40,
-        is_active=is_active,
+        visible_only=visible_only,
         min_radius_m=float(t1)
     )
     
@@ -191,7 +193,7 @@ async def _query_nearby_three_zones(
         radius_m=float(radius),
         category_id=category_id,
         limit=40,
-        is_active=is_active,
+        visible_only=visible_only,
         min_radius_m=float(t2)
     )
     
@@ -305,13 +307,16 @@ async def seed_places_from_google_bg(
         async with async_session() as session:
             repo = AttractionRepository(session)
             
-            # Fetch the latest set from DB to check if another worker has already seeded
+            # Fetch the latest set from DB to check if another worker has already seeded.
+            # Every status: a hidden or rejected place is still one we hold, and
+            # must not be bought again or re-inserted below.
             nearby_db_attractions = await _query_nearby_three_zones(
                 repo=repo,
                 latitude=latitude,
                 longitude=longitude,
                 radius=radius,
-                category_id=category_id
+                category_id=category_id,
+                visible_only=False,
             )
             
             has_adequate_coverage = radius <= 2000 or any(dist >= radius * 0.7 for _, dist in nearby_db_attractions)
@@ -540,8 +545,9 @@ async def upsert_seeded_place(
 
     Updates only ever add. A thinner fetch cannot blank a photo set, a name or
     an admin's edits, so re-seeding can improve a row but never degrade one.
-    `is_active` is deliberately untouched on an existing row — whether a place
-    should be visible is not a seeder's decision.
+    `status` is deliberately untouched on an existing row — whether a place
+    should be visible is not a seeder's decision. That is also what makes a
+    rejected row a tombstone: the place is found, refreshed, and stays out.
     """
     gid = _google_id_of(place)
 
@@ -553,16 +559,38 @@ async def upsert_seeded_place(
     # callers that only have one place to fold in.
     existing = None
     if existing_index is not None:
-        by_gid, by_coord = existing_index
+        by_gid, by_coord, tombstones = existing_index
         if gid:
             existing = by_gid.get(gid)
         if existing is None:
             existing = by_coord.get((round(latitude, 6), round(longitude, 6)))
     else:
+        tombstones = None
         if gid:
             existing = await repo.find_by_google_place_id(gid)
         if existing is None:
             existing = await repo.find_duplicate_by_coordinates(latitude, longitude)
+
+    if existing is None:
+        # Google's coordinates for a place drift by a few metres between
+        # fetches, so a hidden or rejected row is matched the way the seeders
+        # already match duplicates: under 25 m and a similar name. Without
+        # this, a rejected place without a Google id came back as a new live
+        # row on the next refresh.
+        if tombstones is None:
+            tombstones = []
+            nearby = await repo.nearby_any_status(
+                latitude=latitude, longitude=longitude, radius_m=SAME_PLACE_M,
+            )
+            for a, _ in nearby:
+                if a.status in ("hidden", "rejected"):
+                    t_lat, t_lng = get_lat_lng(a.location)
+                    tombstones.append((t_lat, t_lng, a.name, a))
+        for t_lat, t_lng, t_name, row in tombstones:
+            if is_same_place(latitude, longitude, name, t_lat, t_lng, t_name):
+                if gid and not row.google_place_id:
+                    row.google_place_id = gid
+                return
 
     if existing is not None:
         # Freshness — this is the half the old path silently discarded.
@@ -599,7 +627,8 @@ async def upsert_seeded_place(
             photo_urls=place.get("photo_urls") or [],
             tags=place.get("tags") or [],
             geofence_radius_m=100,
-            is_active=True,
+            status="live",
+            source="google",
         )
     )
 
@@ -649,6 +678,12 @@ def _format_response_places(
     return formatted
 
 
+async def _visible_responses(place_dicts: list[dict]) -> list[PlaceResponse]:
+    """Place dicts as response models, minus anything not live."""
+    visible = await place_visibility.filter_places(place_dicts)
+    return [PlaceResponse.model_validate(p) for p in visible]
+
+
 async def get_nearby(
     *,
     latitude: float,
@@ -676,6 +711,7 @@ async def get_nearby(
             "internal", "nearby_search", cache_key=key
         ) as t:
             t.hit("redis")
+        cached = await place_visibility.filter_places(cached)
         return PlacesNearbyResponse(
             places=_format_response_places(cached, max_photos, limit, offset),
             cached=True,
@@ -702,7 +738,6 @@ async def get_nearby(
             longitude=longitude,
             radius=radius,
             category_id=category_id,
-            is_active=True
         )
 
         place_dicts = [
@@ -753,8 +788,9 @@ async def get_nearby(
                 "internal", "nearby_search", cache_key=key
             ) as t:
                 t.hit("database")
+            visible = await place_visibility.filter_places(place_dicts)
             return PlacesNearbyResponse(
-                places=_format_response_places(place_dicts, max_photos, limit, offset),
+                places=_format_response_places(visible, max_photos, limit, offset),
                 cached=False,
                 source="database",
             )
@@ -982,8 +1018,9 @@ async def get_nearby(
 
     await place_cache_service.set_cached(key, place_dicts)
 
+    visible = await place_visibility.filter_places(place_dicts)
     return PlacesNearbyResponse(
-        places=_format_response_places(place_dicts, max_photos, limit, offset),
+        places=_format_response_places(visible, max_photos, limit, offset),
         cached=False,
         source="google",
     )
@@ -1024,7 +1061,7 @@ async def search(
                 ) as t:
                     t.hit("redis")
                 return PlacesNearbyResponse(
-                    places=[PlaceResponse.model_validate(p) for p in cached],
+                    places=await _visible_responses(cached),
                     cached=True,
                     source="cache",
                 )
@@ -1043,7 +1080,7 @@ async def search(
                 place_dicts.sort(key=lambda p: p.get("distance_m") or 0)
                 await place_cache_service.set_cached(typed_key, place_dicts)
                 return PlacesNearbyResponse(
-                    places=[PlaceResponse.model_validate(p) for p in place_dicts],
+                    places=await _visible_responses(place_dicts),
                     cached=False,
                     source="google",
                 )
@@ -1062,7 +1099,7 @@ async def search(
         ) as t:
             t.hit("redis")
         return PlacesNearbyResponse(
-            places=[PlaceResponse.model_validate(p) for p in cached],
+            places=await _visible_responses(cached),
             cached=True,
             source="cache",
         )
@@ -1095,7 +1132,7 @@ async def search(
                 ) as t:
                     t.hit("database")
                 return PlacesNearbyResponse(
-                    places=[PlaceResponse.model_validate(p) for p in place_dicts],
+                    places=await _visible_responses(place_dicts),
                     cached=False,
                     source="database",
                 )
@@ -1128,7 +1165,7 @@ async def search(
     await place_cache_service.set_cached(key, place_dicts)
 
     return PlacesNearbyResponse(
-        places=[PlaceResponse.model_validate(p) for p in place_dicts],
+        places=await _visible_responses(place_dicts),
         cached=False,
         source="google",
     )
@@ -1140,11 +1177,13 @@ async def _save_search_results_bg(place_dicts: list[dict], latitude: float, long
         async with async_session() as session:
             repo = AttractionRepository(session)
             seed_index = await _seed_index(repo, place_dicts)
+            # Every status, so a hidden or rejected place counts as held.
             nearby_db_attractions = await repo.get_nearby(
                 latitude=latitude,
                 longitude=longitude,
                 radius_m=50000.0,
-                limit=500
+                limit=500,
+                visible_only=False,
             )
 
             for p in place_dicts:
@@ -1221,7 +1260,7 @@ async def get_trending(
             cached_data = json.loads(cached_raw)
             return {
                 "markdown": cached_data["markdown"],
-                "places": [PlaceResponse.model_validate(p) for p in cached_data["places"]],
+                "places": await _visible_responses(cached_data["places"]),
                 "cached": True
             }
         except Exception as e:
@@ -1429,7 +1468,7 @@ If no events exist, recommend self-guided tours, food trails, scenic spots, or n
 
     return {
         "markdown": response_text,
-        "places": [PlaceResponse.model_validate(p) for p in resolved_places],
+        "places": await _visible_responses(resolved_places),
         "cached": False
     }
 
@@ -1438,6 +1477,30 @@ If no events exist, recommend self-guided tours, food trails, scenic spots, or n
 # and one detail screen, and it does not always know which it is holding.
 _UUID_RE = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
+
+
+async def _load_live_attraction(session, attraction_id: str) -> Optional[Attraction]:
+    """The live row behind a local id, or None.
+
+    Follows `attraction_aliases`, so the id of a duplicate copy that was merged
+    away still opens the place that was kept. A row that is not live answers
+    None: a hidden place must not be reachable by id either.
+    """
+    attr = (await session.execute(
+        select(Attraction).where(Attraction.id == attraction_id)
+    )).scalar_one_or_none()
+    if attr is None:
+        target = await session.scalar(
+            select(AttractionAlias.attraction_id)
+            .where(AttractionAlias.old_id == attraction_id)
+        )
+        if target is not None:
+            attr = (await session.execute(
+                select(Attraction).where(Attraction.id == target)
+            )).scalar_one_or_none()
+    if attr is None or attr.status != "live":
+        return None
+    return attr
 
 
 async def _local_attraction_details(attraction_id: str) -> Optional[dict]:
@@ -1450,9 +1513,7 @@ async def _local_attraction_details(attraction_id: str) -> Optional[dict]:
     """
     try:
         async with async_session() as session:
-            attr = (await session.execute(
-                select(Attraction).where(Attraction.id == attraction_id)
-            )).scalar_one_or_none()
+            attr = await _load_live_attraction(session, attraction_id)
             if attr is None:
                 return None
             lat, lng = get_lat_lng(attr.location)
@@ -1512,9 +1573,9 @@ async def _google_place_id_for_local(attraction_id: str) -> Optional[str]:
         print(f"⚠️ Redis GET error for {resolve_key}: {e}")
 
     async with async_session() as session:
-        attr = (await session.execute(
-            select(Attraction).where(Attraction.id == attraction_id)
-        )).scalar_one_or_none()
+        # Live rows only: resolving costs a paid lookup, and a hidden place
+        # has no detail page to show.
+        attr = await _load_live_attraction(session, attraction_id)
         if attr is None:
             return None
         if attr.google_place_id:
@@ -1716,6 +1777,13 @@ async def get_place_details(
     identifier that is not a Google Place ID and not one of our rows either.
     """
     clean_id = place_id.replace("places/", "")
+
+    # A place an admin took out of the app is not reachable by id either. The
+    # database checks below are the authority for local rows; this also covers
+    # a hidden place's Google id and answers before any paid lookup.
+    snap = await place_visibility.current()
+    if clean_id in snap.ids or clean_id in snap.gids:
+        return None
 
     # 0. Resolve anything Google would reject into something it accepts.
     local_id: Optional[str] = None

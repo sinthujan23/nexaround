@@ -32,6 +32,7 @@ from app.services import (
     google_places_client,
     place_bands,
     place_cache_service,
+    place_visibility,
     places_service,
     spend_guard,
     telemetry,
@@ -421,6 +422,9 @@ async def get_nearby_banded(
                 "internal", "nearby_banded", cache_key=key
             ) as t:
                 t.hit("redis")
+            # Filtered on the way out rather than when cached, so unhiding a
+            # place brings it back without waiting for the tile to expire.
+            cached = await place_visibility.filter_places(cached)
             _tag_excluded(cached, excluded_keywords)
             return _assemble(
                 latitude, longitude, category, bands, cached, max_photos,
@@ -452,7 +456,6 @@ async def get_nearby_banded(
                 any_tags=pre_tags or None,
                 any_name_ilike=pre_names or None,
                 limit=_DB_LIMIT_PER_BAND,
-                is_active=True,
                 # The band's rows are cut to _DB_LIMIT_PER_BAND before anything
                 # ranks them, so the cut has to keep the places worth showing
                 # rather than merely the closest ones.
@@ -558,7 +561,10 @@ async def get_nearby_banded(
         key, deduped,
         ttl=_PARTIAL_CACHE_TTL_S if near_fill_incomplete else None,
     )
-    _tag_excluded(deduped, excluded_keywords)
+    # Google's half of the pool never passed through our table, so a hidden
+    # place's Google twin is dropped here.
+    visible = await place_visibility.filter_places(deduped)
+    _tag_excluded(visible, excluded_keywords)
 
     if defer_bands:
         places_service.spawn_background(_fill_bands_bg(
@@ -571,7 +577,7 @@ async def get_nearby_banded(
             partial=near_fill_incomplete,
         ))
     return _assemble(
-        latitude, longitude, category, bands, deduped, max_photos,
+        latitude, longitude, category, bands, visible, max_photos,
         cached_flag=False, source=source, per_band=per_band,
         pending=bool(defer_bands) or near_fill_incomplete,
     )

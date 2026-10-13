@@ -1,7 +1,7 @@
 import { useState, useEffect, startTransition } from 'react';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import './index.css';
-import { NAV_ITEMS, HOME_PATH, LOGIN_PATH } from './nav';
+import { NAV_ITEMS, NAV_REDIRECTS, HOME_PATH, LOGIN_PATH } from './nav';
 import Login from './pages/Login';
 import AdminLayout from './components/layout/AdminLayout';
 
@@ -58,6 +58,9 @@ function App() {
       <Route element={<AdminLayout onLogout={handleLogout} />}>
         {NAV_ITEMS.map(({ path, page: Page }) => (
           <Route key={path} path={path} element={<Page />} />
+        ))}
+        {NAV_REDIRECTS.map(([from, to]) => (
+          <Route key={from} path={from} element={<Navigate to={to} replace />} />
         ))}
         <Route path="*" element={<Navigate to={HOME_PATH} replace />} />
       </Route>

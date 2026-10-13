@@ -10,6 +10,7 @@ from app.api.v1.budget import router as budget_router
 from app.api.v1.places import router as places_router
 from app.api.v1.neva import router as neva_router
 from app.api.v1.admin import router as admin_router
+from app.api.v1.attractions_admin import router as attractions_admin_router
 from app.api.v1.telemetry_admin import router as telemetry_admin_router
 from app.api.v1.proxy import router as proxy_router
 from app.api.v1.notifications import router as notifications_router
@@ -34,6 +35,7 @@ api_router.include_router(budget_router)
 api_router.include_router(places_router)
 api_router.include_router(neva_router)
 api_router.include_router(admin_router)
+api_router.include_router(attractions_admin_router)
 api_router.include_router(telemetry_admin_router)
 api_router.include_router(proxy_router)
 api_router.include_router(notifications_router)

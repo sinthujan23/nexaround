@@ -1,15 +1,35 @@
 import uuid
 from typing import List, Optional, Tuple
-from sqlalchemy import select, func, desc, or_, cast, String
+from sqlalchemy import select, func, desc, or_, cast, String, text
 from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload, aliased
 from app.utils.geo_utils import get_lat_lng
 from geoalchemy2 import Geometry, Geography
 from geoalchemy2.functions import ST_Distance, ST_DWithin
-from app.models.attraction import Attraction
+from app.models.attraction import Attraction, AttractionAlias
 from app.models.category import Category
 from app.utils.geo_utils import create_point
+from app.utils.place_match import haversine_m, names_match
+
+
+# ~33 m. Wide enough that a 25 m "same place" match at the edge of a seed
+# batch still sees the tombstone.
+_TOMBSTONE_PAD_DEG = 0.0003
+
+# Columns the admin list can sort by, keyed by the API's `sort` value.
+_ADMIN_SORTS = {
+    "newest": lambda: (desc(Attraction.created_at),),
+    "oldest": lambda: (Attraction.created_at,),
+    "name": lambda: (func.lower(Attraction.name),),
+    "updated": lambda: (desc(Attraction.updated_at),),
+    # The Review queue: people's suggestions before old leftover copies,
+    # each oldest first.
+    "queue": lambda: (
+        (Attraction.source != "user"),
+        Attraction.created_at,
+    ),
+}
 
 
 class AttractionRepository:
@@ -65,6 +85,11 @@ class AttractionRepository:
 
         Coordinates are rounded to six decimals to agree with the < 1e-6
         tolerance `find_duplicate_by_coordinates` applies.
+
+        The third element lists hidden and rejected rows within ~30 m of the
+        batch as `(lat, lng, name, row)`. A Google result a few metres from a
+        rejected place, under a similar name, is that place again, so the
+        seeder must not insert it as a fresh live row.
         """
         by_gid: dict = {}
         if google_place_ids:
@@ -82,14 +107,27 @@ class AttractionRepository:
             select(Attraction).where(
                 func.ST_Y(Attraction.location).between(min_lat, max_lat),
                 func.ST_X(Attraction.location).between(min_lng, max_lng),
-            )
+            ).order_by(Attraction.is_active.desc())
         )
         by_coord: dict = {}
         for row in res.scalars().all():
             lat, lng = get_lat_lng(row.location)
             by_coord.setdefault((round(lat, 6), round(lng, 6)), row)
 
-        return by_gid, by_coord
+        pad = _TOMBSTONE_PAD_DEG
+        res = await self.db.execute(
+            select(Attraction).where(
+                Attraction.status.in_(("hidden", "rejected")),
+                func.ST_Y(Attraction.location).between(min_lat - pad, max_lat + pad),
+                func.ST_X(Attraction.location).between(min_lng - pad, max_lng + pad),
+            )
+        )
+        tombstones = []
+        for row in res.scalars().all():
+            lat, lng = get_lat_lng(row.location)
+            tombstones.append((lat, lng, row.name, row))
+
+        return by_gid, by_coord, tombstones
 
     async def find_duplicate_by_coordinates(
         self, 
@@ -129,7 +167,7 @@ class AttractionRepository:
         
         if is_active is not None:
             query = query.where(Attraction.is_active == is_active)
-            
+        
         if category_id:
             query = query.where(Attraction.category_id == category_id)
         
@@ -146,8 +184,178 @@ class AttractionRepository:
         total = await self.db.scalar(count_query) or 0
         
         # Get actual results
-        results = await self.db.execute(query.offset(skip).limit(limit))
+        results = await self.db.execute(
+            query.order_by(Attraction.name, Attraction.id).offset(skip).limit(limit)
+        )
         return [(row[0], bool(row[1])) for row in results.all()], total
+
+    def _admin_filters(
+        self,
+        *,
+        q: Optional[str] = None,
+        source: Optional[str] = None,
+        reason: Optional[str] = None,
+        category_id: Optional[uuid.UUID] = None,
+        submitted_by: Optional[uuid.UUID] = None,
+        possible_duplicate: bool = False,
+    ) -> list:
+        """WHERE clauses shared by the admin list and its per-status counts."""
+        clauses = []
+        if q:
+            like = f"%{q.strip()}%"
+            clauses.append(or_(Attraction.name.ilike(like), Attraction.address.ilike(like)))
+        if source:
+            clauses.append(Attraction.source == source)
+        if reason:
+            clauses.append(Attraction.status_reason == reason)
+        if category_id:
+            clauses.append(Attraction.category_id == category_id)
+        if submitted_by:
+            clauses.append(Attraction.submitted_by_user_id == submitted_by)
+        if possible_duplicate:
+            clauses.append(self._duplicate_exists())
+        return clauses
+
+    @staticmethod
+    def _duplicate_exists():
+        """Another row of any status at the same coordinates (~11 cm)."""
+        other = aliased(Attraction)
+        return select(1).select_from(other).where(
+            other.id != Attraction.id,
+            func.ST_DWithin(other.location, Attraction.location, 0.000001),
+        ).exists()
+
+    async def admin_list(
+        self,
+        *,
+        status: str,
+        sort: str = "newest",
+        offset: int = 0,
+        limit: int = 50,
+        **filters,
+    ) -> Tuple[List[Tuple[Attraction, bool]], int]:
+        """One page of places in one status, for the admin panel.
+
+        Always ordered, with `id` last, so paging never repeats or skips a row.
+        """
+        clauses = self._admin_filters(**filters)
+        base = select(Attraction).where(Attraction.status == status, *clauses)
+        total = await self.db.scalar(
+            select(func.count()).select_from(base.subquery())
+        ) or 0
+        order = _ADMIN_SORTS.get(sort, _ADMIN_SORTS["newest"])()
+        query = (
+            select(Attraction, self._duplicate_exists().label("has_duplicate"))
+            .where(Attraction.status == status, *clauses)
+            .options(selectinload(Attraction.category))
+            .order_by(*order, Attraction.id)
+            .offset(offset)
+            .limit(limit)
+        )
+        rows = (await self.db.execute(query)).all()
+        return [(r[0], bool(r[1])) for r in rows], total
+
+    async def status_counts(self, **filters) -> dict:
+        """How many places sit in each status, under the same filters."""
+        clauses = self._admin_filters(**filters)
+        rows = (await self.db.execute(
+            select(Attraction.status, func.count())
+            .where(*clauses)
+            .group_by(Attraction.status)
+        )).all()
+        counts = {"live": 0, "pending": 0, "hidden": 0, "rejected": 0}
+        counts.update({status: n for status, n in rows})
+        return counts
+
+    async def count_pending_from_users(self) -> int:
+        return await self.db.scalar(
+            select(func.count()).select_from(Attraction).where(
+                Attraction.status == "pending", Attraction.source == "user"
+            )
+        ) or 0
+
+    async def count_pending_by_user(self, user_id: uuid.UUID) -> int:
+        return await self.db.scalar(
+            select(func.count()).select_from(Attraction).where(
+                Attraction.status == "pending",
+                Attraction.submitted_by_user_id == user_id,
+            )
+        ) or 0
+
+    async def find_possible_duplicates(
+        self,
+        *,
+        latitude: float,
+        longitude: float,
+        name: str,
+        google_place_id: Optional[str] = None,
+        exclude_id: Optional[uuid.UUID] = None,
+        radius_m: float = 25.0,
+    ) -> List[Tuple[Attraction, float]]:
+        """Rows that look like the same place: the same Google id, or within
+        `radius_m` under a similar name. Rejected rows count — creating a place
+        an admin already turned down deserves the same warning."""
+        rows = await self.nearby_any_status(
+            latitude=latitude, longitude=longitude, radius_m=radius_m,
+            exclude_id=exclude_id, limit=50,
+        )
+        matches = [(a, d) for a, d in rows if names_match(a.name, name)]
+        if google_place_id:
+            seen = {a.id for a, _ in matches}
+            res = await self.db.execute(
+                select(Attraction).where(
+                    Attraction.google_place_id == google_place_id,
+                    *([Attraction.id != exclude_id] if exclude_id else []),
+                ).options(selectinload(Attraction.category))
+            )
+            for a in res.scalars().all():
+                if a.id not in seen:
+                    alat, alng = get_lat_lng(a.location)
+                    matches.append((a, haversine_m(latitude, longitude, alat, alng)))
+        return matches
+
+    async def nearby_any_status(
+        self,
+        *,
+        latitude: float,
+        longitude: float,
+        radius_m: float,
+        exclude_id: Optional[uuid.UUID] = None,
+        limit: int = 30,
+    ) -> List[Tuple[Attraction, float]]:
+        """Every row near a point whatever its status, nearest first — what an
+        admin needs to see before approving or creating a place there."""
+        center = func.cast(create_point(latitude, longitude), Geography)
+        distance = ST_Distance(func.geography(Attraction.location), center)
+        query = (
+            select(Attraction, distance.label("distance"))
+            .where(ST_DWithin(func.geography(Attraction.location), center, radius_m))
+            .options(selectinload(Attraction.category))
+            .order_by("distance")
+            .limit(limit)
+        )
+        if exclude_id:
+            query = query.where(Attraction.id != exclude_id)
+        rows = (await self.db.execute(query)).all()
+        return [(r[0], r[1]) for r in rows]
+
+    async def usage_counts(self, attraction_id: uuid.UUID) -> dict:
+        """User content tied to a place, which decides whether it may be deleted."""
+        row = (await self.db.execute(text("""
+            SELECT
+                (SELECT count(*) FROM reviews WHERE attraction_id = :id),
+                (SELECT count(*) FROM media WHERE attraction_id = :id),
+                (SELECT count(*) FROM place_visits WHERE attraction_id = :id)
+        """), {"id": attraction_id})).one()
+        return {"reviews": row[0], "media": row[1], "visits": row[2]}
+
+    async def resolve_alias(self, attraction_id: uuid.UUID) -> Optional[uuid.UUID]:
+        """The id a merged copy now resolves to, if `attraction_id` was one."""
+        return await self.db.scalar(
+            select(AttractionAlias.attraction_id).where(
+                AttractionAlias.old_id == attraction_id
+            )
+        )
 
     async def get_coordinates_in_bounds(
         self,
@@ -185,13 +393,19 @@ class AttractionRepository:
         limit: int = 50,
         order_by_prominence: bool = False,
         sort_by_away: bool = False,
-        is_active: Optional[bool] = None,
+        visible_only: bool = True,
         min_radius_m: Optional[float] = None,
         category_ids: Optional[List[uuid.UUID]] = None,
         any_tags: Optional[List[str]] = None,
         any_name_ilike: Optional[List[str]] = None
     ) -> List[Tuple[Attraction, float]]:
-        """Get attractions within a certain radius, with distance calculation."""
+        """Get attractions within a certain radius, with distance calculation.
+
+        Live places only unless `visible_only=False`. That is meant for
+        de-duplication against everything we hold, never for a list a user
+        sees; defaulting to safe is what keeps a new caller from leaking hidden
+        places, as three callers did when the default was "everything".
+        """
         center_point = create_point(latitude, longitude)
         
         # ST_Distance returns distance in degrees for 4326 unless we use geography
@@ -213,8 +427,8 @@ class AttractionRepository:
         if min_radius_m is not None:
             query = query.where(distance_func >= min_radius_m)
             
-        if is_active is not None:
-            query = query.where(Attraction.is_active == is_active)
+        if visible_only:
+            query = query.where(Attraction.status == "live")
             
         if category_id:
             query = query.where(Attraction.category_id == category_id)
@@ -317,7 +531,7 @@ class AttractionRepository:
                     func.cast(center_point, Geography),
                     radius_m,
                 ),
-                Attraction.is_active == True,
+                Attraction.status == "live",
                 Attraction.name.ilike(f"%{name}%"),
             )
             .options(selectinload(Attraction.category))

@@ -7,9 +7,9 @@ from app.api.deps import get_current_user
 from app.models.user import User
 from app.services.attraction_service import AttractionService
 from app.schemas.attraction import (
-    AttractionCreate, 
     AttractionResponse, 
     AttractionListResponse, 
+    AttractionSuggest,
     NearbyRequest
 )
 
@@ -60,25 +60,22 @@ async def get_attraction(
     attraction_id: uuid.UUID,
     db: AsyncSession = Depends(get_db)
 ):
-    """Get a single attraction by ID."""
+    """Get a single live attraction by ID (404 for anything not live)."""
     service = AttractionService(db)
     result = await service.get_attraction(attraction_id)
     # Record a place visit — the real source for the admin 'Places Visited'
-    # metric. Best-effort: analytics must never break the detail read.
-    try:
-        from app.models.analytics import PlaceVisit
-        db.add(PlaceVisit(attraction_id=attraction_id))
-        await db.commit()
-    except Exception:
-        await db.rollback()
+    # metric. Counted against the row that answered, which for a merged copy's
+    # old id is the place that was kept.
+    await service.record_visit(result.id)
     return result
 
 @router.post("/", response_model=AttractionResponse, status_code=status.HTTP_201_CREATED)
-async def create_attraction(
-    data: AttractionCreate,
+async def suggest_attraction(
+    data: AttractionSuggest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Create a new attraction (requires authentication). New attractions are always inactive pending admin approval."""
+    """Suggest a new place. It is not shown in the app until an admin approves
+    it in the Review queue."""
     service = AttractionService(db)
-    return await service.create_attraction(data)
+    return await service.create_suggestion(data, current_user)

@@ -17,10 +17,12 @@ export async function apiFetch(endpoint, options = {}) {
 
   if (!response.ok) {
     let errorMsg = response.statusText;
+    let detail = null;
     try {
       const errData = await response.json();
       if (errData && errData.detail) {
-        errorMsg = typeof errData.detail === 'string' ? errData.detail : JSON.stringify(errData.detail);
+        detail = errData.detail;
+        errorMsg = typeof detail === 'string' ? detail : (detail.message || JSON.stringify(detail));
       }
     } catch {
       // Ignore error parsing
@@ -33,7 +35,12 @@ export async function apiFetch(endpoint, options = {}) {
       }));
     }
 
-    throw new Error(errorMsg || `Request failed with status ${response.status}`);
+    // status and detail ride along so a caller can act on a structured
+    // refusal (e.g. a 409 listing the places a new one may duplicate).
+    const error = new Error(errorMsg || `Request failed with status ${response.status}`);
+    error.status = response.status;
+    error.detail = detail;
+    throw error;
   }
 
   if (response.status === 204) {

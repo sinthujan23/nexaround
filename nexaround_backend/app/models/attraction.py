@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import String, Text, DateTime, JSON, Float, Integer, Boolean, ForeignKey, ARRAY
+from sqlalchemy import String, Text, DateTime, JSON, Float, Integer, Boolean, ForeignKey, ARRAY, Computed
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from geoalchemy2 import Geometry
@@ -41,9 +41,33 @@ class Attraction(Base):
     photo_urls: Mapped[list] = mapped_column(ARRAY(String), default=list)
     tags: Mapped[list] = mapped_column(ARRAY(String), default=list)
     geofence_radius_m: Mapped[int] = mapped_column(Integer, default=100)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    # Lifecycle. `status` is the one source of truth — see
+    # app/services/place_status.py for what each value means and which moves
+    # between them are allowed. `is_active` is generated from it by Postgres so
+    # every reader that filters on it keeps working; it cannot be written.
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="live")
+    status_reason: Mapped[str] = mapped_column(String(40), nullable=True)
+    status_note: Mapped[str] = mapped_column(Text, nullable=True)
+    source: Mapped[str] = mapped_column(String(16), nullable=False, default="unknown")
+    submitted_by_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    reviewed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
+    # The admin's login name (admins are not rows in `users`), or "merge-script".
+    reviewed_by: Mapped[str] = mapped_column(String(100), nullable=True)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, Computed("status = 'live'", persisted=True)
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
     )
 
     # Relationships
@@ -62,5 +86,30 @@ class Attraction(Base):
     reviews = relationship("Review", back_populates="attraction", lazy="select")
     media = relationship("Media", back_populates="attraction", lazy="select")
 
+    # `is_active` is computed by the database. Without this, reading it after an
+    # INSERT or UPDATE would need a lazy refresh, which raises MissingGreenlet
+    # under async; with it the value comes back in the same statement.
+    __mapper_args__ = {"eager_defaults": True}
+
     def __repr__(self) -> str:
         return f"<Attraction {self.name}>"
+
+
+class AttractionAlias(Base):
+    """An id that used to be its own row and now resolves to another.
+
+    Written when duplicate copies are merged, so a favourite or a link holding
+    a deleted copy's id still opens the place that was kept.
+    """
+    __tablename__ = "attraction_aliases"
+
+    old_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    attraction_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("attractions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )

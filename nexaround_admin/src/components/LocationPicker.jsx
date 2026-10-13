@@ -8,8 +8,8 @@ import { SearchIcon, MapPinIcon } from './Icons';
  * The search goes through the backend (`/admin/experiences/place-search`)
  * rather than the Google Places JS SDK: there is no browser-side Google key in
  * this panel and the project's standing rule is that provider keys never reach
- * a client. The draggable-marker binding is lifted from Approvals.jsx, which
- * already solved the same two-way marker <-> input problem.
+ * a client. The draggable marker is kept in step with the inputs both ways:
+ * dragging writes the fields, typing moves the pin.
  */
 export default function LocationPicker({
   mapId,
@@ -20,9 +20,17 @@ export default function LocationPicker({
   // As with ImageUploader: defaulted to the admin path, so admin call sites
   // need no edit at all.
   searchEndpoint = '/admin/experiences/place-search',
+  searchLabel = 'Find the vendor on Google',
+  searchPlaceholder = 'e.g. Blue Lagoon Tours, Trincomalee',
+  // Other places to show around the pin, as small circles: [{ id, latitude,
+  // longitude, name, color }]. The Map Database uses it to show what already
+  // exists near a place being reviewed.
+  extraMarkers = null,
+  height = 260,
 }) {
   const mapRef = useRef(null);
   const markerRef = useRef(null);
+  const extraLayerRef = useRef(null);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
@@ -64,9 +72,27 @@ export default function LocationPicker({
       map.remove();
       mapRef.current = null;
       markerRef.current = null;
+      extraLayerRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapId]);
+
+  useEffect(() => {
+    if (!window.L || !mapRef.current) return;
+    if (extraLayerRef.current) {
+      extraLayerRef.current.remove();
+      extraLayerRef.current = null;
+    }
+    if (!extraMarkers || extraMarkers.length === 0) return;
+    const layer = window.L.layerGroup();
+    extraMarkers.forEach((m) => {
+      window.L.circleMarker([m.latitude, m.longitude], {
+        radius: 7, weight: 2, color: '#ffffff', fillColor: m.color || '#5a6070', fillOpacity: 0.95,
+      }).bindTooltip(m.name || '').addTo(layer);
+    });
+    layer.addTo(mapRef.current);
+    extraLayerRef.current = layer;
+  }, [extraMarkers]);
 
   // Keep the marker in step with the form values, whichever changed them.
   useEffect(() => {
@@ -150,12 +176,12 @@ export default function LocationPicker({
   return (
     <div>
       <div className="form-group">
-        <label className="form-label">Find the vendor on Google</label>
+        <label className="form-label">{searchLabel}</label>
         <div style={{ display: 'flex', gap: '8px' }}>
           <input
             type="text"
             className="form-input"
-            placeholder="e.g. Blue Lagoon Tours, Trincomalee"
+            placeholder={searchPlaceholder}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') runSearch(e); }}
@@ -201,7 +227,7 @@ export default function LocationPicker({
       <div
         id={mapId}
         className="map-container"
-        style={{ height: '260px', borderRadius: '12px', marginBottom: '12px' }}
+        style={{ height: `${height}px`, borderRadius: '12px', marginBottom: '12px' }}
       />
       <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '12px' }}>
         Pick a search result, click the map, or drag the pin to fine-tune.

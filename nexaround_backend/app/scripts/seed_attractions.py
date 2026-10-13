@@ -251,6 +251,8 @@ async def seed_attractions():
                 tags=attr_data.get("tags", []),
                 entry_fee=attr_data.get("entry_fee", 0.0),
                 currency=attr_data.get("currency", "USD"),
+                status="live",
+                source="seed",
             )
             session.add(attraction)
             print(f"  [OK] Added: {attr_data['name']}")

@@ -12,12 +12,10 @@ from app.core.database import get_db
 from app.core.config import settings
 from app.core.security import create_access_token, decode_token
 from app.services.user_service import UserService
-from app.services.attraction_service import AttractionService
 from app.services.settings_service import SettingsService
 from app.services import excluded_keyword_service
 from app.services.providers import config as provider_config
 from app.schemas.user import UserResponse
-from app.schemas.attraction import AttractionResponse, AttractionListResponse, AttractionCreate
 from app.schemas.excluded_keyword import ExcludedKeywordResponse, ExcludedKeywordCreate
 from app.models.user import User
 from app.models.attraction import Attraction
@@ -153,6 +151,12 @@ async def verify_admin_token(authorization: str = Header(...)):
     return token
 
 
+async def require_admin(token: str = Depends(verify_admin_token)) -> str:
+    """The signed-in admin's login name, for "reviewed by" trails. Admins are
+    not rows in `users`, so the name is all there is."""
+    return (decode_token(token) or {}).get("sub") or "admin"
+
+
 # --- Endpoints ---
 
 @router.post("/login", response_model=AdminLoginResponse)
@@ -189,15 +193,19 @@ async def get_dashboard_stats(
         select(func.count(User.id)).where(User.created_at >= week_ago)
     )).scalar_one()
 
-    # 2. Attractions (all), and how many were added this week
-    attractions_count = (await db.execute(select(func.count(Attraction.id)))).scalar_one()
+    # 2. Live places, and how many were added this week
+    attractions_count = (await db.execute(
+        select(func.count(Attraction.id)).where(Attraction.status == "live")
+    )).scalar_one()
     new_attractions_7d = (await db.execute(
-        select(func.count(Attraction.id)).where(Attraction.created_at >= week_ago)
+        select(func.count(Attraction.id)).where(
+            Attraction.status == "live", Attraction.created_at >= week_ago
+        )
     )).scalar_one()
 
-    # 3. Pending approvals (inactive attractions), the same set /approvals lists
+    # 3. Places waiting in the Review queue
     pending_approvals_count = (await db.execute(
-        select(func.count(Attraction.id)).where(Attraction.is_active == False)
+        select(func.count(Attraction.id)).where(Attraction.status == "pending")
     )).scalar_one()
 
     # 4. What needs a person: unacknowledged API alerts and unanswered enquiries
@@ -235,10 +243,22 @@ async def get_dashboard_stats(
     recent_users_res = await db.execute(recent_users_stmt)
     recent_users = recent_users_res.scalars().all()
 
-    # Query last 5 attractions
-    recent_attractions_stmt = select(Attraction).order_by(desc(Attraction.created_at)).limit(5)
-    recent_attractions_res = await db.execute(recent_attractions_stmt)
-    recent_attractions = recent_attractions_res.scalars().all()
+    # Places people did something with: the latest suggestions from the app and
+    # the latest admin decisions. Google seeding adds rows all day and is not
+    # activity anyone needs to see here.
+    recent_suggestions = (await db.execute(
+        select(Attraction, User.display_name)
+        .outerjoin(User, User.id == Attraction.submitted_by_user_id)
+        .where(Attraction.source == "user")
+        .order_by(desc(Attraction.created_at))
+        .limit(5)
+    )).all()
+    recent_decisions = (await db.execute(
+        select(Attraction)
+        .where(Attraction.reviewed_at.is_not(None))
+        .order_by(desc(Attraction.reviewed_at))
+        .limit(5)
+    )).scalars().all()
 
     # Merge and format activity items
     activity_items = []
@@ -252,13 +272,28 @@ async def get_dashboard_stats(
             "timestamp": user.created_at.timestamp() if user.created_at else 0.0
         })
 
-    # Process attractions activity
-    for attr in recent_attractions:
+    for attr, submitter in recent_suggestions:
         activity_items.append({
-            "color": "#6c63ff" if attr.is_active else "#ef4444",
-            "text": f"New attraction suggested: '{attr.name}' at {attr.address or 'unknown address'}.",
+            "color": "#f59e0b",
+            "text": f"'{attr.name}' suggested by {submitter or 'a deleted account'}.",
             "time": attr.created_at.isoformat() if attr.created_at else datetime.now(timezone.utc).isoformat(),
             "timestamp": attr.created_at.timestamp() if attr.created_at else 0.0
+        })
+
+    decision_words = {
+        "live": ("#10b981", "is live"),
+        "hidden": ("#94a3b8", "was hidden"),
+        "rejected": ("#ef4444", "was rejected"),
+        "pending": ("#f59e0b", "went back to the Review queue"),
+    }
+    for attr in recent_decisions:
+        color, words = decision_words.get(attr.status, ("#6c63ff", attr.status))
+        reason = f" ({attr.status_reason.replace('_', ' ')})" if attr.status_reason and attr.status != "live" else ""
+        activity_items.append({
+            "color": color,
+            "text": f"'{attr.name}' {words}{reason} by {attr.reviewed_by}.",
+            "time": attr.reviewed_at.isoformat(),
+            "timestamp": attr.reviewed_at.timestamp(),
         })
 
     # Sort consolidated activity by timestamp descending
@@ -409,94 +444,6 @@ async def toggle_user_active(
     """Toggle a user's active/suspended status."""
     service = UserService(db)
     return await service.toggle_active_status(user_id)
-
-
-@router.get("/approvals", response_model=AttractionListResponse)
-async def get_pending_approvals(
-    page: int = Query(1, ge=1),
-    page_size: int = Query(100, ge=1, le=100),
-    db: AsyncSession = Depends(get_db),
-    _ = Depends(verify_admin_token)
-):
-    """Get all attractions awaiting approval."""
-    service = AttractionService(db)
-    return await service.list_attractions(
-        page=page,
-        page_size=page_size,
-        is_active=False
-    )
-
-
-@router.get("/attractions", response_model=AttractionListResponse)
-async def list_admin_attractions(
-    page: int = Query(1, ge=1),
-    page_size: int = Query(1000, ge=1, le=1000),
-    search: Optional[str] = None,
-    db: AsyncSession = Depends(get_db),
-    _ = Depends(verify_admin_token)
-):
-    """Retrieve all attractions for admin management (includes inactive/active ones)."""
-    service = AttractionService(db)
-    return await service.list_attractions(page=page, page_size=page_size, search_query=search)
-
-
-@router.post("/attractions", response_model=AttractionResponse, status_code=status.HTTP_201_CREATED)
-async def create_admin_attraction(
-    data: AttractionCreate,
-    db: AsyncSession = Depends(get_db),
-    _ = Depends(verify_admin_token)
-):
-    """Create a new attraction as admin."""
-    service = AttractionService(db)
-    return await service.create_attraction(data)
-
-
-@router.delete("/attractions/{attraction_id}")
-async def delete_admin_attraction(
-    attraction_id: uuid.UUID,
-    db: AsyncSession = Depends(get_db),
-    _ = Depends(verify_admin_token)
-):
-    """Delete an attraction as admin."""
-    service = AttractionService(db)
-    success = await service.delete_attraction(attraction_id)
-    return {"status": "success" if success else "failed"}
-
-
-@router.put("/attractions/{attraction_id}", response_model=AttractionResponse)
-async def update_attraction_details(
-    attraction_id: uuid.UUID,
-    data: AttractionCreate,
-    db: AsyncSession = Depends(get_db),
-    _ = Depends(verify_admin_token)
-):
-    """Update attraction details like coordinates, name, category, and address."""
-    service = AttractionService(db)
-    update_data = data.model_dump(exclude_unset=True)
-    return await service.update_attraction(attraction_id, update_data)
-
-
-@router.post("/attractions/{attraction_id}/approve", response_model=AttractionResponse)
-async def approve_attraction(
-    attraction_id: uuid.UUID,
-    db: AsyncSession = Depends(get_db),
-    _ = Depends(verify_admin_token)
-):
-    """Approve a submitted attraction by turning on is_active."""
-    service = AttractionService(db)
-    return await service.update_attraction(attraction_id, {"is_active": True})
-
-
-@router.delete("/attractions/{attraction_id}/reject")
-async def reject_attraction(
-    attraction_id: uuid.UUID,
-    db: AsyncSession = Depends(get_db),
-    _ = Depends(verify_admin_token)
-):
-    """Reject and delete a submitted attraction."""
-    service = AttractionService(db)
-    success = await service.delete_attraction(attraction_id)
-    return {"status": "success" if success else "failed"}
 
 
 @router.get("/excluded-keywords", response_model=List[ExcludedKeywordResponse])

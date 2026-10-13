@@ -1,9 +1,11 @@
 import { Fragment } from 'react';
 import { NavLink } from 'react-router-dom';
 import { NAV_SECTIONS } from '../../nav';
+import { compactCount, usePlaceCounts } from '../../places';
 import { LogOutIcon } from '../Icons';
 
 export default function Sidebar({ onLogout }) {
+  const placeCounts = usePlaceCounts();
   return (
     <aside className="sidebar">
       <div className="sidebar-logo">
@@ -25,9 +27,15 @@ export default function Sidebar({ onLogout }) {
             <div className="nav-section-label" style={i > 0 ? { marginTop: '8px' } : undefined}>
               {section.label}
             </div>
-            {section.items.map(({ path, label, icon: Icon }) => (
-              <NavLink key={path} to={path} className="nav-item">
+            {section.items.map(({ path, label, icon: Icon, badge }) => (
+              // `end`, or /places would also light up on /places/review.
+              <NavLink key={path} to={path} end className="nav-item">
                 <span className="icon"><Icon size={18} /></span> {label}
+                {badge && placeCounts?.[badge] > 0 && (
+                  <span className="nav-badge" title={`${placeCounts[badge].toLocaleString()} waiting`}>
+                    {compactCount(placeCounts[badge])}
+                  </span>
+                )}
               </NavLink>
             ))}
           </Fragment>

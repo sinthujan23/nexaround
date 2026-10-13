@@ -804,6 +804,14 @@ td { padding: 14px 16px; color: var(--text-primary); vertical-align: middle; }
   color: var(--accent) !important;
 }
 
+/* Map Database: the table needs the room, the map gets a fixed column */
+.places-split { grid-template-columns: minmax(0, 1fr) 320px; }
+.places-table th, .places-table td { padding-left: 10px; padding-right: 10px; }
+.places-table th:first-child, .places-table td:first-child { padding-left: 16px; }
+@media (max-width: 1100px) {
+  .places-split { grid-template-columns: 1fr; }
+}
+
 /* ===== CORRECTION DETAIL PANEL ===== */
 .correction-panel {
   animation: fadeIn 0.25s ease-out;

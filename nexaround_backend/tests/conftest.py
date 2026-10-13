@@ -66,3 +66,35 @@ def _leg_lookup_off(monkeypatch):
 
     monkeypatch.setattr(odyssey_ai_service, "_leg_geo", _unknown)
     yield
+
+
+@pytest.fixture(autouse=True)
+def _place_visibility_offline(monkeypatch):
+    """Nothing is hidden, and nothing is announced, unless a test says so.
+
+    The visibility snapshot is loaded from the database (absent here) and its
+    version lives in the Redis the live stack shares — a test that hid a place
+    must not make every api process reload. Tests of the module itself patch
+    `_load` / `_read_version` to what they need.
+    """
+    from app.services import place_visibility
+
+    async def _empty():
+        return place_visibility.EMPTY
+
+    async def _version():
+        return "0"
+
+    async def _no_incr():
+        return None
+
+    monkeypatch.setattr(place_visibility, "_load", _empty)
+    monkeypatch.setattr(place_visibility, "_read_version", _version)
+    monkeypatch.setattr(place_visibility, "_incr_version", _no_incr)
+    monkeypatch.setattr(place_visibility, "_snapshot", None)
+    monkeypatch.setattr(place_visibility, "_loaded_version", None)
+    monkeypatch.setattr(place_visibility, "_loaded_at", 0.0)
+    monkeypatch.setattr(place_visibility, "_checked_at", 0.0)
+    monkeypatch.setattr(place_visibility, "_lock", None)
+    monkeypatch.setattr(place_visibility, "_refresh_task", None)
+    yield
