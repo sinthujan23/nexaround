@@ -226,7 +226,7 @@ export default function Settings() {
             tag="HMAC-SHA256 signature secret"
             value={providers.atlas_signing_secret}
             onChange={(v) => setProviders({ ...providers, atlas_signing_secret: v })}
-            placeholder="e.g. sk_test_..."
+            placeholder="Paste the secret HelloSafe showed when you created the key"
           />
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', marginBottom: '16px' }}>
             <div className="form-group">

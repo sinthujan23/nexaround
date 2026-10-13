@@ -49,8 +49,9 @@ TAP_PATH = "/api/v1/go/insurance"
 
 BUTTON_LABEL = "Get travel insurance"
 DEFAULT_ADULT_AGE = 30
-PLAN_TIMEOUT_S = 4.0   # priced while Gemini writes the plan; nobody waits on it
-TAP_TIMEOUT_S = 6.0    # a traveller is looking at a blank page
+# Live quotes take 3-6 s (insurers are priced as we ask; measured 2026-10-13).
+PLAN_TIMEOUT_S = 15.0  # priced while Gemini writes the plan (35 s+); nobody waits on it
+TAP_TIMEOUT_S = 10.0   # a traveller is waiting on the redirect
 QUOTE_TTL_S = 25 * 60  # sessions expire after 30 minutes
 LINK_TTL_S = 25 * 60
 
