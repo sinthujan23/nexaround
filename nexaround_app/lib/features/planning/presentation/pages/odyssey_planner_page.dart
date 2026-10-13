@@ -13,6 +13,7 @@ import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
 import 'package:nexaround_app/features/living_map/presentation/widgets/location_search_modal.dart';
 import 'package:nexaround_app/core/constants/countries.dart';
+import 'package:nexaround_app/core/constants/trip_cost_floor.dart';
 import 'package:nexaround_app/core/widgets/country_picker_sheet.dart';
 import 'package:nexaround_app/core/error/user_message.dart';
 import 'package:nexaround_app/features/planning/presentation/widgets/odyssey_disclaimer_sheet.dart';
@@ -42,6 +43,9 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
   int _currentStep = 0; // 0 destination, 1 dates & travelers, 2 flights & hotels, 3 budget
   int _days = 3;
   double _budget = 50000;
+  // Set once the traveller types a figure or moves the slider. Until then the
+  // budget step opens on what this trip usually costs (`_applyTypicalBudget`).
+  bool _budgetEdited = false;
   int _travelers = 1;
   final String _selectedMood = 'Adventurous';
   bool _isSubmitting = false;
@@ -656,12 +660,75 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
       }
     }
     if (_currentStep < 3) {
-      setState(() => _currentStep++);
+      setState(() {
+        if (_currentStep == 2 && !_budgetEdited) _applyTypicalBudget();
+        _currentStep++;
+      });
     } else {
       _submit();
     }
   }
 
+
+  // ── The budget step ────────────────────────────────────────────────────
+
+  /// What this trip usually costs per traveller, in the trip's currency, or
+  /// null when the destination or currency is unrecognised.
+  double? get _typicalBudget => TripCostFloor.typicalBudget(
+        destination: _destinationController.text.trim(),
+        days: _days,
+        currency: _currency,
+        departureCountry: _departureCountry,
+        includeFlights: _includeFlights,
+      );
+
+  /// Start the budget step at what the trip usually costs.
+  ///
+  /// It used to open at 50,000 per person in whatever currency the traveller
+  /// used — about two weeks abroad in rupees, and USD 50,000 for a traveller
+  /// paying in dollars. The plan priced its flights and rooms, and the rest of
+  /// that figure turned up as food: USD 2,459 a day for one person in Germany.
+  void _applyTypicalBudget() {
+    final rate = TripCostFloor.fxPerUsd[_currency.toUpperCase()];
+    final next = _typicalBudget ?? (rate == null ? _budget : _nice(1500 * rate));
+    _budget = next;
+    _budgetController.text = formatAmount(next.round());
+  }
+
+  /// The slider spans about USD 100 to USD 20,000 a person in the trip's own
+  /// currency, in about 400 steps — one fixed 1,000-500,000 range was the
+  /// whole scale in rupees and nonsense in dollars or dinars.
+  ({double min, double max, double step}) get _sliderRange {
+    final rate = TripCostFloor.fxPerUsd[_currency.toUpperCase()];
+    if (rate == null) return (min: 1000.0, max: 500000.0, step: 1000.0);
+    final min = _nice(100 * rate);
+    final max = _nice(20000 * rate);
+    return (min: min, max: max, step: _nice((max - min) / 400));
+  }
+
+  /// The nearest 1, 2, 2.5 or 5 times a power of ten.
+  static double _nice(double value) {
+    if (value <= 0) return 1;
+    final base = math.pow(10, (math.log(value) / math.ln10).floor()).toDouble();
+    final f = value / base;
+    var best = 1.0;
+    for (final c in const [1.0, 2.0, 2.5, 5.0, 10.0]) {
+      if ((f - c).abs() < (f - best).abs()) best = c;
+    }
+    return best * base;
+  }
+
+  /// A word of warning when the budget is far above what the trip costs. The
+  /// plan no longer spends the difference, but the traveller should know that
+  /// before they wonder why the total came back so much lower.
+  String? get _overTypical {
+    final typical = _typicalBudget;
+    if (typical == null || typical <= 0 || _budget <= typical * 4) return null;
+    final times = (_budget / typical).round();
+    return "That's about $times× what this trip usually costs "
+        '(about $_currency ${formatAmount(typical.round())} per person). '
+        'Your plan will show what the trip needs, and the rest stays as budget left over.';
+  }
 
   /// Ask the server which cities this trip would visit, and let the traveller
   /// settle it before a plan is paid for.
@@ -2010,6 +2077,19 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
                     style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.black54),
                   ),
                 ],
+                if (_overTypical != null) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    _overTypical!,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      height: 1.35,
+                      color: Color(0xFFB45309),
+                    ),
+                  ),
+                ],
               ],
             ),
           ).animate().scale(),
@@ -2023,7 +2103,10 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
               final cleanVal = val.replaceAll(',', '').trim();
               final parsed = double.tryParse(cleanVal);
               if (parsed != null && parsed > 0) {
-                setState(() => _budget = parsed);
+                setState(() {
+                  _budget = parsed;
+                  _budgetEdited = true;
+                });
               }
             },
             onEditingComplete: () {
@@ -2057,19 +2140,23 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
               overlayColor: Colors.black.withValues(alpha: 0.1),
               trackHeight: 8,
             ),
-            child: Slider(
-              value: _budget.clamp(1000.0, 500000.0),
-              min: 1000,
-              max: 500000,
-              divisions: 499,
-              onChanged: (val) {
-                final rounded = (val / 1000).round() * 1000.0;
-                setState(() {
-                  _budget = rounded;
-                  _budgetController.text = formatAmount(rounded.round());
-                });
-              },
-            ),
+            child: Builder(builder: (context) {
+              final range = _sliderRange;
+              return Slider(
+                value: _budget.clamp(range.min, range.max),
+                min: range.min,
+                max: range.max,
+                divisions: ((range.max - range.min) / range.step).round().clamp(1, 1000).toInt(),
+                onChanged: (val) {
+                  final rounded = (val / range.step).round() * range.step;
+                  setState(() {
+                    _budget = rounded;
+                    _budgetEdited = true;
+                    _budgetController.text = formatAmount(rounded.round());
+                  });
+                },
+              );
+            }),
           ),
 
           const SizedBox(height: 40),

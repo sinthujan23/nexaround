@@ -226,7 +226,17 @@ FX_PER_USD: dict[str, float] = {
     "MXN": 17.0, "EGP": 48.0, "MAD": 10.0, "KES": 130.0, "NGN": 1500.0,
     "SEK": 10.5, "NOK": 10.7, "DKK": 6.9, "PLN": 3.95, "CZK": 23.0,
     "HUF": 360.0, "RON": 4.57, "ARS": 900.0,
+    # The rest of the currencies the app lets a traveller pick
+    # (currency_service.dart). Approximate, like the rest of this table.
+    "RUB": 90.0, "ILS": 3.7, "COP": 4000.0, "CLP": 930.0, "PEN": 3.75,
+    "BGN": 1.8, "UAH": 41.0, "KZT": 480.0, "KWD": 0.307, "BHD": 0.376,
+    "OMR": 0.385, "JOD": 0.709, "LBP": 89500.0, "IQD": 1310.0,
 }
+
+
+def tier_for(country_code: str) -> str:
+    """The price tier of a country by ISO code, or the default when unknown."""
+    return COUNTRY_TIER.get(str(country_code or "").strip().upper(), DEFAULT_TIER)
 
 
 def _normalise(text: str, keep_commas: bool = False) -> str:
@@ -490,6 +500,44 @@ def minimum_budget(
 # fees. Used when lodging is already priced from real hotel rates, where adding
 # the whole daily floor would charge the traveller for a room twice.
 ON_GROUND_SHARE = 0.55
+
+# What a mid-range traveller typically spends per person per day, in USD, by
+# price tier: the Recommended level of an Odyssey's Food, Activities and
+# getting-around lines when its day plan prices nothing to go on. Unlike the
+# floors above these are realistic, not austere. Calibrated 2026-10-13 on the
+# meals, tickets and rides priced in Sep-Oct plans: the median meal ran USD
+# 7 / 12 / 22 / 25 / 35 across the tiers, a day's eating is about 2.5 meals,
+# and priced rides came to a median USD 7-15 a day.
+FOOD_PER_DAY_USD: dict[str, float] = {
+    "budget": 15.0,
+    "moderate": 25.0,
+    "upper": 45.0,
+    "expensive": 55.0,
+    "premium": 80.0,
+}
+ACTIVITIES_PER_DAY_USD: dict[str, float] = {
+    "budget": 5.0,
+    "moderate": 10.0,
+    "upper": 18.0,
+    "expensive": 22.0,
+    "premium": 25.0,
+}
+LOCAL_TRANSPORT_PER_DAY_USD: dict[str, float] = {
+    "budget": 5.0,
+    "moderate": 8.0,
+    "upper": 10.0,
+    "expensive": 14.0,
+    "premium": 15.0,
+}
+# One mid-range (3-star) room for one night, for a plan that wanted hotels and
+# got no room rate back at all.
+ROOM_PER_NIGHT_USD: dict[str, float] = {
+    "budget": 35.0,
+    "moderate": 55.0,
+    "upper": 90.0,
+    "expensive": 140.0,
+    "premium": 200.0,
+}
 
 
 def on_ground_floor(

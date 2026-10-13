@@ -871,7 +871,7 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
             ),
           ),
           subtitle: const Text(
-            'Flights, transfers, eSIM, tickets & passes',
+            'Flights, transfers, eSIM, tickets, passes & insurance',
             style: TextStyle(
               fontSize: 12,
               color: AppColors.textSecondary,
@@ -1252,7 +1252,8 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
   /// means the Airalo eSIM card the backend adds (type "esim").
   /// The official monetized partners we have affiliate partnerships with through
   /// Travelpayouts: Aviasales (Flights), GetTransfer (Airport Car), Airalo (eSIM),
-  /// WeGoTrip (Sight Tickets), Klook (Things to Do), and Go City (City Passes).
+  /// WeGoTrip (Sight Tickets), Klook (Things to Do), and Go City (City Passes);
+  /// and HelloSafe (Travel Insurance), direct through its Atlas API.
   List<OdysseyBookingPartner> get _dynamicPartners {
     final Map<String, OdysseyBookingPartner> partnersByBrand = {};
 
@@ -1278,6 +1279,8 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
         addPartner('klook', bp);
       } else if (nameLower.contains('gocity') || nameLower.contains('go city') || typeLower.contains('pass')) {
         addPartner('gocity', bp);
+      } else if (nameLower.contains('hellosafe') || typeLower.contains('insurance')) {
+        addPartner('hellosafe', bp);
       }
     }
 
@@ -1414,8 +1417,20 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
       }
     }
 
+    // HelloSafe: plans made before its card existed still carry the Safety button's link.
+    if (!partnersByBrand.containsKey('hellosafe')) {
+      final url = widget.odyssey.practicalInfo.safetyUrl;
+      if (url.isNotEmpty) {
+        addPartner('hellosafe', OdysseyBookingPartner(
+          name: 'HelloSafe Travel Insurance',
+          type: 'insurance',
+          url: url,
+        ));
+      }
+    }
+
     // Return in consistent, logical order
-    const priorityOrder = ['aviasales', 'gettransfer', 'airalo', 'wegotrip', 'klook', 'gocity'];
+    const priorityOrder = ['aviasales', 'gettransfer', 'airalo', 'wegotrip', 'klook', 'gocity', 'hellosafe'];
     final result = <OdysseyBookingPartner>[];
     for (final key in priorityOrder) {
       if (partnersByBrand.containsKey(key)) {
@@ -2215,6 +2230,21 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     );
   }
 
+  /// What the entered budget has left after a tab whose trip costs [total].
+  ///
+  /// Zero on plans priced before 2026-10-13, whose Recommended total was the
+  /// budget itself (or more): their tabs were shares of the budget, not costs,
+  /// and a "left over" figure under them would mean nothing. Zero too for a
+  /// margin under 5% of the trip, which is rounding rather than money to spare.
+  double _leftOver(double total) {
+    final verdict = widget.odyssey.verdict;
+    final entered = verdict?.enteredBudget;
+    final recommended = verdict?.recommendedTotal;
+    if (entered == null || recommended == null || recommended >= entered - 1) return 0;
+    final left = entered - total;
+    return (left >= 1 && left >= total * 0.05) ? left : 0;
+  }
+
   Widget _budgetBreakdownCard(BuildContext context) {
     final scenarios = widget.odyssey.budgetScenarios;
     final activeKey = scenarios.containsKey(_selectedScenario) ? _selectedScenario : 'recommended';
@@ -2482,6 +2512,35 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
                   const Color(0xFFD97706), Icons.restaurant_rounded),
               categoryBar('activities', 'Activities & Experiences', '🎟️',
                   activities, const Color(0xFF7C3AED), Icons.local_activity_rounded),
+              // What the traveller's budget has left once this tab's trip is
+              // paid for. Since 2026-10-13 the total is what the trip costs,
+              // not the budget typed in, so the difference is shown here
+              // rather than spread across the bars above.
+              if (_leftOver(total) > 0) ...[
+                const Divider(height: 20, thickness: 0.5),
+                Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        '💰  Left over from your budget',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.black87,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      '$currency ${formatAmount(_leftOver(total))}',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.brandGreen,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
               // What these figures were priced from, in one line, for the tab
               // on show. The client asked for a sentence under Stay and
               // another under Flights; two more lines inside the bars crowded
@@ -4915,6 +4974,7 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     if (name.contains('wegotrip')) return 'assets/images/wegotrip_logo.png';
     if (name.contains('klook')) return 'assets/images/klook_logo.png';
     if (name.contains('gocity') || name.contains('go city')) return 'assets/images/gocity_logo.png';
+    if (name.contains('hellosafe')) return 'assets/images/hellosafe_logo.png';
     return null;
   }
 
@@ -4960,6 +5020,10 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
           icon = Icons.card_membership_rounded;
           color = const Color(0xFF00A389);
           subtitle = 'Sightseeing & attraction passes in $dest via Go City';
+        } else if (nameLower.contains('hellosafe') || type.contains('insurance')) {
+          icon = Icons.health_and_safety_outlined;
+          color = const Color(0xFF4F3BF0);
+          subtitle = 'Compare travel insurance for $dest via HelloSafe';
         }
 
         String resolvedUrl = bp.url;

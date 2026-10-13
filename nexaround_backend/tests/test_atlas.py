@@ -283,6 +283,7 @@ def test_a_second_pass_replaces_the_row():
     meta = _finish({"visa": {"status": "needed"}}, {atlas.TOURISM: TOURIST})
     meta = _finish(meta, {atlas.TOURISM: TOURIST})
     assert len([r for r in meta["booking_plan"] if atlas.is_atlas_link(r["url"])]) == 1
+    assert len([p for p in meta["booking_partners"] if p["name"] == atlas.PARTNER_NAME]) == 1
 
 
 # ── End to end through generate_odyssey ──────────────────────────────────────
@@ -302,6 +303,8 @@ def test_live_adds_the_row_and_button_in_the_travellers_currency(world, atlas_wo
     assert (sent["countryResidence"], sent["arrivalCountries"], sent["startDate"], sent["endDate"]) == (
         "LK", ["IN"], "2026-11-02", "2026-11-07")
     assert meta["provider_audit"]["atlas"]["applied"] is True
+    cards = [p for p in meta["booking_partners"] if p["name"] == atlas.PARTNER_NAME]
+    assert cards == [{"name": "HelloSafe Travel Insurance", "type": "insurance", "url": row[0]["url"]}]
 
 
 def test_shadow_records_and_changes_nothing(world, atlas_world, monkeypatch):
@@ -310,6 +313,7 @@ def test_shadow_records_and_changes_nothing(world, atlas_world, monkeypatch):
     _switches(monkeypatch, atlas="shadow")
     _, meta, _ = e2e.run(world)
     assert meta["booking_plan"] == before["booking_plan"]
+    assert meta.get("booking_partners") == before.get("booking_partners")
     assert "safety_url" not in (meta.get("practical_info") or {})
     assert meta["provider_audit"]["atlas"]["insurer"] == "Chapka"
 

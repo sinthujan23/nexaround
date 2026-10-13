@@ -579,11 +579,45 @@ def test_a_budget_that_will_not_buy_the_recommended_tier_says_so(world):
     assert 0 < money(verdict["minimum_required"]) <= money(meta["budget_breakdown"]["total"])
 
 
-def test_a_budget_that_covers_the_recommended_tier_is_left_alone(world):
-    """The headline must not be inflated on a plan that fits."""
+def test_a_budget_bigger_than_the_trip_is_not_spent_for_the_traveller(world):
+    """The total is what the trip costs; the rest of the budget is left over.
+
+    It used to be the other way round: the total was the budget as typed and
+    Food took 60% of whatever flights and rooms left, so a 13-day Germany plan
+    at the planner's default USD 50,000 fed one person on USD 2,459 a day.
+    """
     _, meta, _ = run(world, budget=400_000.0, travelers=2)
-    assert money(meta["budget_breakdown"]["total"]) == 400_000.0
-    assert meta["verdict"]["feasible"] is True
+    bb = meta["budget_breakdown"]
+    total = money(bb["total"])
+    assert total < 400_000.0
+    parts = sum(money(bb[k]) for k in ("stay", "transit", "food", "activities"))
+    assert abs(parts - total) < 1
+    verdict = meta["verdict"]
+    assert verdict["feasible"] is True
+    assert verdict["entered_budget"] == 400_000.0
+    assert verdict["recommended_total"] == total
+    spare = 400_000.0 - total
+    assert f"INR {spare:,.0f}" in meta["budget_advisory"]
+    assert "left over" in meta["budget_advisory"]
+
+
+def test_food_does_not_grow_with_the_budget(world):
+    """The same trip eats the same, whatever ceiling the traveller typed."""
+    _, small, _ = run(world, budget=400_000.0)
+    _, huge, _ = run(world, budget=50_000_000.0)
+    for tier in ("minimum", "recommended", "comfortable"):
+        assert huge["budget_scenarios"][tier] == small["budget_scenarios"][tier], tier
+    # Six days for two in India, at a typical INR 1,245 a day each.
+    food_per_day = money(small["budget_breakdown"]["food"]) / (6 * 2)
+    assert food_per_day == 15.0 * 83.0
+
+
+def test_a_budget_that_only_just_covers_the_trip_mentions_no_surplus(world):
+    _, first, _ = run(world, budget=400_000.0)
+    cost = money(first["budget_breakdown"]["total"])
+    _, meta, _ = run(world, budget=cost * 1.1)
+    assert "left over" not in meta["budget_advisory"]
+    assert meta["verdict"]["budget_tightness"] == "tight"
 
 
 def test_every_scenario_tab_adds_up_too(world):
@@ -682,13 +716,9 @@ def test_the_sheet_sums_to_the_bar_on_every_tier(world):
     _, meta, _ = run(world)
     for tier, block in meta["budget_basis"].items():
         bars = meta["budget_scenarios"][tier]
-        for line in ("stay", "transit"):
+        for line in ("stay", "transit", "food", "activities"):
             items = sum(money(i["amount"]) for i in block[line]["items"])
             bar = money(bars[line])
-            if len(block[line]["items"]) > 1 and line == "transit":
-                # A capped transit line prints the fare *and* the cap; the cap
-                # is the bar.
-                items = money(block[line]["items"][-1]["amount"])
             assert abs(items - bar) < 1, (
                 f"{tier}/{line}: sheet says {items:,.0f}, bar says {bar:,.0f}"
             )

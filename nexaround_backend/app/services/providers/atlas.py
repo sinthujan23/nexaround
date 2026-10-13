@@ -48,6 +48,9 @@ FUNNEL_URL = "https://hellosafe.com/travel-insurance/app"
 TAP_PATH = "/api/v1/go/insurance"
 
 BUTTON_LABEL = "Get travel insurance"
+# Its card under "Booking Partners & Websites" (enrich._add_partner).
+PARTNER_NAME = "HelloSafe Travel Insurance"
+PARTNER_TYPE = "insurance"
 DEFAULT_ADULT_AGE = 30
 # Live quotes take 3-6 s (insurers are priced as we ask; measured 2026-10-13).
 PLAN_TIMEOUT_S = 15.0  # priced while Gemini writes the plan (35 s+); nobody waits on it

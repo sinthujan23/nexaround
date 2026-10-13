@@ -314,7 +314,7 @@ async def _finish(pending: Pending, day_items, meta, *, currency: str, travelers
 
     # Restrict booking_partners to only our 6 monetized partners
     if meta.get("booking_partners"):
-        monetized_brands = ("airalo", "aviasales", "gettransfer", "wegotrip", "klook", "gocity", "go city")
+        monetized_brands = ("airalo", "aviasales", "gettransfer", "wegotrip", "klook", "gocity", "go city", "hellosafe")
         meta["booking_partners"] = [
             p for p in meta["booking_partners"]
             if isinstance(p, dict) and any(b in str(p.get("name") or "").lower() for b in monetized_brands)
@@ -701,8 +701,9 @@ def _apply_insurance(
     live: bool,
     travelers: int,
 ) -> dict:
-    """A HelloSafe travel-insurance row in the Booking Plan, and the "Get travel
-    insurance" button under Practical Info's Safety row, on a trip abroad.
+    """A HelloSafe travel-insurance row in the Booking Plan, the "Get travel
+    insurance" button under Practical Info's Safety row, and its card under
+    Booking Partners & Websites, on a trip abroad.
 
     Both open `atlas.tap_url`, which makes the traveller's own tracked link when
     tapped. The price is the cheapest offer, with its insurer beside it, as
@@ -739,6 +740,7 @@ def _apply_insurance(
     info = meta.setdefault("practical_info", {})
     info["safety_url"] = url
     info["safety_cta"] = atlas.button_label(amount, insurer)
+    _add_partner(meta, atlas.PARTNER_NAME, atlas.PARTNER_TYPE, url)
     entry["applied"] = True
     return entry
 

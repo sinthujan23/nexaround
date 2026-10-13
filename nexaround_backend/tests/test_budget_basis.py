@@ -14,6 +14,7 @@ from app.services.odyssey_ai_service import (
     required_stay_cost,
     stay_cost_lines,
     tier_flight_cost,
+    tier_food_cost,
     transit_cost_lines,
     _budget_notes,
     _rooms_for,
@@ -132,29 +133,46 @@ def test_no_fares_means_no_fare_line():
 
 # ── The card's four blocks ──────────────────────────────────────────────────
 
-def _breakdown(stays, legs, fs, tier, travelers=3, food_share=0.6):
+# What `ground_costs` returns for a 12-day, three-traveller plan that priced
+# its meals, its tickets (two left unpriced) and its rides.
+GROUND = {
+    "tier": "upper",
+    "food_per_day": 50.0, "food_source": "plan", "food_typical": 45.0,
+    "food_held": "", "meal_average": 20.0, "meals_priced": 20,
+    "activities": 900.0, "activities_source": "plan",
+    "activities_priced": 8, "activities_estimated": 2, "activities_estimate": 150.0,
+    "transport": 420.0, "transport_source": "plan",
+    "transport_priced": 6, "transport_estimated": 0, "transport_estimate": 0.0,
+    "days": 12, "travelers": 3,
+}
+
+
+def _breakdown(stays, legs, fs, tier, travelers=3, ground=GROUND):
+    """One tab the way `generate_odyssey` builds it."""
     stay = required_stay_cost(stays, legs, travelers, tier)
-    transit = tier_flight_cost(fs, travelers, tier)
-    total = round((stay + transit) * 1.35, 2)
-    rest = total - stay - transit
+    transit = round(tier_flight_cost(fs, travelers, tier) + ground["transport"], 2)
+    food = tier_food_cost(ground, tier)
+    activities = ground["activities"]
     return {
-        "stay": stay, "transit": transit,
-        "food": round(rest * food_share, 2),
-        "activities": round(rest * (1 - food_share), 2),
-        "total": total,
+        "stay": stay, "transit": transit, "food": food, "activities": activities,
+        "total": round(stay + transit + food + activities, 2),
     }
 
 
-def _basis(stays, legs, fs, tier, **kw):
+def _basis(stays, legs, fs, tier, ground=GROUND, **kw):
     args = dict(
         tier=tier,
-        breakdown=_breakdown(stays, legs, fs, tier),
+        breakdown=_breakdown(stays, legs, fs, tier, ground=ground),
         flight_strategies=fs, hotel_strategies=stays, city_legs=legs,
-        travelers=3, days=12, currency="USD", food_share=0.6,
+        travelers=3, days=12, currency="USD", ground=ground,
         no_airfare=False, at_star_floor=False,
     )
     args.update(kw)
     return budget_basis(**args)
+
+
+def _sheet_sum(block, line):
+    return round(sum(i["amount"] for i in block[line]["items"]), 2)
 
 
 @pytest.mark.parametrize("tier", TIERS)
@@ -173,69 +191,60 @@ def test_every_category_explains_itself(stays, legs, tier):
 def test_the_stay_sheet_sums_to_the_stay_bar(stays, legs, tier):
     fs = _flights(("recommended", 520.0, 0, True))
     bd = _breakdown(stays, legs, fs, tier)
-    block = budget_basis(
-        tier=tier, breakdown=bd, flight_strategies=fs, hotel_strategies=stays,
-        city_legs=legs, travelers=3, days=12, currency="USD", food_share=0.6,
-        no_airfare=False, at_star_floor=False,
-    )
+    block = _basis(stays, legs, fs, tier)
     items = block["stay"]["items"]
     assert round(sum(i["amount"] for i in items), 2) == bd["stay"]
     assert block["stay"]["total"] == bd["stay"]
 
 
-def test_the_food_ladder_ends_on_the_food_bar(stays, legs):
+@pytest.mark.parametrize("tier", TIERS)
+@pytest.mark.parametrize("line", ["transit", "food", "activities"])
+def test_every_sheet_sums_to_its_bar(stays, legs, tier, line):
+    fs = _flights(("minimum", 400.0, 1, True), ("recommended", 520.0, 0, True))
+    bd = _breakdown(stays, legs, fs, tier)
+    block = _basis(stays, legs, fs, tier)
+    assert _sheet_sum(block, line) == bd[line]
+    assert block[line]["total"] == bd[line]
+
+
+def test_the_transit_sheet_is_the_fare_and_the_day_plans_rides(stays, legs):
     fs = _flights(("minimum", 400.0, 1, True))
-    bd = _breakdown(stays, legs, fs, "minimum")
     block = _basis(stays, legs, fs, "minimum")
-    items = block["food"]["items"]
-    assert items[-1]["amount"] == bd["food"]
-    left = next(i for i in items if i["label"].startswith("Left for"))
-    assert left["amount"] == round(bd["total"] - bd["transit"] - bd["stay"], 2)
-    assert block["activities"]["items"][-1]["amount"] == bd["activities"]
+    fare, rides = block["transit"]["items"]
+    assert fare["amount"] == 1200.0                      # 400 x 3 travellers
+    assert rides["label"] == "Getting around"
+    assert rides["amount"] == GROUND["transport"]
+    assert block["transit"]["formula"].endswith("+ getting around")
 
 
-def test_the_transit_sheet_owns_up_to_the_85_percent_cap(stays, legs):
-    """A fare bigger than the budget is held at 85%; both figures get printed.
-
-    Without the second row the sheet would show a fare that is not the bar
-    beneath it — the precise way an explanation becomes a new bug report.
-    """
-    fs = _flights(("minimum", 9000.0, 0, True))
-    bd = _breakdown(stays, legs, fs, "minimum")
-    bd["transit"] = round(bd["total"] * 0.85, 2)   # what `_waterfall` does
-    block = budget_basis(
-        tier="minimum", breakdown=bd, flight_strategies=fs,
-        hotel_strategies=stays, city_legs=legs, travelers=3, days=12,
-        currency="USD", food_share=0.6, no_airfare=False, at_star_floor=False,
-    )
-    items = block["transit"]["items"]
-    assert len(items) == 2
-    assert items[-1]["amount"] == bd["transit"]
-    assert "85%" in items[-1]["label"]
+def test_unpriced_rides_are_shown_as_their_own_row(stays, legs):
+    ground = dict(GROUND, transport=500.0, transport_estimated=2, transport_estimate=80.0)
+    fs = _flights(("minimum", 400.0, 1, True))
+    block = _basis(stays, legs, fs, "minimum", ground=ground)
+    rows = block["transit"]["items"]
+    assert [r["amount"] for r in rows] == [1200.0, 420.0, 80.0]
+    assert rows[-1]["label"] == "2 more rides without a price"
 
 
 def test_a_route_with_no_fares_is_not_given_an_invented_derivation(stays, legs):
-    """`_waterfall` still reserves 30% for transit; the sheet must say so.
-
-    Naming a fare here would be inventing one — the failure mode the whole
-    sheet exists to avoid.
-    """
-    fs = {"strategies": []}
-    bd = _breakdown(stays, legs, fs, "minimum")
-    bd["transit"] = round(bd["total"] * 0.30, 2)
-    block = budget_basis(
-        tier="minimum", breakdown=bd, flight_strategies=fs,
-        hotel_strategies=stays, city_legs=legs, travelers=3, days=12,
-        currency="USD", food_share=0.6, no_airfare=False, at_star_floor=False,
+    """No fare is no airfare in the total, said out loud - never a share of
+    the budget dressed up as a flight."""
+    block = _basis(stays, legs, {"strategies": []}, "minimum")
+    assert [i["label"] for i in block["transit"]["items"]] == ["Getting around"]
+    assert block["transit"]["caveat"] == (
+        "No fare came back for this route, so no airfare is included."
     )
-    only = block["transit"]["items"][0]
-    assert only["label"] == "Estimated share of the budget"
-    assert only["amount"] == bd["transit"]
+
+
+def test_flights_left_out_say_so(stays, legs):
+    block = _basis(stays, legs, {"strategies": []}, "minimum", flights_included=False)
+    assert "you chose to book them yourself" in block["transit"]["caveat"]
 
 
 def test_the_ground_only_trip_says_ground_only(stays, legs):
     block = _basis(stays, legs, {"strategies": []}, "minimum", no_airfare=True)
-    assert block["transit"]["items"][0]["label"] == "Ground transport only"
+    assert block["transit"]["items"][0]["label"] == "Getting around"
+    assert block["transit"]["caveat"] == "Nothing flies this route, so this is ground transport only."
     assert "transit" not in _budget_notes(
         rooms=3, at_star_floor=False, flight_basis="none", no_airfare=True,
     )
@@ -338,3 +347,71 @@ def test_a_thin_market_says_why_two_tabs_quote_the_same_room(stays, legs):
     assert "same room as another" in mid["stay"]["caveat"]
     cheapest = _basis(two_rooms, one_leg, fs, "minimum")
     assert cheapest["stay"]["caveat"] == "", "the cheapest room is unambiguous"
+
+
+# ── Food and activities say where their figure came from ─────────────────────
+#
+# Both used to be "what is left after flights and rooms", which made them grow
+# with whatever budget was typed: a 13-day Germany plan at the planner's
+# default USD 50,000 put USD 2,459 a day into one person's food. They are now
+# priced from the day plan, and the sheet names what it priced from.
+
+def _fs():
+    return _flights(("recommended", 520.0, 0, True))
+
+
+def test_the_food_sheet_names_the_plans_own_meals(stays, legs):
+    block = _basis(stays, legs, _fs(), "recommended")
+    row = block["food"]["items"][0]
+    assert row["label"] == "12 days × 3 travellers"
+    assert row["detail"].startswith("USD 50 a day each")
+    assert "average USD 20 a meal" in row["detail"]
+    assert block["food"]["formula"] == "A day of eating × 12 days × 3 travellers"
+    assert block["food"]["caveat"] == ""
+
+
+def test_each_tier_says_how_it_eats(stays, legs):
+    cheap = _basis(stays, legs, _fs(), "minimum")["food"]["items"][0]["detail"]
+    dear = _basis(stays, legs, _fs(), "comfortable")["food"]["items"][0]["detail"]
+    assert cheap.startswith("USD 30 a day each") and "street food" in cheap
+    assert dear.startswith("USD 80 a day each") and "restaurants throughout" in dear
+
+
+def test_a_plan_without_meal_prices_says_it_used_typical_eating(stays, legs):
+    ground = dict(GROUND, food_source="typical", meal_average=None, meals_priced=0, food_per_day=45.0)
+    block = _basis(stays, legs, _fs(), "recommended", ground=ground)
+    assert "Typical mid-range eating" in block["food"]["items"][0]["detail"]
+    assert "doesn't price its meals" in block["food"]["caveat"]
+
+
+def test_a_capped_day_of_eating_says_it_was_capped(stays, legs):
+    ground = dict(GROUND, food_held="high", food_per_day=90.0)
+    block = _basis(stays, legs, _fs(), "recommended", ground=ground)
+    assert "twice its typical spend" in block["food"]["caveat"]
+
+
+def test_the_activities_sheet_separates_priced_and_unpriced_stops(stays, legs):
+    rows = _basis(stays, legs, _fs(), "recommended")["activities"]["items"]
+    assert [r["amount"] for r in rows] == [750.0, 150.0]
+    assert rows[0]["detail"] == "8 priced stops × 3 travellers"
+    assert rows[1]["label"] == "2 more stops without a price"
+
+
+def test_typical_activities_say_so(stays, legs):
+    ground = dict(GROUND, activities=792.0, activities_source="typical",
+                  activities_priced=0, activities_estimated=0, activities_estimate=0.0)
+    block = _basis(stays, legs, _fs(), "recommended", ground=ground)
+    row = block["activities"]["items"][0]
+    assert row["label"] == "Typical entry fees and tours"
+    assert row["detail"].startswith("USD 22 a day")          # 792 / (12 days x 3)
+    assert "doesn't price its tickets" in block["activities"]["caveat"]
+
+
+def test_a_free_day_plan_has_free_activities(stays, legs):
+    ground = dict(GROUND, activities=0.0, activities_source="free",
+                  activities_priced=0, activities_estimated=0, activities_estimate=0.0)
+    block = _basis(stays, legs, _fs(), "recommended", ground=ground)
+    assert block["activities"]["items"] == [
+        {"label": "Everything in your day plan is free to visit", "detail": "", "amount": 0.0},
+    ]
+    assert block["activities"]["note"] == ""

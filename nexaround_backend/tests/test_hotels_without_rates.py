@@ -237,7 +237,7 @@ def _caveat(stays):
     breakdown = {"stay": 1.0, "transit": 0.0, "food": 1.0, "activities": 1.0, "total": 3.0}
     block = budget_basis(
         tier="minimum", breakdown=breakdown, flight_strategies={}, hotel_strategies=stays,
-        city_legs=LEGS, travelers=2, days=5, currency="INR", food_share=0.5,
+        city_legs=LEGS, travelers=2, days=5, currency="INR", ground={},
         no_airfare=True, at_star_floor=False,
     )
     return block["stay"]["caveat"]

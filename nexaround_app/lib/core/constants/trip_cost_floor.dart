@@ -244,6 +244,21 @@ class TripCostFloor {
     'HUF': 360.0,
     'RON': 4.57,
     'ARS': 900.0,
+    // The rest of the currencies a traveller can pick (currency_service.dart).
+    'RUB': 90.0,
+    'ILS': 3.7,
+    'COP': 4000.0,
+    'CLP': 930.0,
+    'PEN': 3.75,
+    'BGN': 1.8,
+    'UAH': 41.0,
+    'KZT': 480.0,
+    'KWD': 0.307,
+    'BHD': 0.376,
+    'OMR': 0.385,
+    'JOD': 0.709,
+    'LBP': 89500.0,
+    'IQD': 1310.0,
   };
 
   /// Below this length a place name is too collidable to match loosely:
@@ -469,6 +484,35 @@ class TripCostFloor {
     }
 
     return _roundUp((groundUsd + flightUsd) * rate);
+  }
+
+  /// What a mid-range version of the trip usually costs, as a multiple of
+  /// [minimumBudget]. The floor is austere (a dorm bed, street food); across
+  /// the 60 plans priced on 2026-10-13 the real trip came to a median 2.6x it,
+  /// with the middle half between 2.1x and 4.3x.
+  static const double typicalOverFloor = 2.5;
+
+  /// What this trip usually costs, in [currency], or null when the destination
+  /// or currency is unrecognised. The planner offers it as the starting budget
+  /// instead of one fixed figure for every currency: 50,000 was a fortnight
+  /// abroad in rupees and a small fortune in dollars.
+  static double? typicalBudget({
+    required String destination,
+    required int days,
+    int travelers = 1,
+    String currency = 'USD',
+    String departureCountry = '',
+    bool includeFlights = false,
+  }) {
+    final floor = minimumBudget(
+      destination: destination,
+      days: days,
+      travelers: travelers,
+      currency: currency,
+      departureCountry: departureCountry,
+      includeFlights: includeFlights,
+    );
+    return floor == null ? null : _roundUp(floor * typicalOverFloor);
   }
 
   /// One sentence a traveller can act on, matching the server's wording.

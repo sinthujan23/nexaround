@@ -11,6 +11,7 @@ import json
 import logging
 import math
 import re
+import statistics
 from dataclasses import dataclass, field
 from types import SimpleNamespace
 import urllib.parse
@@ -150,11 +151,6 @@ _MODEL = _MODELS[0]  # kept for any external reference / logging
 # lite still produces an Odyssey. The itinerary itself, the route plan and the
 # user-facing activity swap stay on the full chain.
 _LITE_MODELS = ("gemini-2.5-flash-lite", "gemini-2.5-flash")
-
-# Budget-scenario multipliers applied through the same waterfall allocation
-# used for the "recommended" (as-submitted) budget — gives Minimum/Comfortable
-# scenarios without an extra Gemini call.
-_SCENARIO_MULTIPLIERS = {"minimum": 0.7, "comfortable": 1.4}
 
 # Hotels are always searched for one standard room, never for the whole party.
 #
@@ -1181,55 +1177,204 @@ def _apply_inter_city_fares(day_items: list[dict], hops: list[dict]) -> int:
     return matched
 
 
-# What share of the food-and-activities money goes to food, when the plan
-# itself has nothing to say. Only a starting point: `food_share_of_plan`
-# replaces it with the plan's own split wherever the plan carries prices.
-_DEFAULT_FOOD_SHARE = 0.60
-# Neither line may collapse: a plan with no dining stop still needs a food
-# budget, because people eat whether or not the itinerary lists a restaurant.
-_MIN_LINE_SHARE = 0.25
+# ── What the trip costs on the ground ───────────────────────────────────────
+#
+# Food and activities used to be whatever the traveller's budget had left once
+# flights and rooms were paid, split 60/40. A budget is a ceiling, not a price,
+# so those lines grew with whatever was typed: of the 295 plans stored by
+# 2026-10-13, Food was the biggest line on 100, and on the 58 whose day plans
+# priced their meals it came to a median 12x what those meals cost. A 13-day
+# Germany plan left at the planner's default of USD 50,000 put USD 2,459 a day
+# into one person's food against USD 29 of meals in its own itinerary. Each
+# line is now priced from the day plan, and what the budget does not need is
+# reported as left over instead of being poured into a column.
+
+# How each tier eats, against the Recommended plan's own restaurants: street
+# food and cheaper places, the plan's own, restaurants throughout.
+FOOD_TIER_FACTOR = {"minimum": 0.6, "recommended": 1.0, "comfortable": 1.6}
+FOOD_TIER_WORDS = {
+    "minimum": "street food and cheaper places",
+    "recommended": "",
+    "comfortable": "restaurants throughout",
+}
+# The same spread for a typical room, used only when a plan wanted hotels and
+# no rate came back at all.
+STAY_TIER_FACTOR = {"minimum": 0.75, "recommended": 1.0, "comfortable": 1.6}
+# A day plan lists lunch and dinner - 1.5 meals a day across the 60 plans of
+# Sep-Oct 2026, breakfast on 47 of 447 days - so its average meal is scaled to
+# a whole day: lunch, dinner and a lighter breakfast.
+MEALS_A_DAY = 2.5
+# The plan's own meals set the daily rate only within this band around what the
+# destination typically costs, so one tasting menu, or one meal priced at 1,
+# cannot carry the whole line.
+_FOOD_BAND = (0.6, 2.0)
+# Fewer priced meals than this say too little about how the plan eats.
+_MIN_PRICED_MEALS = 3
+# The day plan's opening and closing stops stand for the flight itself, which
+# has its own line; the prompt prices them at 0, and the model does not always
+# listen - "Flight arrival at Luanda (NBJ)" came back priced at the whole
+# international fare. On the first and last day a stop named for a flight is
+# that flight; on the days between it is a hop between cities ("Flight: Sydney
+# (SYD) -> Melbourne (MEL)"), which is a real ride. A ride named alongside
+# ("Arrival at COK & Transfer to Aluva") is still a ride.
+_BOOKEND_RE = re.compile(r"^\s*(arrival|arrive|arriving|departure|depart|departing)\b", re.I)
+_FLIGHT_STOP_RE = re.compile(
+    r"\b(flight|flights|fly|flying|arrival|arrive|arriving|departure|depart|departing|"
+    r"landing|boarding)\b",
+    re.I,
+)
+_RIDE_RE = re.compile(r"\b(transfer|taxi|cab|train|bus|coach|car|ride|shuttle|metro|ferry)\b", re.I)
 
 
-def food_share_of_plan(plan: dict, travelers: int = 1) -> float:
-    """How the day plan actually divides its money between food and activities.
+def _is_the_flight(name: str, *, end_of_trip: bool) -> bool:
+    """A transport stop that stands for the trip's own flight, not a ride."""
+    if _RIDE_RE.search(name):
+        return False
+    return bool(_BOOKEND_RE.search(name) or (end_of_trip and _FLIGHT_STOP_RE.search(name)))
 
-    The waterfall used to split that money 60/40 no matter what the itinerary
-    contained, and the card is what the traveller reads the plan against. Real
-    plans divide it anywhere from 28/72 to 73/27, so the fixed ratio put one
-    line over and the other far under on the same trip: a 14-day Peru plan for
-    five listed 377,750 of activities against a 325,433 line while its food
-    line sat at 0.67x, when the two together came to 0.87x of what they were
-    allowed. Nothing was overspent - the money was in the wrong column.
 
-    Returns a share in [0.25, 0.75]. Prices are never touched: this decides
-    which line each one is counted under, not what anything costs.
+def ground_costs(
+    plan: dict,
+    *,
+    country_code: str,
+    days: int,
+    travelers: int,
+    currency: str,
+) -> dict:
+    """Food, activities and getting around, priced from the day plan.
+
+    `food_per_day` is one traveller's Recommended day of eating: the plan's
+    average priced meal x MEALS_A_DAY, held inside _FOOD_BAND of the
+    destination's typical spend, or that typical spend when the plan prices
+    fewer than _MIN_PRICED_MEALS meals. Each tier scales it by
+    FOOD_TIER_FACTOR.
+
+    `activities` and `transport` are party totals, the same on every tier
+    because every tier prices the same day plan: what its tickets, tours and
+    rides cost, with any stop the model left unpriced counted at the plan's own
+    median for that kind of stop. A plan that prices none of them falls back to
+    the destination's typical daily spend, except that activities stay at zero
+    when everything listed is free to visit.
+
+    Free stops (priced at 0) and unpriced ones (no price at all) are kept
+    apart with `_party_cost`, so a free beach is never charged at the median
+    museum ticket. Every amount is in `currency`.
     """
-    day_plans = plan.get("day_plans") if isinstance(plan, dict) else None
-    if not isinstance(day_plans, list):
-        return _DEFAULT_FOOD_SHARE
+    tier = trip_cost_floor.tier_for(country_code)
+    party = max(int(travelers or 1), 1)
+    span = max(int(days or 1), 1)
 
-    food = other = 0.0
-    for day in day_plans:
-        if not isinstance(day, dict):
-            continue
+    def typical(table: dict) -> float | None:
+        return trip_cost_floor.from_usd(table[tier], currency)
+
+    meals: list[float] = []
+    tickets: list[float] = []
+    rides: list[float] = []
+    unpriced_tickets = unpriced_rides = 0
+    day_plans = plan.get("day_plans") if isinstance(plan, dict) else None
+    days_listed = [d for d in day_plans if isinstance(d, dict)] if isinstance(day_plans, list) else []
+    for position, day in enumerate(days_listed):
+        end_of_trip = position in (0, len(days_listed) - 1)
         for a in day.get("activities") or []:
             if not isinstance(a, dict):
                 continue
             kind = normalise_activity_type(a.get("type"))
-            if kind in ("transport", "accommodation"):
-                continue          # their own budget lines
-            cost = _extract_lowest_price(a.get("cost_per_person"))
-            if cost <= 0:
-                continue
+            if kind == "accommodation":
+                continue                      # rooms are the Stay line
+            name = str(a.get("name") or "")
+            if kind == "transport" and _is_the_flight(name, end_of_trip=end_of_trip):
+                continue                      # the flight, which has its own line
+            _, per_head = _party_cost(a, currency, party)
+            priced = per_head is not None and per_head > 0
             if kind == "dining":
-                food += cost
-            else:
-                other += cost
+                if priced:
+                    meals.append(per_head)
+            elif kind == "transport":
+                if priced:
+                    rides.append(per_head)
+                elif per_head is None:
+                    unpriced_rides += 1
+            elif priced:
+                tickets.append(per_head)
+            elif per_head is None and kind != "exploration":
+                # Exploration is free by definition; an attraction with no
+                # price is one the model did not look up.
+                unpriced_tickets += 1
 
-    total = food + other
-    if total <= 0:
-        return _DEFAULT_FOOD_SHARE
-    return min(max(food / total, _MIN_LINE_SHARE), 1.0 - _MIN_LINE_SHARE)
+    # ── Food ──
+    typical_food = typical(trip_cost_floor.FOOD_PER_DAY_USD)
+    meal_average = round(sum(meals) / len(meals), 2) if meals else None
+    held = ""
+    if len(meals) >= _MIN_PRICED_MEALS:
+        food_per_day = meal_average * MEALS_A_DAY
+        food_source = "plan"
+        if typical_food:
+            low, high = typical_food * _FOOD_BAND[0], typical_food * _FOOD_BAND[1]
+            if food_per_day < low:
+                food_per_day, held = low, "low"
+            elif food_per_day > high:
+                food_per_day, held = high, "high"
+    elif typical_food:
+        food_per_day, food_source = typical_food, "typical"
+    else:
+        food_per_day, food_source = 0.0, "none"
+
+    def _counted(prices: list[float], unpriced: int) -> tuple[float, float]:
+        """(the party's priced stops, the party's unpriced ones at the median)."""
+        return sum(prices) * party, statistics.median(prices) * unpriced * party
+
+    # ── Activities ──
+    activities_estimate = 0.0
+    if tickets:
+        listed, activities_estimate = _counted(tickets, unpriced_tickets)
+        activities, activities_source = listed + activities_estimate, "plan"
+    elif unpriced_tickets:
+        per_day = typical(trip_cost_floor.ACTIVITIES_PER_DAY_USD) or 0.0
+        activities, activities_source = per_day * span * party, "typical"
+    else:
+        activities, activities_source = 0.0, "free"
+
+    # ── Getting around ──
+    transport_estimate = 0.0
+    if rides:
+        listed, transport_estimate = _counted(rides, unpriced_rides)
+        transport, transport_source = listed + transport_estimate, "plan"
+    else:
+        # A day plan with no priced ride still moves between sights.
+        per_day = typical(trip_cost_floor.LOCAL_TRANSPORT_PER_DAY_USD) or 0.0
+        transport, transport_source = per_day * span * party, "typical"
+
+    return {
+        "tier": tier,
+        "food_per_day": round(food_per_day, 2),
+        "food_source": food_source,
+        "food_typical": round(typical_food, 2) if typical_food else None,
+        "food_held": held,
+        "meal_average": meal_average,
+        "meals_priced": len(meals),
+        "activities": round(activities, 2),
+        "activities_source": activities_source,
+        "activities_priced": len(tickets),
+        "activities_estimated": unpriced_tickets if tickets else 0,
+        "activities_estimate": round(activities_estimate, 2),
+        "transport": round(transport, 2),
+        "transport_source": transport_source,
+        "transport_priced": len(rides),
+        "transport_estimated": unpriced_rides if rides else 0,
+        "transport_estimate": round(transport_estimate, 2),
+        "days": span,
+        "travelers": party,
+    }
+
+
+def tier_food_cost(ground: dict, tier: str) -> float:
+    """The party's food for one tier, from `ground_costs`."""
+    factor = FOOD_TIER_FACTOR.get(tier, 1.0)
+    return round(
+        float(ground.get("food_per_day") or 0.0) * factor
+        * int(ground.get("days") or 1) * int(ground.get("travelers") or 1),
+        2,
+    )
 
 
 def _drop_repeated_tips(day_items: list[dict]) -> int:
@@ -3379,8 +3524,10 @@ def food_and_activities_room(
 
     stay = required_stay_cost(hotel_strategies, city_legs, travelers, "recommended")
 
-    # `_scenario_total`'s floor, mirrored: the headline never sits below what
-    # the tier costs, so that is the figure the split is carved out of.
+    # The most the day plan may spend is what the budget leaves after flights
+    # and rooms, but never less than the cheapest ground costs: a budget below
+    # the trip still gets a plan that eats, and the card then says the budget
+    # falls short.
     tier_cost = flight + stay + max(float(on_ground or 0), 0.0)
     total = float(budget or 0)
     if tier_cost > 0:
@@ -3499,25 +3646,27 @@ def budget_basis(
     travelers: int,
     days: int,
     currency: str,
-    food_share: float,
+    ground: dict | None,
     no_airfare: bool,
     at_star_floor: bool,
+    flights_included: bool = True,
 ) -> dict:
     """How every line of one Budget Allocation tab was arrived at.
 
     The client asked for each category to open and explain itself. The
     explanation is built here, beside the arithmetic it describes, and the app
     only draws it: `stay` is `stay_cost_lines`, `transit` is
-    `transit_cost_lines`, and `food`/`activities` are the waterfall's own
-    subtraction written out. Deriving any of it in Dart instead would mean a
-    second implementation of the star floor, the leg pooling and the 85%
-    transit cap, and the sheet would eventually contradict the bar above it —
+    `transit_cost_lines` plus the day plan's rides, and `food`/`activities`
+    are `ground_costs` written out. Deriving any of it in Dart instead would
+    mean a second implementation of the star floor, the leg pooling and the
+    meal band, and the sheet would eventually contradict the bar above it -
     the "budget split does not add up" report, reopened from the other side.
 
-    Where a line is priced from nothing — no fares on the route, no room rates
-    for the trip — the block says the figure is a share of the budget instead
-    of inventing a derivation for it.
+    Where a line is priced from nothing - no fares on the route, no room rates
+    for the trip, no prices in the day plan - the block says what it used
+    instead of inventing a derivation.
     """
+    ground = ground or {}
     rooms = _rooms_for(travelers)
     party = max(int(travelers or 1), 1)
     notes = _budget_notes(
@@ -3610,10 +3759,11 @@ def budget_basis(
         f" × nights there"
     )
 
-    # ── Transit: the one fare the budget took ──────────────────────────
+    # ── Transit: the fare the budget took, and getting around ──────────
     fare_lines = transit_cost_lines(flight_strategies, party, tier)
     transit_items: list[dict] = []
     transit_caveat = ""
+    rides = float(ground.get("transport") or 0.0)
     if fare_lines:
         fare = fare_lines[0]
         detail = [b for b in (fare["airline"], fare["stops_label"]) if b]
@@ -3634,56 +3784,128 @@ def budget_basis(
             transit_caveat = (
                 "This tier had no fare of its own, so the cheapest one was used."
             )
-        # `_waterfall` caps the transit line at 85% of the total. When that
-        # bites, the fare above is not what the bar shows, and saying so is
-        # the only honest way to print both.
-        if abs(fare["amount"] - transit_total) > 1:
-            transit_items.append({
-                "label": "Held at 85% of the trip total",
-                "detail": "The fare alone would take almost the whole budget.",
-                "amount": transit_total,
-            })
     elif no_airfare:
-        transit_items.append({
-            "label": "Ground transport only",
-            "detail": "Nothing flies this route — trains, coaches and transfers.",
-            "amount": transit_total,
-        })
-    elif transit_total > 0:
-        transit_items.append({
-            "label": "Estimated share of the budget",
-            "detail": "No fares came back for this route.",
-            "amount": transit_total,
-        })
+        transit_caveat = "Nothing flies this route, so this is ground transport only."
+    elif not flights_included:
+        transit_caveat = "Flights aren't included: you chose to book them yourself."
+    else:
+        transit_caveat = "No fare came back for this route, so no airfare is included."
 
-    transit_formula = (
-        "Ground transport, as a share of the trip" if no_airfare
-        else f"{rank_phrase.capitalize()} fare × {party} "
-             f"{'traveller' if party == 1 else 'travellers'}"
-    )
+    span = max(int(days or 0), 1)
+    who = f"{party} {'traveller' if party == 1 else 'travellers'}"
+    if rides > 0:
+        if ground.get("transport_source") == "plan":
+            estimated = int(ground.get("transport_estimated") or 0)
+            estimate = float(ground.get("transport_estimate") or 0.0)
+            transit_items.append({
+                "label": "Getting around",
+                "detail": "Trains, taxis and transfers priced in your day plan",
+                "amount": round(rides - estimate, 2),
+            })
+            if estimated:
+                transit_items.append({
+                    "label": f"{estimated} more {'ride' if estimated == 1 else 'rides'} without a price",
+                    "detail": "Counted at your plan's typical fare",
+                    "amount": round(estimate, 2),
+                })
+        else:
+            transit_items.append({
+                "label": "Getting around",
+                "detail": (
+                    f"Typical local transport, {_money(currency, rides / (span * party))}"
+                    f" a day × {span} days × {who}"
+                ),
+                "amount": rides,
+            })
 
-    # ── Food and activities: what is left, and how it divides ──────────
-    remainder = round(total - (transit_total + stay_total), 2)
-    food_pct = round(max(min(food_share, 1.0), 0.0) * 100)
-    ladder = [
-        {"label": "Trip total", "detail": f"{tier.capitalize()} plan",
-         "amount": total},
-        {"label": "less Flights & Transit", "detail": "", "amount": -transit_total},
-        {"label": "less Stay", "detail": "", "amount": -stay_total},
-        {"label": "Left for food and activities", "detail": "",
-         "amount": remainder},
-    ]
+    if fare_lines:
+        transit_formula = (
+            f"{rank_phrase.capitalize()} fare × {party} "
+            f"{'traveller' if party == 1 else 'travellers'} + getting around"
+        )
+    else:
+        transit_formula = "Getting around: trains, taxis and transfers"
 
+    # ── Food: a day of eating × days × travellers ───────────────────────
     def _per_day(amount: float) -> str:
-        span = party * max(int(days or 0), 0)
-        if span <= 0 or amount <= 0:
+        if amount <= 0:
             return ""
-        return f"About {_money(currency, amount / span)} per person per day."
+        return f"About {_money(currency, amount / (span * party))} per person per day."
 
-    residual_formula = (
-        "What is left after flights and rooms, split the way the day plan "
-        "splits it"
-    )
+    per_day_food = food_total / (span * party) if food_total > 0 else 0.0
+    words = FOOD_TIER_WORDS.get(tier, "")
+    if ground.get("food_source") == "plan":
+        how = (
+            f"Lunch, dinner and a lighter breakfast at your plan's restaurants, "
+            f"which average {_money(currency, float(ground.get('meal_average') or 0))} a meal"
+        )
+    else:
+        how = "Typical mid-range eating at this destination"
+    if words:
+        how = f"{how}; {tier.capitalize()} plans for {words}"
+    food_caveat = ""
+    if ground.get("food_source") == "typical":
+        food_caveat = (
+            "Your day plan doesn't price its meals, so this uses typical "
+            "mid-range eating for the destination."
+        )
+    elif ground.get("food_held") == "high":
+        food_caveat = (
+            "Your plan's restaurants price well above what this destination "
+            "usually costs, so a day's eating is held at twice its typical spend."
+        )
+    elif ground.get("food_held") == "low":
+        food_caveat = (
+            "Your plan's meals are priced below what this destination usually "
+            "costs, so a day's eating is held near its typical spend."
+        )
+    food_items = [{
+        "label": f"{span} days × {who}",
+        "detail": f"{_money(currency, per_day_food)} a day each · {how}",
+        "amount": food_total,
+    }]
+
+    # ── Activities: the day plan's tickets and tours ────────────────────
+    source = ground.get("activities_source")
+    if source == "plan":
+        estimated = int(ground.get("activities_estimated") or 0)
+        estimate = float(ground.get("activities_estimate") or 0.0)
+        priced = int(ground.get("activities_priced") or 0)
+        activity_items = [{
+            "label": "Tickets and tours in your day plan",
+            "detail": f"{priced} priced {'stop' if priced == 1 else 'stops'} × {who}",
+            "amount": round(activities_total - estimate, 2),
+        }]
+        if estimated:
+            activity_items.append({
+                "label": f"{estimated} more {'stop' if estimated == 1 else 'stops'} without a price",
+                "detail": "Counted at your plan's typical ticket",
+                "amount": round(estimate, 2),
+            })
+        activities_formula = "What your day plan's tickets and tours cost"
+        activities_caveat = ""
+    elif source == "typical":
+        activity_items = [{
+            "label": "Typical entry fees and tours",
+            "detail": (
+                f"{_money(currency, activities_total / (span * party))} a day"
+                f" × {span} days × {who}"
+            ),
+            "amount": activities_total,
+        }]
+        activities_formula = "Typical entry fees and tours for the destination"
+        activities_caveat = (
+            "Your day plan doesn't price its tickets, so this uses typical "
+            "spend for the destination."
+        )
+    else:
+        activity_items = [{
+            "label": "Everything in your day plan is free to visit",
+            "detail": "",
+            "amount": activities_total,
+        }]
+        activities_formula = "What your day plan's tickets and tours cost"
+        activities_caveat = ""
 
     return {
         "summary": notes.get("summary", ""),
@@ -3702,28 +3924,65 @@ def budget_basis(
             "caveat": transit_caveat,
         },
         "food": {
-            "formula": residual_formula,
-            "items": ladder + [{
-                "label": "Dining share of the day plan",
-                "detail": f"{food_pct}% — read from the meals and activities planned",
-                "amount": food_total,
-            }],
+            "formula": f"A day of eating × {span} days × {who}",
+            "items": food_items,
             "total": food_total,
             "note": _per_day(food_total),
-            "caveat": "",
+            "caveat": food_caveat,
         },
         "activities": {
-            "formula": residual_formula,
-            "items": ladder + [{
-                "label": "Everything else in the day plan",
-                "detail": f"{100 - food_pct}% — entry fees, tours, experiences",
-                "amount": activities_total,
-            }],
+            "formula": activities_formula,
+            "items": activity_items,
             "total": activities_total,
             "note": _per_day(activities_total),
-            "caveat": "",
+            "caveat": activities_caveat,
         },
     }
+
+
+def _budget_advisory(
+    *,
+    currency: str,
+    no_airfare: bool,
+    unavailable_message: str,
+    flights_wanted: bool,
+    flight_priced: bool,
+    hotels_wanted: bool,
+    entered_budget: float,
+    recommended_total: float,
+) -> str:
+    """The note above the Budget Allocation card: what it leaves out, and what
+    the traveller's budget has left over.
+
+    Every app build draws this note, so it is where a plan says that its total
+    is what the trip costs rather than the budget typed in. A plan that needs
+    much less than the budget used to pour the difference into Food; it now
+    names the difference instead.
+    """
+    parts: list[str] = []
+    if no_airfare:
+        parts.append(
+            f"{unavailable_message} The budget below covers ground transport only — "
+            "no airfare is included.".strip()
+        )
+    elif flights_wanted and not flight_priced:
+        parts.append("No fare came back for this route, so the budget below includes no airfare.")
+    elif not flights_wanted:
+        parts.append("Flights aren't included in the budget below: you chose to book them yourself.")
+    if not hotels_wanted:
+        parts.append("Hotels aren't included: you chose to arrange your own stay.")
+
+    spare = entered_budget - recommended_total
+    # Only a margin worth mentioning: a budget a little over the trip is the
+    # "comfortable" verdict, not a surplus.
+    if recommended_total > 0 and spare >= max(recommended_total * 0.25, 1.0):
+        parts.append(
+            f"This trip costs about {_money(currency, recommended_total)} at the "
+            f"Recommended level, so about {_money(currency, spare)} of your "
+            f"{_money(currency, entered_budget)} budget is left over. The bars show "
+            "what each part of the trip costs; the rest is yours to keep or spend."
+        )
+    return " ".join(p.strip() for p in parts if p.strip())
 
 
 async def generate_hotel_strategies_for_legs(
@@ -5834,15 +6093,25 @@ async def generate_odyssey(
         """Party-total flight cost for one tier, falling back to the cheapest."""
         return tier_flight_cost(flight_strategies, travelers, tier)
 
-    cheapest_flight_cost = _tier_flight_cost("minimum")
-
-    # Google answered that nothing flies this route. With no airfare to hold,
-    # the transit line must not keep the 30% of the budget it reserves when a
-    # fare is merely unknown, or the total quietly includes a flight that
-    # cannot be bought. It covers ground transport only, and says so.
+    # Google answered that nothing flies this route: the transit line is ground
+    # transport only, and the advisory says so.
     no_airfare = bool(
         isinstance(flight_strategies, dict)
         and flight_strategies.get("flights_available") is False
+    )
+
+    # Food, activities and getting around, priced from the day plan's own
+    # stops - see `ground_costs`. Read once: every tab prices the same day plan.
+    trip_country = (
+        str(getattr(geo, "country_code", "") or "") if getattr(geo, "resolved", False) else ""
+    ) or (trip_cost_floor.country_for(final_destination) or "")
+    ground = ground_costs(
+        plan, country_code=trip_country, days=g_days, travelers=travelers, currency=currency,
+    )
+    logger.info(
+        "On the ground: food %s/day per person (%s), activities %s (%s), getting around %s (%s).",
+        ground["food_per_day"], ground["food_source"], ground["activities"],
+        ground["activities_source"], ground["transport"], ground["transport_source"],
     )
 
     cheapest_hotel_cost = required_stay_cost(
@@ -5856,74 +6125,47 @@ async def generate_odyssey(
         repeated `cheapest_hotel_cost`, so Stay / Accommodation was the one
         line that never moved between the Minimum, Recommended and Comfortable
         tabs.
+
+        A plan that wanted hotels and got no rate back at all is priced at a
+        typical room for the destination rather than at nothing: unpriced
+        nights are what once let a budget pass as sufficient. A traveller who
+        left hotels out has no Stay line.
         """
         cost = required_stay_cost(hotel_strategies, city_legs, travelers, tier)
-        return cost if cost > 0 else cheapest_hotel_cost
+        if cost > 0:
+            return cost
+        if cheapest_hotel_cost > 0 or not include_hotels:
+            return cheapest_hotel_cost
+        nightly = trip_cost_floor.from_usd(
+            trip_cost_floor.ROOM_PER_NIGHT_USD[ground["tier"]], currency,
+        ) or 0.0
+        nights_ = sum(int(leg.get("nights") or 0) for leg in city_legs) or max(g_days - 1, 1)
+        return round(nightly * STAY_TIER_FACTOR.get(tier, 1.0) * _rooms_for(travelers) * nights_, 2)
 
-    # How this itinerary divides its own food and activity spending. Read once
-    # from the plan Gemini already returned, so every scenario splits the same
-    # way — a Comfortable tab that reallocated the columns differently from the
-    # Recommended one would be describing a different trip.
-    food_share = food_share_of_plan(plan, travelers)
-    if abs(food_share - _DEFAULT_FOOD_SHARE) > 0.01:
-        logger.info(
-            "Food/activities split taken from the itinerary: %.0f/%.0f (default %.0f/%.0f).",
-            food_share * 100, (1 - food_share) * 100,
-            _DEFAULT_FOOD_SHARE * 100, (1 - _DEFAULT_FOOD_SHARE) * 100,
-        )
+    def _tier_breakdown(tier: str) -> dict:
+        """One Budget Allocation tab: what this version of the trip costs.
 
-    # Base budget allocation. Parameterized on `total` so the same waterfall
-    # can price out Minimum/Comfortable scenarios below without a second
-    # Gemini call. `flight_cost` and `stay_cost` both vary per scenario: each
-    # budget scenario is priced against *its own* flight and hotel tier, so the
-    # Budget tab, the Flights tab and the Stays tab quote the same figures.
-    def _waterfall(
-        total: float, flight_cost: float = 0.0, stay_cost: float = 0.0,
-    ) -> dict:
-        tot_ = total if total > 0 else 1.0
-        flight_cost_ = flight_cost if flight_cost > 0 else cheapest_flight_cost
-        stay_cost_ = stay_cost if stay_cost > 0 else cheapest_hotel_cost
-
-        if flight_cost_ > 0:
-            transit_amt_ = min(flight_cost_, round(tot_ * 0.85, 2))
-        elif no_airfare:
-            # Ground transport only: inter-city trains and coaches, local
-            # transfers. No seat on any aircraft is being budgeted for.
-            transit_amt_ = round(tot_ * 0.12, 2)
-        else:
-            transit_amt_ = round(tot_ * 0.30, 2)
-
-        rem_after_transit_ = max(tot_ - transit_amt_, round(tot_ * 0.15, 2))
-
-        if stay_cost_ > 0:
-            # The stay costs what it costs. Capping it at a share of what the
-            # flights left over is what showed 13,500 against a real 17,900 and
-            # called the plan affordable — the traveller cannot book 60% of a
-            # room. When this overruns the budget, the feasibility check below
-            # is what must say so.
-            stay_amt_ = round(stay_cost_, 2)
-        else:
-            stay_amt_ = round(rem_after_transit_ * 0.45, 2)
-
-        rem_for_food_act_ = max(tot_ - (transit_amt_ + stay_amt_), round(tot_ * 0.05, 2))
-        # Split the way the itinerary does, not 60/40 regardless — see
-        # `food_share_of_plan`.
-        food_amt_ = round(rem_for_food_act_ * food_share, 2)
-        # Floored at zero: a tier whose own flights and rooms outrun its total
-        # would otherwise quote a negative activities budget. The scenario
-        # totals below are floored against each tier's real cost precisely so
-        # this stays a guard rather than a routine outcome.
-        activities_amt_ = round(
-            max(tot_ - (stay_amt_ + transit_amt_ + food_amt_), 0.0), 2
-        )
-
+        The lines are the trip's own costs and the total is their sum. It used
+        to run the other way: the total was the budget as typed, and Food and
+        Activities were whatever flights and rooms left of it.
+        """
+        stay = round(_tier_stay_cost(tier), 2)
+        transit = round(_tier_flight_cost(tier) + ground["transport"], 2)
+        food = tier_food_cost(ground, tier)
+        activities = ground["activities"]
         return {
-            "stay": stay_amt_,
-            "transit": transit_amt_,
-            "food": food_amt_,
-            "activities": activities_amt_,
-            "total": tot_,
+            "stay": stay,
+            "transit": transit,
+            "food": food,
+            "activities": activities,
+            "total": round(stay + transit + food + activities, 2),
         }
+
+    budget_scenarios = {
+        tier_: _tier_breakdown(tier_) for tier_ in ("minimum", "recommended", "comfortable")
+    }
+    budget_breakdown = budget_scenarios["recommended"]
+    tot = budget_breakdown["total"]
 
     final_currency = str(plan.get("currency") or currency)
     visa_info = _parse_visa_info(
@@ -5933,154 +6175,36 @@ async def generate_odyssey(
         has_visa=has_visa,
     )
 
-    # ── Budget feasibility from REAL SerpApi prices ─────────────────────
-    # Instead of a static dictionary floor, compare the user's budget
-    # against actual flight + hotel costs returned by SerpApi. This catches
-    # every destination (including ones the dictionary didn't know, like
-    # "Petra") and produces honest numbers the traveller can act on.
-    user_budget = float(budget) if budget > 0 else 1.0
-
-    # Flights and beds are measured; eating for the duration is not, and leaving
-    # it out is what let a 150,000 budget pass as sufficient against 127,500 of
-    # flights and 17,900 of hotel — technically covered, with 4,600 left to feed
-    # three people for nine days. `on_ground_floor` excludes lodging on purpose,
-    # since `cheapest_hotel_cost` above already prices the rooms.
-    on_ground = trip_cost_floor.on_ground_floor(
-        destination=final_destination,
-        days=days,
-        travelers=travelers,
-        currency=currency,
-    ) or 0.0
-
-    real_minimum_cost = cheapest_flight_cost + cheapest_hotel_cost + on_ground
-    budget_is_sufficient = (user_budget >= real_minimum_cost) or real_minimum_cost <= 0
-
-    def _tier_floor(tier: str) -> float:
-        """What one tier actually costs: its flights, its rooms, and the ground.
-
-        `real_minimum_cost` is exactly `_tier_floor("minimum")`, so the
-        feasibility check and `minimum_required` are unchanged by this — only
-        the dearer tiers now price themselves honestly instead of reusing the
-        cheapest room.
-        """
-        return _tier_flight_cost(tier) + _tier_stay_cost(tier) + on_ground
-
-    def _scenario_total(nominal: float, tier: str) -> float:
-        """A scenario's headline total, never below what that tier costs.
-
-        A tier priced against its own dearer flights and rooms can outrun a
-        multiple of the user's budget; letting it would drive the food and
-        activities lines to zero and quote a tab the traveller cannot book.
-        """
-        floor_ = _tier_floor(tier)
-        return max(nominal, round(floor_ * 1.05, 2)) if floor_ > 0 else nominal
-
-    if budget_is_sufficient:
-        # User's budget IS the Recommended tier — normal flow.
-        tot = user_budget
-        # ...unless the Recommended tier costs more than they entered.
-        #
-        # The headline used to be left exactly as typed while its four parts
-        # were computed from the real fares and room rates, so a trip whose
-        # recommended room outran the budget showed a split that did not add
-        # up. Client report, 7-day Italy plan for three: "90% Stay - 64%
-        # Transit - 3% Food - 0% Activities" against a total of INR 339,000 —
-        # 157%, with Activities at zero and the card still calling the trip
-        # feasible.
-        #
-        # Feasibility is measured against the *cheapest* room, which that
-        # budget did cover; the card prices the *middle* one, which it did not.
-        # The total now covers its own parts, and `overran` below says so
-        # rather than leaving the traveller to add the bars up.
-        rec_total = _scenario_total(tot, "recommended")
-        overran = rec_total > tot + 1
-        tot = rec_total
-        budget_breakdown = _waterfall(
-            tot,
-            _tier_flight_cost("recommended"),
-            _tier_stay_cost("recommended"),
-        )
-
-        # A Minimum tier on every plan, not only where there was 25% of
-        # headroom below the budget. The card now opens on Minimum — the
-        # client's "start at the minimum spend required" — and a plan whose
-        # budget was merely *close* to the floor would otherwise have opened on
-        # Recommended, which is the one case where starting at the cheapest
-        # version matters most.
-        budget_scenarios = {
-            "minimum": _waterfall(
-                _scenario_total(
-                    tot * _SCENARIO_MULTIPLIERS["minimum"], "minimum",
-                ),
-                _tier_flight_cost("minimum"),
-                _tier_stay_cost("minimum"),
-            ),
-        }
-        budget_scenarios["recommended"] = budget_breakdown
-        budget_scenarios["comfortable"] = _waterfall(
-            _scenario_total(
-                tot * _SCENARIO_MULTIPLIERS["comfortable"], "comfortable",
-            ),
-            _tier_flight_cost("comfortable"),
-            _tier_stay_cost("comfortable"),
-        )
-        # The trip is feasible — at the cheapest room, which is what
-        # `real_minimum_cost` prices and what the Minimum tab shows. It is the
-        # Recommended tier the entered budget will not buy, and the banner has
-        # to say so or the lifted total reads as the app ignoring the number
-        # they typed.
-        feasible = not overran
-        if overran:
-            budget_tightness = "insufficient"
-        elif real_minimum_cost > 0 and (tot - real_minimum_cost) / real_minimum_cost < 0.2:
-            budget_tightness = "tight"
-        else:
-            budget_tightness = "comfortable"
-        minimum_required = real_minimum_cost if real_minimum_cost > 0 else None
-    else:
-        # Budget is INSUFFICIENT — override with realistic tiers built
-        # from actual SerpApi flight + hotel prices. Each tier is costed
-        # against *its own* floor (that tier's flights and rooms), not three
-        # multiples of the cheapest one: scaling a single floor is what made
-        # every tab quote the same stay figure while the others moved.
-        # `_tier_floor("minimum")` is `real_minimum_cost`, so `minimum_required`
-        # and the feasibility banner are unchanged.
-        min_total = _tier_floor("minimum") * 1.15   # +15% buffer for food/activities
-        rec_total = _tier_floor("recommended") * 1.35   # ~35% above its own floor
-        comf_total = _tier_floor("comfortable") * 1.80  # ~80% above its own floor
-
-        budget_breakdown = _waterfall(
-            rec_total,
-            _tier_flight_cost("recommended"),
-            _tier_stay_cost("recommended"),
-        )
-        budget_scenarios = {
-            "minimum": _waterfall(
-                min_total,
-                _tier_flight_cost("minimum"),
-                _tier_stay_cost("minimum"),
-            ),
-            "recommended": budget_breakdown,
-            "comfortable": _waterfall(
-                comf_total,
-                _tier_flight_cost("comfortable"),
-                _tier_stay_cost("comfortable"),
-            ),
-        }
-        tot = rec_total  # Display total = recommended realistic cost
-        feasible = False
+    # What the traveller typed, against what the trip costs. The budget is a
+    # ceiling: a trip that needs less leaves the rest over, which the advisory
+    # below says in so many words, instead of spreading it across the lines.
+    try:
+        user_budget = float(budget or 0)
+    except (TypeError, ValueError):
+        user_budget = 0.0
+    if not (math.isfinite(user_budget) and user_budget > 0):
+        user_budget = 0.0
+    minimum_total = budget_scenarios["minimum"]["total"]
+    recommended_total = tot
+    # The banner is driven by the Recommended tab, which is what the card
+    # prices; the trip may still be within reach at Minimum, and the
+    # recommendation below names both figures.
+    feasible = user_budget + 1 >= recommended_total
+    if not feasible:
         budget_tightness = "insufficient"
-        minimum_required = round(min_total, 2)
+    elif recommended_total > 0 and (user_budget - recommended_total) / recommended_total < 0.2:
+        budget_tightness = "tight"
+    else:
+        budget_tightness = "comfortable"
+    minimum_required = minimum_total if minimum_total > 0 else None
 
-    stay_amt = budget_breakdown["stay"]
-    transit_amt = budget_breakdown["transit"]
-    food_amt = budget_breakdown["food"]
-    activities_amt = budget_breakdown["activities"]
+    def _pct(amount: float) -> int:
+        return round(amount / tot * 100) if tot > 0 else 0
 
-    stay_pct = round((stay_amt / tot) * 100)
-    transit_pct = round((transit_amt / tot) * 100)
-    food_pct = round((food_amt / tot) * 100)
-    activities_pct = max(100 - (stay_pct + transit_pct + food_pct), 0)
+    stay_pct = _pct(budget_breakdown["stay"])
+    transit_pct = _pct(budget_breakdown["transit"])
+    food_pct = _pct(budget_breakdown["food"])
+    activities_pct = max(100 - (stay_pct + transit_pct + food_pct), 0) if tot > 0 else 0
     harmonized_budget_split = f"{stay_pct}% Stay - {transit_pct}% Transit - {food_pct}% Food - {activities_pct}% Activities"
 
     at_star_floor = stay_priced_at_star_floor(hotel_strategies, city_legs)
@@ -6108,9 +6232,10 @@ async def generate_odyssey(
             travelers=travelers,
             days=g_days,
             currency=final_currency,
-            food_share=food_share,
+            ground=ground,
             no_airfare=no_airfare,
             at_star_floor=at_star_floor,
+            flights_included=bool(include_flights),
         )
         for tier_, bd_ in budget_scenarios.items()
     }
@@ -6121,14 +6246,6 @@ async def generate_odyssey(
             "Google Search grounding: %d verified sources attached to itinerary",
             len(verified_sources),
         )
-
-    # What the card can actually offer, either side of what they typed.
-    recommended_total = round(
-        float(budget_scenarios.get("recommended", {}).get("total") or tot), 2,
-    )
-    minimum_total = round(
-        float(budget_scenarios.get("minimum", {}).get("total") or 0), 2,
-    )
 
     # The old banner named neither figure — "increase your budget to the
     # recommended amount" without saying what that amount was, or what the trip
@@ -6208,12 +6325,15 @@ async def generate_odyssey(
         end_date=final_end_date,
         departure_city=departure_city or "",
         budget_breakdown=budget_breakdown,
-        budget_advisory=(
-            (
-                str((flight_strategies or {}).get("unavailable_message") or "")
-                + " The budget below covers ground transport only — no airfare is included."
-            ).strip()
-            if no_airfare else ""
+        budget_advisory=_budget_advisory(
+            currency=final_currency,
+            no_airfare=no_airfare,
+            unavailable_message=str((flight_strategies or {}).get("unavailable_message") or ""),
+            flights_wanted=bool(include_flights),
+            flight_priced=_tier_flight_cost("recommended") > 0,
+            hotels_wanted=bool(include_hotels),
+            entered_budget=user_budget,
+            recommended_total=recommended_total,
         ),
         budget_notes=budget_notes,
         plan_advisory=plan_advisory,
@@ -6659,9 +6779,10 @@ def _build_prompt(
         f"{int(budget - spend_room)} {currency} of the {int(budget)} {currency} total. "
         f"That leaves about {int(spend_room)} {currency} for food and activities across "
         f"{days} days for the whole group. The sum of every cost_per_person x "
-        f"{travelers} MUST stay inside {int(spend_room)} {currency} - this is the "
-        f"figure the traveller's budget screen will show, so a plan that exceeds it "
-        f"is one they cannot afford."
+        f"{travelers} MUST stay inside {int(spend_room)} {currency}, or the plan is "
+        f"one they cannot afford. This is a ceiling, not a target: price every meal, "
+        f"ticket and ride at what it really costs and never raise a price to use up "
+        f"the budget - money the plan does not need is the traveller's to keep."
         if spend_room > 0 else
         "4. Food & Dining (~10-15%) and Activities (~5-10%) share the remaining budget."
     )
@@ -7157,7 +7278,7 @@ CRITICAL PRICE JUSTIFICATION RULES:
 4. Self-honesty rule: these labels reflect genuine confidence based on what search actually returned, not how official something sounds. Do not label something "Fixed" without a real search result backing it.
 5. Round to sensible increments (nearest 1, 5, or 10 in local currency) unless an official rate is exact. Never fabricate false precision (e.g. "23.47").
 6. For "dining" activities, "restaurants" entries should be real, findable venues confirmed via search, or realistic venue *types* for the area if no specific venue is confirmed — never fabricated proper names presented as fact.
-7. The sum of all activity costs must match the "food" + "activities" portions of budget_breakdown. Recompute if they drift.
+7. Price every dining, attraction and transport stop at its real cost, and 0 only when it is genuinely free. Never inflate a price to fill the budget.
 
 Return ONLY a JSON object with EXACTLY this shape:
 {{
@@ -7999,7 +8120,12 @@ def _extract_price_bounds(price_str) -> tuple[float, float] | None:
     """
     if not price_str:
         return None
-    cleaned = re.sub(r"[^\d.\-\s]", " ", str(price_str))
+    # Thousands separators first: turned into spaces with everything else,
+    # "NGN 1,850,000 - 2,200,000" read as 1, 850, 0, 2, 200, 0 and became a
+    # fare of NGN 425 - the price of three stored plans' flights, which then
+    # looked all but free against the budget.
+    joined = re.sub(r"(?<=\d),(?=\d)", "", str(price_str))
+    cleaned = re.sub(r"[^\d.\-\s]", " ", joined)
     numbers = [float(n) for n in re.findall(r"\d+(?:\.\d+)?", cleaned)]
     if not numbers:
         return None

@@ -1128,62 +1128,157 @@ def test_no_type_stays_no_type():
         assert svc.normalise_activity_type(raw) == ""
 
 
-# ── Which column the money sits in ──────────────────────────────────────────
+# ── What the trip costs on the ground ──────────────────────────────────────
 #
-# The waterfall split food and activities 60/40 whatever the itinerary held.
-# Real plans divide it anywhere from 28/72 to 73/27, so the fixed ratio put one
-# line over and the other far under on the same trip: a 14-day Peru plan for
-# five listed 377,750 of activities against a 325,433 line while its food line
-# sat at 0.67x — the two together came to 0.87x of what they were allowed.
+# Food and activities used to be whatever the budget had left after flights and
+# rooms, split by the day plan's ratio. A budget is a ceiling, not a price: on
+# the 58 stored plans that priced their meals the Food line came to a median
+# 12x what those meals cost, and a 13-day Germany plan at the planner's default
+# USD 50,000 put USD 2,459 a day into one person's food. `ground_costs` prices
+# each line from the day plan instead.
 
-def _plan(*costed):
-    """day_plans holding (type, cost_per_person) pairs on one day."""
-    return {"day_plans": [{"day": 1, "theme": "t", "activities": [
-        {"name": f"stop {i}", "type": t, "cost_per_person": c}
-        for i, (t, c) in enumerate(costed)
-    ]}]}
-
-
-def test_the_split_follows_the_itinerary():
-    # 300 dining, 700 sightseeing -> 30% food.
-    share = svc.food_share_of_plan(_plan(("dining", 300), ("attraction", 700)))
-    assert abs(share - 0.30) < 0.001
-
-
-def test_flights_and_hotels_are_not_counted_in_either_column():
-    """They have their own budget lines; counting them here moves the wrong money."""
-    with_travel = _plan(
-        ("dining", 300), ("attraction", 700),
-        ("transport", 50_000), ("accommodation", 20_000),
-    )
-    assert abs(svc.food_share_of_plan(with_travel) - 0.30) < 0.001
+def _plan(*stops):
+    """day_plans holding (type, cost_per_person[, name]) stops on one day."""
+    acts = []
+    for i, stop in enumerate(stops):
+        kind, cost = stop[0], stop[1]
+        name = stop[2] if len(stop) > 2 else f"stop {i}"
+        act = {"name": name, "type": kind}
+        if cost is not None:
+            act["cost_per_person"] = cost
+        acts.append(act)
+    return {"day_plans": [{"day": 1, "theme": "t", "activities": acts}]}
 
 
-def test_neither_line_is_ever_allowed_to_collapse():
-    """People eat whether or not the itinerary lists a restaurant."""
-    no_food = _plan(("attraction", 1000), ("exploration", 500))
-    no_activities = _plan(("dining", 1000))
-    assert svc.food_share_of_plan(no_food) == 0.25
-    assert svc.food_share_of_plan(no_activities) == 0.75
+def _ground(plan, country="TH", days=1, travelers=1, currency="USD"):
+    return svc.ground_costs(plan, country_code=country, days=days, travelers=travelers, currency=currency)
 
 
-def test_a_plan_with_no_prices_keeps_the_old_rule_of_thumb():
-    assert svc.food_share_of_plan(_plan(("dining", 0), ("attraction", 0))) == 0.60
-    assert svc.food_share_of_plan({"day_plans": []}) == 0.60
-    assert svc.food_share_of_plan({}) == 0.60
-    assert svc.food_share_of_plan({"day_plans": "nonsense"}) == 0.60
+def test_a_huge_budget_no_longer_feeds_one_person_for_thousands_a_day():
+    """The Germany plan: meals averaging USD 19.20 in its own day plan."""
+    meals = [("dining", c) for c in (14, 18, 22, 25, 19, 16, 21, 18, 20, 19)]
+    g = _ground(_plan(*meals), country="DE", days=13)
+    assert g["food_source"] == "plan"
+    assert g["food_per_day"] == round(19.2 * svc.MEALS_A_DAY, 2)        # USD 48 a day
+    assert svc.tier_food_cost(g, "recommended") == round(19.2 * svc.MEALS_A_DAY * 13, 2)
 
 
-def test_an_unknown_type_counts_as_an_activity_not_as_food():
-    """`normalise_activity_type` sends anything unrecognised to `other`."""
-    share = svc.food_share_of_plan(_plan(("dining", 500), ("quantum picnic", 500)))
-    assert abs(share - 0.50) < 0.001
+def test_a_day_of_eating_is_more_than_the_two_meals_a_plan_lists():
+    g = _ground(_plan(("dining", 10), ("dining", 14), ("dining", 12)), country="TH")
+    assert g["food_per_day"] == 12 * 2.5
 
 
-def test_the_real_peru_split_is_what_was_measured():
-    """46/54, against the 60/40 that put its activities line 16% over."""
-    share = svc.food_share_of_plan(_plan(("dining", 327_500), ("attraction", 377_750)))
-    assert abs(share - 0.464) < 0.005
+def test_one_tasting_menu_cannot_carry_the_line():
+    """Thailand eats at about USD 25 a day; a plan of 120-dollar dinners is held at twice that."""
+    g = _ground(_plan(*[("dining", 120)] * 3), country="TH")
+    assert g["food_held"] == "high"
+    assert g["food_per_day"] == 50.0
+
+
+def test_meals_priced_far_below_the_destination_are_held_near_it():
+    g = _ground(_plan(*[("dining", 1)] * 3), country="TH")
+    assert g["food_held"] == "low"
+    assert g["food_per_day"] == 15.0                     # 60% of USD 25
+
+
+def test_too_few_priced_meals_fall_back_to_what_the_destination_costs():
+    g = _ground(_plan(("dining", 40), ("dining", None), ("attraction", 10)), country="FR")
+    assert g["food_source"] == "typical"
+    assert g["food_per_day"] == 55.0                     # an expensive country
+
+
+def test_the_typical_day_is_in_the_travellers_currency():
+    g = _ground(_plan(("attraction", 1000)), country="IN", currency="INR")
+    assert g["food_per_day"] == 15.0 * 83.0
+
+
+def test_each_tier_eats_differently_and_scales_with_the_party():
+    g = _ground(_plan(*[("dining", 10)] * 3), country="TH", days=4, travelers=3)
+    assert svc.tier_food_cost(g, "minimum") == round(25 * 0.6 * 4 * 3, 2)
+    assert svc.tier_food_cost(g, "recommended") == round(25 * 4 * 3, 2)
+    assert svc.tier_food_cost(g, "comfortable") == round(25 * 1.6 * 4 * 3, 2)
+
+
+def test_activities_are_what_the_plan_prices_for_the_whole_party():
+    g = _ground(_plan(("attraction", 10), ("attraction", 30), ("exploration", 0)), travelers=2)
+    assert g["activities_source"] == "plan"
+    assert g["activities"] == 80.0
+
+
+def test_an_unpriced_ticket_is_counted_at_the_plans_median_but_a_free_stop_is_not():
+    g = _ground(_plan(
+        ("attraction", 10), ("attraction", 20), ("attraction", 30),
+        ("attraction", None),          # the model did not look it up
+        ("attraction", 0),             # free
+        ("exploration", None),         # free by definition
+    ))
+    assert g["activities_estimated"] == 1
+    assert g["activities_estimate"] == 20.0
+    assert g["activities"] == 80.0
+
+
+def test_a_day_plan_of_free_places_costs_nothing_to_visit():
+    g = _ground(_plan(("exploration", 0), ("attraction", 0), ("dining", 12)))
+    assert (g["activities"], g["activities_source"]) == (0.0, "free")
+
+
+def test_a_plan_that_prices_no_tickets_uses_the_destinations_typical_spend():
+    g = _ground(_plan(("attraction", None), ("attraction", None)), country="TH", days=3, travelers=2)
+    assert g["activities_source"] == "typical"
+    assert g["activities"] == 10.0 * 3 * 2
+
+
+def test_rides_are_priced_from_the_plan_but_the_flight_is_not_one_of_them():
+    g = _ground(_plan(
+        ("transport", 0, "Arrival at Bangkok Suvarnabhumi (BKK)"),
+        ("transport", 450, "Departure from Phuket (HKT)"),      # the flight, priced anyway
+        ("transport", 12, "Arrival at BKK & Transfer to Sukhumvit"),
+        ("transport", 30, "Train to Ayutthaya"),
+    ), travelers=2)
+    assert g["transport_source"] == "plan"
+    assert g["transport"] == (12 + 30) * 2
+
+
+def test_the_flight_priced_into_the_first_day_is_not_counted_again():
+    """Angola, 2026-10-01: "Flight arrival at Luanda (NBJ)" carried the whole fare."""
+    plan = {"day_plans": [
+        {"day": 1, "activities": [
+            {"name": "Flight arrival at Luanda (NBJ)", "type": "transport", "cost_per_person": 299600},
+            {"name": "Transfer: Luanda airport → Luanda", "type": "transport", "cost_per_person": 2600},
+        ]},
+        {"day": 2, "activities": [
+            {"name": "Flight: Sydney (SYD) -> Melbourne (MEL)", "type": "transport", "cost_per_person": 6092},
+        ]},
+        {"day": 3, "activities": [
+            {"name": "Flight home to Colombo", "type": "transport", "cost_per_person": 299600},
+        ]},
+    ]}
+    g = _ground(plan, country="AO", days=3, currency="INR")
+    assert g["transport"] == 2600 + 6092        # the transfer and the hop between cities
+
+
+def test_a_plan_with_no_priced_ride_still_gets_around():
+    g = _ground(_plan(("attraction", 10)), country="TH", days=5)
+    assert g["transport_source"] == "typical"
+    assert g["transport"] == 8.0 * 5
+
+
+def test_rooms_are_never_counted_on_the_ground():
+    g = _ground(_plan(("accommodation", 900), ("attraction", 10)))
+    assert g["activities"] == 10.0
+
+
+def test_a_currency_no_rate_is_known_for_prices_only_what_the_plan_prices():
+    g = _ground(_plan(("attraction", 10), ("dining", 5)), country="TH", currency="XXX")
+    assert g["food_source"] == "none" and g["food_per_day"] == 0.0
+    assert g["activities"] == 10.0
+
+
+def test_nothing_to_read_is_not_a_crash():
+    for plan in ({}, {"day_plans": "nonsense"}, {"day_plans": [None, {"activities": [None]}]}):
+        g = _ground(plan, country="TH", days=2)
+        assert g["food_source"] == "typical"
+        assert g["activities"] == 0.0
 
 
 # ── Tips that say the same thing twice ──────────────────────────────────────
@@ -1287,3 +1382,16 @@ def test_a_price_with_no_explanation_is_left_alone():
 def test_a_free_stop_is_left_alone():
     days = _stop(cost_per_person=0)
     assert svc._name_the_price_source(days) == 0
+
+
+# ── Fare ranges written with thousands separators ───────────────────────────
+
+@pytest.mark.parametrize("written, bounds", [
+    ("NGN 1,850,000 - 2,200,000", (1_850_000.0, 2_200_000.0)),
+    ("LKR 280,000 - 350,000", (280_000.0, 350_000.0)),
+    ("INR 52000 - 58000", (52_000.0, 58_000.0)),
+    ("USD 200 – 400", (200.0, 400.0)),
+    ("USD 1,250.50", (1_250.5, 1_250.5)),
+])
+def test_a_fare_range_reads_whole_numbers(written, bounds):
+    assert svc._extract_price_bounds(written) == bounds
