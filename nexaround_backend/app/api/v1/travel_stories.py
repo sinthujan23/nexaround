@@ -20,6 +20,7 @@ from app.schemas.travel_story import (
     TravelStoryCommentResponse
 )
 from app.utils.place_match import haversine_m
+from app.services import story_location
 
 router = APIRouter(prefix="/travel-stories", tags=["travel-stories"])
 
@@ -176,6 +177,13 @@ async def create_travel_story(
     current_user: User = Depends(get_current_user)
 ):
     """Post a new travel story."""
+    latitude, longitude = data.latitude, data.longitude
+    if data.location_source is None and not data.is_journal:
+        fixed = await story_location.corrected_location(
+            data.location_name, data.country, latitude, longitude,
+        )
+        if fixed:
+            latitude, longitude = fixed
     story = TravelStory(
         user_id=current_user.id,
         location_name=data.location_name,
@@ -183,8 +191,8 @@ async def create_travel_story(
         description=data.description,
         image_url=data.image_url,
         image_urls=data.image_urls,
-        latitude=data.latitude,
-        longitude=data.longitude,
+        latitude=latitude,
+        longitude=longitude,
         is_public=data.is_public,
         is_journal=data.is_journal,
         journal_date=data.journal_date,
@@ -479,14 +487,27 @@ async def update_travel_story(
     if story.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized to edit this story")
         
+    latitude, longitude = data.latitude, data.longitude
+    place_changed = (
+        data.location_name != story.location_name
+        or latitude != story.latitude
+        or longitude != story.longitude
+    )
+    if data.location_source is None and not story.is_journal and place_changed:
+        fixed = await story_location.corrected_location(
+            data.location_name, data.country or story.country, latitude, longitude,
+        )
+        if fixed:
+            latitude, longitude = fixed
+
     # Update fields
     story.location_name = data.location_name
     story.category = data.category
     story.description = data.description
     story.image_url = data.image_url
     story.image_urls = data.image_urls
-    story.latitude = data.latitude
-    story.longitude = data.longitude
+    story.latitude = latitude
+    story.longitude = longitude
     story.is_public = data.is_public
     
     await db.commit()

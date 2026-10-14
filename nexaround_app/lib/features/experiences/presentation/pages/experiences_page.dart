@@ -8,7 +8,7 @@ import 'package:nexaround_app/features/experiences/presentation/widgets/experien
 class ExperiencesPage extends StatefulWidget {
   /// When true, experiences are marked as coming soon and vendor lists are hidden.
   /// Set to false when vendor negotiations and pricing are finalized.
-  static const bool isComingSoon = true;
+  static const bool isComingSoon = false;
 
   final double? latitude;
   final double? longitude;

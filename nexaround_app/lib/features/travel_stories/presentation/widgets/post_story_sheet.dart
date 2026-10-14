@@ -187,6 +187,10 @@ class _PostStorySheetState extends State<PostStorySheet> {
         timeLimit: const Duration(seconds: 15),
       );
       if (!mounted) return;
+      // They typed a place and are not at it: offer the real place instead
+      // of pinning the story to where they are.
+      if (await _offerNamedPlaceInstead(position)) return;
+      if (!mounted) return;
       setState(() {
         _selectedLatitude = position.latitude;
         _selectedLongitude = position.longitude;
@@ -222,6 +226,60 @@ class _PostStorySheetState extends State<PostStorySheet> {
       }
     } finally {
       if (mounted) setState(() => _locatingHere = false);
+    }
+  }
+
+  /// "I'm here now" after typing a place that Google knows far from the
+  /// traveller: asks whether to use that place. True when the place was
+  /// chosen (and set); false to carry on with the GPS fix. Any failure here
+  /// means "carry on" - the check must never block posting.
+  Future<bool> _offerNamedPlaceInstead(Position position) async {
+    final typed = _locationController.text.trim();
+    if (typed.length < 4) return false;
+    try {
+      final results = await GooglePlacesService.getAutocompleteSuggestions(
+        input: typed,
+        latitude: position.latitude,
+        longitude: position.longitude,
+      );
+      final match = results.cast<Map<String, dynamic>?>().firstWhere(
+        (r) => (r!['main_text'] as String? ?? '').trim().toLowerCase() ==
+            typed.toLowerCase(),
+        orElse: () => null,
+      );
+      if (match == null) return false;
+      final details = await GooglePlacesService.getPlaceDetails(match['place_id'] as String);
+      if (details == null || !mounted) return false;
+      final km = Geolocator.distanceBetween(
+            position.latitude, position.longitude,
+            details.latitude, details.longitude,
+          ) /
+          1000;
+      if (km < 3) return false;
+      final usePlace = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text('$typed is ${km.round()} km from you'),
+          content: const Text(
+            "Your story will be shown at the place itself, so travellers nearby find it. Use the place instead of where you are now?",
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text("No, I'm here"),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Use the place'),
+            ),
+          ],
+        ),
+      );
+      if (usePlace != true || !mounted) return false;
+      await _selectSuggestion(match);
+      return true;
+    } catch (_) {
+      return false;
     }
   }
 
@@ -439,6 +497,7 @@ class _PostStorySheetState extends State<PostStorySheet> {
       isPublic: _isPublic,
       country: _selectedCountry,
       travelDate: _selectedTravelDate,
+      locationSource: _locationSource,
     );
 
     widget.onStorySubmitted(newStory);

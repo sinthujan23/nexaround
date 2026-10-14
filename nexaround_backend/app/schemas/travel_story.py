@@ -43,7 +43,10 @@ class TravelStoryBase(BaseModel):
     country: Optional[str] = None
 
 class TravelStoryCreate(TravelStoryBase):
-    pass
+    # How the app set latitude/longitude: "place" (a picked suggestion), "here"
+    # (the poster's GPS, by choice) or "saved" (unchanged on edit). Older builds
+    # send nothing, and their coordinates are checked against the place name.
+    location_source: Optional[str] = Field(None, max_length=16)
 
 class TravelStoryResponse(TravelStoryBase):
     id: UUID

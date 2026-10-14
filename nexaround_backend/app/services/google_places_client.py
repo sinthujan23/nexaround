@@ -1219,6 +1219,88 @@ async def resolve_place_geo(
         return None
 
 
+async def find_place_candidates(
+    name: str,
+    *,
+    bias_lat: float,
+    bias_lng: float,
+    max_results: int = 5,
+) -> list[dict]:
+    """The places Google means by a free-text name, nearest-biased.
+
+    One Text Search call (Pro tier: location, viewport, address components).
+    Each entry is {name, latitude, longitude, viewport, country_code}, where
+    viewport is (low_lat, low_lng, high_lat, high_lng) or None. Returns [] on
+    any failure, so a caller can always keep what it had.
+    """
+    clean_name = (name or "").strip()
+    if not clean_name:
+        return []
+
+    async with async_session() as db:
+        settings_service = SettingsService(db)
+        google_maps_key = await settings_service.get_setting("google_maps_api_key")
+    if not google_maps_key:
+        return []
+
+    body = {
+        "textQuery": clean_name,
+        "maxResultCount": max_results,
+        "languageCode": "en",
+        "locationBias": {"circle": {
+            "center": {"latitude": bias_lat, "longitude": bias_lng},
+            "radius": 50_000.0,
+        }},
+    }
+    try:
+        client = await _get_http_client()
+        async with _google_call_semaphore:
+            async with telemetry.track(
+                "google_maps", "place_candidates",
+                sku="text_search_pro",
+                cache_key=f"cand:{clean_name.lower()}|{_snap_coord(bias_lat)},{_snap_coord(bias_lng)}",
+            ) as t:
+                resp = await client.post(
+                    "https://places.googleapis.com/v1/places:searchText",
+                    json=body,
+                    headers={
+                        "X-Goog-Api-Key": google_maps_key,
+                        "Content-Type": "application/json",
+                        "X-Goog-FieldMask": (
+                            "places.displayName,places.location,"
+                            "places.viewport,places.addressComponents"
+                        ),
+                    },
+                )
+                t.upstream(resp)
+        resp.raise_for_status()
+        places = resp.json().get("places") or []
+    except Exception as e:
+        print(f"⚠️ Place candidates lookup failed for {clean_name!r}: {e}")
+        return []
+
+    out = []
+    for place in places:
+        loc = place.get("location") or {}
+        if loc.get("latitude") is None or loc.get("longitude") is None:
+            continue
+        vp = place.get("viewport") or {}
+        low, high = vp.get("low") or {}, vp.get("high") or {}
+        viewport = None
+        if all(k in d for d in (low, high) for k in ("latitude", "longitude")):
+            viewport = (low["latitude"], low["longitude"],
+                        high["latitude"], high["longitude"])
+        _, country_code = _component(place, "country")
+        out.append({
+            "name": (place.get("displayName") or {}).get("text") or "",
+            "latitude": loc["latitude"],
+            "longitude": loc["longitude"],
+            "viewport": viewport,
+            "country_code": (country_code or "").upper(),
+        })
+    return out
+
+
 # Fields the detail page renders, named as Places API (New) names them. New
 # bills by the tier the mask reaches into, so this is the same bargain the
 # legacy `fields` list struck: Essentials/Pro for identity and geometry,

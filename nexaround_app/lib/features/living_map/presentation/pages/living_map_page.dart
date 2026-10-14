@@ -2900,22 +2900,20 @@ class _LivingMapPageState extends State<LivingMapPage>
     );
   }
 
-  /// The Travel Stories filter: [_nearYouFilter] (the default), 'Global', or
-  /// a country name from [countriesList].
-  static const String _nearYouFilter = 'Near you';
-  String _selectedCountryFilter = _nearYouFilter;
+  /// The Travel Stories filter: 'Global' (the default, which loads level-by-level
+  /// based on user location), or a country name from [countriesList].
+  String _selectedCountryFilter = 'Global';
   String _modalSearchQuery = '';
 
-  /// Where the "Near you" stories were last loaded for. They reload once the
-  /// user is [_storiesReloadDistanceM] from here, not on every 500 m update.
-  /// Null while no location is known, when "Near you" shows the global feed.
+  /// Where the stories were last loaded for. They reload once the user is
+  /// [_storiesReloadDistanceM] from here when in 'Global' mode.
   double? _storiesLat;
   double? _storiesLng;
   static const double _storiesReloadDistanceM = 5000;
   int _storiesRequest = 0;
 
   void _refreshNearbyStoriesIfMoved() {
-    if (_selectedCountryFilter != _nearYouFilter) return;
+    if (_selectedCountryFilter != 'Global') return;
     final lat = _userLatitude;
     final lng = _userLongitude;
     if (lat == null || lng == null) return;
@@ -2931,9 +2929,6 @@ class _LivingMapPageState extends State<LivingMapPage>
   }
 
   String get _storiesFilterLabel {
-    if (_selectedCountryFilter == _nearYouFilter) {
-      return _storiesLat != null ? '📍 Near you' : '🌐 Global';
-    }
     if (_selectedCountryFilter == 'Global') return '🌐 Global';
     return _selectedCountryFilter.length > 14
         ? '${_selectedCountryFilter.substring(0, 12)}...'
@@ -3010,27 +3005,6 @@ class _LivingMapPageState extends State<LivingMapPage>
                     child: ListView(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       children: [
-                        ListTile(
-                          leading: const Text('📍', style: TextStyle(fontSize: 18)),
-                          title: const Text('Near you', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.black87)),
-                          subtitle: Text(
-                            (_userLatitude ?? CacheService.getLastFetchLat()) != null
-                                ? 'Closest stories first'
-                                : 'Turn on location to see stories near you',
-                            style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                          ),
-                          trailing: _selectedCountryFilter == _nearYouFilter
-                              ? const Icon(Icons.check, color: AppColors.brandGreen)
-                              : null,
-                          onTap: () {
-                            setState(() {
-                              _selectedCountryFilter = _nearYouFilter;
-                            });
-                            _loadTravelStories();
-                            Navigator.pop(context);
-                          },
-                        ),
-                        const Divider(height: 1),
                         ListTile(
                           leading: const Text('🌐', style: TextStyle(fontSize: 18)),
                           title: const Text('Global (All)', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.black87)),
@@ -3125,23 +3099,18 @@ class _LivingMapPageState extends State<LivingMapPage>
   }
 
   Future<void> _loadTravelStories() async {
-    final nearYou = _selectedCountryFilter == _nearYouFilter;
-    // Before the first fix of this session, the last place the user was seen
-    // is a better start than the global feed.
-    final rawLat = nearYou ? (_userLatitude ?? CacheService.getLastFetchLat()) : null;
-    final rawLng = nearYou ? (_userLongitude ?? CacheService.getLastFetchLng()) : null;
+    final isGlobal = _selectedCountryFilter == 'Global';
+    // When Global (default), load proximity stories level-by-level based on user location.
+    // If location is not yet known, fall back to last cached location.
+    final rawLat = isGlobal ? (_userLatitude ?? CacheService.getLastFetchLat()) : null;
+    final rawLng = isGlobal ? (_userLongitude ?? CacheService.getLastFetchLng()) : null;
     final hasLocation = rawLat != null && rawLng != null;
-    // Recorded now rather than on response, so a GPS fix landing while this
-    // load is in flight doesn't start a second one for the same spot. It also
-    // drives the label: "Near you" only when there is a location to be near.
     _storiesLat = hasLocation ? rawLat : null;
     _storiesLng = hasLocation ? rawLng : null;
     final request = ++_storiesRequest;
     try {
       final stories = await TravelStoriesService().getStories(
-        country: nearYou || _selectedCountryFilter == 'Global'
-            ? null
-            : _selectedCountryFilter,
+        country: isGlobal ? null : _selectedCountryFilter,
         lat: _storiesLat,
         lng: _storiesLng,
       );

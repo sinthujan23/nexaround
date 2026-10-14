@@ -97,6 +97,10 @@ class TravelStory {
   /// traveller moves, and the offline fallback works it out again.
   final double? distanceM;
 
+  /// How the app set latitude/longitude when posting: 'place', 'here' or
+  /// 'saved'. Sent to the server only; never read back from it.
+  final String? locationSource;
+
   TravelStory({
     required this.id,
     required this.userId,
@@ -123,6 +127,7 @@ class TravelStory {
     this.country,
     this.travelDate,
     this.distanceM,
+    this.locationSource,
   });
 
   TravelStory copyWith({
@@ -151,6 +156,7 @@ class TravelStory {
     String? country,
     DateTime? travelDate,
     double? distanceM,
+    String? locationSource,
   }) {
     return TravelStory(
       id: id ?? this.id,
@@ -178,6 +184,7 @@ class TravelStory {
       country: country ?? this.country,
       travelDate: travelDate ?? this.travelDate,
       distanceM: distanceM ?? this.distanceM,
+      locationSource: locationSource ?? this.locationSource,
     );
   }
 
@@ -256,6 +263,7 @@ class TravelStory {
       'cloud_folder_url': cloudFolderUrl,
       'country': country,
       'travel_date': travelDate?.toIso8601String(),
+      if (locationSource != null) 'location_source': locationSource,
     };
   }
 }
