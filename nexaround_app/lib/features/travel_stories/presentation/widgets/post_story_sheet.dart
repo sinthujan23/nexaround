@@ -12,6 +12,8 @@ import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
 import '../../../../core/services/google_places_service.dart';
 import '../../data/datasources/travel_stories_service.dart';
 import '../../../../core/widgets/country_picker_sheet.dart';
+import '../../../../core/constants/countries.dart';
+import 'package:geolocator/geolocator.dart';
 
 class PostStorySheet extends StatefulWidget {
   final Function(TravelStory) onStorySubmitted;
@@ -41,10 +43,21 @@ class _PostStorySheetState extends State<PostStorySheet> {
   bool _isPublic = true; // New field for privacy toggle
   final ImagePicker _picker = ImagePicker();
 
+  // Where the story's place is. Required: the "Near you" feed sorts on it,
+  // so it must come from a picked suggestion or a fresh GPS fix ("I'm here
+  // now"), never from wherever the poster happened to be.
   double? _selectedLatitude;
   double? _selectedLongitude;
+  /// How the location was set: 'place', 'here', 'saved' (editing), or null.
+  String? _locationSource;
+  bool _resolvingPlace = false;
+  bool _locatingHere = false;
 
   String? _selectedCountry;
+  // True while the country came from the picked place rather than the
+  // traveller: picking another place may then replace it, a hand-picked one
+  // never.
+  bool _countryFromPlace = false;
   DateTime? _selectedTravelDate;
 
   final List<String> _categories = [
@@ -60,6 +73,15 @@ class _PostStorySheetState extends State<PostStorySheet> {
   Timer? _debounceTimer;
 
   void _onLocationChanged(String query) {
+    // A typed change means a different place (or a fixed name to re-pick):
+    // drop the old location so it can't follow the story to the new name.
+    if (_selectedLatitude != null || _locationSource != null) {
+      setState(() {
+        _selectedLatitude = null;
+        _selectedLongitude = null;
+        _locationSource = null;
+      });
+    }
     if (_debounceTimer?.isActive ?? false) _debounceTimer!.cancel();
     if (query.trim().isEmpty) {
       setState(() {
@@ -108,15 +130,98 @@ class _PostStorySheetState extends State<PostStorySheet> {
         ? suggestion['main_text'] as String
         : desc;
 
+    // Google ends the description with the country ("Kandy, Sri Lanka"), so
+    // the country can be filled in for free; the traveller can still change it.
+    final placeCountry = countryNameFromPlace(desc);
+
     setState(() {
       _suggestions = [];
+      _resolvingPlace = true;
+      if (placeCountry != null && (_selectedCountry == null || _countryFromPlace)) {
+        _selectedCountry = placeCountry;
+        _countryFromPlace = true;
+      }
     });
 
+    final pickedName = _locationController.text;
     final details = await GooglePlacesService.getPlaceDetails(placeId);
-    if (details != null) {
-      print('Resolved place coords: ${details.latitude}, ${details.longitude}');
-      _selectedLatitude = details.latitude;
-      _selectedLongitude = details.longitude;
+    if (!mounted) return;
+    // Typed over while the details were loading: that name is no longer this
+    // place, so its coordinates must not attach to it.
+    final stillThisPlace = _locationController.text == pickedName;
+    setState(() {
+      _resolvingPlace = false;
+      if (details != null && stillThisPlace) {
+        _selectedLatitude = details.latitude;
+        _selectedLongitude = details.longitude;
+        _locationSource = 'place';
+      }
+    });
+    if (details == null && stillThisPlace) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Couldn't find that place on the map. Try another suggestion, or tap \"I'm here now\"."),
+        ),
+      );
+    }
+  }
+
+  /// "I'm here now": a fresh GPS fix, for places that aren't in the
+  /// suggestions (hidden gems often aren't on Google). Deliberately not
+  /// widget.userLatitude: when editing, that is the story's saved spot, and
+  /// on the home screen it can be a location the traveller searched for.
+  Future<void> _useCurrentLocation() async {
+    FocusScope.of(context).unfocus();
+    setState(() => _locatingHere = true);
+    try {
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        throw Exception('location permission denied');
+      }
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+        timeLimit: const Duration(seconds: 15),
+      );
+      if (!mounted) return;
+      setState(() {
+        _selectedLatitude = position.latitude;
+        _selectedLongitude = position.longitude;
+        _locationSource = 'here';
+        _suggestions = [];
+      });
+      // Name the spot and its country for them when they haven't already.
+      final details = await GooglePlacesService.reverseGeocodeDetailed(
+        position.latitude,
+        position.longitude,
+      );
+      if (!mounted) return;
+      final name = details['location_name'];
+      final country = countryNameFromPlace(details['country']);
+      setState(() {
+        if (_locationController.text.trim().isEmpty &&
+            name != null &&
+            name != 'Nearby') {
+          _locationController.text = name;
+        }
+        if (country != null && (_selectedCountry == null || _countryFromPlace)) {
+          _selectedCountry = country;
+          _countryFromPlace = true;
+        }
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Couldn't get your location. Turn on location, or pick the place from the suggestions."),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _locatingHere = false);
     }
   }
 
@@ -131,6 +236,17 @@ class _PostStorySheetState extends State<PostStorySheet> {
       _isPublic = story.isPublic;
       _selectedLatitude = story.latitude;
       _selectedLongitude = story.longitude;
+      // (0, 0) is an unset location: an old story like that must be placed
+      // before it can be saved again.
+      final hasSavedLocation = story.latitude != null &&
+          story.longitude != null &&
+          !(story.latitude == 0 && story.longitude == 0);
+      if (hasSavedLocation) {
+        _locationSource = 'saved';
+      } else {
+        _selectedLatitude = null;
+        _selectedLongitude = null;
+      }
       _existingImageUrls = story.imageUrls.isNotEmpty
           ? story.imageUrls
           : [story.imageUrl];
@@ -240,6 +356,21 @@ class _PostStorySheetState extends State<PostStorySheet> {
       return;
     }
 
+    if (_resolvingPlace || _locatingHere) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Still finding the place on the map, one moment…')),
+      );
+      return;
+    }
+    if (_selectedLatitude == null || _selectedLongitude == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Pick the place from the suggestions, or tap \"I'm here now\" if you're there."),
+        ),
+      );
+      return;
+    }
+
     // Show loading spinner
     showDialog(
       context: context,
@@ -299,8 +430,8 @@ class _PostStorySheetState extends State<PostStorySheet> {
       description: description,
       imageUrl: finalUrls.isNotEmpty ? finalUrls.first : '',
       imageUrls: finalUrls,
-      latitude: _selectedLatitude ?? widget.userLatitude,
-      longitude: _selectedLongitude ?? widget.userLongitude,
+      latitude: _selectedLatitude,
+      longitude: _selectedLongitude,
       likesCount: widget.editStory?.likesCount ?? 0,
       comments: widget.editStory?.comments ?? [],
       createdAt: widget.editStory?.createdAt ?? DateTime.now(),
@@ -332,6 +463,68 @@ class _PostStorySheetState extends State<PostStorySheet> {
           ],
         ),
       ),
+    );
+  }
+
+  /// Under the place field: whether the story has a location yet, and the
+  /// "I'm here now" way to give it one.
+  Widget _buildLocationStatus() {
+    final busy = _resolvingPlace || _locatingHere;
+    final isSet = _selectedLatitude != null && _selectedLongitude != null;
+    final String message;
+    if (_resolvingPlace) {
+      message = 'Finding the place on the map…';
+    } else if (_locatingHere) {
+      message = 'Getting your location…';
+    } else if (!isSet) {
+      message = 'Pick the place from the suggestions';
+    } else if (_locationSource == 'here') {
+      message = 'Location set to where you are now';
+    } else if (_locationSource == 'saved') {
+      message = 'Location saved';
+    } else {
+      message = 'Location set';
+    }
+
+    return Row(
+      children: [
+        if (busy)
+          const SizedBox(
+            width: 14,
+            height: 14,
+            child: CircularProgressIndicator(
+              strokeWidth: 1.5,
+              color: AppColors.brandGreen,
+            ),
+          )
+        else
+          Icon(
+            isSet ? Icons.check_circle : Icons.info_outline,
+            size: 15,
+            color: isSet ? AppColors.brandGreen : Colors.grey[500],
+          ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            message,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: isSet ? FontWeight.w600 : FontWeight.w500,
+              color: isSet ? AppColors.brandGreen : Colors.grey[600],
+            ),
+          ),
+        ),
+        TextButton.icon(
+          onPressed: busy ? null : _useCurrentLocation,
+          icon: const Icon(Icons.my_location, size: 15),
+          label: const Text("I'm here now", style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+          style: TextButton.styleFrom(
+            foregroundColor: AppColors.brandGreen,
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            visualDensity: VisualDensity.compact,
+          ),
+        ),
+      ],
     );
   }
 
@@ -458,14 +651,27 @@ class _PostStorySheetState extends State<PostStorySheet> {
                     ),
                     const SizedBox(height: 16),
 
-                    // 1. Where was I? (Location)
-                    const Text(
-                      'Where was I? (Location Name)',
+                    // 1. Where is this place? (required)
+                    const Text.rich(
+                      TextSpan(
+                        text: 'Where is this place?',
+                        children: [
+                          TextSpan(
+                            text: ' *',
+                            style: TextStyle(color: Colors.redAccent),
+                          ),
+                        ],
+                      ),
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
                         color: Colors.black87,
                       ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Travellers near this place will see your story first',
+                      style: TextStyle(fontSize: 11.5, color: Colors.grey[600]),
                     ),
                     const SizedBox(height: 8),
                     Container(
@@ -484,7 +690,7 @@ class _PostStorySheetState extends State<PostStorySheet> {
                           fontSize: 14,
                         ),
                         decoration: InputDecoration(
-                          hintText: 'e.g. Diyaluma Falls, Koslanda',
+                          hintText: 'Search for the place, e.g. Eiffel Tower',
                           hintStyle: TextStyle(
                             color: Colors.grey[400],
                             fontSize: 13.5,
@@ -547,6 +753,8 @@ class _PostStorySheetState extends State<PostStorySheet> {
                           },
                         ),
                       ),
+                    const SizedBox(height: 8),
+                    _buildLocationStatus(),
                     const SizedBox(height: 20),
 
                     // 2. Select Category
@@ -689,6 +897,7 @@ class _PostStorySheetState extends State<PostStorySheet> {
                         if (picked != null) {
                           setState(() {
                             _selectedCountry = picked;
+                            _countryFromPlace = false;
                           });
                         }
                       },

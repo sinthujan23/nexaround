@@ -276,6 +276,7 @@ class _LivingMapPageState extends State<LivingMapPage>
           _fetchMiniTourPlaces(position.latitude, position.longitude);
           _preFetchArPlaces(position.latitude, position.longitude);
           _fetchBandedSections(position.latitude, position.longitude);
+          _refreshNearbyStoriesIfMoved();
 
           GooglePlacesService.reverseGeocodeDetailed(
             position.latitude,
@@ -600,6 +601,7 @@ class _LivingMapPageState extends State<LivingMapPage>
       _fetchMiniTourPlaces(position.latitude, position.longitude);
       _preFetchArPlaces(position.latitude, position.longitude);
       _fetchBandedSections(position.latitude, position.longitude);
+      _refreshNearbyStoriesIfMoved();
 
       // Reverse geocode in parallel, purely for the human-readable address
       // label — updates the UI whenever it resolves, without gating places.
@@ -672,6 +674,7 @@ class _LivingMapPageState extends State<LivingMapPage>
     _fetchMiniTourPlaces(lastLat, lastLng);
     _preFetchArPlaces(lastLat, lastLng);
     _fetchBandedSections(lastLat, lastLng);
+    _refreshNearbyStoriesIfMoved();
   }
 
   Future<void> _forceRefreshAroundYou() async {
@@ -1574,6 +1577,7 @@ class _LivingMapPageState extends State<LivingMapPage>
           // The user picked a different location outright, so the cached
           // sections are for somewhere else — refetch rather than show them.
           _fetchBandedSections(lat, lng, forceRefresh: true);
+          _refreshNearbyStoriesIfMoved();
 
           // Re-fetch "Around You" map places from Database / Redis
           context.read<MapBloc>().add(
@@ -1624,6 +1628,7 @@ class _LivingMapPageState extends State<LivingMapPage>
             _fetchBandedSections(
               position.latitude, position.longitude, forceRefresh: true,
             );
+            _refreshNearbyStoriesIfMoved();
             context.read<MapBloc>().add(
               FetchNearbyAttractions(
                 latitude: position.latitude,
@@ -2895,8 +2900,45 @@ class _LivingMapPageState extends State<LivingMapPage>
     );
   }
 
-  String _selectedCountryFilter = 'Global';
+  /// The Travel Stories filter: [_nearYouFilter] (the default), 'Global', or
+  /// a country name from [countriesList].
+  static const String _nearYouFilter = 'Near you';
+  String _selectedCountryFilter = _nearYouFilter;
   String _modalSearchQuery = '';
+
+  /// Where the "Near you" stories were last loaded for. They reload once the
+  /// user is [_storiesReloadDistanceM] from here, not on every 500 m update.
+  /// Null while no location is known, when "Near you" shows the global feed.
+  double? _storiesLat;
+  double? _storiesLng;
+  static const double _storiesReloadDistanceM = 5000;
+  int _storiesRequest = 0;
+
+  void _refreshNearbyStoriesIfMoved() {
+    if (_selectedCountryFilter != _nearYouFilter) return;
+    final lat = _userLatitude;
+    final lng = _userLongitude;
+    if (lat == null || lng == null) return;
+    final fromLat = _storiesLat;
+    final fromLng = _storiesLng;
+    if (fromLat != null &&
+        fromLng != null &&
+        geo.Geolocator.distanceBetween(fromLat, fromLng, lat, lng) <
+            _storiesReloadDistanceM) {
+      return;
+    }
+    _loadTravelStories();
+  }
+
+  String get _storiesFilterLabel {
+    if (_selectedCountryFilter == _nearYouFilter) {
+      return _storiesLat != null ? '📍 Near you' : '🌐 Global';
+    }
+    if (_selectedCountryFilter == 'Global') return '🌐 Global';
+    return _selectedCountryFilter.length > 14
+        ? '${_selectedCountryFilter.substring(0, 12)}...'
+        : _selectedCountryFilter;
+  }
 
   void _showCountryFilterBottomSheet() {
     _modalSearchQuery = '';
@@ -2969,8 +3011,33 @@ class _LivingMapPageState extends State<LivingMapPage>
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       children: [
                         ListTile(
+                          leading: const Text('📍', style: TextStyle(fontSize: 18)),
+                          title: const Text('Near you', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.black87)),
+                          subtitle: Text(
+                            (_userLatitude ?? CacheService.getLastFetchLat()) != null
+                                ? 'Closest stories first'
+                                : 'Turn on location to see stories near you',
+                            style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                          ),
+                          trailing: _selectedCountryFilter == _nearYouFilter
+                              ? const Icon(Icons.check, color: AppColors.brandGreen)
+                              : null,
+                          onTap: () {
+                            setState(() {
+                              _selectedCountryFilter = _nearYouFilter;
+                            });
+                            _loadTravelStories();
+                            Navigator.pop(context);
+                          },
+                        ),
+                        const Divider(height: 1),
+                        ListTile(
                           leading: const Text('🌐', style: TextStyle(fontSize: 18)),
                           title: const Text('Global (All)', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.black87)),
+                          subtitle: Text(
+                            'Newest stories from everywhere',
+                            style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                          ),
                           trailing: _selectedCountryFilter == 'Global'
                               ? const Icon(Icons.check, color: AppColors.brandGreen)
                               : null,
@@ -3023,11 +3090,7 @@ class _LivingMapPageState extends State<LivingMapPage>
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                _selectedCountryFilter == 'Global'
-                    ? '🌐 Global'
-                    : (_selectedCountryFilter.length > 14
-                        ? '${_selectedCountryFilter.substring(0, 12)}...'
-                        : _selectedCountryFilter),
+                _storiesFilterLabel,
                 style: const TextStyle(
                   color: AppColors.brandGreen,
                   fontSize: 13,
@@ -3062,10 +3125,28 @@ class _LivingMapPageState extends State<LivingMapPage>
   }
 
   Future<void> _loadTravelStories() async {
+    final nearYou = _selectedCountryFilter == _nearYouFilter;
+    // Before the first fix of this session, the last place the user was seen
+    // is a better start than the global feed.
+    final rawLat = nearYou ? (_userLatitude ?? CacheService.getLastFetchLat()) : null;
+    final rawLng = nearYou ? (_userLongitude ?? CacheService.getLastFetchLng()) : null;
+    final hasLocation = rawLat != null && rawLng != null;
+    // Recorded now rather than on response, so a GPS fix landing while this
+    // load is in flight doesn't start a second one for the same spot. It also
+    // drives the label: "Near you" only when there is a location to be near.
+    _storiesLat = hasLocation ? rawLat : null;
+    _storiesLng = hasLocation ? rawLng : null;
+    final request = ++_storiesRequest;
     try {
       final stories = await TravelStoriesService().getStories(
-        country: _selectedCountryFilter == 'Global' ? null : _selectedCountryFilter,
+        country: nearYou || _selectedCountryFilter == 'Global'
+            ? null
+            : _selectedCountryFilter,
+        lat: _storiesLat,
+        lng: _storiesLng,
       );
+      // A newer load (another filter, or a move) has started; its answer wins.
+      if (request != _storiesRequest) return;
       if (mounted) {
         setState(() {
           _travelStories = stories.where((s) => !s.isJournal).toList();

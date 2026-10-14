@@ -54,6 +54,9 @@ class TravelStoryResponse(TravelStoryBase):
     is_liked: bool = False
     created_at: datetime
     comments: List[TravelStoryCommentResponse] = []
+    # Metres from the location the feed was asked for; only set when the
+    # request sent lat/lng and the story has a position.
+    distance_m: Optional[float] = None
 
     class Config:
         from_attributes = True

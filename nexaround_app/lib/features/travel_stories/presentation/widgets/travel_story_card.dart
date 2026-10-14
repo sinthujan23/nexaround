@@ -392,38 +392,57 @@ class _TravelStoryCardState extends State<TravelStoryCard> {
                   fit: StackFit.expand,
                   children: [
                     _buildImageGrid(allUrls),
-                    // Location Overlay Tag
+                    // Location Overlay Tag. Bounded to the photo's width so a
+                    // long place name ellipsizes instead of pushing the
+                    // distance off the card.
                     Positioned(
                       bottom: 8,
                       left: 8,
-                      child: GestureDetector(
-                        onTap: widget.onLocationTap,
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(10),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
-                            ),
-                            color: Colors.black.withOpacity(0.6),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(
-                                  Icons.location_on,
-                                  size: 10,
-                                  color: Colors.white,
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  widget.story.locationName,
-                                  style: const TextStyle(
-                                    fontSize: 9.5,
-                                    fontWeight: FontWeight.w700,
+                      right: 8,
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: GestureDetector(
+                          onTap: widget.onLocationTap,
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(10),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              color: Colors.black.withOpacity(0.6),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(
+                                    Icons.location_on,
+                                    size: 10,
                                     color: Colors.white,
                                   ),
-                                ),
-                              ],
+                                  const SizedBox(width: 4),
+                                  Flexible(
+                                    child: Text(
+                                      widget.story.locationName,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontSize: 9.5,
+                                        fontWeight: FontWeight.w700,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ),
+                                  if (widget.story.distanceM != null)
+                                    Text(
+                                      '  ·  ${_distanceLabel(widget.story.distanceM!)}',
+                                      style: const TextStyle(
+                                        fontSize: 9.5,
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.white70,
+                                      ),
+                                    ),
+                                ],
+                              ),
                             ),
                           ),
                         ),
@@ -600,5 +619,16 @@ class _TravelStoryCardState extends State<TravelStoryCard> {
     } else {
       return 'just now';
     }
+  }
+
+  /// "800 m away", "3.2 km away", "250 km away".
+  String _distanceLabel(double metres) {
+    if (metres < 100) return 'under 100 m away';
+    if (metres < 1000) {
+      return '${(metres / 50).round() * 50} m away';
+    }
+    final km = metres / 1000;
+    if (km < 10) return '${km.toStringAsFixed(1)} km away';
+    return '${km.round()} km away';
   }
 }

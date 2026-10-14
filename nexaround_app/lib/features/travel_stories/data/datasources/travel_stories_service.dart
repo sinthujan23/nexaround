@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:dio/dio.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../core/network/api_client.dart';
@@ -17,18 +18,27 @@ class TravelStoriesService {
   // Reference to the Hive Box we initialized in main.dart
   Box get _box => Hive.box('travel_stories_box');
 
-  Future<List<TravelStory>> getStories({String? country}) async {
+  /// [lat] and [lng] ask for the "Near you" feed: the server orders stories by
+  /// distance band, newest first within a band, and gives each its
+  /// distance. They are not sent when a country is picked.
+  Future<List<TravelStory>> getStories({String? country, double? lat, double? lng}) async {
+    final byCountry = country != null && country != 'Global';
+    final nearby = !byCountry && lat != null && lng != null;
     try {
       final response = await _dio.get(
         ApiConstants.travelStories,
-        queryParameters: country != null && country != 'Global' ? {'country': country} : null,
+        queryParameters: {
+          if (byCountry) 'country': country,
+          if (nearby) 'lat': lat,
+          if (nearby) 'lng': lng,
+        },
       );
       if (response.statusCode == 200 && response.data != null) {
         final List<dynamic> data = response.data;
         final stories = data.map((json) => TravelStory.fromJson(json)).toList();
-        
-        // Cache to Hive (only cache global/all list)
-        if (country == null || country == 'Global') {
+
+        // Cache to Hive (only cache the unfiltered list, global or near you)
+        if (!byCountry) {
           await _box.clear();
           for (var s in stories) {
             await _box.add(s.toJson());
@@ -41,10 +51,42 @@ class TravelStoriesService {
     }
     // Hive fallback: retrieve all and filter locally
     final allStories = _getStoriesFromHive(isJournal: false);
-    if (country != null && country != 'Global') {
+    if (byCountry) {
       return allStories.where((s) => s.country == country).toList();
     }
+    if (nearby) {
+      return _orderNearby(allStories, lat!, lng!);
+    }
     return allStories;
+  }
+
+  // The server's "Near you" bands (NEARBY_BANDS_M in
+  // nexaround_backend/app/api/v1/travel_stories.py), for the offline fallback.
+  static const List<double> _nearbyBandsM = [25000, 150000, 1000000];
+
+  List<TravelStory> _orderNearby(List<TravelStory> stories, double lat, double lng) {
+    double? distanceOf(TravelStory s) {
+      final sLat = s.latitude;
+      final sLng = s.longitude;
+      // (0, 0) is an unset location, not a real one.
+      if (sLat == null || sLng == null || (sLat == 0 && sLng == 0)) return null;
+      return Geolocator.distanceBetween(lat, lng, sLat, sLng);
+    }
+
+    int bandOf(double? distance) {
+      if (distance == null) return _nearbyBandsM.length + 1;
+      for (var i = 0; i < _nearbyBandsM.length; i++) {
+        if (distance <= _nearbyBandsM[i]) return i;
+      }
+      return _nearbyBandsM.length;
+    }
+
+    final ordered = stories.map((s) => s.copyWith(distanceM: distanceOf(s))).toList();
+    ordered.sort((a, b) {
+      final byBand = bandOf(a.distanceM).compareTo(bandOf(b.distanceM));
+      return byBand != 0 ? byBand : b.createdAt.compareTo(a.createdAt);
+    });
+    return ordered;
   }
 
   List<TravelStory> getCachedJournals() {

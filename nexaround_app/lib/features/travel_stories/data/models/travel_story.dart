@@ -92,6 +92,11 @@ class TravelStory {
   final String? country;
   final DateTime? travelDate;
 
+  /// Metres from where the "Near you" feed was asked for; null on every
+  /// other list. Not written to the Hive cache: it goes stale as soon as the
+  /// traveller moves, and the offline fallback works it out again.
+  final double? distanceM;
+
   TravelStory({
     required this.id,
     required this.userId,
@@ -117,6 +122,7 @@ class TravelStory {
     this.cloudFolderUrl,
     this.country,
     this.travelDate,
+    this.distanceM,
   });
 
   TravelStory copyWith({
@@ -144,6 +150,7 @@ class TravelStory {
     String? cloudFolderUrl,
     String? country,
     DateTime? travelDate,
+    double? distanceM,
   }) {
     return TravelStory(
       id: id ?? this.id,
@@ -170,6 +177,7 @@ class TravelStory {
       cloudFolderUrl: cloudFolderUrl ?? this.cloudFolderUrl,
       country: country ?? this.country,
       travelDate: travelDate ?? this.travelDate,
+      distanceM: distanceM ?? this.distanceM,
     );
   }
 
@@ -218,6 +226,7 @@ class TravelStory {
       travelDate: json['travel_date'] != null 
           ? DateTime.parse(json['travel_date'] as String) 
           : null,
+      distanceM: (json['distance_m'] as num?)?.toDouble(),
     );
   }
 

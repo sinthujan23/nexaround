@@ -3,7 +3,7 @@ import io
 import uuid
 from typing import List, Optional
 from PIL import Image
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Query
 
 ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
@@ -19,17 +19,64 @@ from app.schemas.travel_story import (
     TravelStoryCommentCreate,
     TravelStoryCommentResponse
 )
+from app.utils.place_match import haversine_m
 
 router = APIRouter(prefix="/travel-stories", tags=["travel-stories"])
+
+# "Near you" groups stories by distance - same town, day trip, region, farther -
+# and shows the newest first inside each group, so a story posted yesterday
+# 3 km away is not stuck behind a year-old one 1 km away. Nothing is filtered
+# out: with few stories, a radius would leave most travellers an empty row.
+NEARBY_BANDS_M = (25_000, 150_000, 1_000_000)
+
+
+def _distance_m(story, lat: float, lng: float) -> Optional[float]:
+    """Metres from (lat, lng) to the story, or None when it has no position.
+
+    (0, 0) counts as no position: it is the placeholder an unset location
+    becomes, not a story posted in the Gulf of Guinea.
+    """
+    if story.latitude is None or story.longitude is None:
+        return None
+    if story.latitude == 0 and story.longitude == 0:
+        return None
+    return haversine_m(lat, lng, story.latitude, story.longitude)
+
+
+def _order_nearby(pairs: list) -> list:
+    """Sort (story, distance) pairs by distance band, then newest first.
+
+    Stories with no position go after every band.
+    """
+    def band(distance: Optional[float]) -> int:
+        if distance is None:
+            return len(NEARBY_BANDS_M) + 1
+        for i, bound in enumerate(NEARBY_BANDS_M):
+            if distance <= bound:
+                return i
+        return len(NEARBY_BANDS_M)
+
+    return sorted(
+        pairs,
+        key=lambda p: (band(p[1]), -(p[0].created_at.timestamp() if p[0].created_at else 0)),
+    )
 
 
 @router.get("", response_model=List[TravelStoryResponse])
 async def get_travel_stories(
     country: Optional[str] = None,
+    lat: Optional[float] = Query(None, ge=-90, le=90),
+    lng: Optional[float] = Query(None, ge=-180, le=180),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Get all travel stories, sorted newest first."""
+    """Get travel stories, newest first.
+
+    With `lat` and `lng`, each story carries its `distance_m` from that point,
+    and - unless a `country` is picked - the list is ordered "Near you" style
+    (see `_order_nearby`). Without them the response is unchanged, so app
+    builds that don't send a location keep their newest-first feed.
+    """
     stmt = select(TravelStory).where(
         TravelStory.is_journal == False,
         or_(TravelStory.is_public == True, TravelStory.user_id == current_user.id)
@@ -39,9 +86,16 @@ async def get_travel_stories(
     stmt = stmt.order_by(TravelStory.created_at.desc())
     res = await db.execute(stmt)
     stories = res.scalars().all()
-    
+
+    if lat is not None and lng is not None:
+        pairs = [(s, _distance_m(s, lat, lng)) for s in stories]
+        if not country:
+            pairs = _order_nearby(pairs)
+    else:
+        pairs = [(s, None) for s in stories]
+
     response_list = []
-    for s in stories:
+    for s, distance in pairs:
         is_liked = any(like.user_id == current_user.id for like in s.likes)
         
         comments_list = []
@@ -65,10 +119,11 @@ async def get_travel_stories(
                 total_spend=s.total_spend, spend_currency=s.spend_currency,
                 cloud_provider=s.cloud_provider, cloud_folder_url=s.cloud_folder_url,
                 travel_date=s.travel_date, country=s.country,
-                created_at=s.created_at, comments=comments_list
+                created_at=s.created_at, comments=comments_list,
+                distance_m=round(distance) if distance is not None else None,
             )
         )
-        
+
     return response_list
 
 @router.get("/journal", response_model=List[TravelStoryResponse])
