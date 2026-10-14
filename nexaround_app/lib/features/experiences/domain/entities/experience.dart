@@ -82,6 +82,10 @@ class ExperiencePackageEntity {
   final String? description;
   final List<String> photoUrls;
   final int? maxParticipants;
+
+  /// How many days ahead a date may be requested; null on a card, where the
+  /// enquiry sheet falls back to a year (the server's default).
+  final int? bookingWindowDays;
   final List<String> inclusions;
   final List<String> languages;
   final String? meetingPointAddress;
@@ -113,6 +117,7 @@ class ExperiencePackageEntity {
     this.description,
     this.photoUrls = const [],
     this.maxParticipants,
+    this.bookingWindowDays,
     this.inclusions = const [],
     this.languages = const [],
     this.meetingPointAddress,

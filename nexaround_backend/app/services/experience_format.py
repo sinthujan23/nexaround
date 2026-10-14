@@ -7,7 +7,14 @@ be tested on this box. The rules most likely to break silently live here rather
 than inline in a router.
 """
 
+from datetime import date, timedelta
 from typing import Optional
+
+# How far ahead a traveller may ask for a date on a package that sets no window
+# of its own, and the longest window a package may set. The app's calendar
+# stops at the same place.
+DEFAULT_BOOKING_WINDOW_DAYS = 365
+MAX_BOOKING_WINDOW_DAYS = 365
 
 # How near "nearby" is. Beyond this the app shows the "showing the nearest"
 # banner instead of a plain list. Lives server-side and is echoed in the
@@ -156,3 +163,26 @@ def validate_enquiry_payload(payload: dict) -> list[str]:
         errors.append("Message is too long.")
 
     return errors
+
+
+def booking_window_error(
+    preferred: Optional[date],
+    today: date,
+    window_days: Optional[int] = None,
+) -> Optional[str]:
+    """Why a traveller may not ask for `preferred`, or None when they may.
+
+    `window_days` is the package's own window; None means the platform
+    default. `today` is the server's UTC date, and the traveller's own date can
+    be a day either side of it, so each end allows one day of slack rather
+    than refusing a date the app's calendar offered.
+    """
+    if preferred is None:
+        return None
+    if preferred < today - timedelta(days=1):
+        return "Please choose a date that hasn't passed."
+    window = window_days or DEFAULT_BOOKING_WINDOW_DAYS
+    if preferred > today + timedelta(days=window + 1):
+        days = "1 day" if window == 1 else f"{window} days"
+        return f"This experience can only be booked up to {days} ahead."
+    return None

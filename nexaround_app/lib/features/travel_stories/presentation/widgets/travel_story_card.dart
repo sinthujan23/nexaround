@@ -8,9 +8,6 @@ import '../../data/models/travel_story.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
-import 'package:nexaround_app/core/widgets/full_screen_image_viewer.dart';
-import 'package:nexaround_app/core/services/cloud_storage_service.dart';
-import 'package:nexaround_app/features/travel_stories/data/datasources/travel_stories_service.dart';
 
 class TravelStoryCard extends StatefulWidget {
   final TravelStory story;
@@ -18,6 +15,7 @@ class TravelStoryCard extends StatefulWidget {
   final VoidCallback onCommentTap;
   final VoidCallback? onLocationTap;
   final VoidCallback? onTap;
+  final void Function(int imageIndex)? onImageTap;
 
   const TravelStoryCard({
     super.key,
@@ -26,6 +24,7 @@ class TravelStoryCard extends StatefulWidget {
     required this.onCommentTap,
     this.onLocationTap,
     this.onTap,
+    this.onImageTap,
   });
 
   @override
@@ -65,7 +64,13 @@ class _TravelStoryCardState extends State<TravelStoryCard> {
 
   Widget _buildImage(String url, int index, List<String> allUrls) {
     return GestureDetector(
-      onTap: () => _openFullScreenViewer(index, allUrls),
+      onTap: () {
+        if (widget.onImageTap != null) {
+          widget.onImageTap!(index);
+        } else if (widget.onTap != null) {
+          widget.onTap!();
+        }
+      },
       child: _buildImageContent(url),
     );
   }
@@ -153,36 +158,6 @@ class _TravelStoryCardState extends State<TravelStoryCard> {
     }
   }
 
-  void _openFullScreenViewer(int initialIndex, List<String> allUrls) {
-    final authState = context.read<AuthBloc>().state;
-    final currentUserId = authState is AuthAuthenticated ? authState.user.id : null;
-    final isAuthor = currentUserId == widget.story.userId;
-
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => FullScreenImageViewer(
-          imageUrls: allUrls,
-          initialIndex: initialIndex,
-          showDeleteOption: isAuthor,
-          onDelete: () async {
-            if (widget.story.cloudFolderUrl != null && widget.story.cloudProvider != null) {
-              final provider = widget.story.cloudProvider == 'google_drive' 
-                  ? CloudProvider.googleDrive 
-                  : CloudProvider.dropbox;
-              try {
-                await CloudStorageService().deleteFromCloud(provider, widget.story.cloudFolderUrl!);
-              } catch (e) {
-                print("Failed to delete from cloud: $e");
-                // We still proceed to delete the post from the app
-              }
-            }
-            await TravelStoriesService().deleteStory(widget.story.id);
-          },
-        ),
-      ),
-    );
-  }
 
   Widget _buildImageGrid(List<String> urls) {
     if (urls.isEmpty) return const SizedBox.shrink();

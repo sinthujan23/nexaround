@@ -14,7 +14,9 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
-from app.services.experience_format import NEARBY_THRESHOLD_M
+from app.services.experience_format import (
+    MAX_BOOKING_WINDOW_DAYS, NEARBY_THRESHOLD_M,
+)
 
 
 # --- App-facing -------------------------------------------------------------
@@ -71,6 +73,9 @@ class ExperiencePackageDetail(ExperiencePackageCard):
     description: Optional[str] = None
     photo_urls: list[str] = []
     max_participants: Optional[int] = None
+    # How many days ahead the app's calendar lets a traveller pick a date.
+    # Always set: a package without its own window gets the platform default.
+    booking_window_days: int
     inclusions: list[str] = []
     languages: list[str] = []
     meeting_point_address: Optional[str] = None
@@ -167,6 +172,8 @@ class ExperiencePackageBase(BaseModel):
     price_basis: str = Field("per_person", max_length=20)
     duration_minutes: Optional[int] = Field(None, ge=0)
     max_participants: Optional[int] = Field(None, ge=1)
+    # None: the platform default (DEFAULT_BOOKING_WINDOW_DAYS).
+    booking_window_days: Optional[int] = Field(None, ge=1, le=MAX_BOOKING_WINDOW_DAYS)
     inclusions: list[str] = []
     languages: list[str] = []
     uses_vendor_location: bool = True

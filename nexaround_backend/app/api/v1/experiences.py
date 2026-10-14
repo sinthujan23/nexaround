@@ -1,6 +1,7 @@
 """App-facing Experiences endpoints: the vendor marketplace in Discovery."""
 
 import uuid
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import (
@@ -22,7 +23,7 @@ from app.schemas.experience import (
 )
 from app.services.email_service import send_vendor_enquiry_email
 from app.services.experience_format import (
-    NEARBY_THRESHOLD_M, is_nearby, validate_enquiry_payload,
+    NEARBY_THRESHOLD_M, booking_window_error, is_nearby, validate_enquiry_payload,
 )
 from app.services.experience_service import (
     package_to_card, package_to_detail, vendor_to_public,
@@ -178,6 +179,15 @@ async def create_experience_enquiry(
         raise HTTPException(status_code=404, detail="Experience not found")
 
     errors = validate_enquiry_payload(data.model_dump())
+    # Checked here as well as by the app's calendar: an app from before the
+    # package had a window offers a year ahead.
+    date_error = booking_window_error(
+        data.preferred_date,
+        datetime.now(timezone.utc).date(),
+        package.booking_window_days,
+    )
+    if date_error:
+        errors.append(date_error)
     if errors:
         raise HTTPException(status_code=400, detail=" ".join(errors))
 

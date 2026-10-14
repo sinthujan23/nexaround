@@ -10,10 +10,15 @@ anywhere: it silently becomes a default, and with no Flutter toolchain on the
 build box nothing else would catch it.
 """
 
+from datetime import date, timedelta
+
 import pytest
 
 from app.services.experience_format import (
+    DEFAULT_BOOKING_WINDOW_DAYS,
+    MAX_BOOKING_WINDOW_DAYS,
     NEARBY_THRESHOLD_M,
+    booking_window_error,
     format_duration,
     format_price,
     is_nearby,
@@ -160,6 +165,57 @@ def test_an_implausible_party_size_is_rejected(size):
         "party_size": size,
     })
     assert errors
+
+
+# --- Booking window ---------------------------------------------------------
+
+TODAY = date(2026, 12, 1)
+
+
+def test_no_date_is_always_fine():
+    assert booking_window_error(None, TODAY, 30) is None
+
+
+def test_a_date_inside_the_packages_window_passes():
+    assert booking_window_error(TODAY + timedelta(days=30), TODAY, 30) is None
+
+
+def test_a_date_beyond_the_packages_window_is_refused():
+    error = booking_window_error(TODAY + timedelta(days=45), TODAY, 30)
+    assert error == "This experience can only be booked up to 30 days ahead."
+
+
+def test_a_package_without_a_window_gets_the_platform_default():
+    last = TODAY + timedelta(days=DEFAULT_BOOKING_WINDOW_DAYS)
+    assert booking_window_error(last, TODAY, None) is None
+    assert booking_window_error(last + timedelta(days=2), TODAY, None)
+
+
+def test_a_traveller_a_day_ahead_of_utc_is_not_refused_their_last_day():
+    """Their calendar's last day is the server's last day plus one."""
+    assert booking_window_error(TODAY + timedelta(days=31), TODAY, 30) is None
+
+
+def test_a_traveller_a_day_behind_utc_can_still_ask_for_their_today():
+    assert booking_window_error(TODAY - timedelta(days=1), TODAY, 30) is None
+
+
+def test_a_date_that_has_passed_is_refused():
+    assert booking_window_error(TODAY - timedelta(days=2), TODAY, 30)
+
+
+def test_the_partner_and_admin_forms_accept_the_same_windows():
+    from pydantic import ValidationError
+
+    from app.schemas.experience import ExperiencePackageBase
+    from app.schemas.partner import PartnerPackageBase
+
+    for schema in (ExperiencePackageBase, PartnerPackageBase):
+        assert schema(title="Boat", booking_window_days=30).booking_window_days == 30
+        assert schema(title="Boat").booking_window_days is None
+        for bad in (0, MAX_BOOKING_WINDOW_DAYS + 1):
+            with pytest.raises(ValidationError):
+                schema(title="Boat", booking_window_days=bad)
 
 
 # --- Client/server contract -------------------------------------------------

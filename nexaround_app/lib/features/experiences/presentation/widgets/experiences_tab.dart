@@ -388,6 +388,7 @@ class ExperiencesTabState extends State<ExperiencesTab> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      showDragHandle: false,
       backgroundColor: Colors.transparent,
       builder: (ctx) {
         String searchQuery = '';

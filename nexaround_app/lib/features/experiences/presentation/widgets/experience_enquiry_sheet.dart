@@ -395,11 +395,18 @@ class _EnquirySheetState extends State<_EnquirySheet> {
 
   Future<void> _pickDate() async {
     final now = DateTime.now();
+    // The vendor's window; the server refuses anything past it.
+    final windowDays = widget.package.bookingWindowDays ?? 365;
+    final lastDate = now.add(Duration(days: windowDays));
+    final tomorrow = now.add(const Duration(days: 1));
     final picked = await showDatePicker(
       context: context,
-      initialDate: _preferredDate ?? now.add(const Duration(days: 1)),
+      initialDate: _preferredDate ?? (tomorrow.isAfter(lastDate) ? now : tomorrow),
       firstDate: now,
-      lastDate: now.add(const Duration(days: 365)),
+      lastDate: lastDate,
+      helpText: windowDays == 1
+          ? 'Book up to 1 day ahead'
+          : 'Book up to $windowDays days ahead',
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(

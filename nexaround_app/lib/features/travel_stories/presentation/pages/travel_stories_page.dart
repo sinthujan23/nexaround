@@ -20,12 +20,14 @@ import 'package:nexaround_app/core/error/user_message.dart';
 class TravelStoriesPage extends StatefulWidget {
   final List<TravelStory> stories;
   final int initialIndex;
+  final int initialImageIndex;
   final Function(String storyId)? onStoryDeleted;
 
   const TravelStoriesPage({
     super.key,
     required this.stories,
     required this.initialIndex,
+    this.initialImageIndex = 0,
     this.onStoryDeleted,
   });
 
@@ -69,6 +71,12 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
   void initState() {
     super.initState();
     _currentIndex = widget.initialIndex;
+    if (widget.initialImageIndex > 0 &&
+        widget.initialIndex >= 0 &&
+        widget.initialIndex < widget.stories.length) {
+      _imageIndexes[widget.stories[widget.initialIndex].id] =
+          widget.initialImageIndex;
+    }
     _pageController = PageController(initialPage: widget.initialIndex);
     _startStoryTimer();
   }

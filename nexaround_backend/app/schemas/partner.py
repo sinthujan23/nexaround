@@ -14,6 +14,8 @@ from typing import Optional
 
 from pydantic import BaseModel, EmailStr, Field
 
+from app.services.experience_format import MAX_BOOKING_WINDOW_DAYS
+
 
 # --- Admin-side: managing a vendor's logins ---------------------------------
 
@@ -145,6 +147,8 @@ class PartnerPackageBase(BaseModel):
     price_basis: Optional[str] = Field("per_person", max_length=20)
     duration_minutes: Optional[int] = Field(None, ge=0)
     max_participants: Optional[int] = Field(None, ge=1)
+    # How far ahead travellers may book: the vendor's own business rule.
+    booking_window_days: Optional[int] = Field(None, ge=1, le=MAX_BOOKING_WINDOW_DAYS)
     inclusions: list[str] = []
     languages: list[str] = []
     uses_vendor_location: bool = True

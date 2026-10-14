@@ -8,7 +8,7 @@ import { Switch, Drawer, Toast, Section } from '../components/Kit';
 import LocationPicker from '../components/LocationPicker';
 import ImageUploader from '../components/ImageUploader';
 import {
-  CATEGORIES, PRICE_BASES, categoryLabel, categoryTone, basisLabel, formatPrice, formatDuration,
+  CATEGORIES, PRICE_BASES, bookingWindowOptions, categoryLabel, categoryTone, basisLabel, formatPrice, formatDuration,
   visibility, visibilityTone,
 } from '../format';
 
@@ -16,6 +16,7 @@ const empty = {
   title: '', summary: '', description: '', category: 'boat', tags: [],
   photo_urls: [], price_amount: '', price_currency: 'LKR',
   price_basis: 'per_person', duration_minutes: '', max_participants: '',
+  booking_window_days: '',
   inclusions: [], languages: [], uses_vendor_location: true,
   meeting_point_address: '', is_active: true, latitude: null, longitude: null,
 };
@@ -30,6 +31,7 @@ const toPayload = (form) => ({
   price_amount: form.price_amount === '' || form.price_amount == null ? null : Number(form.price_amount),
   duration_minutes: form.duration_minutes === '' || form.duration_minutes == null ? null : Number(form.duration_minutes),
   max_participants: form.max_participants === '' || form.max_participants == null ? null : Number(form.max_participants),
+  booking_window_days: form.booking_window_days === '' || form.booking_window_days == null ? null : Number(form.booking_window_days),
   latitude: form.uses_vendor_location ? null : Number(form.latitude),
   longitude: form.uses_vendor_location ? null : Number(form.longitude),
 });
@@ -80,6 +82,7 @@ export default function Packages({ initialTarget }) {
       price_amount: pkg.price_amount ?? '',
       duration_minutes: pkg.duration_minutes ?? '',
       max_participants: pkg.max_participants ?? '',
+      booking_window_days: pkg.booking_window_days ?? '',
       summary: pkg.summary || '',
       description: pkg.description || '',
     });
@@ -319,7 +322,7 @@ export default function Packages({ initialTarget }) {
                 </select>
               </div>
             </div>
-            <div className="form-grid-2">
+            <div className="form-grid-3">
               <div className="form-group">
                 <label className="form-label">Duration (minutes)</label>
                 <input
@@ -333,6 +336,18 @@ export default function Packages({ initialTarget }) {
                   type="number" min="1" className="form-input" placeholder="8"
                   value={form.max_participants} onChange={(e) => patch({ max_participants: e.target.value })}
                 />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Bookable</label>
+                <select
+                  className="form-select" value={form.booking_window_days ?? ''}
+                  title="How far ahead travellers can pick a date"
+                  onChange={(e) => patch({ booking_window_days: e.target.value })}
+                >
+                  {bookingWindowOptions(form.booking_window_days).map((w) => (
+                    <option key={w.value} value={w.value}>{w.label}</option>
+                  ))}
+                </select>
               </div>
             </div>
           </Section>

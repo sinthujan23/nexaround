@@ -3126,13 +3126,14 @@ class _LivingMapPageState extends State<LivingMapPage>
     }
   }
 
-  void _navigateToTravelStories(int startIndex) async {
+  void _navigateToTravelStories(int startIndex, {int initialImageIndex = 0}) async {
     await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => TravelStoriesPage(
           stories: _travelStories,
           initialIndex: startIndex,
+          initialImageIndex: initialImageIndex,
           onStoryDeleted: (storyId) {
             setState(() {
               _travelStories.removeWhere((s) => s.id == storyId);
@@ -3271,6 +3272,10 @@ class _LivingMapPageState extends State<LivingMapPage>
               );
             },
             onTap: () => _navigateToTravelStories(index),
+            onImageTap: (imgIndex) => _navigateToTravelStories(
+              index,
+              initialImageIndex: imgIndex,
+            ),
           );
         },
       ),

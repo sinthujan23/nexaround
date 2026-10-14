@@ -389,8 +389,8 @@ _PARTNER_VENDOR_SCALARS = (
 _PARTNER_PACKAGE_SCALARS = (
     "title", "summary", "description", "category", "tags", "photo_urls",
     "price_amount", "price_currency", "price_basis", "duration_minutes",
-    "max_participants", "inclusions", "languages", "uses_vendor_location",
-    "meeting_point_address",
+    "max_participants", "booking_window_days", "inclusions", "languages",
+    "uses_vendor_location", "meeting_point_address",
     # Kept deliberately: on a package this is the vendor's own publish toggle.
     # It is safe because `is_published` stays gated behind the vendor's
     # `is_active`, which only an admin can set - so a suspended vendor cannot
@@ -456,6 +456,7 @@ def _package_out(package) -> PartnerPackageResponse:
         price_basis=package.price_basis,
         duration_minutes=package.duration_minutes,
         max_participants=package.max_participants,
+        booking_window_days=package.booking_window_days,
         inclusions=package.inclusions or [],
         languages=package.languages or [],
         uses_vendor_location=bool(package.uses_vendor_location),

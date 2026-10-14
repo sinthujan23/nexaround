@@ -123,6 +123,10 @@ class ExperiencePackage(Base):
 
     duration_minutes: Mapped[int] = mapped_column(Integer, nullable=True)
     max_participants: Mapped[int] = mapped_column(Integer, nullable=True)
+    # How many days ahead a traveller may ask for a date, set by the vendor or
+    # the admin. NULL means the platform default
+    # (experience_format.DEFAULT_BOOKING_WINDOW_DAYS).
+    booking_window_days: Mapped[int] = mapped_column(Integer, nullable=True)
     inclusions: Mapped[list] = mapped_column(ARRAY(String), default=list)
     languages: Mapped[list] = mapped_column(ARRAY(String), default=list)
 

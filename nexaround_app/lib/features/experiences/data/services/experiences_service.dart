@@ -1,5 +1,7 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:nexaround_app/core/constants/api_constants.dart';
+import 'package:nexaround_app/core/error/user_message.dart';
 import 'package:nexaround_app/core/constants/countries.dart';
 import 'package:nexaround_app/core/network/api_client.dart';
 import 'package:nexaround_app/features/experiences/data/models/experience_model.dart';
@@ -204,7 +206,10 @@ class ExperiencesService {
       return null;
     } catch (e) {
       debugPrint('❌ Error submitting experience enquiry: $e');
-      return 'Could not send your request. Please try again.';
+      // The server's own sentence when it has one, e.g. a date past the
+      // vendor's booking window.
+      return (e is DioException ? safeServerDetail(e.response) : null) ??
+          'Could not send your request. Please try again.';
     }
   }
 }

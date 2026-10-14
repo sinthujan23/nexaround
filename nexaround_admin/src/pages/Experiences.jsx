@@ -28,6 +28,25 @@ const PRICE_BASES = [
   { value: 'on_request', label: 'On request' },
 ];
 
+// How far ahead travellers may pick a date. '' is the platform default, which
+// the server and the app both treat as a year.
+const BOOKING_WINDOWS = [
+  { value: '', label: 'Up to a year (default)' },
+  { value: 7, label: '1 week ahead' },
+  { value: 14, label: '2 weeks ahead' },
+  { value: 30, label: '1 month ahead' },
+  { value: 60, label: '2 months ahead' },
+  { value: 90, label: '3 months ahead' },
+  { value: 180, label: '6 months ahead' },
+];
+
+// The presets, plus the package's own value when it was set to something else
+// (through the partner portal or the API), so opening it does not lose it.
+const bookingWindowOptions = (current) =>
+  current === '' || current == null || BOOKING_WINDOWS.some((w) => w.value === Number(current))
+    ? BOOKING_WINDOWS
+    : [...BOOKING_WINDOWS, { value: Number(current), label: `${current} days ahead` }];
+
 const emptyVendor = {
   name: '', description: '', latitude: '', longitude: '', address: '',
   google_place_id: '', city: '', country_code: 'LK', contact_phone: '',
@@ -41,6 +60,7 @@ const emptyPackage = {
   title: '', summary: '', description: '', category: 'boat', tags: [],
   photo_urls: [], price_amount: '', price_currency: 'LKR',
   price_basis: 'per_person', duration_minutes: '', max_participants: '',
+  booking_window_days: '',
   inclusions: [], languages: [], uses_vendor_location: true,
   latitude: null, longitude: null, meeting_point_address: '',
   is_active: true, sort_order: 0,
@@ -359,6 +379,7 @@ export default function Experiences() {
       price_amount: pkg.price_amount ?? '',
       duration_minutes: pkg.duration_minutes ?? '',
       max_participants: pkg.max_participants ?? '',
+      booking_window_days: pkg.booking_window_days ?? '',
       summary: pkg.summary || '',
       description: pkg.description || '',
     });
@@ -379,6 +400,7 @@ export default function Experiences() {
       price_amount: packageForm.price_amount === '' ? null : Number(packageForm.price_amount),
       duration_minutes: packageForm.duration_minutes === '' ? null : Number(packageForm.duration_minutes),
       max_participants: packageForm.max_participants === '' ? null : Number(packageForm.max_participants),
+      booking_window_days: packageForm.booking_window_days === '' ? null : Number(packageForm.booking_window_days),
       sort_order: Number(packageForm.sort_order) || 0,
       latitude: packageForm.uses_vendor_location ? null : Number(packageForm.latitude),
       longitude: packageForm.uses_vendor_location ? null : Number(packageForm.longitude),
@@ -1213,7 +1235,7 @@ export default function Experiences() {
                 </select>
               </div>
             </div>
-            <div className="form-grid-2">
+            <div className="form-grid-3">
               <div className="form-group">
                 <label className="form-label">Duration (minutes)</label>
                 <input
@@ -1229,6 +1251,18 @@ export default function Experiences() {
                   value={packageForm.max_participants}
                   onChange={(e) => patchPackage({ max_participants: e.target.value })}
                 />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Bookable</label>
+                <select
+                  className="form-select" value={packageForm.booking_window_days}
+                  title="How far ahead travellers can pick a date"
+                  onChange={(e) => patchPackage({ booking_window_days: e.target.value })}
+                >
+                  {bookingWindowOptions(packageForm.booking_window_days).map((w) => (
+                    <option key={w.value} value={w.value}>{w.label}</option>
+                  ))}
+                </select>
               </div>
             </div>
           </div>

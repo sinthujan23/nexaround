@@ -21,7 +21,8 @@ from app.schemas.experience import (
     ExperienceVendorPublic,
 )
 from app.services.experience_format import (
-    format_duration, format_price, is_published, resolve_package_point,
+    DEFAULT_BOOKING_WINDOW_DAYS, format_duration, format_price, is_published,
+    resolve_package_point,
 )
 from app.utils.geo_utils import create_point, get_lat_lng
 
@@ -103,6 +104,7 @@ def package_to_detail(
         description=package.description,
         photo_urls=package.photo_urls or [],
         max_participants=package.max_participants,
+        booking_window_days=package.booking_window_days or DEFAULT_BOOKING_WINDOW_DAYS,
         inclusions=package.inclusions or [],
         languages=package.languages or [],
         meeting_point_address=package.meeting_point_address,

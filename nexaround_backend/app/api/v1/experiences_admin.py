@@ -72,8 +72,8 @@ _VENDOR_SCALARS = (
 _PACKAGE_SCALARS = (
     "title", "summary", "description", "category", "tags", "photo_urls",
     "price_amount", "price_currency", "price_basis", "duration_minutes",
-    "max_participants", "inclusions", "languages", "uses_vendor_location",
-    "meeting_point_address", "is_active", "sort_order",
+    "max_participants", "booking_window_days", "inclusions", "languages",
+    "uses_vendor_location", "meeting_point_address", "is_active", "sort_order",
 )
 
 
@@ -129,6 +129,7 @@ def _package_response(package: ExperiencePackage) -> ExperiencePackageAdminRespo
         price_basis=package.price_basis or "per_person",
         duration_minutes=package.duration_minutes,
         max_participants=package.max_participants,
+        booking_window_days=package.booking_window_days,
         inclusions=package.inclusions or [],
         languages=package.languages or [],
         uses_vendor_location=package.uses_vendor_location,

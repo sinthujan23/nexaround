@@ -18,6 +18,25 @@ export const PRICE_BASES = [
   { value: 'on_request', label: 'On request' },
 ];
 
+// How far ahead travellers may pick a date. '' is the platform default, which
+// the server and the app both treat as a year.
+export const BOOKING_WINDOWS = [
+  { value: '', label: 'Up to a year (default)' },
+  { value: 7, label: '1 week ahead' },
+  { value: 14, label: '2 weeks ahead' },
+  { value: 30, label: '1 month ahead' },
+  { value: 60, label: '2 months ahead' },
+  { value: 90, label: '3 months ahead' },
+  { value: 180, label: '6 months ahead' },
+];
+
+// The presets, plus the package's own value when NexAround set it to something
+// else, so opening the package does not lose it.
+export const bookingWindowOptions = (current) =>
+  current === '' || current == null || BOOKING_WINDOWS.some((w) => w.value === Number(current))
+    ? BOOKING_WINDOWS
+    : [...BOOKING_WINDOWS, { value: Number(current), label: `${current} days ahead` }];
+
 // The partner API accepts only these three; spam is an admin-only status.
 export const ENQUIRY_STATUSES = ['new', 'contacted', 'closed'];
 export const STATUS_LABELS = { new: 'New', contacted: 'Contacted', closed: 'Closed', spam: 'Spam' };
