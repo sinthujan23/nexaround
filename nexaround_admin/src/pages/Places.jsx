@@ -363,7 +363,7 @@ export default function Places() {
     }
   };
 
-  if (error && !data) return <PageError>Could not load places: {error}</PageError>;
+  if (error && !data) return <PageError error={error} onRetry={refetch} title="Places Unavailable">Could not load places: {error}</PageError>;
 
   return (
     <div>
@@ -372,7 +372,12 @@ export default function Places() {
           {TABS.map((t) => (
             <button key={t} className={`seg-btn ${tab === t ? 'active' : ''}`} onClick={() => changeTab(t)}>
               <span className={`dot ${STATUS_DOT[t]}`} /> {STATUS_LABELS[t]}
-              <span className="seg-count">{(tabCounts[t] ?? 0).toLocaleString()}</span>
+              <span className="seg-count" style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                {(tabCounts[t] ?? 0).toLocaleString()}
+                {loading && tab === t && (
+                  <span className="tab-buffering-dot" title="Loading..." />
+                )}
+              </span>
             </button>
           ))}
         </div>
@@ -407,7 +412,14 @@ export default function Places() {
           </select>
           <Switch checked={onlyDuplicates} onChange={setFilter(setOnlyDuplicates)} label="Same spot as another place" />
         </div>
-        <button className="icon-btn" title="Refresh" onClick={refetch}><RefreshIcon size={16} /></button>
+        <button
+          className="icon-btn"
+          title="Refresh"
+          onClick={refetch}
+          disabled={loading}
+        >
+          <RefreshIcon size={16} className={loading ? 'spin-anim' : ''} />
+        </button>
       </div>
 
       <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', margin: '-4px 0 12px' }}>
@@ -415,15 +427,35 @@ export default function Places() {
       </div>
 
       <div className="approvals-split places-split">
-        <div className="card" style={{ padding: 0, minWidth: 0 }}>
-          {loading && !data ? (
-            <Loading>Loading places…</Loading>
-          ) : places.length === 0 ? (
+        <div className="card" style={{ padding: 0, minWidth: 0, position: 'relative' }}>
+          {/* Top animated buffering bar */}
+          {loading && <div className="card-buffering-bar" />}
+
+          {loading && places.length === 0 ? (
+            <div className="places-loading-box">
+              <div className="places-loading-spinner-wrap">
+                <div className="places-pulse-ring" />
+                <div className="loader" style={{ width: '32px', height: '32px', margin: 0 }} />
+              </div>
+              <div className="places-loading-msg">
+                <strong>Loading places…</strong>
+                <span>Fetching {STATUS_LABELS[tab].toLowerCase()} places from database</span>
+              </div>
+            </div>
+          ) : !loading && places.length === 0 ? (
             <EmptyState icon={<MapPinIcon size={28} />} title={filtered ? 'No places match' : `No ${STATUS_LABELS[tab].toLowerCase()} places`}>
               {filtered ? 'Try a different search or filter.' : TAB_HINTS[tab]}
             </EmptyState>
           ) : (
-            <div className="table-wrap">
+            <div className="table-wrap" style={{ position: 'relative' }}>
+              {loading && (
+                <div className="table-buffering-overlay">
+                  <div className="buffering-badge">
+                    <div className="loader loader-sm" />
+                    <span>Updating places…</span>
+                  </div>
+                </div>
+              )}
               <table className="places-table">
                 <thead>
                   <tr>
@@ -433,7 +465,7 @@ export default function Places() {
                     <th aria-label="Actions" />
                   </tr>
                 </thead>
-                <tbody style={{ opacity: loading ? 0.5 : 1 }}>
+                <tbody style={{ opacity: loading ? 0.6 : 1, transition: 'opacity 0.2s' }}>
                   {places.map((p) => (
                     <tr
                       key={p.id}
@@ -485,7 +517,13 @@ export default function Places() {
         </div>
 
         <div className="approvals-map-col">
-          <div className="map-card">
+          <div className="map-card" style={{ position: 'relative' }}>
+            {loading && (
+              <div className="map-buffering-badge">
+                <div className="loader loader-sm" />
+                <span>Syncing map pins…</span>
+              </div>
+            )}
             <PlacesMap places={places} focusId={focusId} onSelect={select} />
           </div>
         </div>

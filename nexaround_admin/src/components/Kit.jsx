@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { CrossIcon, SearchIcon, EyeIcon, EyeOffIcon } from './Icons';
+import { CrossIcon, SearchIcon, EyeIcon, EyeOffIcon, WifiOffIcon, AlertTriangleIcon, RefreshIcon, CheckIcon } from './Icons';
 
 // Small pieces every admin page shares. Each one renders the same markup and
 // classes the pages used to write out by hand, so swapping one in changes no
@@ -207,11 +207,168 @@ export function PageLoading() {
   );
 }
 
-/** A whole page that could not load. */
-export function PageError({ children }) {
+/** A whole page or container that could not load. Renders a polished industry-standard error/offline state. */
+export function PageError({
+  children,
+  error,
+  title,
+  onRetry,
+  inline = false,
+  style,
+}) {
+  const [retrying, setRetrying] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
+
+  // Extract human-readable error text
+  const rawError = error || (typeof children === 'string' ? children : '');
+  const displayMsg =
+    typeof children === 'string' && children.length > 0
+      ? children
+      : String(rawError || 'An error occurred while loading');
+
+  // Detect if this is an offline or network error
+  const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+  const isNetwork =
+    isOffline ||
+    /failed to fetch|network|offline|load failed|internet|connection|refused|timeout|err_/i.test(
+      displayMsg
+    );
+
+  const handleRetry = async () => {
+    setRetrying(true);
+    try {
+      if (onRetry) {
+        await onRetry();
+      } else {
+        window.location.reload();
+      }
+    } finally {
+      setTimeout(() => setRetrying(false), 600);
+    }
+  };
+
+  const handleCopy = () => {
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(displayMsg);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  if (inline) {
+    return (
+      <div
+        className={`page-error-inline ${isNetwork ? 'page-error-inline-network' : ''}`}
+        style={style}
+        role="alert"
+      >
+        <div className="page-error-inline-icon">
+          {isNetwork ? <WifiOffIcon size={16} /> : <AlertTriangleIcon size={16} />}
+        </div>
+        <div className="page-error-inline-content">
+          <div className="page-error-inline-msg">{displayMsg}</div>
+        </div>
+        {onRetry && (
+          <button
+            type="button"
+            className="page-error-inline-btn"
+            onClick={handleRetry}
+            disabled={retrying}
+            title="Try again"
+          >
+            <RefreshIcon size={13} className={retrying ? 'spin-anim' : ''} />
+            <span>{retrying ? 'Retrying...' : 'Retry'}</span>
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  const headingText =
+    title ||
+    (isNetwork ? 'Unable to Connect to Server' : 'Unable to Load Content');
+  const explanation = isNetwork
+    ? 'nexAround could not reach the server. This happens when internet connectivity is unavailable or the backend is temporarily unreachable. Auto-reconnect will resume once connection is restored.'
+    : 'A problem occurred while retrieving information. Please try again or refresh the page.';
+
   return (
-    <div className="login-error" style={{ margin: '20px' }}>
-      {children}
+    <div className="page-error-wrapper" style={style}>
+      <div className="page-error-card">
+        {/* Animated Status Pill */}
+        <div className={`page-error-badge ${isNetwork ? 'badge-network' : 'badge-server'}`}>
+          <span className="page-error-status-dot" />
+          <span>{isNetwork ? (isOffline ? 'Offline Mode' : 'Connection Lost') : 'Service Issue'}</span>
+        </div>
+
+        {/* Center Icon Box with Pulsing Glow */}
+        <div className={`page-error-icon-box ${isNetwork ? 'icon-box-network' : 'icon-box-server'}`}>
+          <div className="page-error-icon-halo" />
+          {isNetwork ? <WifiOffIcon size={34} /> : <AlertTriangleIcon size={34} />}
+        </div>
+
+        {/* Title & Description */}
+        <h2 className="page-error-title">{headingText}</h2>
+        <p className="page-error-description">{explanation}</p>
+
+        {/* Network Troubleshooting Checklist */}
+        {isNetwork && (
+          <div className="page-error-tips">
+            <div className="page-error-tip-item">
+              <span className="tip-bullet">•</span>
+              <span>Check your Wi-Fi, Ethernet, or mobile data connection</span>
+            </div>
+            <div className="page-error-tip-item">
+              <span className="tip-bullet">•</span>
+              <span>Pages will automatically refresh as soon as your connection is back</span>
+            </div>
+          </div>
+        )}
+
+        {/* Action Buttons */}
+        <div className="page-error-actions">
+          <button
+            type="button"
+            className="btn btn-primary page-error-btn-primary"
+            onClick={handleRetry}
+            disabled={retrying}
+          >
+            <RefreshIcon size={15} className={retrying ? 'spin-anim' : ''} />
+            <span>{retrying ? 'Connecting...' : 'Retry Connection'}</span>
+          </button>
+
+          <button
+            type="button"
+            className="btn btn-ghost page-error-btn-secondary"
+            onClick={() => window.location.reload()}
+          >
+            Reload Page
+          </button>
+        </div>
+
+        {/* Collapsible Diagnostic Details */}
+        <div className="page-error-diagnostic-wrap">
+          <button
+            type="button"
+            className="page-error-diagnostic-toggle"
+            onClick={() => setShowDetails(!showDetails)}
+          >
+            <span>{showDetails ? 'Hide technical details' : 'Show technical details'}</span>
+          </button>
+
+          {showDetails && (
+            <div className="page-error-diagnostic-box">
+              <div className="diagnostic-header">
+                <span>Diagnostic message</span>
+                <button type="button" className="diagnostic-copy-btn" onClick={handleCopy}>
+                  {copied ? 'Copied!' : 'Copy'}
+                </button>
+              </div>
+              <code className="diagnostic-code">{displayMsg}</code>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

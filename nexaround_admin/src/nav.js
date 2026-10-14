@@ -25,7 +25,7 @@ export const NAV_SECTIONS = [
     label: 'Main Menu',
     items: [
       { path: '/dashboard', label: 'Dashboard', title: 'Dashboard Overview', icon: CompassIcon, page: Dashboard },
-      { path: '/exclude-keywords', label: 'Exclude Keywords', title: 'Exclude Keywords', icon: EyeOffIcon, page: ExcludeKeywords },
+      { path: '/exclude-keywords', label: 'Exclude Keywords', title: 'Exclude Keywords (Around You)', icon: EyeOffIcon, page: ExcludeKeywords },
       { path: '/media', label: 'Media Library', title: 'Media Library', icon: ImageIcon, page: Media },
     ],
   },

@@ -247,7 +247,7 @@ export default function ReviewQueue() {
 
   const changeKind = (k) => { setKind(k); setPage(1); select(null); };
 
-  if (error && !data) return <PageError>Could not load the Review queue: {error}</PageError>;
+  if (error && !data) return <PageError error={error} onRetry={refetch} title="Review Queue Unavailable">Could not load the Review queue: {error}</PageError>;
 
   const kindCount = { all: counts?.pending, user: counts?.pending_user };
 

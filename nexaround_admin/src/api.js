@@ -10,10 +10,39 @@ export async function apiFetch(endpoint, options = {}) {
     ...options.headers,
   };
 
-  const response = await fetch(`${API_BASE}${endpoint}`, {
-    ...options,
-    headers,
-  });
+  let response;
+  try {
+    response = await fetch(`${API_BASE}${endpoint}`, {
+      ...options,
+      headers,
+    });
+  } catch (err) {
+    const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+    const isFetchFail = err.name === 'TypeError' || /failed to fetch|networkerror/i.test(err.message);
+    const friendlyMsg = isOffline
+      ? 'No internet connection. Please verify your network and try again.'
+      : isFetchFail
+      ? 'Unable to connect to the server. Please check your internet connection.'
+      : (err.message || 'Network connection failed');
+
+    const netErr = new Error(friendlyMsg);
+    netErr.isNetwork = true;
+    netErr.originalError = err;
+    netErr.rawMessage = err.message;
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('network:fetch-error', {
+        detail: { endpoint, isOffline, message: friendlyMsg, raw: err.message }
+      }));
+    }
+    throw netErr;
+  }
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('network:fetch-success', {
+      detail: { endpoint }
+    }));
+  }
 
   if (!response.ok) {
     let errorMsg = response.statusText;
@@ -88,11 +117,28 @@ export async function apiUpload(endpoint, files) {
   const body = new FormData();
   Array.from(files).forEach((file) => body.append('files', file));
 
-  const response = await fetch(`${API_BASE}${endpoint}`, {
-    method: 'POST',
-    body,
-    headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_token')}` },
-  });
+  let response;
+  try {
+    response = await fetch(`${API_BASE}${endpoint}`, {
+      method: 'POST',
+      body,
+      headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_token')}` },
+    });
+  } catch (err) {
+    const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+    const netErr = new Error(
+      isOffline
+        ? 'No internet connection. Please verify your network and try again.'
+        : 'Unable to connect to the server. Please check your internet connection.'
+    );
+    netErr.isNetwork = true;
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('network:fetch-error', {
+        detail: { endpoint, isOffline, message: netErr.message }
+      }));
+    }
+    throw netErr;
+  }
 
   if (!response.ok) {
     if (response.status === 401) {
@@ -131,6 +177,19 @@ export function useApi(endpoint, options = {}) {
   }
 
   const refetch = () => setRefreshTrigger(prev => prev + 1);
+
+  // Auto-refetch when internet comes back online or network reconnects
+  React.useEffect(() => {
+    const handleReconnect = () => {
+      refetch();
+    };
+    window.addEventListener('online', handleReconnect);
+    window.addEventListener('network:reconnected', handleReconnect);
+    return () => {
+      window.removeEventListener('online', handleReconnect);
+      window.removeEventListener('network:reconnected', handleReconnect);
+    };
+  }, []);
 
   React.useEffect(() => {
     let active = true;

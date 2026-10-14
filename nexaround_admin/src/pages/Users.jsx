@@ -1,18 +1,49 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useApi, apiPost } from '../api';
-import { SearchIcon, CheckIcon, CrossIcon, UsersIcon } from '../components/Icons';
+import {
+  SearchIcon,
+  CheckIcon,
+  CrossIcon,
+  UsersIcon,
+  FilterIcon,
+  ChevronDownIcon,
+  ArrowUpDownIcon,
+} from '../components/Icons';
 import { HeroBanner, HeroCount, SearchBar, Loading, EmptyState, Badge, PageError } from '../components/Kit';
+
+const DATE_LABELS = {
+  today: 'Today',
+  this_week: 'Last 7 Days',
+  this_month: 'Last 30 Days',
+  custom: 'Custom Range',
+};
 
 export default function Users() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [status, setStatus] = useState('all');
-  const [verification, setVerification] = useState('all');
   const [dateFilter, setDateFilter] = useState('all');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [sortOrder, setSortOrder] = useState('desc');
+  const [filterMenuOpen, setFilterMenuOpen] = useState(false);
+  const filterPopoverRef = useRef(null);
+
+  // Close filter popover when clicking outside
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (filterPopoverRef.current && !filterPopoverRef.current.contains(e.target)) {
+        setFilterMenuOpen(false);
+      }
+    }
+    if (filterMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [filterMenuOpen]);
 
   // Debounce search query to avoid spamming requests
   useEffect(() => {
@@ -30,22 +61,12 @@ export default function Users() {
   });
   if (debouncedSearch) queryParams.set('search', debouncedSearch);
   if (status !== 'all') queryParams.set('status', status);
-  if (verification !== 'all') queryParams.set('verification', verification);
   if (dateFilter !== 'all' && dateFilter !== 'custom') queryParams.set('date_filter', dateFilter);
   if (startDate) queryParams.set('start_from', startDate);
   if (endDate) queryParams.set('end_to', endDate);
   if (sortOrder !== 'desc') queryParams.set('sort_order', sortOrder);
 
   const { data, loading, error, refetch } = useApi(`/admin/users?${queryParams.toString()}`);
-
-  const handleVerify = async (userId) => {
-    try {
-      await apiPost(`/admin/users/${userId}/verify`);
-      refetch();
-    } catch (err) {
-      alert(`Verification failed: ${err.message}`);
-    }
-  };
 
   const handleToggleStatus = async (userId) => {
     try {
@@ -86,13 +107,23 @@ export default function Users() {
   };
 
   if (error) {
-    return <PageError>Failed to load explorers: {error}</PageError>;
+    return <PageError error={error} onRetry={refetch} title="Unable to Load Explorers">Failed to load explorers: {error}</PageError>;
   }
 
   const users = data?.users || [];
   const total = data?.total || 0;
   const totalPages = Math.ceil(total / 10) || 1;
-  const hasActiveFilters = status !== 'all' || verification !== 'all' || dateFilter !== 'all' || Boolean(startDate) || Boolean(endDate) || sortOrder !== 'desc' || Boolean(search);
+  const extraFiltersCount =
+    (dateFilter !== 'all' ? 1 : 0) +
+    (startDate || endDate ? 1 : 0);
+
+  const hasActiveFilters =
+    status !== 'all' ||
+    dateFilter !== 'all' ||
+    Boolean(startDate) ||
+    Boolean(endDate) ||
+    Boolean(search) ||
+    sortOrder !== 'desc';
 
   return (
     <div className="approvals-modern-container">
@@ -110,129 +141,278 @@ export default function Users() {
           <SearchBar value={search} onChange={setSearch} placeholder="Search by name or email..." />
         </div>
 
-        {/* Filter and Sort Toolbar */}
-        <div style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: '10px',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          marginTop: '16px',
-          padding: '12px 16px',
-          background: 'var(--bg-card, #ffffff)',
-          borderRadius: '12px',
-          border: '1px solid var(--border, #e2e8f0)'
-        }}>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
-            <select
-              className="xp-select"
-              value={status}
-              onChange={e => { setStatus(e.target.value); setPage(1); }}
-              title="Filter by status"
-            >
-              <option value="all">All Statuses</option>
-              <option value="active">Active Only</option>
-              <option value="suspended">Suspended Only</option>
-            </select>
-
-            <select
-              className="xp-select"
-              value={verification}
-              onChange={e => { setVerification(e.target.value); setPage(1); }}
-              title="Filter by verification"
-            >
-              <option value="all">All Verification</option>
-              <option value="verified">Verified Pro Only</option>
-              <option value="unverified">Unverified Only</option>
-            </select>
-
-            <select
-              className="xp-select"
-              value={dateFilter}
-              onChange={e => {
-                const val = e.target.value;
-                setDateFilter(val);
-                if (val !== 'custom') {
-                  setStartDate('');
-                  setEndDate('');
-                }
+        {/* Modern Segmented Control & Action Toolbar (Linear & GitHub style) */}
+        <div className="users-filter-toolbar">
+          {/* Left: Segmented Tabs */}
+          <div className="segmented-tabs" role="tablist">
+            <button
+              type="button"
+              className={`segmented-tab ${status === 'all' ? 'active' : ''}`}
+              onClick={() => {
+                setStatus('all');
                 setPage(1);
               }}
-              title="Filter by join date"
+              role="tab"
+              aria-selected={status === 'all'}
             >
-              <option value="all">All Time</option>
-              <option value="today">Joined Today</option>
-              <option value="this_week">Joined Last 7 Days</option>
-              <option value="this_month">Joined Last 30 Days</option>
-              <option value="custom">Custom Date Range...</option>
-            </select>
+              <span>All Explorers</span>
+              <span className="tab-count">{total}</span>
+            </button>
 
-            {dateFilter === 'custom' && (
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'var(--bg, #f8fafc)', padding: '2px 8px', borderRadius: '8px', border: '1px solid var(--border, #e2e8f0)' }}>
-                <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>From:</label>
-                <input
-                  type="date"
-                  className="xp-select"
-                  style={{ padding: '4px 8px', fontSize: '12px', height: 'auto' }}
-                  value={startDate}
-                  onChange={e => { setStartDate(e.target.value); setPage(1); }}
-                  max={endDate || undefined}
-                />
-                <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>To:</label>
-                <input
-                  type="date"
-                  className="xp-select"
-                  style={{ padding: '4px 8px', fontSize: '12px', height: 'auto' }}
-                  value={endDate}
-                  onChange={e => { setEndDate(e.target.value); setPage(1); }}
-                  min={startDate || undefined}
-                />
-              </div>
-            )}
-
-            <select
-              className="xp-select"
-              value={sortOrder}
-              onChange={e => { setSortOrder(e.target.value); setPage(1); }}
-              title="Sort order"
+            <button
+              type="button"
+              className={`segmented-tab ${status === 'active' ? 'active' : ''}`}
+              onClick={() => {
+                setStatus('active');
+                setPage(1);
+              }}
+              role="tab"
+              aria-selected={status === 'active'}
             >
-              <option value="desc">Newest First</option>
-              <option value="asc">Oldest First</option>
-            </select>
+              <span className="tab-status-dot dot-active" />
+              <span>Active</span>
+            </button>
 
-            {hasActiveFilters && (
-              <button
-                className="btn btn-ghost"
-                style={{ padding: '6px 12px', fontSize: '12px' }}
-                onClick={() => {
-                  setStatus('all');
-                  setVerification('all');
-                  setDateFilter('all');
-                  setStartDate('');
-                  setEndDate('');
-                  setSortOrder('desc');
-                  setSearch('');
-                  setPage(1);
-                }}
-              >
-                Reset Filters
-              </button>
-            )}
+            <button
+              type="button"
+              className={`segmented-tab ${status === 'suspended' ? 'active' : ''}`}
+              onClick={() => {
+                setStatus('suspended');
+                setPage(1);
+              }}
+              role="tab"
+              aria-selected={status === 'suspended'}
+            >
+              <span className="tab-status-dot dot-suspended" />
+              <span>Suspended</span>
+            </button>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          {/* Right: Actions Group (Filter Popover, Sort, Timezone) */}
+          <div className="users-actions-group">
+            {/* Filter Popover Anchor */}
+            <div className="filter-popover-anchor" ref={filterPopoverRef}>
+              <button
+                type="button"
+                className={`filter-dropdown-btn ${extraFiltersCount > 0 ? 'has-filters' : ''}`}
+                onClick={() => setFilterMenuOpen(prev => !prev)}
+                aria-expanded={filterMenuOpen}
+                title="Open advanced filter options"
+              >
+                <FilterIcon size={14} />
+                <span>Filters</span>
+                {extraFiltersCount > 0 && (
+                  <span className="filter-badge-count">{extraFiltersCount}</span>
+                )}
+                <ChevronDownIcon size={13} className={`chevron-rotate ${filterMenuOpen ? 'open' : ''}`} />
+              </button>
+
+              {filterMenuOpen && (
+                <div className="filter-popover-menu" role="dialog" aria-label="Filter options">
+                  <div className="filter-popover-header">
+                    <div className="popover-title">
+                      <FilterIcon size={13} style={{ color: 'var(--accent)' }} />
+                      <span>Refine Explorers</span>
+                    </div>
+                    {extraFiltersCount > 0 && (
+                      <button
+                        type="button"
+                        className="filter-reset-link"
+                        onClick={() => {
+                          setDateFilter('all');
+                          setStartDate('');
+                          setEndDate('');
+                          setPage(1);
+                        }}
+                      >
+                        Reset filters
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Joined Date Filter */}
+                  <div className="filter-popover-section">
+                    <span className="filter-section-title">Join Period</span>
+                    <div className="filter-pill-grid">
+                      {[
+                        { id: 'all', label: 'All Time' },
+                        { id: 'today', label: 'Today' },
+                        { id: 'this_week', label: 'Last 7 Days' },
+                        { id: 'this_month', label: 'Last 30 Days' },
+                        { id: 'custom', label: 'Custom Range' },
+                      ].map(opt => (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          className={`filter-option-pill ${dateFilter === opt.id ? 'active' : ''}`}
+                          onClick={() => {
+                            setDateFilter(opt.id);
+                            if (opt.id !== 'custom') {
+                              setStartDate('');
+                              setEndDate('');
+                            }
+                            setPage(1);
+                          }}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {dateFilter === 'custom' && (
+                      <div className="custom-date-inputs">
+                        <div className="date-field">
+                          <label>From</label>
+                          <input
+                            type="date"
+                            className="form-input filter-date-input"
+                            value={startDate}
+                            onChange={e => { setStartDate(e.target.value); setPage(1); }}
+                            max={endDate || undefined}
+                          />
+                        </div>
+                        <div className="date-field">
+                          <label>To</label>
+                          <input
+                            type="date"
+                            className="form-input filter-date-input"
+                            value={endDate}
+                            onChange={e => { setEndDate(e.target.value); setPage(1); }}
+                            min={startDate || undefined}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="filter-popover-footer">
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      style={{ width: '100%', padding: '7px 12px', fontSize: '12px' }}
+                      onClick={() => setFilterMenuOpen(false)}
+                    >
+                      Done
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Sort Toggle Button */}
+            <button
+              type="button"
+              className="filter-sort-btn"
+              onClick={() => {
+                setSortOrder(prev => (prev === 'desc' ? 'asc' : 'desc'));
+                setPage(1);
+              }}
+              title={`Sorting: ${sortOrder === 'desc' ? 'Newest First' : 'Oldest First'}. Click to toggle.`}
+            >
+              <ArrowUpDownIcon size={13} />
+              <span>{sortOrder === 'desc' ? 'Newest First' : 'Oldest First'}</span>
+            </button>
+
+            {/* Timezone Indicator */}
             <Badge
               tone="ghost"
-              style={{ fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '3px 8px', fontWeight: 600 }}
+              style={{ fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '5px 9px', fontWeight: 600 }}
               title="All dates and times are presented in Sri Lanka Standard Time (Asia/Colombo, UTC+5:30)"
             >
-              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--accent, #007a7c)' }}></span>
-              SLST (UTC+5:30)
+              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--accent)' }}></span>
+              SLST
             </Badge>
-            <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-              Showing <strong>{users.length}</strong> of <strong>{total}</strong> explorers
-            </span>
           </div>
+        </div>
+
+        {/* Active Filter Chips / Pills */}
+        {hasActiveFilters && (
+          <div className="filter-active-chips-bar">
+            <span className="chips-label">Active:</span>
+
+            {status !== 'all' && (
+              <span className="filter-chip">
+                <span>Status: {status === 'active' ? 'Active' : 'Suspended'}</span>
+                <button
+                  type="button"
+                  className="filter-chip-remove"
+                  onClick={() => { setStatus('all'); setPage(1); }}
+                  title="Remove status filter"
+                >
+                  <CrossIcon size={10} />
+                </button>
+              </span>
+            )}
+
+            {dateFilter !== 'all' && dateFilter !== 'custom' && (
+              <span className="filter-chip">
+                <span>Joined: {DATE_LABELS[dateFilter]}</span>
+                <button
+                  type="button"
+                  className="filter-chip-remove"
+                  onClick={() => { setDateFilter('all'); setPage(1); }}
+                  title="Remove date filter"
+                >
+                  <CrossIcon size={10} />
+                </button>
+              </span>
+            )}
+
+            {dateFilter === 'custom' && (startDate || endDate) && (
+              <span className="filter-chip">
+                <span>Date: {startDate || 'Start'} → {endDate || 'Now'}</span>
+                <button
+                  type="button"
+                  className="filter-chip-remove"
+                  onClick={() => {
+                    setDateFilter('all');
+                    setStartDate('');
+                    setEndDate('');
+                    setPage(1);
+                  }}
+                  title="Remove custom date range"
+                >
+                  <CrossIcon size={10} />
+                </button>
+              </span>
+            )}
+
+            {debouncedSearch && (
+              <span className="filter-chip">
+                <span>Search: "{debouncedSearch}"</span>
+                <button
+                  type="button"
+                  className="filter-chip-remove"
+                  onClick={() => { setSearch(''); setPage(1); }}
+                  title="Clear search query"
+                >
+                  <CrossIcon size={10} />
+                </button>
+              </span>
+            )}
+
+            <button
+              type="button"
+              className="filter-clear-all-btn"
+              onClick={() => {
+                setStatus('all');
+                setDateFilter('all');
+                setStartDate('');
+                setEndDate('');
+                setSortOrder('desc');
+                setSearch('');
+                setPage(1);
+              }}
+            >
+              Clear all
+            </button>
+          </div>
+        )}
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '10px' }}>
+          <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>
+            Showing <strong>{users.length}</strong> of <strong>{total}</strong> explorers
+          </span>
         </div>
 
         <div className="modern-list-container" style={{ marginTop: '20px' }}>
@@ -265,13 +445,12 @@ export default function Users() {
                         <div className="list-item-content">
                           <div className="list-item-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             {u.display_name || 'Explorer'}
-                            {u.is_verified && <CheckIcon size={14} style={{ color: 'var(--accent)' }} title="Verified Pro" />}
                             {!u.is_active && <Badge tone="red" style={{ fontSize: '9px', padding: '2px 6px' }}>Suspended</Badge>}
                           </div>
                           <div className="list-item-meta">
                             <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{u.email}</span>
                             <span style={{ fontSize: '10px', color: 'var(--border-hover)', opacity: 0.5 }}>•</span>
-                            <Badge tone="ghost" style={{ fontSize: '9px', padding: '2px 6px' }}>{u.is_verified ? 'Pro Master' : travelStyle}</Badge>
+                            <Badge tone="ghost" style={{ fontSize: '9px', padding: '2px 6px' }}>{travelStyle}</Badge>
                             <span style={{ fontSize: '10px', color: 'var(--border-hover)', opacity: 0.5 }}>•</span>
                             <span
                               className="list-item-loc"
@@ -284,11 +463,6 @@ export default function Users() {
                       </div>
                       <div className="list-item-actions" style={{ opacity: 1 }}>
                         <div style={{ display: 'flex', gap: '6px' }}>
-                          {!u.is_verified && (
-                            <button className="action-btn approve" onClick={() => handleVerify(u.id)} style={{ padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                              <CheckIcon size={12} /> Verify
-                            </button>
-                          )}
                           <button
                             className={`action-btn ${u.is_active ? 'reject' : 'approve'}`}
                             onClick={() => handleToggleStatus(u.id)}

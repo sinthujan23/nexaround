@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { PlusIcon, TrashIcon } from '../components/Icons';
-import { Card } from '../components/Kit';
+import { PlusIcon, TrashIcon, EyeOffIcon } from '../components/Icons';
+import { Card, Badge } from '../components/Kit';
 import { useApi, apiPost, apiDelete } from '../api';
 
 export default function ExcludeKeywords() {
@@ -39,13 +39,26 @@ export default function ExcludeKeywords() {
 
   return (
     <div>
-      <Card style={{ padding: '16px', marginBottom: '16px' }}>
-        <p style={{ margin: '0 0 16px 0', color: 'var(--text-secondary)', fontSize: '13px' }}>
+      <Card style={{ padding: '20px 24px', marginBottom: '20px', borderRadius: '16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <EyeOffIcon size={18} style={{ color: 'var(--accent)' }} />
+            <h2 style={{ fontSize: '16px', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
+              Exclude Keywords (Around You)
+            </h2>
+          </div>
+          <Badge tone="ghost" style={{ fontSize: '11px', fontWeight: 600, padding: '4px 10px' }}>
+            Around You Filter
+          </Badge>
+        </div>
+
+        <p style={{ margin: '0 0 16px 0', color: 'var(--text-secondary)', fontSize: '13px', lineHeight: 1.5 }}>
           A place whose name matches a keyword here (whole word, e.g. "pond" matches
-          "Pond View" but not "Pondicherry Cafe") is hidden from the Around You cards.
+          "Pond View" but not "Pondicherry Cafe") is hidden from the <strong>Around You</strong> cards.
           It still appears in Discover and everywhere else in the app.
         </p>
-        <form onSubmit={handleAdd} style={{ display: 'flex', gap: '12px' }}>
+
+        <form onSubmit={handleAdd} style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
           <input
             type="text"
             className="form-input"
@@ -66,7 +79,16 @@ export default function ExcludeKeywords() {
         </div>
       )}
 
-      <Card>
+      <Card
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span>Excluded Keywords</span>
+            <span style={{ fontSize: '12px', fontWeight: 500, color: 'var(--text-secondary)' }}>
+              ({keywords.length})
+            </span>
+          </div>
+        }
+      >
         <div className="table-wrap">
           <table>
             <thead>

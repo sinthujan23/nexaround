@@ -4,6 +4,7 @@ import './index.css';
 import { NAV_ITEMS, NAV_REDIRECTS, HOME_PATH, LOGIN_PATH } from './nav';
 import Login from './pages/Login';
 import AdminLayout from './components/layout/AdminLayout';
+import NetworkStatusBar from './components/NetworkStatusBar';
 
 function App() {
   const navigate = useNavigate();
@@ -42,29 +43,35 @@ function App() {
 
   if (!token) {
     return (
-      <Routes>
-        <Route path={LOGIN_PATH} element={<Login initialError={error} onLogin={handleLogin} />} />
-        <Route
-          path="*"
-          element={<Navigate to={LOGIN_PATH} replace state={{ from: location.pathname + location.search }} />}
-        />
-      </Routes>
+      <>
+        <NetworkStatusBar />
+        <Routes>
+          <Route path={LOGIN_PATH} element={<Login initialError={error} onLogin={handleLogin} />} />
+          <Route
+            path="*"
+            element={<Navigate to={LOGIN_PATH} replace state={{ from: location.pathname + location.search }} />}
+          />
+        </Routes>
+      </>
     );
   }
 
   return (
-    <Routes>
-      <Route path={LOGIN_PATH} element={<Navigate to={location.state?.from || HOME_PATH} replace />} />
-      <Route element={<AdminLayout onLogout={handleLogout} />}>
-        {NAV_ITEMS.map(({ path, page: Page }) => (
-          <Route key={path} path={path} element={<Page />} />
-        ))}
-        {NAV_REDIRECTS.map(([from, to]) => (
-          <Route key={from} path={from} element={<Navigate to={to} replace />} />
-        ))}
-        <Route path="*" element={<Navigate to={HOME_PATH} replace />} />
-      </Route>
-    </Routes>
+    <>
+      <NetworkStatusBar />
+      <Routes>
+        <Route path={LOGIN_PATH} element={<Navigate to={location.state?.from || HOME_PATH} replace />} />
+        <Route element={<AdminLayout onLogout={handleLogout} />}>
+          {NAV_ITEMS.map(({ path, page: Page }) => (
+            <Route key={path} path={path} element={<Page />} />
+          ))}
+          {NAV_REDIRECTS.map(([from, to]) => (
+            <Route key={from} path={from} element={<Navigate to={to} replace />} />
+          ))}
+          <Route path="*" element={<Navigate to={HOME_PATH} replace />} />
+        </Route>
+      </Routes>
+    </>
   );
 }
 

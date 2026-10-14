@@ -388,7 +388,7 @@ export default function Dashboard() {
   if (!dash.data) {
     return dash.loading
       ? <PageLoading />
-      : <PageError>Failed to fetch dashboard metrics: {dash.error}</PageError>;
+      : <PageError error={dash.error} onRetry={dash.refetch} title="Dashboard Unavailable">Failed to fetch dashboard metrics: {dash.error}</PageError>;
   }
 
   const {
