@@ -1,9 +1,11 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import 'package:geolocator/geolocator.dart' as geo;
 import 'package:nexaround_app/core/constants/api_constants.dart';
 import 'package:nexaround_app/core/error/user_message.dart';
 import 'package:nexaround_app/core/constants/countries.dart';
 import 'package:nexaround_app/core/network/api_client.dart';
+import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/features/experiences/data/models/experience_model.dart';
 import 'package:nexaround_app/features/experiences/domain/entities/experience.dart';
 
@@ -84,40 +86,87 @@ class ExperiencesResult {
   final bool hasNearby;
   final int nearbyThresholdM;
 
+  /// Admin > Settings > "Browse by country": the list is by country, with no
+  /// distances, and "Near me" makes no sense.
+  final bool countryMode;
+
   const ExperiencesResult({
     this.packages = const [],
     this.total = 0,
     this.nearestDistanceM,
     this.hasNearby = false,
     this.nearbyThresholdM = 50000,
+    this.countryMode = false,
   });
 }
 
+/// The active countries, plus the browse mode the server reports with them.
+class ExperienceCountries {
+  final List<ExperienceCountry> countries;
+
+  /// See [ExperiencesResult.countryMode]. Null when unknown: nothing saved yet,
+  /// or a server from before the mode was reported.
+  final bool? countryMode;
+
+  const ExperienceCountries({this.countries = const [], this.countryMode});
+}
+
+/// Fetches, plus a stale-while-revalidate disk cache in [CacheService]: a
+/// screen paints the saved copy at once, then replaces it with the network
+/// result, and keeps the saved copy when the network fails.
 class ExperiencesService {
   /// How many pages deep the tab will go. With no radius cap, paging forever
   /// eventually walks the user onto another continent for no value.
   static const int maxPages = 5;
   static const int pageSize = 20;
 
-  static Future<List<ExperienceCountry>> fetchActiveCountries() async {
+  /// How far the user may move before a saved list stops standing in for a
+  /// fresh one: beyond this its distances and nearest-first order are wrong.
+  static const double cacheRadiusM = 2000;
+
+  /// Older than this, a saved list or package is not shown even offline, so a
+  /// traveller is not quoted last month's prices.
+  static const Duration cacheMaxAge = Duration(days: 7);
+
+  static Future<ExperienceCountries> fetchActiveCountries() async {
     try {
       final response = await ApiClient.instance.get(ApiConstants.experiencesCountries);
       final data = response.data;
       if (data is Map<String, dynamic> && data['countries'] is List) {
-        return (data['countries'] as List)
-            .whereType<Map<String, dynamic>>()
-            .map(ExperienceCountry.fromJson)
-            .toList();
+        CacheService.cacheExperienceCountries(data);
+        return _parseCountries(data);
       }
     } catch (e) {
       debugPrint('❌ Error fetching experience countries: $e');
     }
-    return const [];
+    return cachedCountries();
   }
 
+  /// The countries and mode from the last successful fetch; empty and unknown
+  /// if there is none.
+  static ExperienceCountries cachedCountries() {
+    final data = CacheService.getCachedExperienceCountries();
+    return data == null ? const ExperienceCountries() : _parseCountries(data);
+  }
+
+  static ExperienceCountries _parseCountries(Map<String, dynamic> data) {
+    final raw = data['countries'];
+    return ExperienceCountries(
+      countries: raw is List
+          ? raw
+              .whereType<Map<String, dynamic>>()
+              .map(ExperienceCountry.fromJson)
+              .toList()
+          : const [],
+      countryMode: data['country_mode'] as bool?,
+    );
+  }
+
+  /// [latitude] and [longitude] may be null only in country mode, where the
+  /// server lists by country and ignores them.
   static Future<ExperiencesResult> fetchNearby({
-    required double latitude,
-    required double longitude,
+    double? latitude,
+    double? longitude,
     String? category,
     String? countryCode,
     int limit = pageSize,
@@ -126,8 +175,10 @@ class ExperiencesService {
     final response = await ApiClient.instance.get(
       ApiConstants.experiencesNearby,
       queryParameters: {
-        'lat': latitude,
-        'lng': longitude,
+        if (latitude != null && longitude != null) ...{
+          'lat': latitude,
+          'lng': longitude,
+        },
         'limit': limit,
         'offset': offset,
         if (category != null && category.isNotEmpty) 'category': category,
@@ -138,6 +189,58 @@ class ExperiencesService {
     final data = response.data;
     if (data is! Map<String, dynamic>) return const ExperiencesResult();
 
+    // Only the first page: it is what a screen paints before the network
+    // answers, and later pages are fetched on scroll anyway.
+    if (offset == 0) {
+      CacheService.cacheExperiencesNearby(_nearbyKey(category, countryCode), {
+        'saved_at': DateTime.now().millisecondsSinceEpoch,
+        'lat': latitude,
+        'lng': longitude,
+        'data': data,
+      });
+    }
+    return _parseNearby(data);
+  }
+
+  /// The first page saved for these filters, or null when there is none, it
+  /// is older than [cacheMaxAge], or it is a nearest-first list fetched more
+  /// than [cacheRadiusM] from here. A by-country list has no distances, so
+  /// it holds wherever the user is.
+  static ExperiencesResult? cachedNearby({
+    double? latitude,
+    double? longitude,
+    String? category,
+    String? countryCode,
+  }) {
+    final entry = CacheService.getCachedExperiencesNearby(
+        _nearbyKey(category, countryCode));
+    if (entry == null || !_isFresh(entry)) return null;
+    final data = entry['data'];
+    if (data is! Map<String, dynamic>) return null;
+    if (data['country_mode'] == true) return _parseNearby(data);
+
+    final lat = (entry['lat'] as num?)?.toDouble();
+    final lng = (entry['lng'] as num?)?.toDouble();
+    if (lat == null || lng == null || latitude == null || longitude == null) {
+      return null;
+    }
+    if (geo.Geolocator.distanceBetween(lat, lng, latitude, longitude) >
+        cacheRadiusM) {
+      return null;
+    }
+    return _parseNearby(data);
+  }
+
+  static String _nearbyKey(String? category, String? countryCode) =>
+      '${countryCode ?? ''}|${category ?? ''}';
+
+  static bool _isFresh(Map<String, dynamic> entry) {
+    final savedAt = (entry['saved_at'] as num?)?.toInt() ?? 0;
+    final age = DateTime.now().millisecondsSinceEpoch - savedAt;
+    return age >= 0 && age < cacheMaxAge.inMilliseconds;
+  }
+
+  static ExperiencesResult _parseNearby(Map<String, dynamic> data) {
     final rawPackages = data['packages'];
     return ExperiencesResult(
       packages: rawPackages is List
@@ -150,9 +253,12 @@ class ExperiencesService {
       nearestDistanceM: (data['nearest_distance_m'] as num?)?.toDouble(),
       hasNearby: data['has_nearby'] as bool? ?? false,
       nearbyThresholdM: (data['nearby_threshold_m'] as num?)?.toInt() ?? 50000,
+      countryMode: data['country_mode'] as bool? ?? false,
     );
   }
 
+  /// The full package, or null when it could not be fetched. A 404 also drops
+  /// the saved copy, so a removed package stops appearing offline.
   static Future<ExperiencePackageEntity?> fetchPackage(
     String packageId, {
     double? latitude,
@@ -168,13 +274,36 @@ class ExperiencesService {
       );
       final data = response.data;
       if (data is Map<String, dynamic>) {
+        CacheService.cacheExperienceDetail(packageId, {
+          'saved_at': DateTime.now().millisecondsSinceEpoch,
+          'data': data,
+        });
         return ExperiencePackageModel.fromJson(data);
       }
       return null;
     } catch (e) {
       debugPrint('❌ Error fetching experience package: $e');
+      if (e is DioException && e.response?.statusCode == 404) {
+        CacheService.removeCachedExperienceDetail(packageId);
+      }
       return null;
     }
+  }
+
+  /// The package as last fetched, or null when there is none or it is older
+  /// than [cacheMaxAge].
+  ///
+  /// [distanceM] replaces the saved distance, which was measured from wherever
+  /// the user stood then: pass the card's fresh one, or nothing to show none.
+  static ExperiencePackageEntity? cachedPackage(
+    String packageId, {
+    double? distanceM,
+  }) {
+    final entry = CacheService.getCachedExperienceDetail(packageId);
+    if (entry == null || !_isFresh(entry)) return null;
+    final data = entry['data'];
+    if (data is! Map<String, dynamic>) return null;
+    return ExperiencePackageModel.fromJson({...data, 'distance_m': distanceM});
   }
 
   /// Submits an enquiry. Returns null on success, or a message to show.

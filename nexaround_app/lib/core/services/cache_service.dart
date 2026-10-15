@@ -925,6 +925,87 @@ class CacheService {
     }
   }
 
+  // ── Experiences Caching (Stale-While-Revalidate disk storage) ──────────
+  // Raw API JSON, so ExperiencePackageModel stays the only parser. Lists and
+  // packages each live in one bounded map: a key per package, as the forum
+  // uses per topic, would grow for as long as the app is installed.
+  static const String _experiencesNearbyKey = 'experiences_nearby_v1';
+  static const String _experienceDetailsKey = 'experience_details_v1';
+  static const String _experienceCountriesKey = 'experience_countries_v1';
+  static const int _maxCachedExperienceLists = 8;
+  static const int _maxCachedExperienceDetails = 30;
+
+  static Future<void> cacheExperiencesNearby(
+      String filterKey, Map<String, dynamic> entry) async {
+    await _putBounded(
+        _experiencesNearbyKey, filterKey, entry, _maxCachedExperienceLists);
+  }
+
+  static Map<String, dynamic>? getCachedExperiencesNearby(String filterKey) =>
+      _readJsonMap(_experiencesNearbyKey)[filterKey] as Map<String, dynamic>?;
+
+  static Future<void> cacheExperienceDetail(
+      String packageId, Map<String, dynamic> entry) async {
+    await _putBounded(
+        _experienceDetailsKey, packageId, entry, _maxCachedExperienceDetails);
+  }
+
+  static Map<String, dynamic>? getCachedExperienceDetail(String packageId) =>
+      _readJsonMap(_experienceDetailsKey)[packageId] as Map<String, dynamic>?;
+
+  static Future<void> removeCachedExperienceDetail(String packageId) async {
+    if (_prefsOrNull == null) return;
+    final map = _readJsonMap(_experienceDetailsKey);
+    if (map.remove(packageId) == null) return;
+    await _prefs.setString(_experienceDetailsKey, json.encode(map));
+  }
+
+  /// The whole `/experiences/countries` response: the list and the browse mode.
+  static Future<void> cacheExperienceCountries(Map<String, dynamic> raw) async {
+    if (_prefsOrNull == null) return;
+    try {
+      await _prefs.setString(_experienceCountriesKey, json.encode(raw));
+    } catch (_) {}
+  }
+
+  static Map<String, dynamic>? getCachedExperienceCountries() {
+    if (_prefsOrNull == null) return null;
+    final str = _prefs.getString(_experienceCountriesKey);
+    if (str == null || str.isEmpty) return null;
+    try {
+      return json.decode(str) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Map<String, dynamic> _readJsonMap(String key) {
+    if (_prefsOrNull == null) return {};
+    final str = _prefs.getString(key);
+    if (str == null || str.isEmpty) return {};
+    try {
+      return json.decode(str) as Map<String, dynamic>;
+    } catch (_) {
+      return {};
+    }
+  }
+
+  /// Writes [value] under [entryKey] as the newest entry, dropping the oldest
+  /// once the map holds more than [max]. Decoded JSON keeps insertion order,
+  /// so the first key is always the least recently written.
+  static Future<void> _putBounded(String key, String entryKey,
+      Map<String, dynamic> value, int max) async {
+    if (_prefsOrNull == null) return;
+    try {
+      final map = _readJsonMap(key)..remove(entryKey);
+      map[entryKey] = value;
+      while (map.length > max) {
+        map.remove(map.keys.first);
+      }
+      await _prefs.setString(key, json.encode(map));
+    } catch (_) {}
+  }
+
   static Future<void> clearAll() async {
     await _prefs.clear();
   }

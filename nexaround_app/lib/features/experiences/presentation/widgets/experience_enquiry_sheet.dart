@@ -7,6 +7,7 @@ import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
 import 'package:nexaround_app/features/experiences/data/services/experiences_service.dart';
 import 'package:nexaround_app/features/experiences/domain/enquiry_validation.dart';
 import 'package:nexaround_app/features/experiences/domain/entities/experience.dart';
+import 'package:nexaround_app/features/experiences/presentation/widgets/experience_date_picker.dart';
 
 Future<void> showExperienceEnquirySheet(
   BuildContext context,
@@ -401,8 +402,8 @@ class _EnquirySheetState extends State<_EnquirySheet> {
     final tomorrow = now.add(const Duration(days: 1));
     final package = widget.package;
 
-    // The picker asserts that its initial day is selectable, so start from the
-    // first day the vendor has not blocked.
+    // Open on the first day the vendor has not blocked, so OK never returns a
+    // blocked day.
     final wanted = _preferredDate ?? (tomorrow.isAfter(lastDate) ? now : tomorrow);
     final initial = package.firstAvailableFrom(wanted, lastDate) ??
         package.firstAvailableFrom(now, lastDate);
@@ -413,28 +414,16 @@ class _EnquirySheetState extends State<_EnquirySheet> {
       return;
     }
 
-    final picked = await showDatePicker(
+    final picked = await showExperienceDatePicker(
       context: context,
       initialDate: initial,
       firstDate: now,
       lastDate: lastDate,
-      // Days the vendor has blocked are greyed out and cannot be picked.
-      selectableDayPredicate: (day) => !package.isUnavailableOn(day),
+      // Days the vendor has blocked show in red and cannot be picked.
+      isUnavailable: package.isUnavailableOn,
       helpText: windowDays == 1
           ? 'Book up to 1 day ahead'
           : 'Book up to $windowDays days ahead',
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: const ColorScheme.light(
-              primary: AppColors.brandGreen,
-              onPrimary: Colors.white,
-              onSurface: AppColors.textPrimary,
-            ),
-          ),
-          child: child!,
-        );
-      },
     );
     if (picked != null) setState(() => _preferredDate = picked);
   }

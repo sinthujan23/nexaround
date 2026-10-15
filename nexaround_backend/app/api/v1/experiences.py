@@ -44,10 +44,17 @@ router = APIRouter(prefix="/experiences", tags=["Experiences"])
 async def experience_countries(
     db: AsyncSession = Depends(get_db),
 ):
-    """List of countries that have active, published vendor experiences."""
+    """List of countries that have active, published vendor experiences.
+
+    Also carries `country_mode`: the app fetches this before it has a location,
+    and in country mode it needs none, so this is where it learns not to wait.
+    """
     repo = ExperienceRepository(db)
     countries = await repo.get_active_countries()
-    return {"countries": countries}
+    country_mode = parse_country_mode(
+        await SettingsService(db).get_setting_fresh(COUNTRY_MODE_KEY, "")
+    )
+    return {"countries": countries, "country_mode": country_mode}
 
 
 _VIDEO_CHUNK = 1024 * 1024
@@ -108,8 +115,8 @@ async def get_experience_video(name: str, request: Request):
 
 @router.get("/nearby", response_model=ExperienceNearbyResponse)
 async def nearby_experiences(
-    lat: float = Query(..., ge=-90.0, le=90.0),
-    lng: float = Query(..., ge=-180.0, le=180.0),
+    lat: Optional[float] = Query(None, ge=-90.0, le=90.0),
+    lng: Optional[float] = Query(None, ge=-180.0, le=180.0),
     category: Optional[str] = Query(None, max_length=60),
     country_code: Optional[str] = Query(None, max_length=2),
     limit: int = Query(20, ge=1, le=50),
@@ -120,11 +127,13 @@ async def nearby_experiences(
     """Vendor packages, by country or nearest first, depending on the switch.
 
     `experiences_country_mode` (Admin > Settings) is on by default: the list is
-    filtered by `country_code`, ordered by the admin's vendor order, and carries
-    no distances. With it off, this is nearest first. Vendors are sparse, so
-    that mode deliberately never returns an empty list just because the user is
-    far from one: `has_nearby` tells the app whether to show the "showing the
-    nearest" banner, and `nearby_threshold_m` is echoed so that rule stays
+    filtered by `country_code` (every country when absent), ordered by the
+    admin's vendor order, and carries no distances, so `lat`/`lng` are optional
+    there. With it off, this is nearest first and they are required. Vendors
+    are sparse, so that mode deliberately never returns an empty list just
+    because the user is far from one: `has_nearby` tells the app whether to
+    show the "showing the nearest" banner, and `nearby_threshold_m` is echoed
+    so that rule stays
     tunable server-side.
     """
     repo = ExperienceRepository(db)
@@ -148,6 +157,13 @@ async def nearby_experiences(
             nearest_distance_m=None,
             has_nearby=True,
             nearby_threshold_m=NEARBY_THRESHOLD_M,
+            country_mode=True,
+        )
+
+    if lat is None or lng is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="lat and lng are required for nearest-first experiences.",
         )
 
     rows = await repo.get_nearest_packages(

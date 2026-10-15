@@ -17,9 +17,10 @@ import 'package:nexaround_app/features/living_map/presentation/pages/smart_touri
 
 /// Detail for one package.
 ///
-/// Opens with the card's data so there is no blank screen, then replaces it
-/// with the full record (description, gallery, inclusions, vendor contact)
-/// once the detail request returns.
+/// Opens with the saved full record if there is one, else the card's data, so
+/// there is no blank screen, then replaces it with the full record
+/// (description, gallery, inclusions, vendor contact) once the detail request
+/// returns. A failed request keeps whatever is on screen.
 class ExperiencePackageDetailPage extends StatefulWidget {
   final ExperiencePackageEntity package;
   final double? userLatitude;
@@ -148,7 +149,14 @@ class _ExperiencePackageDetailPageState
   @override
   void initState() {
     super.initState();
-    _package = widget.package;
+    // A package opened before paints its full detail at once, keeping the
+    // card's distance; the request below still runs and replaces it.
+    final saved = ExperiencesService.cachedPackage(
+      widget.package.id,
+      distanceM: widget.package.distanceM,
+    );
+    _package = saved ?? widget.package;
+    _loading = saved == null;
     _loadDetail();
   }
 

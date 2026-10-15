@@ -110,6 +110,9 @@ class ExperienceNearbyResponse(BaseModel):
     nearest_distance_m: Optional[float] = None
     has_nearby: bool = False
     nearby_threshold_m: int = NEARBY_THRESHOLD_M
+    # Admin > Settings > "Browse by country". The app swaps "Near me" for "All
+    # countries" when it is on, so it must learn the mode from the server.
+    country_mode: bool = False
 
 
 class ExperienceEnquiryCreate(BaseModel):

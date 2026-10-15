@@ -234,7 +234,7 @@ PACKAGE_CARD_KEYS = {
 
 NEARBY_RESPONSE_KEYS = {
     "packages", "total", "limit", "offset", "nearest_distance_m",
-    "has_nearby", "nearby_threshold_m",
+    "has_nearby", "nearby_threshold_m", "country_mode",
 }
 
 

@@ -42,7 +42,16 @@ class _ExperienceLinkPageState extends State<ExperienceLinkPage> {
   @override
   void initState() {
     super.initState();
-    _load();
+    // A package saved from an earlier visit opens straight away; the detail
+    // page refetches it.
+    _package = _uuid.hasMatch(widget.packageId)
+        ? ExperiencesService.cachedPackage(widget.packageId)
+        : null;
+    if (_package != null) {
+      _loading = false;
+    } else {
+      _load();
+    }
   }
 
   Future<void> _load() async {

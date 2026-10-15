@@ -10,7 +10,8 @@ import 'package:nexaround_app/features/experiences/presentation/pages/experience
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_category.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_package_card.dart';
 
-/// The Discovery "Experiences" tab: vendor packages, nearest first.
+/// The Discovery "Experiences" tab: vendor packages, by country or nearest
+/// first, as Admin > Settings > "Browse by country" says.
 ///
 /// Deliberately does **not** go through MapBloc or the banded-places path that
 /// the other tabs use. Those exist to ration Google Places calls across three
@@ -45,6 +46,14 @@ class ExperiencesTabState extends State<ExperiencesTab> {
   bool _loadingMore = false;
   String? _error;
 
+  /// A saved list is on screen while the network request for it runs. Paging
+  /// waits for it, or page 2 could be appended to a list about to be replaced.
+  bool _refreshing = false;
+
+  /// Bumped by every _load, so an older request that answers late (the user
+  /// switched category mid-flight) cannot overwrite the newer list.
+  int _loadToken = 0;
+
   /// True when we have no coordinate to search from. Distinct from an empty
   /// result: the user needs to be told to enable location, not that there are
   /// no experiences.
@@ -54,14 +63,25 @@ class ExperiencesTabState extends State<ExperiencesTab> {
   double? _lng;
   int _page = 0;
 
+  /// Admin > Settings > "Browse by country". On, the list is by country and
+  /// needs no location, and "Near me" becomes "All countries". Starts from the
+  /// last mode the server reported; off until it has reported one, so the tab
+  /// never asks a nearest-first server for a list without a location.
+  bool _countryMode = false;
+
+  bool get _canLoad => _countryMode || (_lat != null && _lng != null);
+
   @override
   void initState() {
     super.initState();
     _lat = widget.latitude;
     _lng = widget.longitude;
     _scrollController.addListener(_onScroll);
+    final saved = ExperiencesService.cachedCountries();
+    _availableCountries = saved.countries;
+    _countryMode = saved.countryMode ?? false;
     _loadCountries();
-    if (_lat != null && _lng != null) {
+    if (_canLoad) {
       _load();
     } else {
       // No fix yet. Without this the tab sits on its skeleton indefinitely
@@ -94,7 +114,8 @@ class ExperiencesTabState extends State<ExperiencesTab> {
 
   /// Called by discover_page when the tab is opened or the user moves.
   void refresh(double latitude, double longitude) {
-    final moved = _lat != latitude || _lng != longitude;
+    // A by-country list does not depend on where the user is.
+    final moved = !_countryMode && (_lat != latitude || _lng != longitude);
     final firstFix = _awaitingLocation;
     _lat = latitude;
     _lng = longitude;
@@ -104,7 +125,9 @@ class ExperiencesTabState extends State<ExperiencesTab> {
   }
 
   void _onScroll() {
-    if (!_scrollController.hasClients || _loadingMore || _loading) return;
+    if (!_scrollController.hasClients || _loadingMore || _loading || _refreshing) {
+      return;
+    }
     final position = _scrollController.position;
     if (position.pixels >= position.maxScrollExtent * 0.8) {
       _loadMore();
@@ -112,12 +135,15 @@ class ExperiencesTabState extends State<ExperiencesTab> {
   }
 
   Future<void> _loadCountries() async {
-    final list = await ExperiencesService.fetchActiveCountries();
+    final result = await ExperiencesService.fetchActiveCountries();
     if (!mounted) return;
+    final list = result.countries;
+    final mode = result.countryMode;
+    if (mode != null && mode != _countryMode) _changeMode(mode);
     setState(() {
       if (list.isNotEmpty) {
         _availableCountries = list;
-      } else {
+      } else if (_availableCountries.isEmpty) {
         _availableCountries = [
           const ExperienceCountry(code: 'LK', name: 'Sri Lanka', count: 0, latitude: 6.9271, longitude: 79.8612),
           const ExperienceCountry(code: 'AE', name: 'United Arab Emirates', count: 0, latitude: 25.2048, longitude: 55.2708),
@@ -128,6 +154,27 @@ class ExperiencesTabState extends State<ExperiencesTab> {
         ];
       }
     });
+  }
+
+  /// The admin flipped the switch since the mode this tab started with. With
+  /// a location nothing needs reloading: the list on screen already came from
+  /// the server in its current mode. Without one, the tab either can load now
+  /// or has to go back to asking for location.
+  void _changeMode(bool countryMode) {
+    setState(() => _countryMode = countryMode);
+    if (_lat != null && _lng != null) return;
+    if (countryMode) {
+      if (_awaitingLocation) _load();
+    } else {
+      _loadToken++; // drop a by-country request still in flight
+      setState(() {
+        _packages = [];
+        _loading = false;
+        _refreshing = false;
+        _error = null;
+        _awaitingLocation = true;
+      });
+    }
   }
 
   void _selectCountry(ExperienceCountry? country) {
@@ -145,55 +192,89 @@ class ExperiencesTabState extends State<ExperiencesTab> {
     _load();
   }
 
+  /// Paints the saved list for these filters at once when there is one, then
+  /// replaces it with the network result. The skeleton only shows when
+  /// nothing was saved, and a failed request keeps the saved list up.
   Future<void> _load() async {
-    if (_lat == null || _lng == null) return;
+    if (!_canLoad) return;
+    final token = ++_loadToken;
+    final saved = ExperiencesService.cachedNearby(
+      latitude: _lat,
+      longitude: _lng,
+      category: _category,
+      countryCode: _selectedCountry?.code,
+    );
+
     setState(() {
-      _loading = true;
       _error = null;
       _awaitingLocation = false;
       _page = 0;
+      _loading = saved == null;
+      _refreshing = saved != null;
+      if (saved != null) _apply(saved);
     });
 
     try {
       final result = await ExperiencesService.fetchNearby(
-        latitude: _lat!,
-        longitude: _lng!,
+        latitude: _lat,
+        longitude: _lng,
         category: _category,
         countryCode: _selectedCountry?.code,
       );
-      if (!mounted) return;
+      if (!mounted || token != _loadToken) return;
       setState(() {
-        _packages = result.packages;
-        _total = result.total;
-        _nearestDistanceM = result.nearestDistanceM;
-        _hasNearby = result.hasNearby;
+        _apply(result);
         _loading = false;
+        _refreshing = false;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || token != _loadToken) return;
       setState(() {
         _loading = false;
-        _error = 'Could not load experiences. Pull down to try again.';
+        _refreshing = false;
+        if (saved == null) {
+          _error = 'Could not load experiences. Pull down to try again.';
+        }
       });
+      if (saved != null) {
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(const SnackBar(
+          content: Text("Couldn't refresh. Showing saved experiences."),
+        ));
+      }
     }
   }
 
-  Future<void> _loadMore() async {
-    if (_lat == null || _lng == null) return;
-    if (_packages.length >= _total) return;
-    if (_page + 1 >= ExperiencesService.maxPages) return;
+  void _apply(ExperiencesResult result) {
+    _packages = result.packages;
+    _total = result.total;
+    _nearestDistanceM = result.nearestDistanceM;
+    _hasNearby = result.hasNearby;
+    _countryMode = result.countryMode;
+  }
 
+  Future<void> _loadMore() async {
+    if (!_canLoad) return;
+    if (_packages.length >= _total) return;
+    // The page cap stops nearest-first paging from drifting abroad. A country
+    // list has no such drift, and "All countries" must reach every package.
+    if (!_countryMode && _page + 1 >= ExperiencesService.maxPages) return;
+
+    final token = _loadToken;
     setState(() => _loadingMore = true);
     try {
       final next = _page + 1;
       final result = await ExperiencesService.fetchNearby(
-        latitude: _lat!,
-        longitude: _lng!,
+        latitude: _lat,
+        longitude: _lng,
         category: _category,
         countryCode: _selectedCountry?.code,
         offset: next * ExperiencesService.pageSize,
       );
       if (!mounted) return;
+      if (token != _loadToken) {
+        setState(() => _loadingMore = false);
+        return;
+      }
       setState(() {
         _packages = [..._packages, ...result.packages];
         _page = next;
@@ -229,7 +310,7 @@ class ExperiencesTabState extends State<ExperiencesTab> {
           const SizedBox(height: 16),
           _buildFilterBar(),
           const SizedBox(height: 20),
-          if (showList && !_hasNearby && _selectedCountry == null)
+          if (showList && !_hasNearby && !_countryMode && _selectedCountry == null)
             Padding(padding: _gutter, child: _buildDistanceBanner()),
           if (showList)
             Padding(padding: _gutter, child: _buildSectionHeader()),
@@ -238,6 +319,10 @@ class ExperiencesTabState extends State<ExperiencesTab> {
       ),
     );
   }
+
+  /// The icon for "no country picked": everywhere in country mode, else here.
+  IconData get _noCountryIcon =>
+      _countryMode ? Icons.public_rounded : Icons.my_location_rounded;
 
   /// Unified filter bar: pinned country destination selector on the left,
   /// followed by horizontally scrollable category chips on the right.
@@ -280,8 +365,8 @@ class ExperiencesTabState extends State<ExperiencesTab> {
                       style: const TextStyle(fontSize: 14),
                     )
                   else
-                    const Icon(
-                      Icons.my_location_rounded,
+                    Icon(
+                      _noCountryIcon,
                       size: 15.5,
                       color: AppColors.brandGreen,
                     ),
@@ -289,7 +374,9 @@ class ExperiencesTabState extends State<ExperiencesTab> {
                   ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 105),
                     child: Text(
-                      hasCountry ? _selectedCountry!.name : 'Near Me',
+                      hasCountry
+                          ? _selectedCountry!.name
+                          : (_countryMode ? 'All countries' : 'Near Me'),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
@@ -447,13 +534,15 @@ class ExperiencesTabState extends State<ExperiencesTab> {
                     ),
                   ),
                   const SizedBox(height: 6),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 24),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
                     child: Align(
                       alignment: Alignment.centerLeft,
                       child: Text(
-                        'Browse experiences by country or near your current spot.',
-                        style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                        _countryMode
+                            ? 'Browse experiences by country.'
+                            : 'Browse experiences by country or near your current spot.',
+                        style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
                       ),
                     ),
                   ),
@@ -501,7 +590,7 @@ class ExperiencesTabState extends State<ExperiencesTab> {
                     child: ListView(
                       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
                       children: [
-                        // Near Me option
+                        // No country: "All countries" in country mode, else "Near Me"
                         ListTile(
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                           leading: Container(
@@ -514,20 +603,22 @@ class ExperiencesTabState extends State<ExperiencesTab> {
                               shape: BoxShape.circle,
                             ),
                             child: Icon(
-                              Icons.my_location_rounded,
+                              _noCountryIcon,
                               color: _selectedCountry == null
                                   ? AppColors.brandGreen
                                   : AppColors.textSecondary,
                               size: 19,
                             ),
                           ),
-                          title: const Text(
-                            'Near Me (Current Location)',
-                            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14.5),
+                          title: Text(
+                            _countryMode ? 'All countries' : 'Near Me (Current Location)',
+                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14.5),
                           ),
-                          subtitle: const Text(
-                            'Experiences closest to your current spot',
-                            style: TextStyle(fontSize: 12, color: AppColors.textTertiary),
+                          subtitle: Text(
+                            _countryMode
+                                ? 'Experiences from every country'
+                                : 'Experiences closest to your current spot',
+                            style: const TextStyle(fontSize: 12, color: AppColors.textTertiary),
                           ),
                           trailing: _selectedCountry == null
                               ? const Icon(Icons.check_circle_rounded, color: AppColors.brandGreen)
@@ -623,7 +714,9 @@ class ExperiencesTabState extends State<ExperiencesTab> {
     } else if (_awaitingLocation) {
       status = 'Turn on location to see what is around you';
     } else if (_loading) {
-      status = 'Finding experiences around you…';
+      status = _countryMode
+          ? 'Finding experiences…'
+          : 'Finding experiences around you…';
     } else if (_error != null) {
       status = 'Pull down to try again';
     } else if (_packages.isEmpty) {
@@ -637,7 +730,7 @@ class ExperiencesTabState extends State<ExperiencesTab> {
 
     final badgeText = _selectedCountry != null
         ? '${_selectedCountry!.flag} ${_selectedCountry!.name.toUpperCase()}'
-        : 'LOCAL EXPERIENCES';
+        : (_countryMode ? 'ALL COUNTRIES' : 'LOCAL EXPERIENCES');
 
     final heroTitle = _selectedCountry != null
         ? 'Explore\n${_selectedCountry!.name}'
@@ -707,7 +800,9 @@ class ExperiencesTabState extends State<ExperiencesTab> {
                 Row(
                   children: [
                     Icon(
-                      _selectedCountry != null ? Icons.place_rounded : Icons.near_me_rounded,
+                      _selectedCountry != null
+                          ? Icons.place_rounded
+                          : (_countryMode ? Icons.public_rounded : Icons.near_me_rounded),
                       size: 13,
                       color: Colors.white.withValues(alpha: 0.8),
                     ),
@@ -752,6 +847,10 @@ class ExperiencesTabState extends State<ExperiencesTab> {
       title = _category == null
           ? 'Experiences in ${_selectedCountry!.name}'
           : '${experienceCategoryFor(_category).label} in ${_selectedCountry!.name}';
+    } else if (_countryMode) {
+      title = _category == null
+          ? 'All experiences'
+          : '${experienceCategoryFor(_category).label} experiences';
     } else {
       title = _category == null
           ? 'Nearest to you'
@@ -844,7 +943,8 @@ class ExperiencesTabState extends State<ExperiencesTab> {
             : _buildEmptyState(
                 Icons.kayaking_rounded,
                 'Nothing here yet',
-                'No ${experienceCategoryFor(_category).label.toLowerCase()} experiences nearby. Try another category.',
+                'No ${experienceCategoryFor(_category).label.toLowerCase()} experiences '
+                '${_countryMode ? 'yet' : 'nearby'}. Try another category.',
                 actionLabel: 'Show all',
                 onAction: () => _selectCategory(null),
               ),
