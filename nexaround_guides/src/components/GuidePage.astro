@@ -1,0 +1,346 @@
+---
+// One guide page, in English or in one of its translations. A translation
+// replaces the words; photos, coordinates and distances come from the
+// English guide.
+import { Image } from 'astro:assets';
+import { render } from 'astro:content';
+import Base from '../layouts/Base.astro';
+import Icon from './Icon.astro';
+import RouteExplorer from './RouteExplorer.astro';
+import LegTable from './LegTable.astro';
+import StopList from './StopList.astro';
+import FuelPlanner from './FuelPlanner.astro';
+import Gallery from './Gallery.astro';
+import Affiliate from './Affiliate.astro';
+import AppCta from './AppCta.astro';
+import GuideAppBand from './GuideAppBand.astro';
+import StoreButtons from './StoreButtons.astro';
+import { PILLARS, type PillarKey } from '../data/pillars';
+import { readMinutes, type Guide, type Translation } from '../lib/guides';
+import { parseFact } from '../lib/geo';
+import { ui, fill, formatDateIn, guidePath, LANGS, LANG_NAMES, type Lang } from '../lib/i18n';
+import { SITE } from '../site';
+
+interface Props { guide: Guide; all: Guide[]; lang: Lang; translations: Map<string, Translation> }
+const { guide, all, lang, translations } = Astro.props;
+const t = ui(lang);
+const tr = lang === 'en' ? undefined : translations.get(`${lang}/${guide.id}`);
+const base = guide.data;
+const x = tr?.data;
+const d = {
+  ...base,
+  title: x?.title ?? base.title,
+  description: x?.description ?? base.description,
+  country: x?.country ?? base.country,
+  region: x ? x.region : base.region,
+  coverAlt: x?.coverAlt ?? base.coverAlt,
+  intro: x ? x.intro : base.intro,
+  facts: x && x.facts.length === base.facts.length ? x.facts : base.facts,
+  legsNote: x?.legsNote ?? base.legsNote,
+  routeLines: base.routeLines.map((l: { key: string; label: string; dashed: boolean }, i: number) => ({ ...l, label: x?.routeLines[i] ?? l.label })),
+  stops: base.stops.map((s: { name: string; lat: number; lng: number; kind: string; note?: string }, i: number) => ({ ...s, note: x?.stops[i] ?? s.note })),
+  photos: base.photos.map((p: { alt: string; caption?: string }, i: number) => ({ ...p, alt: x?.photos[i]?.alt ?? p.alt, caption: x?.photos[i]?.caption ?? p.caption })),
+};
+const pillarName = t.pillars[d.pillar] ?? PILLARS[d.pillar as PillarKey].name;
+const { Content, headings } = await render(tr ?? guide);
+const minutes = readMinutes(tr ?? guide);
+const date = (dt: Date) => formatDateIn(dt, lang);
+
+const versions = LANGS.filter((l) => l === 'en' || translations.has(`${l}/${guide.id}`));
+const hrefIn = (l: Lang, g: Guide) => guidePath(l, g.data.pillar, g.id);
+const alternates = versions.length > 1 ? versions.map((l) => ({ lang: l, href: hrefIn(l, guide) })) : [];
+
+const routeLabel = fill(t.routeMapLabel, { title: d.title });
+const hasRoute = d.stops.length > 0 || d.routeLines.length > 0;
+const legKm = d.legs.reduce((s: number, l: { km: number }) => s + l.km, 0);
+const toc = [
+  ...(hasRoute ? [{ slug: 'route', text: d.legs.length ? t.tocLegs : t.tocRoute }] : []),
+  ...headings.filter((h: { depth: number }) => h.depth === 2),
+  ...(d.fuelGaps.length ? [{ slug: 'fuel-planner', text: t.fuelPlanner }] : []),
+  ...(d.stops.length ? [{ slug: 'stops', text: t.stopsAlong }] : []),
+  ...(d.legs.length ? [{ slug: 'every-leg', text: t.everyLeg }] : []),
+  ...(d.photos.length ? [{ slug: 'photos', text: t.alongTheWay }] : []),
+  ...(d.sources.length ? [{ slug: 'sources', text: t.sources }] : []),
+];
+// The app band: "Planning {place}?" No band on guides that advise against going.
+const NO_APP_BAND = ['la-rinconada'];
+// In other languages the place opens the heading ("{place}: ..."), so it starts with a capital.
+const appPlace = x ? x.place.charAt(0).toUpperCase() + x.place.slice(1) : (() => {
+  let p = base.title.includes(':') ? base.title.split(':')[0] : base.title;
+  return p.replace(/^How to (visit|plan) /, '').replace(/, .*$/, '').replace(/^The /, 'the ').replace(/^Free stops on /, 'a trip across ');
+})();
+// Counting numbers and km/miles only on English figures, whose format the parser knows.
+const facts = d.facts.map((f: { value: string; label: string }) => ({ ...f, num: lang === 'en' ? parseFact(f.value) : null }));
+
+const related = [
+  ...base.related.map((id: string) => all.find((g) => g.id === id)).filter(Boolean),
+  ...all.filter((g) => g.id !== guide.id && g.data.pillar === base.pillar),
+  ...all.filter((g) => g.id !== guide.id),
+].filter((g, i, arr) => g && g.id !== guide.id && arr.findIndex((y) => y?.id === g.id) === i).slice(0, 6) as Guide[];
+const relatedIn = (g: Guide) => {
+  const rt = lang === 'en' ? undefined : translations.get(`${lang}/${g.id}`);
+  return { href: rt ? hrefIn(lang, g) : hrefIn('en', g), title: rt?.data.title ?? g.data.title, country: rt?.data.country ?? g.data.country, alt: rt?.data.coverAlt ?? g.data.coverAlt, min: readMinutes(rt ?? g) };
+};
+
+const url = new URL(hrefIn(lang, guide), Astro.site).href;
+const jsonLd = [
+  {
+    '@context': 'https://schema.org',
+    '@type': 'Article',
+    headline: d.title,
+    description: d.description,
+    inLanguage: lang,
+    mainEntityOfPage: url,
+    datePublished: (base.published ?? base.lastChecked).toISOString(),
+    dateModified: base.lastChecked.toISOString(),
+    author: { '@type': 'Organization', name: SITE.name, url: Astro.site?.href },
+    publisher: { '@type': 'Organization', name: SITE.publisher, logo: { '@type': 'ImageObject', url: new URL('/logo_2.png', Astro.site).href } },
+  },
+  {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      { '@type': 'ListItem', position: 1, name: t.home, item: Astro.site?.href },
+      { '@type': 'ListItem', position: 2, name: pillarName, item: new URL(`/${base.pillar}/`, Astro.site).href },
+      { '@type': 'ListItem', position: 3, name: d.title, item: url },
+    ],
+  },
+];
+const [checkedPre, checkedPost] = t.checked.split('{date}');
+---
+<Base title={d.title} description={d.description} image={base.cover} type="article" jsonLd={jsonLd} article={d.title} appCampaign={guide.id} lang={lang} alternates={alternates}>
+  <section class="hero hero-guide">
+    <div class="hero-bg hero-zoom">
+      <Image src={base.cover} alt="" widths={[960, 1600, 2000]} sizes="100vw" loading="eager" fetchpriority="high" />
+    </div>
+    <div class="container hero-inner">
+      <nav class="crumbs rise" aria-label="Breadcrumb">
+        <a href="/">{t.home}</a><span aria-hidden="true">›</span><a href={`/${base.pillar}/`}>{pillarName}</a>
+      </nav>
+      <div class="hero-copy">
+        <div style="display: flex; flex-wrap: wrap; gap: 10px" class="rise">
+          <span class="badge badge-teal-glow"><Icon name="map-pin" /> {pillarName} · {d.country}</span>
+          {base.draft && <span class="badge badge-gold" style="background: #ffb800; color: #0a1118">Draft · not yet edited</span>}
+        </div>
+        <h1 style="margin-top: 22px" class="rise d1">{d.title}</h1>
+        <p class="hero-lead rise d2">{d.description}</p>
+        <div class="hero-meta rise d2">
+          <span><Icon name="calendar-check" /> {checkedPre}{date(base.lastChecked)}{checkedPost}</span>
+          <span><Icon name="clock" /> {fill(t.minRead, { n: minutes })}</span>
+          {d.region && <span><Icon name="map-pin" /> {d.region}</span>}
+        </div>
+        <div class="hero-actions rise d3">
+          {hasRoute && <a class="btn btn-white" href="#route"><Icon name="route" /> {d.legs.length ? t.driveLegByLeg : t.seeRoute}</a>}
+          <button type="button" class="btn btn-glass btn-save" data-save={guide.id} aria-pressed="false"><Icon name="bookmark" /> <span data-save-label>{t.saveGuide}</span></button>
+          <button type="button" class="btn btn-glass" data-share={url}><Icon name="share" /> {t.share}</button>
+        </div>
+        {versions.length > 1 && (
+          <nav class="lang-switch rise d3" aria-label={t.readIn}>
+            <Icon name="globe" />
+            <span class="lang-label">{t.readIn}</span>
+            {versions.map((l) => (
+              l === lang
+                ? <span class="lang-on" aria-current="true" lang={l}>{LANG_NAMES[l]}</span>
+                : <a href={hrefIn(l, guide)} hreflang={l} lang={l}>{LANG_NAMES[l]}</a>
+            ))}
+          </nav>
+        )}
+      </div>
+    </div>
+    <p class="hero-credit">{d.coverAlt}. {t.photo}: {base.coverCredit.author}, <a href={base.coverCredit.source}>{base.coverCredit.license}</a></p>
+  </section>
+
+  {facts.length > 0 && (
+    <div class="container facts-strip">
+      <div class="card facts-grid">
+        {facts.map((f) => (
+          <div>
+            {f.num ? (
+              f.num.km !== undefined ? (
+                <strong data-count data-km={f.num.km} data-prefix={f.num.prefix}>{f.value}</strong>
+              ) : (
+                <strong data-count data-to={f.num.n} data-dec={f.num.dec} data-prefix={f.num.prefix} data-suffix={f.num.suffix} data-neg={f.num.neg ? '1' : '0'}>{f.value}</strong>
+              )
+            ) : (
+              <strong>{f.value}</strong>
+            )}
+            <span>{f.label}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )}
+  <div class="container"><p class="credit-below">{t.cover}: {d.coverAlt}. {t.photo}: {base.coverCredit.author}, <a href={base.coverCredit.source}>{base.coverCredit.license}</a></p></div>
+
+  {hasRoute && (
+    <RouteExplorer route={base.route} lines={d.routeLines} stops={d.stops} legs={d.legs} legsNote={d.legsNote} label={routeLabel} lang={lang} />
+  )}
+
+  {!NO_APP_BAND.includes(guide.id) && <GuideAppBand place={appPlace} slug={guide.id} lang={lang} />}
+
+  <section class="section" style={hasRoute ? 'padding-top: 24px' : 'padding-top: 72px'}>
+    <div class="container guide-layout">
+      <article lang={lang}>
+        {base.draft && base.todo.length > 0 && (
+          <div class="todo-box block">
+            <h2>Before this guide is published, the team needs to:</h2>
+            <ul>{base.todo.map((item: string) => <li>{item}</li>)}</ul>
+          </div>
+        )}
+
+        {d.intro && (
+          <div class="prose block">
+            {d.intro.split(/\n\s*\n/).map((p: string) => <p>{p.trim()}</p>)}
+          </div>
+        )}
+
+        <div class="prose block">
+          <Content />
+        </div>
+
+        {d.fuelGaps.length > 1 && (
+          <div class="block" id="fuel-planner">
+            <h2 class="block-title">{t.fuelPlanner}</h2>
+            <p class="block-sub">{t.fuelPlannerSub}</p>
+            <FuelPlanner gaps={d.fuelGaps} routeKm={legKm || d.fuelGaps.reduce((s: number, g: { km: number }) => s + g.km, 0)} lang={lang} />
+          </div>
+        )}
+
+        {d.stops.length > 0 && (
+          <div class="block" id="stops">
+            <h2 class="block-title">{t.stopsAlong}</h2>
+            <p class="block-sub">{hasRoute ? t.stopsSubMap : t.stopsSub}</p>
+            <StopList stops={d.stops} onMap={hasRoute} lang={lang} />
+          </div>
+        )}
+
+        {d.legs.length > 0 && (
+          <div class="block" id="every-leg">
+            <h2 class="block-title">{t.everyLeg}</h2>
+            {d.legsNote && <p class="block-sub">{d.legsNote}</p>}
+            <LegTable legs={d.legs} onMap={hasRoute} lang={lang} />
+          </div>
+        )}
+
+        {d.photos.length > 0 && (
+          <div class="block" id="photos">
+            <h2 class="block-title">{t.alongTheWay}</h2>
+            <p class="block-sub">{t.photosSub}</p>
+            <Gallery photos={d.photos} lang={lang} />
+          </div>
+        )}
+
+        {base.affiliates.length > 0 && (
+          <div class="block" style="display: flex; flex-direction: column; gap: 14px">
+            {base.affiliates.map((a: { program: 'airalo' | 'gettransfer'; country?: string }) => <Affiliate program={a.program} country={a.country} />)}
+          </div>
+        )}
+
+        {base.sources.length > 0 && (
+          <div class="block sources" id="sources">
+            <h2 class="block-title">{t.sources}</h2>
+            <p class="block-sub">{t.sourcesSub}</p>
+            <details class="sources-box">
+              <summary>{fill(t.showSources, { n: base.sources.length })} <Icon name="chevron-down" /></summary>
+              <ol>{base.sources.map((s: { title: string; url: string }) => <li><a href={s.url} rel="noopener" lang="en">{s.title}</a></li>)}</ol>
+            </details>
+          </div>
+        )}
+
+        <div class="block checked-note">
+          <Icon name="calendar-check" />
+          <p>{t.checkedBefore} <strong>{date(base.lastChecked)}</strong>. {t.checkedAfter} <a href={`mailto:${SITE.email}`} style="color: var(--brand-teal); text-decoration: underline">{SITE.email}</a>.</p>
+        </div>
+      </article>
+
+      <aside class="guide-aside" aria-label={t.onThisPage}>
+        {toc.length > 1 && (
+          <nav class="card toc" aria-label={t.onThisPage} data-toc>
+            <div class="toc-head"><h2>{t.onThisPage}</h2><span class="toc-pct" data-toc-pct>{fill(t.readPct, { n: 0 })}</span></div>
+            <ol>{toc.map((h: { slug: string; text: string }) => <li><a href={`#${h.slug}`} data-toc-link={h.slug}><i></i>{h.text}</a></li>)}</ol>
+          </nav>
+        )}
+        {(legKm > 0 || d.fuelGaps.length > 0) && (
+          <div class="card aside-units">
+            <span>{t.distancesIn}</span>
+            <div class="seg" role="group" aria-label={t.units}>
+              <button type="button" class="is-on" data-units="km" aria-pressed="true">km</button>
+              <button type="button" data-units="mi" aria-pressed="false">{t.miles}</button>
+            </div>
+          </div>
+        )}
+        <div class="card aside-app">
+          <span class="badge badge-teal-glow"><Icon name="sparkle" /> {t.odysseyPlanner}</span>
+          <h2>{t.asideTitle}</h2>
+          <p>{t.asideText}</p>
+          <StoreButtons onDark medium="guide-aside" campaign={guide.id} lang={lang} />
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  {related.length > 0 && (
+    <section class="section section-light" data-related>
+      <div class="container">
+        <div class="section-head-row">
+          <div><span class="badge badge-teal"><Icon name="compass" /> {t.keepExploring}</span><h2>{t.moreGuides}</h2></div>
+          <div style="display: flex; gap: 8px">
+            <button type="button" class="round" data-rel-prev aria-label={t.scrollPrev}><Icon name="chevron-left" /></button>
+            <button type="button" class="round" data-rel-next aria-label={t.scrollNext}><Icon name="chevron-right" /></button>
+          </div>
+        </div>
+        <div class="rel-row" data-rel-row>
+          {related.map((g) => {
+            const r = relatedIn(g);
+            return (
+              <a class="rel" href={r.href}>
+                <div class="ri"><Image src={g.data.cover} alt={r.alt} widths={[480, 720]} sizes="340px" loading="lazy" /></div>
+                <div class="rb">
+                  <span class="eyebrow">{t.pillars[g.data.pillar] ?? PILLARS[g.data.pillar as PillarKey].name} · {r.country}</span>
+                  <h3>{r.title}</h3>
+                  <small>{fill(t.minRead, { n: r.min })} · {checkedPre}{date(g.data.lastChecked)}{checkedPost}</small>
+                </div>
+              </a>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  )}
+
+  <section class="section">
+    <div class="container"><AppCta medium="guide-footer" campaign={guide.id} lang={lang} /></div>
+  </section>
+</Base>
+
+<script>
+  import { T, fill } from '../lib/client';
+
+  // Contents: highlight the section being read and show how far through the page the reader is.
+  const toc = document.querySelector<HTMLElement>('[data-toc]');
+  if (toc) {
+    const links = [...toc.querySelectorAll<HTMLAnchorElement>('[data-toc-link]')];
+    const targets = links.map((a) => document.getElementById(a.dataset.tocLink ?? '')).filter((el): el is HTMLElement => !!el);
+    const pct = toc.querySelector('[data-toc-pct]');
+    let ticking = false;
+    const update = () => {
+      ticking = false;
+      let active = targets[0]?.id;
+      targets.forEach((el) => { if (el.getBoundingClientRect().top < 160) active = el.id; });
+      links.forEach((a) => {
+        const on = a.dataset.tocLink === active;
+        a.classList.toggle('is-on', on);
+        if (on) a.setAttribute('aria-current', 'location'); else a.removeAttribute('aria-current');
+      });
+      const max = document.documentElement.scrollHeight - window.innerHeight;
+      if (pct) pct.textContent = fill(T().readPct, { n: max > 0 ? Math.round(Math.min(1, window.scrollY / max) * 100) : 0 });
+    };
+    window.addEventListener('scroll', () => { if (!ticking) { ticking = true; requestAnimationFrame(update); } }, { passive: true });
+    update();
+  }
+
+  // Related guides: arrow buttons scroll the row.
+  const row = document.querySelector<HTMLElement>('[data-rel-row]');
+  document.querySelector('[data-rel-prev]')?.addEventListener('click', () => row?.scrollBy({ left: -360, behavior: 'smooth' }));
+  document.querySelector('[data-rel-next]')?.addEventListener('click', () => row?.scrollBy({ left: 360, behavior: 'smooth' }));
+</script>

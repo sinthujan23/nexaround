@@ -1,0 +1,127 @@
+---
+// Fuel gaps as a bar sized by distance, plus two quick checks: whether a
+// reader's range covers the gaps (also if one pump on the way is out, the
+// guide's own advice), and roughly how much fuel the route takes.
+import Icon from './Icon.astro';
+import { formatKm } from '../lib/guides';
+import { ui, fill, type Lang } from '../lib/i18n';
+
+interface Gap { from: string; to: string; km: number }
+interface Props { gaps: Gap[]; routeKm: number; lang?: Lang }
+const { gaps, routeKm, lang = 'en' } = Astro.props;
+const t = ui(lang);
+const longest = Math.max(...gaps.map((g) => g.km));
+const pairs = gaps.slice(1).map((g, i) => ({ km: gaps[i].km + g.km, from: gaps[i].from, via: gaps[i].to, to: g.to }));
+const worst = pairs.reduce((a, b) => (b.km > a.km ? b : a), pairs[0] ?? { km: longest, from: '', via: '', to: '' });
+const longGap = gaps.find((g) => g.km === longest)!;
+const total = gaps.reduce((s, g) => s + g.km, 0);
+const LONG = 150;
+const [inAllBefore, inAllAfter] = t.fuel.inAll.split('{dist}');
+const [wholeBefore, wholeAfter] = t.fuel.wholeRoute.split('{dist}');
+---
+<div class="fuel" data-fuel data-longest={longest} data-worst={worst.km} data-route-km={routeKm}
+  data-worst-text={fill(t.fuel.worst, { from: worst.from, to: worst.to, via: worst.via })} data-long-text={fill(t.fuel.long, { from: longGap.from, to: longGap.to })}>
+  <div class="ribbon-card">
+    <div class="ribbon" role="group" aria-label={fill(t.fuel.gapsAria, { from: gaps[0].from, to: gaps[gaps.length - 1].to })}>
+      {gaps.map((g, i) => (
+        <button type="button" class:list={['gap-seg', { long: g.km >= LONG, 'is-on': g.km === longest }]} style={`flex-grow: ${g.km}`} data-gap={i}
+          data-gap-from={g.from} data-gap-to={g.to} data-gap-km={g.km} aria-pressed={g.km === longest ? 'true' : 'false'} aria-label={`${fill(t.fuel.long, { from: g.from, to: g.to })}: ${formatKm(g.km)}`}>
+          <i></i><em>{g.km >= LONG ? <span data-km={g.km}>{formatKm(g.km)}</span> : ''}</em>
+        </button>
+      ))}
+    </div>
+    <div class="gap-ends"><span>{gaps[0].from}</span><span>{inAllBefore}<span data-km={total}>{formatKm(total)}</span>{inAllAfter}</span><span>{gaps[gaps.length - 1].to}</span></div>
+    <div class="gap-read" aria-live="polite">
+      <strong data-gap-title>{longGap.from} → {longGap.to}</strong>
+      <span><span data-gap-dist data-km={longest}>{formatKm(longest)}</span><span data-gap-note>{t.fuel.longest}</span></span>
+    </div>
+  </div>
+  <div class="planner">
+    <div class="pl-card">
+      <h3>{t.fuel.tank}</h3>
+      <div class="pl-val"><span data-range-text>{formatKm(450)}</span><small>{t.fuel.onFullTank}</small></div>
+      <input type="range" min="100" max="900" step="10" value="450" data-range aria-label={t.fuel.rangeAria} />
+      <div class="status st-good" data-status>
+        <span data-st="good"><Icon name="check-circle" /></span>
+        <span data-st="warn" hidden><Icon name="alert" /></span>
+        <span data-st="bad" hidden><Icon name="x-circle" /></span>
+        <span><strong data-status-title>{t.fuel.goodTitle}</strong> <span data-status-text></span></span>
+      </div>
+    </div>
+    <div class="pl-card">
+      <h3>{t.fuel.howMuch}</h3>
+      <div class="pl-val"><span data-cons-text>10 L/100 km</span><small>{t.fuel.carUse}</small></div>
+      <input type="range" min="5" max="20" step="0.5" value="10" data-cons aria-label={t.fuel.consAria} />
+      <div class="litres">
+        <div><small>{wholeBefore}<span data-km={routeKm}>{formatKm(routeKm)}</span>{wholeAfter}</small><strong data-litres>{fill(t.fuel.aboutL, { n: Math.round(routeKm / 10) })}</strong></div>
+      </div>
+      <p class="pl-note">{t.fuel.note}</p>
+    </div>
+  </div>
+</div>
+
+<script>
+  import { fmtKm, fmtNum, T, fill } from '../lib/client';
+
+  document.querySelectorAll<HTMLElement>('[data-fuel]').forEach((root) => {
+    const f = T().fuel;
+    const longest = Number(root.dataset.longest);
+    const worst = Number(root.dataset.worst);
+    const routeKm = Number(root.dataset.routeKm);
+    const range = root.querySelector<HTMLInputElement>('[data-range]')!;
+    const cons = root.querySelector<HTMLInputElement>('[data-cons]')!;
+    const set = (sel: string, text: string) => { const el = root.querySelector(sel); if (el) el.textContent = text; };
+    const fillBar = (input: HTMLInputElement) => {
+      const p = ((Number(input.value) - Number(input.min)) / (Number(input.max) - Number(input.min))) * 100;
+      input.style.setProperty('--p', `${p}%`);
+    };
+
+    const paint = () => {
+      const r = Number(range.value);
+      set('[data-range-text]', fmtKm(r));
+      range.setAttribute('aria-valuetext', fmtKm(r));
+      let level = 'good';
+      let title = f.goodTitle;
+      let text = fill(f.goodText, { worst: root.dataset.worstText ?? '', dist: fmtKm(worst) });
+      if (r < worst) {
+        level = 'warn';
+        title = f.warnTitle;
+        text = fill(f.warnText, { worst: root.dataset.worstText ?? '', dist: fmtKm(worst) });
+      }
+      if (r < longest) {
+        level = 'bad';
+        title = f.badTitle;
+        text = fill(f.badText, { long: root.dataset.longText ?? '', dist: fmtKm(longest) });
+      }
+      const status = root.querySelector<HTMLElement>('[data-status]')!;
+      status.className = `status st-${level}`;
+      status.querySelectorAll<HTMLElement>('[data-st]').forEach((i) => (i.hidden = i.dataset.st !== level));
+      set('[data-status-title]', title);
+      set('[data-status-text]', text);
+      const c = Number(cons.value);
+      set('[data-cons-text]', `${fmtNum(c, c % 1 ? 1 : 0)} L/100 km`);
+      cons.setAttribute('aria-valuetext', `${c} L/100 km`);
+      set('[data-litres]', fill(f.aboutL, { n: fmtNum(Math.round((routeKm * c) / 100)) }));
+      fillBar(range);
+      fillBar(cons);
+    };
+    range.addEventListener('input', paint);
+    cons.addEventListener('input', paint);
+    document.addEventListener('nxg:units', paint);
+
+    root.querySelectorAll<HTMLButtonElement>('[data-gap]').forEach((b) =>
+      b.addEventListener('click', () => {
+        root.querySelectorAll<HTMLButtonElement>('[data-gap]').forEach((x) => {
+          x.classList.toggle('is-on', x === b);
+          x.setAttribute('aria-pressed', String(x === b));
+        });
+        const km = Number(b.dataset.gapKm);
+        set('[data-gap-title]', `${b.dataset.gapFrom} → ${b.dataset.gapTo}`);
+        const dist = root.querySelector<HTMLElement>('[data-gap-dist]');
+        if (dist) { dist.dataset.km = String(km); dist.textContent = fmtKm(km); }
+        set('[data-gap-note]', km === longest ? f.longest : km >= 150 ? f.oneOfLong : '');
+      }),
+    );
+    paint();
+  });
+</script>

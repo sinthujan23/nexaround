@@ -1,6 +1,7 @@
 import { useState, useEffect, startTransition } from 'react';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import './index.css';
+import { apiPost } from './api';
 import { NAV_ITEMS, NAV_REDIRECTS, HOME_PATH, LOGIN_PATH } from './nav';
 import Login from './pages/Login';
 import AdminLayout from './components/layout/AdminLayout';
@@ -36,6 +37,9 @@ function App() {
   // same transition means the signed-out routes first render at /login, so the
   // page being left isn't remembered and signing back in lands on HOME_PATH.
   const handleLogout = () => {
+    // Revokes this device's session on the server so the token stops working
+    // at once. Best effort and not awaited: signing out must never hang on it.
+    apiPost('/admin/logout').catch(() => {});
     localStorage.removeItem('admin_token');
     startTransition(() => setToken(null));
     navigate(LOGIN_PATH, { replace: true });

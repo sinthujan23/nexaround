@@ -1,0 +1,38 @@
+---
+// On every guide: the step from reading to planning. Tagged links show
+// which guides send readers to the app.
+import { Image } from 'astro:assets';
+import Icon from './Icon.astro';
+import StoreButtons from './StoreButtons.astro';
+import { getAppLink } from '../lib/app';
+import { ui, fill, type Lang } from '../lib/i18n';
+import plan from '../assets/app/odyssey-plan.png';
+import blueprints from '../assets/app/odyssey-blueprints.png';
+
+interface Props { place: string; slug: string; lang?: Lang }
+const { place, slug, lang = 'en' } = Astro.props;
+const t = ui(lang);
+---
+<section class="app-band" aria-label={t.bandAria}>
+  <div class="container app-band-in">
+    <div class="app-band-copy">
+      <span class="badge badge-teal-glow"><Icon name="sparkle" /> {t.bandBadge}</span>
+      <h2>{fill(t.bandTitle, { place })} <span class="text-gradient-bright">{t.bandTitle2}</span></h2>
+      <p>{t.bandText}</p>
+      <ul class="app-band-points">
+        {t.bandPoints.map((pt) => <li><Icon name="check-circle" /> {pt}</li>)}
+      </ul>
+      <div class="app-band-cta">
+        <StoreButtons onDark medium="guide-band" campaign={slug} lang={lang} />
+        <a class="qr-mini on-dark" href={getAppLink('guide-band', slug)}>
+          <img src="/app-qr.svg" alt="" width="64" height="64" />
+          <span>{t.scan1}<br />{t.scan2}</span>
+        </a>
+      </div>
+    </div>
+    <div class="app-band-visual" aria-hidden="true">
+      <div class="phone phone-back"><Image src={blueprints} alt="" widths={[260, 420]} sizes="200px" loading="lazy" /></div>
+      <div class="phone phone-front"><Image src={plan} alt="" widths={[300, 480]} sizes="240px" loading="lazy" /></div>
+    </div>
+  </div>
+</section>

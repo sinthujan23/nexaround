@@ -38,6 +38,9 @@ const guides = defineCollection({
         .array(z.object({ from: z.string(), to: z.string(), km: z.number(), min: z.number() }))
         .default([]),
       legsNote: z.string().optional(),
+      // Distances between fuel stops, in driving order. Shown as the fuel
+      // planner; leave empty when the guide has no full list.
+      fuelGaps: z.array(z.object({ from: z.string(), to: z.string(), km: z.number() })).default([]),
       stops: z
         .array(
           z.object({
@@ -63,4 +66,28 @@ const guides = defineCollection({
     }),
 });
 
-export const collections = { guides };
+// A guide in another language: only the words. Everything else (photos,
+// coordinates, distances) comes from the English guide with the same slug.
+// Lists (`stops`, `photos`, `routeLines`, `facts`) follow the English order.
+const translations = defineCollection({
+  loader: glob({ pattern: '**/*.md', base: './src/content/translations' }),
+  schema: z.object({
+    lang: z.enum(['es', 'fr', 'de', 'hi']),
+    guide: z.string(),
+    title: z.string(),
+    description: z.string().max(280),
+    // The place, as it reads in "{place}: let Odyssey do the hard part".
+    place: z.string(),
+    country: z.string(),
+    region: z.string().optional(),
+    coverAlt: z.string(),
+    intro: z.string().optional(),
+    facts: z.array(z.object({ value: z.string(), label: z.string() })).default([]),
+    legsNote: z.string().optional(),
+    routeLines: z.array(z.string()).default([]),
+    stops: z.array(z.string()).default([]),
+    photos: z.array(z.object({ alt: z.string(), caption: z.string().optional() })).default([]),
+  }),
+});
+
+export const collections = { guides, translations };

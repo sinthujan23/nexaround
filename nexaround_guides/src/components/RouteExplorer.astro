@@ -1,0 +1,389 @@
+---
+// Interactive route map: Leaflet over OpenStreetMap tiles. Route lines come
+// from src/data/routes/<route>.json (simplified Google Directions polylines);
+// stops come from the guide's frontmatter. When the guide has legs, the main
+// line is split into them and a reader can play the drive leg by leg, step
+// through it, or jump to any leg. The map itself loads only when scrolled near.
+import Icon from './Icon.astro';
+import { splitLegs } from '../lib/geo';
+import { formatKm, formatDuration } from '../lib/guides';
+import { ui, fill, type Lang } from '../lib/i18n';
+
+interface Stop { name: string; lat: number; lng: number; kind: string; note?: string }
+interface Line { key: string; label: string; dashed: boolean }
+interface Leg { from: string; to: string; km: number; min: number }
+interface Props { route?: string; lines: Line[]; stops: Stop[]; legs: Leg[]; legsNote?: string; label: string; lang?: Lang }
+
+const { route, lines, stops, legs, legsNote, label, lang = 'en' } = Astro.props;
+const t = ui(lang);
+// "Leg {n} of {t}" split around the live number, in this language's word order.
+const around = (tpl: string, total: number) => fill(tpl, { t: total }).split('{n}');
+const routeFiles = import.meta.glob<{ default: Record<string, [number, number][]> }>('../data/routes/*.json', { eager: true });
+const data = route ? routeFiles[`../data/routes/${route}.json`]?.default ?? {} : {};
+const drawn = lines.map((l) => ({ ...l, points: data[l.key] ?? [] })).filter((l) => l.points.length);
+const primary = Math.max(0, drawn.findIndex((l) => !l.dashed));
+const split = drawn.length
+  ? splitLegs(drawn[primary].points, legs, stops, drawn.filter((_, i) => i !== primary).map((l) => l.points))
+  : null;
+const payload = { lines: drawn, stops, legs: split ?? [], primary };
+const hasLegs = !!split && split.length > 0;
+const totalKm = legs.reduce((s, l) => s + l.km, 0);
+const kinds = new Set(stops.map((s) => s.kind));
+const first = split?.[0];
+---
+<section class="section route-section" id="route" data-explorer={JSON.stringify(payload)}>
+  <div class="container">
+    <div class="section-head-row">
+      <div>
+        <span class="badge badge-teal"><Icon name="route" /> {hasLegs ? t.interactiveRoute : t.theRoute}</span>
+        <h2>{hasLegs ? <>{t.driveIt1} <span class="text-gradient-teal">{t.driveIt2}</span></> : <>{t.routeAt1} <span class="text-gradient-teal">{t.routeAt2}</span></>}</h2>
+        <p>{hasLegs ? `${t.pressPlay} ${legsNote ?? ''}` : t.tapDot}</p>
+      </div>
+      <div class="route-toggles">
+        {drawn.length > 1 && (
+          <div class="seg" role="group" aria-label={t.route}>
+            {drawn.map((l, i) => (
+              <button type="button" class:list={{ 'is-on': i === primary }} data-x-line={i} aria-pressed={i === primary ? 'true' : 'false'}>{l.label.split(',')[0]}</button>
+            ))}
+          </div>
+        )}
+        {totalKm > 0 && (
+          <div class="seg" role="group" aria-label={t.units}>
+            <button type="button" class="is-on" data-units="km" aria-pressed="true">km</button>
+            <button type="button" data-units="mi" aria-pressed="false">{t.miles}</button>
+          </div>
+        )}
+      </div>
+    </div>
+
+    {hasLegs && first && (
+      <div class="x-ctrls" data-x-ctrls>
+        <button type="button" class="play" data-x-play><span class="play-ic"><span data-x-icon-play><Icon name="play" /></span><span data-x-icon-pause hidden><Icon name="pause" /></span></span><span data-x-play-text>{t.playRoute}</span></button>
+        <button type="button" class="round" data-x-prev aria-label={t.prevLeg} disabled><Icon name="chevron-left" /></button>
+        <div class="x-slider">
+          <input id="leg-range" type="range" min="1" max={split!.length} step="1" value="1" data-x-range aria-label={t.thLeg} />
+          <label for="leg-range">{around(t.legShort, split!.length)[0]}<span data-x-n>1</span>{around(t.legShort, split!.length)[1]}</label>
+        </div>
+        <button type="button" class="round" data-x-next aria-label={t.nextLeg}><Icon name="chevron-right" /></button>
+      </div>
+    )}
+
+    <figure class="mapcard">
+      <div class="route-wrap">
+        <div class="route-map" role="region" aria-label={label} data-x-map></div>
+        {hasLegs && first && (
+          <div class="map-chip" data-x-chip aria-hidden="true"><small>{around(t.legOf, split!.length)[0]}<span data-x-n>1</span>{around(t.legOf, split!.length)[1]}</small><strong data-x-title>{first.from} → {first.to}</strong></div>
+        )}
+      </div>
+
+      {hasLegs && first && (
+        <>
+          <div class="readout" data-x-readout aria-live="polite">
+            <div class="ro-main">
+              <span class="eyebrow">{around(t.legOf, split!.length)[0]}<span data-x-n>1</span>{around(t.legOf, split!.length)[1]}</span>
+              <h3><span data-x-from>{first.from}</span> <Icon name="arrow-right" /> <span data-x-to>{first.to}</span></h3>
+              <p class="ro-stops-label">{t.stopsOnLeg}</p>
+              <div class="ro-stops" data-x-stops></div>
+            </div>
+            <div class="ro-nums">
+              <div class="num"><small>{t.thisLeg}</small><strong data-x-dist>{formatKm(first.km)}</strong></div>
+              <div class="num"><small>{t.drivingTime}</small><strong data-x-time>{formatDuration(first.min)}</strong></div>
+              <div class="num wide">
+                <small>{t.drivenSoFar}</small>
+                <strong><span data-x-done>{formatKm(first.km)}</span> <span class="num-of">{t.of} <span data-x-total>{formatKm(totalKm)}</span> · <span data-x-done-time>{formatDuration(first.min)}</span> {t.atTheWheel}</span></strong>
+                <div class="meter"><i data-x-meter></i></div>
+              </div>
+            </div>
+          </div>
+          <div class="strip-wrap">
+            <div class="strip" role="group" aria-label={t.legsSized}>
+              {split!.map((l, i) => (
+                <button type="button" class:list={['seg-leg', { cur: i === 0 }]} style={`flex-grow: ${l.km}`} data-x-leg={i} aria-pressed={i === 0 ? 'true' : 'false'} aria-label={fill(t.legAria, { n: i + 1, from: l.from, to: l.to, dist: formatKm(l.km) })}><i></i></button>
+              ))}
+            </div>
+            <div class="strip-ends"><span>{split![0].from}</span><span>{split![split!.length - 1].to}</span></div>
+          </div>
+          {drawn.length > 1 && (
+            <div class="readout alt-note" data-x-alt hidden>
+              <p>{t.altNote}</p>
+            </div>
+          )}
+        </>
+      )}
+
+      <figcaption class="map-legend">
+        {drawn.map((l) => <span><i class={l.dashed ? 'swatch-dash' : 'swatch-line'}></i>{l.label}</span>)}
+        {kinds.has('town') && <span><i class="swatch-dot" style="background: #007a7c"></i>{t.kinds.town}</span>}
+        {kinds.has('fuel') && <span><i class="swatch-dot" style="background: #00a5a8"></i>{t.kinds.fuel}</span>}
+        {kinds.has('free') && <span><i class="swatch-dot" style="background: #ffb800"></i>{t.kinds.free}</span>}
+        {kinds.has('paid') && <span><i class="swatch-dot" style="background: #64748b"></i>{t.kinds.paid}</span>}
+        <span style="margin-left: auto">{t.mapData} <a href="https://www.openstreetmap.org/copyright" style="text-decoration: underline">{t.osm}</a></span>
+      </figcaption>
+    </figure>
+  </div>
+</section>
+
+<script>
+  import 'leaflet/dist/leaflet.css';
+  import type * as Leaflet from 'leaflet';
+  import { fmtKm, fmtDuration, reducedMotion, T } from '../lib/client';
+
+  type Pt = [number, number];
+  interface Stop { name: string; lat: number; lng: number; kind: string; note?: string }
+  interface Leg { from: string; to: string; km: number; min: number; a: number; b: number; stops: number[] }
+  interface Payload { lines: { key: string; label: string; dashed: boolean; points: Pt[] }[]; stops: Stop[]; legs: Leg[]; primary: number }
+
+  const COLORS: Record<string, string> = { town: '#007a7c', fuel: '#00a5a8', free: '#ffb800', paid: '#64748b' };
+  const KIND: Record<string, string> = T()?.kinds ?? { town: 'Town', fuel: 'Roadhouse (fuel)', free: 'Free stop', paid: 'Paid entry' };
+  const CAR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><path d="M9 17h6"/><circle cx="17" cy="17" r="2"/></svg>';
+
+  const root = document.querySelector<HTMLElement>('[data-explorer]');
+  if (root) {
+    const data: Payload = JSON.parse(root.dataset.explorer || '{}');
+    const legs = data.legs;
+    const main = data.lines[data.primary]?.points ?? [];
+    const mapEl = root.querySelector<HTMLElement>('[data-x-map]')!;
+    const $ = <T extends Element = HTMLElement>(sel: string) => root.querySelector<T>(sel);
+    const $$ = <T extends Element = HTMLElement>(sel: string) => [...root.querySelectorAll<T>(sel)];
+
+    let L: typeof Leaflet | null = null;
+    let map: Leaflet.Map | null = null;
+    let lineLayers: Leaflet.Polyline[] = [];
+    let markers: Leaflet.CircleMarker[] = [];
+    let done: Leaflet.Polyline | null = null;
+    let glow: Leaflet.Polyline | null = null;
+    let cur: Leaflet.Polyline | null = null;
+    let car: Leaflet.Marker | null = null;
+    let leg = 0;
+    let line = data.primary;
+    let timer: number | undefined;
+    let kindFilter = 'all';
+    let ready: Promise<void> | null = null;
+
+    const legPoints = (k: number) => main.slice(legs[k].a, legs[k].b + 1);
+
+    function paintMap() {
+      if (!map || !L) return;
+      const onMain = line === data.primary;
+      lineLayers.forEach((pl, i) => {
+        const l = data.lines[i];
+        const on = i === line;
+        pl.setStyle({
+          color: l.dashed ? '#8a5a00' : '#007a7c',
+          weight: on ? 6 : l.dashed ? 3 : 5,
+          opacity: on ? 1 : legs.length && !onMain ? 0.35 : 0.9,
+          dashArray: l.dashed && !on ? '8 8' : undefined,
+        });
+        if (on) pl.bringToFront();
+      });
+      if (!legs.length) return;
+      const show = onMain;
+      done?.setLatLngs(show ? main.slice(0, legs[leg].a + 1) : []);
+      const pts = show ? legPoints(leg) : [];
+      glow?.setLatLngs(pts);
+      cur?.setLatLngs(pts);
+      glow?.bringToFront();
+      cur?.bringToFront();
+      markers.forEach((m) => m.bringToFront());
+      if (car) {
+        car.setLatLng(main[legs[leg].b]);
+        car.setOpacity(show ? 1 : 0);
+      }
+    }
+
+    function paintMarkers() {
+      markers.forEach((m, i) => {
+        const on = kindFilter === 'all' || data.stops[i].kind === kindFilter;
+        m.setStyle({ opacity: on ? 1 : 0.25, fillOpacity: on ? 1 : 0.25 });
+      });
+    }
+
+    function init() {
+      if (ready) return ready;
+      ready = (async () => {
+        L = (await import('leaflet')).default;
+        map = L.map(mapEl, { scrollWheelZoom: false, attributionControl: false });
+        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 17 }).addTo(map);
+        const bounds = L.latLngBounds([]);
+        lineLayers = data.lines.map((l, i) => {
+          const pl = L!.polyline(l.points, { color: '#007a7c', weight: 5, opacity: 0.95, className: i === data.primary && !reducedMotion() ? 'route-draw' : undefined }).addTo(map!);
+          bounds.extend(pl.getBounds());
+          return pl;
+        });
+        mapEl.querySelectorAll('.route-draw').forEach((p) => p.addEventListener('animationend', () => p.classList.remove('route-draw'), { once: true }));
+        if (legs.length) {
+          done = L.polyline([], { color: '#00b3b5', weight: 6, opacity: 1, interactive: false }).addTo(map);
+          glow = L.polyline([], { color: '#ffffff', weight: 13, opacity: 0.95, interactive: false }).addTo(map);
+          cur = L.polyline([], { color: '#00d2d3', weight: 6, opacity: 1, interactive: false, className: 'leg-pulse' }).addTo(map);
+          car = L.marker(main[legs[0].b], {
+            icon: L.divIcon({ className: 'car-icon', html: `<span>${CAR}</span>`, iconSize: [34, 34], iconAnchor: [17, 17] }),
+            interactive: false, keyboard: false, zIndexOffset: 1000,
+          }).addTo(map);
+        }
+        markers = data.stops.map((s) => {
+          const free = s.kind === 'free';
+          const m = L!.circleMarker([s.lat, s.lng], {
+            radius: free ? 8 : s.kind === 'town' ? 7 : 6,
+            color: free ? '#0a1118' : '#ffffff',
+            weight: 2,
+            fillColor: COLORS[s.kind] ?? COLORS.town,
+            fillOpacity: 1,
+          }).addTo(map!);
+          const box = document.createElement('div');
+          box.className = 'map-popup';
+          const name = document.createElement('strong');
+          name.textContent = s.name;
+          const kind = document.createElement('em');
+          kind.textContent = KIND[s.kind] ?? s.kind;
+          box.append(name, kind);
+          if (s.note) {
+            const note = document.createElement('span');
+            note.textContent = s.note;
+            box.append(note);
+          }
+          m.bindPopup(box);
+          bounds.extend([s.lat, s.lng]);
+          return m;
+        });
+        if (bounds.isValid()) map.fitBounds(bounds, { padding: [28, 28] });
+        paintMap();
+        paintMarkers();
+      })();
+      return ready;
+    }
+
+    function paintReadout() {
+      if (!legs.length) return;
+      const l = legs[leg];
+      const doneKm = legs.slice(0, leg + 1).reduce((s, x) => s + x.km, 0);
+      const doneMin = legs.slice(0, leg + 1).reduce((s, x) => s + x.min, 0);
+      const totalKm = legs.reduce((s, x) => s + x.km, 0);
+      $$('[data-x-n]').forEach((n) => (n.textContent = String(leg + 1)));
+      const set = (sel: string, text: string) => { const el = $(sel); if (el) el.textContent = text; };
+      set('[data-x-title]', `${l.from} → ${l.to}`);
+      set('[data-x-from]', l.from);
+      set('[data-x-to]', l.to);
+      set('[data-x-dist]', fmtKm(l.km));
+      set('[data-x-time]', fmtDuration(l.min));
+      set('[data-x-done]', fmtKm(doneKm));
+      set('[data-x-total]', fmtKm(totalKm));
+      set('[data-x-done-time]', fmtDuration(doneMin));
+      const meter = $('[data-x-meter]');
+      if (meter) meter.style.width = `${(doneKm / totalKm) * 100}%`;
+      const range = $<HTMLInputElement>('[data-x-range]');
+      if (range) {
+        range.value = String(leg + 1);
+        range.style.setProperty('--p', `${legs.length > 1 ? (leg / (legs.length - 1)) * 100 : 100}%`);
+        range.setAttribute('aria-valuetext', `${leg + 1}: ${l.from} → ${l.to}`);
+      }
+      const prev = $<HTMLButtonElement>('[data-x-prev]');
+      const next = $<HTMLButtonElement>('[data-x-next]');
+      if (prev) prev.disabled = leg === 0;
+      if (next) next.disabled = leg === legs.length - 1;
+      $$('[data-x-leg]').forEach((b, k) => {
+        b.classList.toggle('done', k < leg);
+        b.classList.toggle('cur', k === leg);
+        b.setAttribute('aria-pressed', String(k === leg));
+      });
+      const stopsBox = $('[data-x-stops]');
+      if (stopsBox) {
+        const list = l.stops.map((i) => {
+          const s = data.stops[i];
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.className = `stop-chip k-${s.kind}`;
+          b.dataset.xStop = String(i);
+          const dot = document.createElement('i');
+          b.append(dot, document.createTextNode(s.name));
+          b.title = KIND[s.kind] ?? s.kind;
+          return b;
+        });
+        if (!list.length) {
+          const p = document.createElement('span');
+          p.className = 'ro-none';
+          p.textContent = T().noStops;
+          list.push(p as unknown as HTMLButtonElement);
+        }
+        stopsBox.replaceChildren(...list);
+      }
+      document.querySelectorAll<HTMLElement>('[data-leg-row]').forEach((r) => r.classList.toggle('is-cur', Number(r.dataset.legRow) === leg && line === data.primary));
+      paintMap();
+    }
+
+    const setLeg = (k: number) => { leg = Math.max(0, Math.min(legs.length - 1, k)); paintReadout(); };
+
+    const playBtn = $<HTMLButtonElement>('[data-x-play]');
+    const setPlaying = (on: boolean) => {
+      window.clearInterval(timer);
+      playBtn?.classList.toggle('is-on', on);
+      $('[data-x-icon-play]')?.toggleAttribute('hidden', on);
+      $('[data-x-icon-pause]')?.toggleAttribute('hidden', !on);
+      const text = $('[data-x-play-text]');
+      if (text) text.textContent = on ? T().pause : leg === legs.length - 1 ? T().driveAgain : T().playRoute;
+      if (!on) return;
+      timer = window.setInterval(() => {
+        if (leg >= legs.length - 1) { setPlaying(false); return; }
+        setLeg(leg + 1);
+      }, 1600);
+    };
+    playBtn?.addEventListener('click', () => {
+      if (playBtn.classList.contains('is-on')) { setPlaying(false); return; }
+      setLine(data.primary);
+      init();
+      if (leg >= legs.length - 1) setLeg(0);
+      setPlaying(true);
+    });
+    $('[data-x-prev]')?.addEventListener('click', () => { setPlaying(false); setLeg(leg - 1); });
+    $('[data-x-next]')?.addEventListener('click', () => { setPlaying(false); setLeg(leg + 1); });
+    $<HTMLInputElement>('[data-x-range]')?.addEventListener('input', (e) => { setPlaying(false); setLeg(Number((e.target as HTMLInputElement).value) - 1); });
+    $$('[data-x-leg]').forEach((b, k) => b.addEventListener('click', () => { setPlaying(false); setLeg(k); }));
+
+    const openStop = async (i: number) => {
+      await init();
+      const m = markers[i];
+      if (!m || !map) return;
+      map.panTo(m.getLatLng());
+      m.openPopup();
+    };
+    root.addEventListener('click', (e) => {
+      const b = (e.target as Element).closest<HTMLElement>('[data-x-stop]');
+      if (b) openStop(Number(b.dataset.xStop));
+    });
+
+    function setLine(i: number) {
+      line = i;
+      $$('[data-x-line]').forEach((b, k) => {
+        b.classList.toggle('is-on', k === i);
+        b.setAttribute('aria-pressed', String(k === i));
+      });
+      const onMain = i === data.primary;
+      const alt = $('[data-x-alt]');
+      if (alt) alt.hidden = onMain;
+      [$('[data-x-ctrls]'), $('[data-x-readout]'), $('.strip-wrap'), $('[data-x-chip]')].forEach((el) => el?.classList.toggle('is-muted', !onMain));
+      if (!onMain) setPlaying(false);
+      paintReadout();
+      paintMap();
+    }
+    $$('[data-x-line]').forEach((b, k) => b.addEventListener('click', () => setLine(k)));
+
+    document.addEventListener('nxg:units', () => paintReadout());
+    document.addEventListener('nxg:showleg', (e) => {
+      setPlaying(false);
+      setLine(data.primary);
+      setLeg(Number((e as CustomEvent).detail));
+      init();
+      root.scrollIntoView({ behavior: reducedMotion() ? 'auto' : 'smooth', block: 'start' });
+    });
+    document.addEventListener('nxg:showstop', (e) => {
+      root.scrollIntoView({ behavior: reducedMotion() ? 'auto' : 'smooth', block: 'start' });
+      openStop(Number((e as CustomEvent).detail));
+    });
+    document.addEventListener('nxg:stopkind', (e) => { kindFilter = String((e as CustomEvent).detail); paintMarkers(); });
+
+    const io = new IntersectionObserver((entries) => {
+      if (entries.some((x) => x.isIntersecting)) { io.disconnect(); init(); }
+    }, { rootMargin: '300px' });
+    io.observe(mapEl);
+    paintReadout();
+  }
+</script>

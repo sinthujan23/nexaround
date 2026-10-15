@@ -1,0 +1,192 @@
+---
+// "Find your next long road": every guide as a card, with filters by kind of
+// trip, a text filter, sorting, "show all" and a random pick. Without
+// JavaScript all cards simply show.
+import Icon from './Icon.astro';
+import GuideCard from './GuideCard.astro';
+import { PILLARS, PILLAR_KEYS } from '../data/pillars';
+import type { Guide } from '../lib/guides';
+
+interface Props { guides: Guide[] }
+const { guides } = Astro.props;
+const count = (k: string) => guides.filter((g) => g.data.pillar === k).length;
+const chips = [{ key: 'all', name: 'All guides', n: guides.length }, ...PILLAR_KEYS.map((k) => ({ key: k, name: PILLARS[k].name, n: count(k) }))];
+---
+<section class="section after-hero" id="explore" data-browser>
+  <div class="container">
+    <div class="section-head-row">
+      <div>
+        <span class="badge badge-teal"><Icon name="book-open" /> All guides</span>
+        <h2>Find your next <span class="text-gradient-teal">long road</span></h2>
+      </div>
+      <button type="button" class="surprise" data-surprise><Icon name="shuffle" /> Surprise me</button>
+    </div>
+
+    <div class="toolbar">
+      <div class="chips" role="group" aria-label="Kind of trip">
+        {chips.map((c) => (
+          <button type="button" class:list={['chip', { 'is-on': c.key === 'all' }]} data-filter={c.key} aria-pressed={c.key === 'all' ? 'true' : 'false'}>
+            {c.name} <em data-chip-count>{c.n}</em>
+          </button>
+        ))}
+      </div>
+      <div class="tools-r">
+        <label class="mini-search">
+          <span class="sr-only">Filter guides</span>
+          <Icon name="search" />
+          <input type="search" placeholder="Filter by place or word" data-grid-q />
+        </label>
+        <div class="seg" role="group" aria-label="Sort">
+          <button type="button" class="is-on" data-sort="new" aria-pressed="true">Newest</button>
+          <button type="button" data-sort="quick" aria-pressed="false">Quick reads</button>
+          <button type="button" data-sort="az" aria-pressed="false">A–Z</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="result-line" aria-live="polite">
+      <span data-result>Showing all {guides.length} guides</span>
+      <button type="button" class="linkish" data-clear hidden>Clear filters</button>
+    </div>
+
+    <div class="guide-grid ga" data-grid>
+      {guides.map((g, i) => <GuideCard guide={g} order={i} eager={i < 3} />)}
+    </div>
+
+    <div class="empty" data-empty hidden>
+      <Icon name="compass" />
+      <h3>Nothing out there yet</h3>
+      <p>No guides match those filters. Try a country, or clear the filters.</p>
+      <button type="button" class="btn btn-dark" data-clear style="margin-top: 20px">Clear filters</button>
+    </div>
+    <div class="more-row" data-more-row hidden>
+      <button type="button" class="btn btn-secondary" data-more><span data-more-label>Show all guides</span> <Icon name="chevron-down" /></button>
+    </div>
+  </div>
+
+  <dialog class="spot" data-spot aria-labelledby="spot-title">
+    <div class="spot-img" data-spot-img><img alt="" data-spot-pic /></div>
+    <div class="spot-body">
+      <span class="badge badge-gold" style="align-self: flex-start">Your random pick</span>
+      <span class="eyebrow" data-spot-eyebrow></span>
+      <h3 id="spot-title" data-spot-title></h3>
+      <p data-spot-desc></p>
+      <div class="spot-actions">
+        <a class="btn btn-teal" href="/" data-spot-link>Read the guide <Icon name="arrow-right" /></a>
+        <button type="button" class="btn btn-secondary" data-surprise><Icon name="shuffle" /> Shuffle again</button>
+      </div>
+    </div>
+    <button type="button" class="x-btn spot-close" data-spot-close aria-label="Close"><Icon name="x" /></button>
+  </dialog>
+</section>
+
+<script>
+  import { guideIndex } from '../lib/client';
+
+  const LIMIT = 9;
+  const root = document.querySelector<HTMLElement>('[data-browser]');
+  if (root) {
+    const grid = root.querySelector<HTMLElement>('[data-grid]')!;
+    const cards = [...grid.querySelectorAll<HTMLElement>('[data-card]')];
+    const qInput = root.querySelector<HTMLInputElement>('[data-grid-q]');
+    const result = root.querySelector<HTMLElement>('[data-result]');
+    const empty = root.querySelector<HTMLElement>('[data-empty]');
+    const moreRow = root.querySelector<HTMLElement>('[data-more-row]');
+    const moreLabel = root.querySelector<HTMLElement>('[data-more-label]');
+    const state = { pillar: 'all', q: '', sort: 'new', showAll: false };
+
+    const restartAnimation = () => {
+      const a = grid.classList.contains('ga');
+      grid.classList.toggle('ga', !a);
+      grid.classList.toggle('gb', a);
+    };
+
+    const apply = (animate = false) => {
+      const q = state.q.trim().toLowerCase();
+      const textHit = (c: HTMLElement) => !q || (c.dataset.search ?? '').includes(q);
+      const sorted = cards.slice().sort((a, b) => {
+        if (state.sort === 'quick') return Number(a.dataset.min) - Number(b.dataset.min) || Number(a.dataset.order) - Number(b.dataset.order);
+        if (state.sort === 'az') return (a.dataset.title ?? '').localeCompare(b.dataset.title ?? '');
+        return Number(a.dataset.order) - Number(b.dataset.order);
+      });
+      const matches = sorted.filter((c) => textHit(c) && (state.pillar === 'all' || c.dataset.pillar === state.pillar));
+      const shown = state.showAll ? matches : matches.slice(0, LIMIT);
+      sorted.forEach((c, i) => {
+        c.style.order = String(i);
+        c.hidden = !shown.includes(c);
+        c.style.animationDelay = `${Math.min(shown.indexOf(c), 8) * 55}ms`;
+      });
+      root.querySelectorAll<HTMLButtonElement>('[data-filter]').forEach((b) => {
+        const on = b.dataset.filter === state.pillar;
+        b.classList.toggle('is-on', on);
+        b.setAttribute('aria-pressed', String(on));
+        const n = cards.filter((c) => textHit(c) && (b.dataset.filter === 'all' || c.dataset.pillar === b.dataset.filter)).length;
+        const em = b.querySelector('[data-chip-count]');
+        if (em) em.textContent = String(n);
+      });
+      root.querySelectorAll<HTMLButtonElement>('[data-sort]').forEach((b) => {
+        const on = b.dataset.sort === state.sort;
+        b.classList.toggle('is-on', on);
+        b.setAttribute('aria-pressed', String(on));
+      });
+      const filtered = state.pillar !== 'all' || q !== '';
+      if (result) result.textContent = matches.length
+        ? `Showing ${shown.length} of ${matches.length} guide${matches.length === 1 ? '' : 's'}${q ? ` matching “${state.q.trim()}”` : ''}`
+        : 'No matching guides';
+      root.querySelectorAll<HTMLElement>('[data-clear]').forEach((b) => (b.hidden = !filtered));
+      if (empty) empty.hidden = matches.length > 0;
+      if (moreRow) moreRow.hidden = state.showAll || matches.length <= LIMIT;
+      if (moreLabel) moreLabel.textContent = `Show all ${matches.length} guides`;
+      if (animate) restartAnimation();
+    };
+
+    root.addEventListener('click', (e) => {
+      const t = e.target as Element;
+      const f = t.closest<HTMLElement>('[data-filter]');
+      if (f) { state.pillar = f.dataset.filter ?? 'all'; state.showAll = false; apply(true); }
+      const s = t.closest<HTMLElement>('[data-sort]');
+      if (s) { state.sort = s.dataset.sort ?? 'new'; apply(true); }
+      if (t.closest('[data-more]')) { state.showAll = true; apply(); }
+      if (t.closest('[data-clear]')) {
+        Object.assign(state, { pillar: 'all', q: '', showAll: false });
+        if (qInput) qInput.value = '';
+        apply(true);
+      }
+    });
+    qInput?.addEventListener('input', () => { state.q = qInput.value; state.showAll = false; apply(); });
+    document.addEventListener('nxg:search', (e) => {
+      state.q = String((e as CustomEvent).detail ?? '');
+      state.pillar = 'all';
+      state.showAll = false;
+      if (qInput) qInput.value = state.q;
+      apply(true);
+    });
+    apply();
+
+    // Surprise me
+    const spot = root.querySelector<HTMLDialogElement>('[data-spot]');
+    let lastPick = '';
+    const pick = () => {
+      if (!spot) return;
+      const pool = guideIndex().filter((g) => g.id !== lastPick);
+      const g = pool[Math.floor(Math.random() * pool.length)];
+      if (!g) return;
+      lastPick = g.id;
+      const pic = spot.querySelector<HTMLImageElement>('[data-spot-pic]')!;
+      pic.src = g.img;
+      pic.alt = g.alt;
+      const frame = spot.querySelector<HTMLElement>('[data-spot-img]')!;
+      frame.classList.remove('flip');
+      void frame.offsetWidth;
+      frame.classList.add('flip');
+      spot.querySelector('[data-spot-eyebrow]')!.textContent = `${g.p} · ${g.c}`;
+      spot.querySelector('[data-spot-title]')!.textContent = g.t;
+      spot.querySelector('[data-spot-desc]')!.textContent = g.d;
+      spot.querySelector<HTMLAnchorElement>('[data-spot-link]')!.href = g.url;
+      if (!spot.open) spot.showModal();
+    };
+    root.querySelectorAll('[data-surprise]').forEach((b) => b.addEventListener('click', pick));
+    spot?.querySelector('[data-spot-close]')?.addEventListener('click', () => spot.close());
+    spot?.addEventListener('click', (e) => { if (e.target === spot) spot.close(); });
+  }
+</script>

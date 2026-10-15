@@ -21,6 +21,8 @@ from app.models.experience import (
     VendorActivity,
 )
 
+from app.models.audit import AuthSession, AuditEvent
+
 from app.models.forum import (
     ForumCategory, ForumTopic, ForumPost, ForumLike, ForumBookmark,
     ForumTopicView,
@@ -38,5 +40,6 @@ __all__ = [
     "VendorActivity",
     "ForumCategory", "ForumTopic", "ForumPost", "ForumLike", "ForumBookmark",
     "ForumTopicView",
+    "AuthSession", "AuditEvent",
 ]
 

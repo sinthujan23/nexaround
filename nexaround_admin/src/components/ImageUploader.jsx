@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { apiUpload, mediaUrl } from '../api';
 import { ImageIcon, TrashIcon } from './Icons';
 
@@ -20,28 +20,58 @@ export default function ImageUploader({
   // quota'd; without the prop the two copies would drift and the partner one
   // — the half reachable by a third party — would be the one left behind.
   uploadEndpoint = '/admin/experiences/upload',
+  // Called with true while a batch is uploading and false when it is done or
+  // this component goes away. The form that owns it must not save in between:
+  // the new URLs only reach `value` when the upload finishes, so a save made
+  // before then silently leaves the photos out.
+  onUploadingChange,
 }) {
   const inputRef = useRef(null);
   const [uploading, setUploading] = useState(false);
+  const [count, setCount] = useState(0);
   const [error, setError] = useState('');
 
   const urls = value || [];
+
+  // The upload outlives the render that started it, so it reads the gallery
+  // as it is when the upload ends, not as it was when it began.
+  const urlsRef = useRef(urls);
+  const notifyRef = useRef(onUploadingChange);
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    urlsRef.current = urls;
+    notifyRef.current = onUploadingChange;
+  });
+
+  useEffect(() => { notifyRef.current?.(uploading); }, [uploading]);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      // Leaving mid-upload: the owner is no longer waiting on us, and the
+      // result must not be written into whatever record is open next.
+      mountedRef.current = false;
+      notifyRef.current?.(false);
+    };
+  }, []);
 
   const handleFiles = async (e) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
     setUploading(true);
+    setCount(files.length);
     setError('');
     try {
       const res = await apiUpload(uploadEndpoint, files);
-      onChange([...urls, ...(res.urls || [])]);
+      if (mountedRef.current) onChange([...urlsRef.current, ...(res.urls || [])]);
     } catch (err) {
-      setError(err.message || 'Upload failed.');
+      if (mountedRef.current) setError(err.message || 'Upload failed.');
     } finally {
-      setUploading(false);
-      // Reset, or picking the same file twice in a row fires no change event.
-      if (inputRef.current) inputRef.current.value = '';
+      if (mountedRef.current) {
+        setUploading(false);
+        // Reset, or picking the same file twice in a row fires no change event.
+        if (inputRef.current) inputRef.current.value = '';
+      }
     }
   };
 
@@ -128,8 +158,15 @@ export default function ImageUploader({
         disabled={uploading}
       />
       {uploading && (
-        <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '6px' }}>
-          Uploading…
+        <div
+          role="status"
+          style={{
+            fontSize: '13px', fontWeight: 600, marginTop: '8px', padding: '8px 12px',
+            borderRadius: '8px', background: 'var(--surface-2, #fef3c7)', color: '#92400e',
+            border: '1px solid #fcd34d',
+          }}
+        >
+          Uploading {count} photo{count === 1 ? '' : 's'}… wait until this finishes before saving.
         </div>
       )}
       {error && (

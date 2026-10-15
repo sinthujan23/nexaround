@@ -7,5 +7,6 @@ export default defineConfig({
   site: 'https://guides.nexaround.com',
   trailingSlash: 'always',
   build: { format: 'directory' },
-  integrations: [sitemap()],
+  // /app/ only redirects to the app stores: keep it out of the sitemap.
+  integrations: [sitemap({ filter: (page) => !page.endsWith('/app/') })],
 });

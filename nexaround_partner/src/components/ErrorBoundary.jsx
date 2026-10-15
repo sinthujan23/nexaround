@@ -10,6 +10,15 @@ export default class ErrorBoundary extends React.Component {
     return { hasError: true, error };
   }
 
+  // A crashed page stops showing its error once the vendor goes somewhere
+  // else. Resetting only on a changed `resetKey` (not remounting) matters: a
+  // `key` here would rebuild every page on every tab click and lose its state.
+  componentDidUpdate(prevProps) {
+    if (this.state.hasError && prevProps.resetKey !== this.props.resetKey) {
+      this.setState({ hasError: false, error: null });
+    }
+  }
+
   componentDidCatch(error, errorInfo) {
     console.error('ErrorBoundary caught an error:', error, errorInfo);
   }

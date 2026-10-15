@@ -38,6 +38,19 @@ legs:
   - { from: Coolgardie, to: Southern Cross, km: 187, min: 115 }
   - { from: Southern Cross, to: Merredin, km: 110, min: 70 }
   - { from: Merredin, to: Perth, km: 260, min: 181 }
+fuelGaps:
+  - { from: Ceduna, to: Penong, km: 73 }
+  - { from: Penong, to: Nundroo, km: 79 }
+  - { from: Nundroo, to: Yalata, km: 53 }
+  - { from: Yalata, to: Nullarbor Roadhouse, km: 92 }
+  - { from: Nullarbor Roadhouse, to: Border Village, km: 184 }
+  - { from: Border Village, to: Eucla, km: 12 }
+  - { from: Eucla, to: Mundrabilla, km: 66 }
+  - { from: Mundrabilla, to: Madura, km: 116 }
+  - { from: Madura, to: Cocklebiddy, km: 91 }
+  - { from: Cocklebiddy, to: Caiguna, km: 65 }
+  - { from: Caiguna, to: Balladonia, km: 181 }
+  - { from: Balladonia, to: Norseman, km: 191 }
 stops:
   - { name: Adelaide, lat: -34.9285, lng: 138.6007, kind: town, note: "Start. Last big-city shopping before the crossing." }
   - { name: Port Augusta, lat: -32.4937, lng: 137.7744, kind: town, note: "Where the Eyre, Stuart and Augusta highways meet." }

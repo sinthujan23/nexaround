@@ -1,0 +1,98 @@
+---
+// "The extremes, measured": one bar chart per measure, switched by tabs.
+// Bars grow when the chart scrolls into view and re-grow on each switch.
+import Icon from './Icon.astro';
+import { EXTREMES } from '../data/home';
+import { guideUrl, type Guide } from '../lib/guides';
+
+interface Props { guides: Guide[] }
+const { guides } = Astro.props;
+const byId = new Map(guides.map((g) => [g.id, g]));
+const ICON = { fuel: 'fuel', high: 'mountain', far: 'route' } as const;
+const tabs = EXTREMES.map((t) => {
+  const rows = t.rows.filter((r) => byId.has(r.guide));
+  const max = Math.max(...rows.map((r) => r.value));
+  return { ...t, rows: rows.map((r) => ({ ...r, w: (r.value / max) * 100, href: guideUrl(byId.get(r.guide)!) })) };
+}).filter((t) => t.rows.length);
+---
+<section class="section" data-extremes>
+  <div class="container ext">
+    <div class="ext-copy">
+      <span class="badge badge-gold"><Icon name="chart" /> By the numbers</span>
+      <h2>The extremes, <span class="text-gradient-teal">measured</span></h2>
+      <p>Real figures from our guides. Pick a measure, then tap a bar to open the guide it comes from.</p>
+      <div class="ext-tabs" role="tablist" aria-label="Measure">
+        {tabs.map((t, i) => (
+          <button type="button" role="tab" class:list={['ext-tab', { 'is-on': i === 0 }]} id={`ext-tab-${t.key}`} aria-controls={`ext-panel-${t.key}`} aria-selected={i === 0 ? 'true' : 'false'} tabindex={i === 0 ? 0 : -1} data-ext-tab={i}>
+            <span class="t-ic"><Icon name={ICON[t.key as keyof typeof ICON]} /></span>
+            <span><strong>{t.name}</strong><small>{t.hint}</small></span>
+          </button>
+        ))}
+      </div>
+    </div>
+    <div class="chart-card">
+      {tabs.map((t, i) => (
+        <figure role="tabpanel" id={`ext-panel-${t.key}`} aria-labelledby={`ext-tab-${t.key}`} data-ext-panel={i} hidden={i !== 0}>
+          <figcaption>
+            <p class="chart-title">{t.title}</p>
+            <p class="chart-sub">{t.sub}</p>
+          </figcaption>
+          <div class="chart-rows">
+            {t.rows.map((r) => (
+              <a class="chart-row" href={r.href} aria-label={`${r.label}, ${r.sub}: ${r.text}. Open the guide.`}>
+                <span class="row-l"><strong>{r.label}</strong><small>{r.sub}</small></span>
+                <span class="track"><span class="fill" data-w={r.w.toFixed(1)} style={`width: ${r.w.toFixed(1)}%`}></span><span class="val">{r.text}</span></span>
+              </a>
+            ))}
+          </div>
+          <p class="chart-note">{t.note}</p>
+        </figure>
+      ))}
+    </div>
+  </div>
+</section>
+
+<script>
+  import { reducedMotion } from '../lib/client';
+
+  const root = document.querySelector<HTMLElement>('[data-extremes]');
+  if (root) {
+    const tabs = [...root.querySelectorAll<HTMLButtonElement>('[data-ext-tab]')];
+    const panels = [...root.querySelectorAll<HTMLElement>('[data-ext-panel]')];
+    const animate = !reducedMotion() && 'IntersectionObserver' in window;
+    const grow = (panel: HTMLElement) => {
+      const fills = [...panel.querySelectorAll<HTMLElement>('.fill')];
+      fills.forEach((f) => (f.style.width = '0%'));
+      requestAnimationFrame(() => requestAnimationFrame(() => fills.forEach((f) => (f.style.width = `${f.dataset.w}%`))));
+    };
+    let seen = !animate;
+    const show = (i: number, focus = false) => {
+      tabs.forEach((t, k) => {
+        const on = k === i;
+        t.classList.toggle('is-on', on);
+        t.setAttribute('aria-selected', String(on));
+        t.tabIndex = on ? 0 : -1;
+      });
+      panels.forEach((p, k) => (p.hidden = k !== i));
+      if (focus) tabs[i].focus();
+      if (seen && animate) grow(panels[i]);
+    };
+    tabs.forEach((t, k) => {
+      t.addEventListener('click', () => show(k));
+      t.addEventListener('keydown', (e) => {
+        const d = e.key === 'ArrowDown' || e.key === 'ArrowRight' ? 1 : e.key === 'ArrowUp' || e.key === 'ArrowLeft' ? -1 : 0;
+        if (d) { e.preventDefault(); show((k + d + tabs.length) % tabs.length, true); }
+      });
+    });
+    if (animate) {
+      panels.forEach((p) => p.querySelectorAll<HTMLElement>('.fill').forEach((f) => (f.style.width = '0%')));
+      const io = new IntersectionObserver((entries) => {
+        if (!entries.some((e) => e.isIntersecting)) return;
+        io.disconnect();
+        seen = true;
+        grow(panels.find((p) => !p.hidden) ?? panels[0]);
+      }, { threshold: 0.35 });
+      io.observe(root);
+    }
+  }
+</script>

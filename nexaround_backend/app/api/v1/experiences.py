@@ -5,8 +5,10 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import (
-    APIRouter, BackgroundTasks, Depends, HTTPException, Query, status,
+    APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response,
+    status,
 )
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user_optional
@@ -23,7 +25,11 @@ from app.schemas.experience import (
 )
 from app.services.email_service import send_vendor_enquiry_email
 from app.services.experience_format import (
-    NEARBY_THRESHOLD_M, booking_window_error, is_nearby, validate_enquiry_payload,
+    COUNTRY_MODE_KEY, NEARBY_THRESHOLD_M, booking_window_error, is_nearby,
+    parse_country_mode, unavailable_error, validate_enquiry_payload,
+)
+from app.services.experience_upload import (
+    VIDEO_MEDIA_TYPES, parse_range, video_file,
 )
 from app.services.experience_service import (
     package_to_card, package_to_detail, vendor_to_public,
@@ -44,6 +50,62 @@ async def experience_countries(
     return {"countries": countries}
 
 
+_VIDEO_CHUNK = 1024 * 1024
+
+
+@router.get("/videos/{name}")
+async def get_experience_video(name: str, request: Request):
+    """A package video, with byte-range support.
+
+    Its own route rather than the `/static` mount because that cannot answer
+    `Range`, and iOS will not play (or seek in) a video without it. The name is
+    matched against a strict pattern, so only our own uploads can be named. The
+    file name is a random UUID that never changes content, hence the long cache.
+    """
+    path = video_file(name)
+    if path is None:
+        raise HTTPException(status_code=404, detail="Video not found")
+
+    import os
+
+    size = os.path.getsize(path)
+    media_type = VIDEO_MEDIA_TYPES[os.path.splitext(name)[1]]
+    headers = {
+        "Accept-Ranges": "bytes",
+        "Cache-Control": "public, max-age=31536000, immutable",
+    }
+    try:
+        byte_range = parse_range(request.headers.get("range"), size)
+    except ValueError:
+        return Response(
+            status_code=status.HTTP_416_REQUESTED_RANGE_NOT_SATISFIABLE,
+            headers={**headers, "Content-Range": f"bytes */{size}"},
+        )
+
+    start, end = byte_range if byte_range else (0, size - 1)
+
+    def stream():
+        with open(path, "rb") as f:
+            f.seek(start)
+            left = end - start + 1
+            while left > 0:
+                data = f.read(min(_VIDEO_CHUNK, left))
+                if not data:
+                    break
+                left -= len(data)
+                yield data
+
+    headers["Content-Length"] = str(end - start + 1)
+    if byte_range:
+        headers["Content-Range"] = f"bytes {start}-{end}/{size}"
+    return StreamingResponse(
+        stream(),
+        status_code=206 if byte_range else 200,
+        media_type=media_type,
+        headers=headers,
+    )
+
+
 @router.get("/nearby", response_model=ExperienceNearbyResponse)
 async def nearby_experiences(
     lat: float = Query(..., ge=-90.0, le=90.0),
@@ -55,14 +117,39 @@ async def nearby_experiences(
     db: AsyncSession = Depends(get_db),
     _user: Optional[User] = Depends(get_current_user_optional),
 ):
-    """Vendor packages, nearest first, with optional country or category filter.
+    """Vendor packages, by country or nearest first, depending on the switch.
 
-    Vendors are sparse, so this deliberately never returns an empty list just
-    because the user is far from one. `has_nearby` tells the app whether to show
-    the "showing the nearest" banner; `nearby_threshold_m` is echoed so that
-    rule stays tunable server-side.
+    `experiences_country_mode` (Admin > Settings) is on by default: the list is
+    filtered by `country_code`, ordered by the admin's vendor order, and carries
+    no distances. With it off, this is nearest first. Vendors are sparse, so
+    that mode deliberately never returns an empty list just because the user is
+    far from one: `has_nearby` tells the app whether to show the "showing the
+    nearest" banner, and `nearby_threshold_m` is echoed so that rule stays
+    tunable server-side.
     """
     repo = ExperienceRepository(db)
+    country_mode = parse_country_mode(
+        await SettingsService(db).get_setting_fresh(COUNTRY_MODE_KEY, "")
+    )
+
+    if country_mode:
+        found = await repo.get_packages_by_country(
+            category=category, country_code=country_code, limit=limit, offset=offset
+        )
+        total = await repo.count_published_packages(
+            category=category, country_code=country_code
+        )
+        # `has_nearby` true keeps the app's "showing the nearest" banner away.
+        return ExperienceNearbyResponse(
+            packages=[package_to_card(pkg) for pkg in found],
+            total=total,
+            limit=limit,
+            offset=offset,
+            nearest_distance_m=None,
+            has_nearby=True,
+            nearby_threshold_m=NEARBY_THRESHOLD_M,
+        )
+
     rows = await repo.get_nearest_packages(
         latitude=lat,
         longitude=lng,
@@ -72,7 +159,7 @@ async def nearby_experiences(
         offset=offset,
     )
     total = await repo.count_published_packages(
-        category=category, country_code=country_code
+        category=category, country_code=country_code, located_only=True
     )
 
     packages = [package_to_card(pkg, distance) for pkg, distance in rows]
@@ -188,6 +275,11 @@ async def create_experience_enquiry(
     )
     if date_error:
         errors.append(date_error)
+    # The vendor's blocked dates. The app's calendar greys them out, but an app
+    # from before they existed offers every day, so the server is the authority.
+    blocked_error = unavailable_error(data.preferred_date, package.unavailable_ranges)
+    if blocked_error:
+        errors.append(blocked_error)
     if errors:
         raise HTTPException(status_code=400, detail=" ".join(errors))
 

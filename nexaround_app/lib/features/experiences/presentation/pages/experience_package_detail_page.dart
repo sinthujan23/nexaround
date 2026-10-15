@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/utils/contact_launcher.dart';
@@ -8,7 +7,9 @@ import 'package:nexaround_app/core/widgets/full_screen_image_viewer.dart';
 import 'package:nexaround_app/features/experiences/data/services/experiences_service.dart';
 import 'package:nexaround_app/features/experiences/domain/entities/experience.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_enquiry_sheet.dart';
+import 'package:nexaround_app/features/experiences/presentation/widgets/experience_fitted_photo.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_share_sheet.dart';
+import 'package:nexaround_app/features/experiences/presentation/widgets/experience_video_slide.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/vendor_social_bar.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/core/services/google_places_service.dart';
@@ -178,7 +179,7 @@ class _ExperiencePackageDetailPageState
       backgroundColor: Colors.white,
       body: CustomScrollView(
         slivers: [
-          _buildGalleryAppBar(photos),
+          _buildGalleryAppBar(_package.videoUrls, photos),
           SliverToBoxAdapter(child: _buildBody()),
         ],
       ),
@@ -209,8 +210,11 @@ class _ExperiencePackageDetailPageState
     );
   }
 
-  Widget _buildGalleryAppBar(List<String> photos) {
+  /// The header carousel: videos first (the first one plays by itself, like
+  /// the video on a product page), then the photos. `_photoIndex` counts both.
+  Widget _buildGalleryAppBar(List<String> videos, List<String> photos) {
     final isIOS = Theme.of(context).platform == TargetPlatform.iOS;
+    final slideCount = videos.length + photos.length;
 
     return SliverAppBar(
       expandedHeight: 320,
@@ -234,7 +238,7 @@ class _ExperiencePackageDetailPageState
         ),
       ],
       flexibleSpace: FlexibleSpaceBar(
-        background: photos.isEmpty
+        background: slideCount == 0
             ? Container(
                 color: AppColors.surfaceVariant,
                 child: const Icon(Icons.kayaking_rounded,
@@ -245,31 +249,42 @@ class _ExperiencePackageDetailPageState
                 children: [
                   PageView.builder(
                     controller: _photoController,
-                    itemCount: photos.length,
+                    itemCount: slideCount,
                     onPageChanged: (i) => setState(() => _photoIndex = i),
                     itemBuilder: (_, index) {
-                      final url = PlaceImageHelper.resolveUrl(photos[index]);
+                      if (index < videos.length) {
+                        final videoUrl =
+                            PlaceImageHelper.resolveUrl(videos[index]);
+                        return videoUrl == null
+                            ? Container(color: AppColors.surfaceVariant)
+                            : ExperienceVideoSlide(
+                                key: ValueKey(videoUrl),
+                                url: videoUrl,
+                                active: index == _photoIndex,
+                                posterUrl: photos.isEmpty
+                                    ? null
+                                    : PlaceImageHelper.resolveUrl(photos.first),
+                              );
+                      }
+                      final photoIndex = index - videos.length;
+                      final url =
+                          PlaceImageHelper.resolveUrl(photos[photoIndex]);
                       return GestureDetector(
                         onTap: () => Navigator.push(
                           context,
                           MaterialPageRoute(
                             builder: (_) => FullScreenImageViewer(
                               imageUrls: photos,
-                              initialIndex: index,
+                              initialIndex: photoIndex,
                             ),
                           ),
                         ),
                         child: url == null
                             ? Container(color: AppColors.surfaceVariant)
-                            : CachedNetworkImage(
-                                imageUrl: url,
-                                httpHeaders:
-                                    PlaceImageHelper.headersFor(url),
-                                fit: BoxFit.cover,
-                                placeholder: (_, __) =>
-                                    Container(color: AppColors.surfaceVariant),
-                                errorWidget: (_, __, ___) =>
-                                    Container(color: AppColors.surfaceVariant),
+                            : ExperienceFittedPhoto(
+                                url: url,
+                                headers: PlaceImageHelper.headersFor(url),
+                                topInset: MediaQuery.of(context).padding.top,
                               ),
                       );
                     },
@@ -293,7 +308,7 @@ class _ExperiencePackageDetailPageState
                       ),
                     ),
                   ),
-                  if (photos.length > 1)
+                  if (slideCount > 1)
                     Positioned(
                       bottom: 14,
                       left: 0,
@@ -301,7 +316,7 @@ class _ExperiencePackageDetailPageState
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: List.generate(
-                          photos.length,
+                          slideCount,
                           (i) => AnimatedContainer(
                             duration: const Duration(milliseconds: 200),
                             margin: const EdgeInsets.symmetric(horizontal: 3),

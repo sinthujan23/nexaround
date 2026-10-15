@@ -4,8 +4,10 @@ import { getImage } from 'astro:assets';
 import type { ImageMetadata } from 'astro';
 import Navbar from '../components/Navbar.astro';
 import Footer from '../components/Footer.astro';
+import SiteUi from '../components/SiteUi.astro';
 import { SITE, ANALYTICS } from '../site';
 import { isPreview } from '../lib/mode';
+import type { Lang } from '../lib/i18n';
 
 interface Props {
   title: string;
@@ -14,8 +16,15 @@ interface Props {
   type?: 'website' | 'article';
   jsonLd?: object[];
   noindex?: boolean;
+  // Guide pages: the title shown in the navbar after scrolling.
+  article?: string;
+  // The guide's slug, for tagging app-install links.
+  appCampaign?: string;
+  lang?: Lang;
+  // Other language versions of this page, for hreflang.
+  alternates?: { lang: Lang; href: string }[];
 }
-const { title, description = SITE.description, image, type = 'website', jsonLd = [], noindex = false } = Astro.props;
+const { title, description = SITE.description, image, type = 'website', jsonLd = [], noindex = false, article, appCampaign, lang = 'en', alternates = [] } = Astro.props;
 
 const canonical = new URL(Astro.url.pathname, Astro.site).href;
 const fullTitle = title === SITE.name ? `${SITE.name}: ${SITE.tagline}` : `${title} | ${SITE.name}`;
@@ -24,7 +33,7 @@ const ogUrl = og ? new URL(og.src, Astro.site).href : null;
 const robots = isPreview || noindex ? 'noindex, nofollow' : 'index, follow, max-image-preview:large';
 ---
 <!doctype html>
-<html lang="en">
+<html lang={lang}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -32,12 +41,15 @@ const robots = isPreview || noindex ? 'noindex, nofollow' : 'index, follow, max-
     <meta name="description" content={description} />
     <meta name="robots" content={robots} />
     <link rel="canonical" href={canonical} />
+    {alternates.map((a) => <link rel="alternate" hreflang={a.lang} href={new URL(a.href, Astro.site).href} />)}
+    {alternates.length > 0 && <link rel="alternate" hreflang="x-default" href={new URL(alternates.find((a) => a.lang === 'en')?.href ?? '/', Astro.site).href} />}
     <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="icon" type="image/png" href="/favicon_white.png" />
     <link rel="apple-touch-icon" href="/favicon_white.png" />
     <link rel="alternate" type="application/rss+xml" title={SITE.name} href="/rss.xml" />
     <link rel="sitemap" href="/sitemap-index.xml" />
     <meta name="theme-color" content="#0a1118" />
+    <meta name="apple-itunes-app" content="app-id=6806252363" />
 
     <meta property="og:site_name" content={SITE.name} />
     <meta property="og:type" content={type} />
@@ -52,6 +64,7 @@ const robots = isPreview || noindex ? 'noindex, nofollow' : 'index, follow, max-
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+    {lang === 'hi' && <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@300;400;500;600;700&display=swap" rel="stylesheet" />}
 
     {jsonLd.map((d) => <script type="application/ld+json" set:html={JSON.stringify(d)} />)}
     {ANALYTICS.cloudflareToken && !isPreview && (
@@ -62,11 +75,12 @@ const robots = isPreview || noindex ? 'noindex, nofollow' : 'index, follow, max-
   <body>
     <a class="skip-link" href="#main">Skip to content</a>
     <div class="page-frame">
-      <Navbar />
+      <Navbar article={article} lang={lang} />
       <main id="main">
         <slot />
       </main>
-      <Footer />
+      <Footer lang={lang} />
     </div>
+    <SiteUi campaign={appCampaign} article={!!article} lang={lang} />
   </body>
 </html>

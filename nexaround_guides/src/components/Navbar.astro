@@ -2,35 +2,50 @@
 import Icon from './Icon.astro';
 import { PILLARS, PILLAR_KEYS } from '../data/pillars';
 import { SITE } from '../site';
+import { getAppLink } from '../lib/app';
+import { ui, type Lang } from '../lib/i18n';
+
+// `article`: on a guide page, the guide's title (shown in the bar once the
+// reader scrolls past the hero) and a reading-progress line.
+interface Props { article?: string; lang?: Lang }
+const { article, lang = 'en' } = Astro.props;
+const t = ui(lang);
 
 const path = Astro.url.pathname;
 const items = [
-  ...PILLAR_KEYS.map((k) => ({ name: PILLARS[k].name, href: `/${k}/` })),
-  { name: 'About', href: '/about/' },
+  ...PILLAR_KEYS.map((k) => ({ name: t.pillars[k] ?? PILLARS[k].name, href: `/${k}/` })),
+  { name: t.about, href: '/about/' },
 ];
 const isCurrent = (href: string) => path === href || path.startsWith(href);
 ---
-<header class="navbar" data-navbar>
+<header class:list={['navbar', { 'navbar-article': article }]} data-navbar>
   <div class="navbar-inner">
     <a href="/" class="brand" aria-label={`${SITE.name}, home`}>
       <span class="brand-logo"><img src="/logo_2.png" alt="" width="30" height="30" /></span>
       <span>
         <span class="brand-title">nexARound <span style="font-weight: 300">Guides</span></span>
-        <span class="brand-sub">Remote &amp; unusual places</span>
+        <span class="brand-sub">{t.brandSub}</span>
       </span>
     </a>
 
-    <nav class="nav-capsule" aria-label="Sections">
-      {items.map((i) => (
-        <a href={i.href} aria-current={isCurrent(i.href) ? 'page' : undefined}>{i.name}</a>
-      ))}
-    </nav>
+    {article ? (
+      <div class="nav-article"><span class="nav-article-title" data-nav-title>{article}</span></div>
+    ) : (
+      <nav class="nav-capsule" aria-label="Sections">
+        {items.map((i) => (
+          <a href={i.href} aria-current={isCurrent(i.href) ? 'page' : undefined}>{i.name}</a>
+        ))}
+      </nav>
+    )}
 
     <div class="nav-actions">
-      <a href={`${SITE.appSite}/get-app`} class="btn-get-app">
-        <Icon name="smartphone" /><span>Get App</span>
+      <button type="button" class="saved-btn" data-drawer-open aria-label={t.savedGuides}>
+        <Icon name="bookmark" /><span class="saved-label">{t.saved}</span><span class="saved-count" data-saved-count hidden>0</span>
+      </button>
+      <a href={getAppLink('nav')} class="btn-get-app">
+        <Icon name="smartphone" /><span>{t.getApp}</span>
       </a>
-      <button class="menu-toggle" type="button" aria-label="Open menu" aria-expanded="false" aria-controls="mobile-drawer" data-menu-toggle>
+      <button class="menu-toggle" type="button" aria-label={t.openMenu} data-open-label={t.openMenu} data-close-label={t.closeMenu} aria-expanded="false" aria-controls="mobile-drawer" data-menu-toggle>
         <Icon name="menu" />
       </button>
     </div>
@@ -39,23 +54,39 @@ const isCurrent = (href: string) => path === href || path.startsWith(href);
       {items.map((i) => (
         <a href={i.href} aria-current={isCurrent(i.href) ? 'page' : undefined}>{i.name}</a>
       ))}
-      <a href={`${SITE.appSite}/get-app`} class="btn-get-app drawer-cta"><Icon name="smartphone" /><span>Get App</span></a>
+      <a href={getAppLink('nav-menu')} class="btn-get-app drawer-cta"><Icon name="smartphone" /><span>{t.getApp}</span></a>
     </nav>
   </div>
+  {article && <div class="read-progress" data-read-progress aria-hidden="true"></div>}
 </header>
 
 <script>
   const bar = document.querySelector<HTMLElement>('[data-navbar]');
   const toggle = document.querySelector<HTMLButtonElement>('[data-menu-toggle]');
   const menu = document.querySelector<HTMLElement>('[data-menu]');
-  const onScroll = () => bar?.classList.toggle('is-scrolled', window.scrollY > 20);
+  const progress = document.querySelector<HTMLElement>('[data-read-progress]');
+  let ticking = false;
+  const onScroll = () => {
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(() => {
+      ticking = false;
+      const y = window.scrollY;
+      bar?.classList.toggle('is-scrolled', y > 20);
+      bar?.classList.toggle('show-title', y > 480);
+      if (progress) {
+        const max = document.documentElement.scrollHeight - window.innerHeight;
+        progress.style.transform = `scaleX(${max > 0 ? Math.min(1, y / max) : 0})`;
+      }
+    });
+  };
   window.addEventListener('scroll', onScroll, { passive: true });
   onScroll();
   toggle?.addEventListener('click', () => {
     const open = !menu?.classList.contains('is-open');
     menu?.classList.toggle('is-open', open);
     toggle.setAttribute('aria-expanded', String(open));
-    toggle.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+    toggle.setAttribute('aria-label', (open ? toggle.dataset.closeLabel : toggle.dataset.openLabel) ?? '');
   });
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && menu?.classList.contains('is-open')) {

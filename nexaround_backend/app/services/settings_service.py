@@ -18,6 +18,23 @@ class SettingsService:
             await self.load_settings()
         return SettingsService._cache.get(key, default)
 
+    async def get_setting_fresh(self, key: str, default: str = "") -> str:
+        """Read one setting straight from the database, refreshing the cache.
+
+        For settings an admin flips at runtime and every API process must obey
+        at once. `get_setting` answers from a per-process cache, and the API
+        runs several processes (`WEB_CONCURRENCY`), so after a change only the
+        process that served the admin's request would see it.
+        """
+        row = (
+            await self.db.execute(select(SystemSetting).where(SystemSetting.key == key))
+        ).scalar_one_or_none()
+        if row is None:
+            SettingsService._cache.pop(key, None)
+            return default
+        SettingsService._cache[key] = row.value
+        return row.value
+
     async def load_settings(self) -> Dict[str, str]:
         """Fetch all settings from DB and update the class cache."""
         result = await self.db.execute(select(SystemSetting))

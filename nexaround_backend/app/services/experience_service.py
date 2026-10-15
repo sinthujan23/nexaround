@@ -24,7 +24,7 @@ from app.services.experience_format import (
     DEFAULT_BOOKING_WINDOW_DAYS, format_duration, format_price, is_published,
     resolve_package_point,
 )
-from app.utils.geo_utils import create_point, get_lat_lng
+from app.utils.geo_utils import get_lat_lng, point_or_none
 
 
 def _cover(photo_urls: Optional[list]) -> Optional[str]:
@@ -103,6 +103,8 @@ def package_to_detail(
         **card.model_dump(),
         description=package.description,
         photo_urls=package.photo_urls or [],
+        video_urls=package.video_urls or [],
+        unavailable_ranges=package.unavailable_ranges or [],
         max_participants=package.max_participants,
         booking_window_days=package.booking_window_days or DEFAULT_BOOKING_WINDOW_DAYS,
         inclusions=package.inclusions or [],
@@ -123,7 +125,7 @@ def apply_package_derived_fields(
     lat, lng = resolve_package_point(
         vendor_lat, vendor_lng, package.uses_vendor_location, override_lat, override_lng
     )
-    package.location = create_point(lat, lng)
+    package.location = point_or_none(lat, lng)
     package.is_published = is_published(vendor.is_active, package.is_active)
 
 
@@ -142,6 +144,6 @@ async def apply_vendor_cascade(db: AsyncSession, vendor: ExperienceVendor) -> in
     vendor_lat, vendor_lng = get_lat_lng(vendor.location)
     for package in rows:
         if package.uses_vendor_location:
-            package.location = create_point(vendor_lat, vendor_lng)
+            package.location = point_or_none(vendor_lat, vendor_lng)
         package.is_published = is_published(vendor.is_active, package.is_active)
     return len(rows)

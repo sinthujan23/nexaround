@@ -1,0 +1,212 @@
+---
+// Home hero: guide cover photos cross-fading behind the headline, a live
+// search over every guide, and a "now showing" card with slide controls.
+// Without JavaScript it is a still hero with the first photo.
+import { Image } from 'astro:assets';
+import Icon from './Icon.astro';
+import { HERO_SLIDES, QUICK_SEARCHES } from '../data/home';
+import { guideUrl, type Guide } from '../lib/guides';
+import { SITE } from '../site';
+
+interface Props { guides: Guide[] }
+const { guides } = Astro.props;
+const slides = HERO_SLIDES.map((s) => ({ ...s, g: guides.find((g) => g.id === s.guide) })).filter(
+  (s): s is typeof s & { g: Guide } => !!s.g,
+);
+---
+<section class="hero hero-home" data-slider aria-label="Featured places">
+  <div class="slides">
+    {slides.map((s, i) => (
+      <div class:list={['slide', { 'is-on': i === 0 }]} data-slide>
+        <Image
+          src={s.g.data.cover}
+          alt=""
+          widths={[960, 1600, 2000]}
+          sizes="100vw"
+          loading={i === 0 ? 'eager' : 'lazy'}
+          fetchpriority={i === 0 ? 'high' : undefined}
+        />
+      </div>
+    ))}
+  </div>
+  <div class="container hero-inner hero-split">
+    <div class="hero-copy">
+      <span class="badge badge-teal-glow rise"><Icon name="compass" /> Remote &amp; unusual places</span>
+      <h1 style="margin-top: 24px">
+        <span class="ln"><span>Travel guides for the</span></span>
+        <span class="ln"><span><span class="text-gradient-bright">far side of the map</span>.</span></span>
+      </h1>
+      <p class="hero-lead rise d1">Long roads, extreme places and villages at the end of the road. Every guide is measured, sourced and dated: distances, fuel gaps, permits, costs, and the stops that cost nothing.</p>
+
+      <form class="hero-search rise d2" role="search" action="#explore" data-hero-search>
+        <label class="sr-only" for="hero-q">Search the guides</label>
+        <div class="search-box">
+          <Icon name="search" />
+          <input id="hero-q" type="search" name="q" autocomplete="off" placeholder="Where to? Try Iceland, gravel or coldest" data-hero-input aria-controls="hero-suggest" aria-expanded="false" />
+          <button type="submit" class="search-go"><span>Explore</span><Icon name="arrow-right" /></button>
+        </div>
+        <div class="suggest" id="hero-suggest" data-suggest hidden>
+          <div data-suggest-list></div>
+          <p class="sug-empty" data-suggest-empty hidden>No guides match that yet. Try a country, or a word like road, cold or village.</p>
+          <a class="sug-all" href="#explore" data-suggest-all>See all matching guides <Icon name="arrow-right" /></a>
+        </div>
+      </form>
+      <div class="quick rise d3">
+        <span>Popular:</span>
+        {QUICK_SEARCHES.map((q) => <button type="button" class="qchip" data-quick={q}>{q}</button>)}
+      </div>
+
+      <div class="hero-meta rise d4">
+        <span><Icon name="route" /> Every distance measured</span>
+        <span><Icon name="calendar-check" /> Every guide dated</span>
+        <span><Icon name="map-pin" /> Free stops marked</span>
+      </div>
+    </div>
+
+    {slides.length > 1 && (
+      <aside class="now rise d3" aria-label="Now showing">
+        <div class="now-top"><span>Now showing</span><span><span data-slide-num>1</span> / {slides.length}</span></div>
+        {slides.map((s, i) => (
+          <div class="now-item" data-now hidden={i !== 0}>
+            <p class="now-place">{s.place}</p>
+            <a class="now-link" href={guideUrl(s.g)}>{s.g.data.title} <Icon name="arrow-right" /></a>
+          </div>
+        ))}
+        <div class="bars">
+          {slides.map((s, i) => (
+            <button type="button" class:list={['bar', { 'is-on': i === 0 }]} data-bar aria-label={`Show ${s.place}`}><i></i></button>
+          ))}
+        </div>
+        <div class="now-ctrl">
+          <button type="button" class="round-glass" data-prev aria-label="Previous place"><Icon name="chevron-left" /></button>
+          <button type="button" class="round-glass" data-pause aria-label="Pause the slideshow">
+            <span data-icon-pause><Icon name="pause" /></span><span data-icon-play hidden><Icon name="play" /></span>
+          </button>
+          <button type="button" class="round-glass" data-next aria-label="Next place"><Icon name="chevron-right" /></button>
+        </div>
+      </aside>
+    )}
+  </div>
+  {slides.map((s, i) => (
+    <p class="hero-credit" data-credit hidden={i !== 0}>
+      {s.place}. Photo: {s.g.data.coverCredit.author}, <a href={s.g.data.coverCredit.source}>{s.g.data.coverCredit.license}</a>
+    </p>
+  ))}
+  {Astro.slots.has('stats') && <div class="hero-stats"><slot name="stats" /></div>}
+</section>
+
+<script>
+  import { guideIndex, matchesQuery, reducedMotion } from '../lib/client';
+
+  const SECONDS = 7;
+  const root = document.querySelector<HTMLElement>('[data-slider]');
+  if (root) {
+    const slides = [...root.querySelectorAll<HTMLElement>('[data-slide]')];
+    const nows = [...root.querySelectorAll<HTMLElement>('[data-now]')];
+    const credits = [...root.querySelectorAll<HTMLElement>('[data-credit]')];
+    const bars = [...root.querySelectorAll<HTMLButtonElement>('[data-bar]')];
+    const num = root.querySelector('[data-slide-num]');
+    const pauseBtn = root.querySelector<HTMLButtonElement>('[data-pause]');
+    let current = 0;
+    let paused = reducedMotion();
+    let timer: number | undefined;
+
+    const schedule = () => {
+      window.clearTimeout(timer);
+      if (!paused && slides.length > 1) timer = window.setTimeout(() => show(current + 1), SECONDS * 1000);
+    };
+    const show = (i: number) => {
+      current = (i + slides.length) % slides.length;
+      slides.forEach((s, k) => s.classList.toggle('is-on', k === current));
+      nows.forEach((n, k) => (n.hidden = k !== current));
+      credits.forEach((c, k) => (c.hidden = k !== current));
+      bars.forEach((b, k) => {
+        b.classList.toggle('is-on', k === current);
+        b.classList.toggle('is-done', k < current);
+        b.setAttribute('aria-current', String(k === current));
+      });
+      if (num) num.textContent = String(current + 1);
+      schedule();
+    };
+    const setPaused = (p: boolean) => {
+      paused = p;
+      root.classList.toggle('is-paused', p);
+      pauseBtn?.setAttribute('aria-label', p ? 'Play the slideshow' : 'Pause the slideshow');
+      pauseBtn?.querySelector<HTMLElement>('[data-icon-pause]')?.toggleAttribute('hidden', p);
+      pauseBtn?.querySelector<HTMLElement>('[data-icon-play]')?.toggleAttribute('hidden', !p);
+      schedule();
+    };
+    root.style.setProperty('--slide-dur', `${SECONDS}s`);
+    root.querySelector('[data-prev]')?.addEventListener('click', () => show(current - 1));
+    root.querySelector('[data-next]')?.addEventListener('click', () => show(current + 1));
+    pauseBtn?.addEventListener('click', () => setPaused(!paused));
+    bars.forEach((b, k) => b.addEventListener('click', () => show(k)));
+    // Do not move while the tab is hidden.
+    document.addEventListener('visibilitychange', () => (document.hidden ? window.clearTimeout(timer) : schedule()));
+    setPaused(paused);
+    show(0);
+  }
+
+  // Search: suggestions under the box; Enter or "See all" filters the guide grid.
+  const form = document.querySelector<HTMLFormElement>('[data-hero-search]');
+  const input = form?.querySelector<HTMLInputElement>('[data-hero-input]');
+  const box = form?.querySelector<HTMLElement>('[data-suggest]');
+  const list = form?.querySelector<HTMLElement>('[data-suggest-list]');
+  const empty = form?.querySelector<HTMLElement>('[data-suggest-empty]');
+  const all = form?.querySelector<HTMLAnchorElement>('[data-suggest-all]');
+
+  const sendToGrid = (q: string) => {
+    document.dispatchEvent(new CustomEvent('nxg:search', { detail: q }));
+    document.getElementById('explore')?.scrollIntoView({ behavior: reducedMotion() ? 'auto' : 'smooth' });
+  };
+  const close = () => { if (box) box.hidden = true; input?.setAttribute('aria-expanded', 'false'); };
+  const suggest = () => {
+    if (!input || !box || !list || !empty || !all) return;
+    const q = input.value.trim();
+    if (!q) { close(); return; }
+    const hits = guideIndex().filter((g) => matchesQuery(g, q));
+    list.replaceChildren(
+      ...hits.slice(0, 4).map((g) => {
+        const a = document.createElement('a');
+        a.className = 'sug';
+        a.href = g.url;
+        const img = document.createElement('img');
+        img.src = g.thumb;
+        img.alt = '';
+        img.width = 56;
+        img.height = 42;
+        const span = document.createElement('span');
+        const strong = document.createElement('strong');
+        strong.textContent = g.t;
+        const small = document.createElement('small');
+        small.textContent = `${g.p} · ${g.c} · ${g.min} min read`;
+        span.append(strong, small);
+        a.append(img, span);
+        return a;
+      }),
+    );
+    empty.hidden = hits.length > 0;
+    all.hidden = hits.length === 0;
+    all.firstChild!.textContent = `See all ${hits.length} matching guide${hits.length === 1 ? '' : 's'} `;
+    box.hidden = false;
+    input.setAttribute('aria-expanded', 'true');
+  };
+  input?.addEventListener('input', suggest);
+  input?.addEventListener('focus', suggest);
+  input?.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') close();
+    if (e.key === 'ArrowDown') { e.preventDefault(); list?.querySelector<HTMLElement>('a')?.focus(); }
+  });
+  form?.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { close(); input?.focus(); }
+  });
+  form?.addEventListener('focusout', () => setTimeout(() => { if (!form.contains(document.activeElement)) close(); }, 120));
+  form?.addEventListener('submit', (e) => { e.preventDefault(); close(); sendToGrid(input?.value ?? ''); });
+  all?.addEventListener('click', (e) => { e.preventDefault(); close(); sendToGrid(input?.value ?? ''); });
+  document.querySelectorAll<HTMLButtonElement>('[data-quick]').forEach((b) =>
+    b.addEventListener('click', () => {
+      if (input) input.value = b.dataset.quick ?? '';
+      sendToGrid(b.dataset.quick ?? '');
+    }),
+  );
+</script>

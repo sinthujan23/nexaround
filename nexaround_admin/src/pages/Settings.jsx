@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { apiGet, apiPut } from '../api';
-import { SecretField, PageLoading } from '../components/Kit';
+import { SecretField, PageLoading, Switch } from '../components/Kit';
 
 // Travel-data providers feeding Odyssey plans (backend: app/services/providers).
 const PROVIDER_FIELDS = {
@@ -42,6 +42,7 @@ export default function Settings() {
   const [unsplashApiKey, setUnsplashApiKey] = useState('');
   const [serpapiKey, setSerpapiKey] = useState('');
   const [providers, setProviders] = useState(PROVIDER_FIELDS);
+  const [countryMode, setCountryMode] = useState(true);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -61,6 +62,7 @@ export default function Settings() {
         setDefaultGeofenceRadius(res.default_geofence_radius || '100');
         setUnsplashApiKey(res.unsplash_api_key || '');
         setSerpapiKey(res.serpapi_key || '');
+        setCountryMode(res.experiences_country_mode !== false);
         setProviders(Object.fromEntries(
           Object.entries(PROVIDER_FIELDS).map(([k, dflt]) => [k, res[k] || dflt])
         ));
@@ -85,6 +87,7 @@ export default function Settings() {
         default_geofence_radius: String(defaultGeofenceRadius),
         unsplash_api_key: unsplashApiKey,
         serpapi_key: serpapiKey,
+        experiences_country_mode: countryMode,
         ...providers,
       });
       setSuccess(true);
@@ -192,6 +195,21 @@ export default function Settings() {
               onChange={(e) => setDefaultGeofenceRadius(e.target.value)}
               required
             />
+          </div>
+        </div>
+
+        <div style={{ borderTop: '1px solid var(--border)', paddingTop: '24px', marginTop: '24px' }}>
+          <h4 style={{ marginBottom: '12px', color: 'var(--text-primary)' }}>Experiences</h4>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+            <div>
+              <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '13px' }}>Browse by country</div>
+              <div style={{ fontSize: '11px', color: 'var(--text-secondary)', maxWidth: '520px' }}>
+                On: the app lists Experiences by the country picked in its dropdown, with no distances,
+                and includes vendors that have no map pin. Off: nearest first, which hides vendors with
+                no map pin. Takes effect when you save.
+              </div>
+            </div>
+            <Switch checked={countryMode} onChange={setCountryMode} />
           </div>
         </div>
 

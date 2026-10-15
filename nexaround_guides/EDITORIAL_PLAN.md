@@ -54,10 +54,38 @@ Status: **Published** = written, waiting for the team's edit (see each guide's `
 | 19 | La Rinconada, Peru (team to decide whether to publish) | Extreme places | **Published** |
 | 20 | Longyearbyen, Svalbard | Extreme places | **Published** |
 
+### Third batch (drafted 14 October 2026)
+
+| # | Guide | Section | Status |
+| --- | --- | --- | --- |
+| 21 | Puerto Williams, the southernmost town | Extreme places | **Published** |
+| 22 | Supai, where the mail comes by mule | Remote villages | **Published** |
+| 24 | Turtuk, Ladakh | Remote villages | **Published** |
+| 25 | Tusheti and the Abano Pass, Georgia | Remote villages | **Published** |
+| 26 | Gásadalur, Faroe Islands | Remote villages | **Published** |
+
+Published on 14 October 2026 on the owner's instruction, before the team's checks; their
+follow-up items are at the end of this file. **23 Dallol is on hold:** Dallol and Hamed Ela are
+about 10–13 km from the Eritrean border, inside the zone where the UK FCDO advises against all
+travel (Afar, checked 14 October 2026). Revisit when the advice changes.
+
+### Africa batch (written and published 14 October 2026)
+
+| # | Guide | Section | Status |
+| --- | --- | --- | --- |
+| 32 | The Sani Pass, South Africa to Lesotho | Road trips | **Published** |
+| 33 | Lake Natron, Tanzania | Extreme places | **Published** |
+| 34 | Tsingy de Bemaraha, Madagascar | Extreme places | **Published** |
+| 35 | Aït Bouguemez, Morocco | Remote villages | **Published** |
+| 36 | Ganvié, Benin | Remote villages | **Published** |
+
+Chosen for spread (south, east, Indian Ocean, north, west) after checking UK FCDO advice for each:
+none is in an area the FCDO advises against. Tsingy carries the FCDO's western-Madagascar advice
+(recognised tour operator, no night driving, Tsiribihina River robberies) in the guide itself.
+
 ### Next (two a week)
 
-21 Puerto Williams · 22 Supai, where the mail comes by mule · 23 Dallol, Ethiopia ·
-24 Turtuk, Ladakh · 25 Tusheti, Georgia · 26 Gásadalur, Faroe Islands · 27 Iya Valley, Japan ·
+23 Dallol, Ethiopia (on hold, see above) · 27 Iya Valley, Japan ·
 28 Remote Kerala highlands (team visit) · 29 Free hot springs in Iceland ·
 30 Permits for remote regions · 31 Travel insurance for remote trips
 
@@ -253,3 +281,88 @@ All 20 guides were published on the owner's instruction before the team checks b
 - [ ] Add the Baldur ferry (Stykkishólmur–Brjánslækur) season and fares, and summer boat schedules from Ísafjörður to Hornstrandir.
 - [ ] Check the height figures for Dynjandi and Látrabjarg against an official source before adding them.
 - [ ] Add a first-hand detail: a guesthouse host, or someone who drove the loop in shoulder season.
+
+## Follow-up checks (third batch, published 14 October 2026 before team review)
+
+### Puerto Williams: the southernmost town in the world
+`src/content/guides/puerto-williams.md`
+- [ ] Check this season's DAP timetable and fares from Punta Arenas, and the current Yaghan ferry day and fare with TABSA.
+- [ ] Confirm whether boats from Ushuaia to Puerto Navarino are running this summer, who runs them, and the price.
+- [ ] Confirm the Martín Gusinde museum's opening hours and that entry is still free; check whether Omora Park needs a guide or a fee.
+- [ ] Add the current rules for the Dientes circuit: registration with the Carabineros or CONAF before setting out, and any fee.
+- [ ] Add one first-hand detail from someone who has been: a guesthouse host, a trekker or a sailor.
+- [ ] Add a price range for a guesthouse night and a meal.
+
+### Supai: the village in the Grand Canyon where the mail comes by mule
+`src/content/guides/supai-havasupai.md`
+- [ ] Check the 2027 permit sale dates and prices on havasupaireservations.com when they are announced, and update the facts box.
+- [ ] Confirm the helicopter schedule, who may use it, and the fare; and the rules and prices for having a pack mule carry your bags.
+- [ ] Confirm which parts of the canyon are closed after the floods, including the trail to Beaver Falls.
+- [ ] Ask the Havasupai Tourism Office whether they would like anything added or changed, and whether we may use photos of the village.
+- [ ] Check the reservation's rules for visitors (alcohol, drones, photography) and add them with a link.
+- [ ] Add one first-hand detail from someone who has hiked in recently.
+
+### Turtuk, Ladakh: the Balti village that was in Pakistan until 1971
+`src/content/guides/turtuk-ladakh.md`
+- [ ] Confirm with the Leh district administration or a registered Leh agent what foreign visitors need for Turtuk today (Protected Area Permit, group rules, how far beyond Turtuk they may go), and add the official link.
+- [ ] Confirm the current environment fee for Indian visitors and how to pay it.
+- [ ] Check mobile signal: which networks work in Turtuk, and whether prepaid SIMs from outside Ladakh work. Then decide whether an eSIM partner box makes sense.
+- [ ] Add homestay and guesthouse prices, and the fee and hours for the Balti Heritage Museum and the old royal house.
+- [ ] Check whether visitors can currently go on to Tyakshi and Thang.
+- [ ] Add one first-hand detail: a homestay host, or a traveller who visited in apricot season.
+
+### Tusheti: over the Abano Pass to Georgia's highest villages
+`src/content/guides/tusheti-georgia.md`
+- [ ] Check this year's actual opening and closing dates of the Abano road, and where the 2026–2027 road works are, with the Roads Department of Georgia.
+- [ ] Confirm this season's shared 4x4 fare from Kvemo Alvani (a 2026 blog says about 100 GEL), and add a day rate for a private 4x4 with a driver.
+- [ ] Check whether any flights or helicopters serve Tusheti this season.
+- [ ] Find out which hikes near the Russian border need a border-zone permit, where to get it, and add it.
+- [ ] Add guesthouse prices in Omalo and Dartlo, and check mobile signal in the villages.
+- [ ] Add one first-hand detail from a driver, a guesthouse host or a traveller who crossed the pass this year.
+
+### Gásadalur: the Faroese village that had no road until 2004
+`src/content/guides/gasadalur-faroe-islands.md`
+- [ ] Check the current toll for the Vágatunnilin tunnel and how visitors pay it (rental car companies often handle it).
+- [ ] Check parking at Gásadalur: where, and whether there is a fee.
+- [ ] Check whether the Bøur–Gásadalur path now has a hiking fee, needs a guide, or has seasonal closures, on Visit Faroe Islands or with the landowners.
+- [ ] Confirm the latest population figure with Hagstova Føroya (Statistics Faroe Islands).
+- [ ] Check whether an eSIM partner covers the Faroe Islands; if so, add the partner box.
+- [ ] Add one first-hand detail: someone who lives on Vágar, or a hiker who walked the old path.
+
+## Follow-up checks (Africa batch, published 14 October 2026 before team review)
+
+### The Sani Pass: the 4x4 road up the Drakensberg to Lesotho
+`src/content/guides/sani-pass-lesotho.md`
+- [ ] Confirm current border hours at both posts and Lesotho's visa rules for our main reader countries.
+- [ ] Check the state of the road works and which sections are tarred now, with KZN Transport.
+- [ ] Add 4x4 day-tour prices from Underberg/Himeville, and the name and prices of the lodge at Sani Top.
+- [ ] Add one first-hand detail from a driver or a visitor.
+
+### Lake Natron: the red soda lake where flamingos are born
+`src/content/guides/lake-natron-tanzania.md`
+- [ ] Add the current area fees (district, village, conservation) and where they are paid.
+- [ ] Add the best months for flamingos and for the road, from a local guide or operator.
+- [ ] Check Ol Doinyo Lengai's current activity and whether climbs are allowed, plus a typical guide price.
+- [ ] Add one first-hand detail from a guide in Engaresero or a visitor.
+
+### Tsingy de Bemaraha: Madagascar's stone forest, and the hard road to it
+`src/content/guides/tsingy-de-bemaraha.md`
+- [ ] Re-check the UK FCDO advice for western Madagascar on the day of any update, and quote it.
+- [ ] Confirm this season's park opening dates, entry fees and guide fees with Madagascar National Parks.
+- [ ] Confirm the ferry situation at Belo-sur-Tsiribihina and on the Manambolo, and any new bridge.
+- [ ] Name two reputable Morondava operators only if a team member can vouch for them.
+- [ ] Add one first-hand detail from a visitor or a guide.
+
+### Aït Bouguemez: the 'Happy Valley' of Morocco's High Atlas
+`src/content/guides/ait-bouguemez-morocco.md`
+- [ ] Find a reliable population figure for the valley (Morocco census or commune).
+- [ ] Confirm where the dinosaur footprints are and whether the M'Goun Geopark House charges entry.
+- [ ] Add guesthouse and mountain-guide prices, and the Tabant souk day.
+- [ ] Add one first-hand detail from a guesthouse host or trekker.
+
+### Ganvié: Africa's largest village on stilts, on Lake Nokoué
+`src/content/guides/ganvie-benin.md`
+- [ ] Confirm current official boat and guide prices at the Abomey-Calavi pier.
+- [ ] Check whether there is an official tourist office or cooperative at the pier and link it.
+- [ ] Add one first-hand detail from a resident or guide, with their permission.
+

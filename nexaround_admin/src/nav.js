@@ -10,9 +10,11 @@ import Settings from './pages/Settings';
 import ApiUsage from './pages/ApiUsage';
 import Experiences from './pages/Experiences';
 import ExperienceEnquiries from './pages/ExperienceEnquiries';
+import AuditTrail from './pages/AuditTrail';
+import Sessions from './pages/Sessions';
 import {
   CompassIcon, UsersIcon, MapPinIcon, CreditCardIcon, MegaphoneIcon, ImageIcon, SettingsIcon,
-  ClipboardCheckIcon, TrendingUpIcon, EyeOffIcon, TicketIcon, InboxIcon,
+  ClipboardCheckIcon, TrendingUpIcon, EyeOffIcon, TicketIcon, InboxIcon, ShieldIcon, MonitorIcon,
 } from './components/Icons';
 
 /**
@@ -50,6 +52,8 @@ export const NAV_SECTIONS = [
       { path: '/users', label: 'User Management', title: 'Explorer Management', icon: UsersIcon, page: Users },
       { path: '/engagement', label: 'Engagement', title: 'Engagement & Broadcasting', icon: MegaphoneIcon, page: Engagement },
       { path: '/api-usage', label: 'API Usage', title: 'API Usage & Cost', icon: TrendingUpIcon, page: ApiUsage },
+      { path: '/audit', label: 'Audit Trail', title: 'Audit Trail', icon: ShieldIcon, page: AuditTrail },
+      { path: '/sessions', label: 'Devices & Sessions', title: 'Devices & Sessions', icon: MonitorIcon, page: Sessions },
       { path: '/settings', label: 'Settings', title: 'General Settings', icon: SettingsIcon, page: Settings },
     ],
   },

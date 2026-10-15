@@ -14,7 +14,8 @@ from typing import Optional
 
 from pydantic import BaseModel, EmailStr, Field
 
-from app.services.experience_format import MAX_BOOKING_WINDOW_DAYS
+from app.schemas.experience import DateRange
+from app.services.experience_format import MAX_BOOKING_WINDOW_DAYS, MAX_UNAVAILABLE_RANGES
 
 
 # --- Admin-side: managing a vendor's logins ---------------------------------
@@ -100,8 +101,8 @@ class PartnerVendorProfileUpdate(BaseModel):
 
     name: str = Field(..., max_length=255)
     description: Optional[str] = None
-    latitude: float = Field(..., ge=-90, le=90)
-    longitude: float = Field(..., ge=-180, le=180)
+    latitude: Optional[float] = Field(None, ge=-90, le=90)
+    longitude: Optional[float] = Field(None, ge=-180, le=180)
     address: Optional[str] = Field(None, max_length=500)
     city: Optional[str] = Field(None, max_length=120)
     country_code: Optional[str] = Field(None, max_length=2)
@@ -142,6 +143,10 @@ class PartnerPackageBase(BaseModel):
     category: Optional[str] = Field(None, max_length=60)
     tags: list[str] = []
     photo_urls: list[str] = []
+    # Dates this package cannot be booked; everything else is available.
+    unavailable_ranges: list[DateRange] = Field(
+        default_factory=list, max_length=MAX_UNAVAILABLE_RANGES
+    )
     price_amount: Optional[float] = Field(None, ge=0)
     price_currency: Optional[str] = Field("LKR", max_length=10)
     price_basis: Optional[str] = Field("per_person", max_length=20)

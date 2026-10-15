@@ -1,0 +1,108 @@
+---
+// Home page: what the nexARound app does, one feature at a time, each with a
+// real screenshot. The guides get readers dreaming; the app plans the trip.
+import { Image } from 'astro:assets';
+import Icon from './Icon.astro';
+import StoreButtons from './StoreButtons.astro';
+import { getAppLink } from '../lib/app';
+import odyssey from '../assets/app/odyssey-plan.png';
+import neva from '../assets/app/neva.png';
+import ar from '../assets/app/ar-discovery.png';
+import maps from '../assets/app/maps.png';
+import stories from '../assets/app/travel-stories.png';
+
+const FEATURES = [
+  { key: 'odyssey', icon: 'route', name: 'Odyssey trip planner', short: 'A day-by-day plan in minutes',
+    text: 'Tell Odyssey where you\'re going, your dates, interests and budget, and it builds a day-by-day itinerary, with your budget split across stays, transport, food and activities.',
+    img: odyssey, alt: 'Odyssey in the nexARound app, showing a six-day trip and its budget split' },
+  { key: 'neva', icon: 'sparkle', name: 'Neva, your travel companion', short: 'Ask anything, wherever you are',
+    text: 'Ask Neva about what you can see, where to eat tonight or how to get somewhere. She knows where you are and what you like.',
+    img: neva, alt: 'A chat with Neva in the nexARound app, suggesting places for an evening out' },
+  { key: 'ar', icon: 'camera', name: 'AR discovery', short: 'Point your camera, see what\'s near',
+    text: 'Raise your phone and turn around: nearby sights, restaurants, monuments and transport appear on your camera view, with how far away they are.',
+    img: ar, alt: 'The nexARound AR view, with labels for nearby places floating over a city street' },
+  { key: 'maps', icon: 'map-pin', name: 'Smart maps', short: 'Places and directions in one map',
+    text: 'Your saved places, recommendations and turn-by-turn directions for driving or walking, in a single map.',
+    img: maps, alt: 'The nexARound map with a route and turn-by-turn directions' },
+  { key: 'stories', icon: 'users', name: 'Travel stories', short: 'From people who\'ve been there',
+    text: 'Photo stories, tips and hidden gems shared by travellers, so you can see a place through someone who has just been.',
+    img: stories, alt: 'The nexARound home screen with travel stories from other travellers' },
+];
+---
+<section class="section app-show" data-app-show>
+  <div class="container app-show-in">
+    <div class="app-show-copy">
+      <span class="badge badge-teal"><Icon name="smartphone" /> The nexARound app</span>
+      <h2>Read the guide. <span class="text-gradient-teal">Let the app plan the trip.</span></h2>
+      <p class="app-show-lead">Our guides are made by the team behind nexARound, the travel app that plans your trip, guides you on the way and finds what's around you.</p>
+      <div class="app-tabs" role="tablist" aria-label="App features">
+        {FEATURES.map((f, i) => (
+          <button type="button" role="tab" class:list={['app-tab', { 'is-on': i === 0 }]} id={`app-tab-${f.key}`} aria-controls={`app-panel-${f.key}`} aria-selected={i === 0 ? 'true' : 'false'} tabindex={i === 0 ? 0 : -1} data-app-tab={i}>
+            <span class="t-ic"><Icon name={f.icon as any} /></span>
+            <span><strong>{f.name}</strong><small>{f.short}</small></span>
+          </button>
+        ))}
+      </div>
+      {FEATURES.map((f, i) => (
+        <p class="app-tab-text" role="tabpanel" id={`app-panel-${f.key}`} aria-labelledby={`app-tab-${f.key}`} data-app-panel={i} hidden={i !== 0}>{f.text}</p>
+      ))}
+      <div class="app-show-cta">
+        <StoreButtons medium="home-showcase" />
+        <a class="qr-mini" href={getAppLink('home-showcase')}>
+          <img src="/app-qr.svg" alt="" width="64" height="64" />
+          <span>Scan to get<br />the app</span>
+        </a>
+      </div>
+    </div>
+    <div class="app-show-visual" aria-hidden="true">
+      <div class="phone phone-lg">
+        {FEATURES.map((f, i) => (
+          <div class:list={['phone-screen', { 'is-on': i === 0 }]} data-app-shot={i}>
+            <Image src={f.img} alt={f.alt} widths={[320, 520]} sizes="(max-width: 700px) 240px, 300px" loading="lazy" />
+          </div>
+        ))}
+      </div>
+      <div class="phone-glow"></div>
+    </div>
+  </div>
+</section>
+
+<script>
+  import { reducedMotion } from '../lib/client';
+
+  const root = document.querySelector<HTMLElement>('[data-app-show]');
+  if (root) {
+    const tabs = [...root.querySelectorAll<HTMLButtonElement>('[data-app-tab]')];
+    const panels = [...root.querySelectorAll<HTMLElement>('[data-app-panel]')];
+    const shots = [...root.querySelectorAll<HTMLElement>('[data-app-shot]')];
+    let current = 0;
+    let timer: number | undefined;
+    let touched = false;
+    const show = (i: number, focus = false) => {
+      current = (i + tabs.length) % tabs.length;
+      tabs.forEach((t, k) => {
+        t.classList.toggle('is-on', k === current);
+        t.setAttribute('aria-selected', String(k === current));
+        t.tabIndex = k === current ? 0 : -1;
+      });
+      panels.forEach((p, k) => (p.hidden = k !== current));
+      shots.forEach((s, k) => s.classList.toggle('is-on', k === current));
+      if (focus) tabs[current].focus();
+    };
+    const stop = () => { touched = true; window.clearInterval(timer); };
+    tabs.forEach((t, k) => {
+      t.addEventListener('click', () => { stop(); show(k); });
+      t.addEventListener('keydown', (e) => {
+        const d = e.key === 'ArrowDown' || e.key === 'ArrowRight' ? 1 : e.key === 'ArrowUp' || e.key === 'ArrowLeft' ? -1 : 0;
+        if (d) { e.preventDefault(); stop(); show(current + d, true); }
+      });
+    });
+    // Step through the features while the section is on screen, until the reader picks one.
+    if (!reducedMotion() && 'IntersectionObserver' in window) {
+      new IntersectionObserver((entries) => {
+        window.clearInterval(timer);
+        if (!touched && entries.some((e) => e.isIntersecting)) timer = window.setInterval(() => show(current + 1), 4500);
+      }, { threshold: 0.5 }).observe(root);
+    }
+  }
+</script>

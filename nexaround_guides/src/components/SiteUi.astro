@@ -1,0 +1,215 @@
+---
+// Site-wide pieces every page needs: the saved-guides drawer, the toast, a
+// small index of all guides for search and the drawer, and the script that
+// keeps bookmarks, km/miles and counting numbers in step.
+import { getImage } from 'astro:assets';
+import Icon from './Icon.astro';
+import { PILLARS, type PillarKey } from '../data/pillars';
+import { continentOf } from '../data/home';
+import { getGuides, guideUrl, readMinutes } from '../lib/guides';
+import { getAppLink } from '../lib/app';
+import { ui, clientStrings, type Lang } from '../lib/i18n';
+
+// `campaign`: the guide's slug (tags the app bar's link); `article`: on a guide page.
+interface Props { campaign?: string; article?: boolean; lang?: Lang }
+const { campaign = 'site', article = false, lang = 'en' } = Astro.props;
+const t = ui(lang);
+const onAppPage = Astro.url.pathname.startsWith('/app/');
+
+const guides = await getGuides();
+const index = await Promise.all(
+  guides.map(async (g) => ({
+    id: g.id,
+    t: g.data.title,
+    p: PILLARS[g.data.pillar as PillarKey].name,
+    k: g.data.pillar,
+    c: g.data.country,
+    d: g.data.description,
+    x: `${g.data.region ?? ''} ${continentOf(g.id)}`,
+    min: readMinutes(g),
+    url: guideUrl(g),
+    thumb: (await getImage({ src: g.data.cover, width: 160, height: 120, fit: 'cover', format: 'webp' })).src,
+    img: (await getImage({ src: g.data.cover, width: 800, format: 'webp' })).src,
+    alt: g.data.coverAlt,
+  })),
+);
+---
+<dialog class="drawer" data-drawer aria-labelledby="drawer-title">
+  <div class="drawer-head">
+    <h2 id="drawer-title">{t.savedGuides}</h2>
+    <button type="button" class="x-btn" data-drawer-close aria-label={t.closeSaved}><Icon name="x" /></button>
+  </div>
+  <ul class="drawer-list" data-drawer-list></ul>
+  <p class="drawer-empty" data-drawer-empty>{t.drawerEmpty}</p>
+  <p class="drawer-foot">{t.drawerFoot}</p>
+</dialog>
+
+<div class="toast" data-toast role="status" aria-live="polite"><Icon name="check-circle" /><span></span></div>
+
+{!onAppPage && (
+  <aside class="app-bar" data-app-bar aria-label={t.getTheApp} hidden>
+    <img src="/logo_2.png" alt="" width="40" height="40" />
+    <div class="app-bar-text"><strong>{t.appBarTitle}</strong><span>{article ? t.appBarGuide : t.appBarSite}</span></div>
+    <a class="app-bar-btn" href={getAppLink('mobile-bar', campaign)}>{t.getTheApp}</a>
+    <button type="button" class="app-bar-x" data-app-bar-close aria-label={t.close}><Icon name="x" /></button>
+  </aside>
+)}
+
+<script type="application/json" id="nxg-index" set:html={JSON.stringify(index)} />
+<script type="application/json" id="nxg-i18n" set:html={JSON.stringify(clientStrings(lang))} />
+
+<script>
+  import {
+    getSaved, isSaved, toggleSaved, toast, guideIndex, renderNumber, getUnits, setUnits, reducedMotion, T, fill, type Units,
+  } from '../lib/client';
+
+  const X_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
+
+  // Bookmarks
+  function paintSaved() {
+    const saved = getSaved();
+    document.querySelectorAll<HTMLButtonElement>('[data-save]').forEach((b) => {
+      const on = isSaved(b.dataset.save ?? '');
+      b.setAttribute('aria-pressed', String(on));
+      b.classList.toggle('is-saved', on);
+      const label = b.querySelector<HTMLElement>('[data-save-label]');
+      if (label) label.textContent = on ? T().savedGuide : T().saveGuide;
+    });
+    document.querySelectorAll<HTMLElement>('[data-saved-count]').forEach((c) => {
+      c.textContent = String(saved.length);
+      c.hidden = saved.length === 0;
+    });
+    const list = document.querySelector<HTMLUListElement>('[data-drawer-list]');
+    const empty = document.querySelector<HTMLElement>('[data-drawer-empty]');
+    if (!list || !empty) return;
+    const items = guideIndex().filter((g) => saved.includes(g.id));
+    list.replaceChildren(
+      ...items.map((g) => {
+        const li = document.createElement('li');
+        li.className = 'dl';
+        const img = document.createElement('img');
+        img.src = g.thumb;
+        img.alt = '';
+        img.width = 80;
+        img.height = 60;
+        const a = document.createElement('a');
+        a.href = g.url;
+        a.textContent = g.t;
+        const small = document.createElement('small');
+        small.textContent = `${g.p} · ${g.min} min read`;
+        a.append(small);
+        const rm = document.createElement('button');
+        rm.type = 'button';
+        rm.className = 'x-btn';
+        rm.setAttribute('aria-label', fill(T().removeFromSaved, { title: g.t }));
+        rm.innerHTML = X_ICON;
+        rm.addEventListener('click', () => toggleSaved(g.id));
+        li.append(img, a, rm);
+        return li;
+      }),
+    );
+    empty.hidden = items.length > 0;
+  }
+  document.addEventListener('click', (e) => {
+    const b = (e.target as Element).closest<HTMLButtonElement>('[data-save]');
+    if (!b) return;
+    e.preventDefault();
+    const on = toggleSaved(b.dataset.save ?? '');
+    toast(on ? T().toastSaved : T().toastRemoved);
+  });
+  document.addEventListener('nxg:saved', () => {
+    paintSaved();
+    document.querySelectorAll<HTMLElement>('[data-saved-count]').forEach((c) => {
+      c.classList.remove('bump');
+      void c.offsetWidth;
+      c.classList.add('bump');
+    });
+  });
+  paintSaved();
+
+  // Drawer
+  const drawer = document.querySelector<HTMLDialogElement>('[data-drawer]');
+  document.querySelectorAll('[data-drawer-open]').forEach((b) => b.addEventListener('click', () => drawer?.showModal()));
+  drawer?.querySelector('[data-drawer-close]')?.addEventListener('click', () => drawer.close());
+  drawer?.addEventListener('click', (e) => { if (e.target === drawer) drawer.close(); });
+
+  // Share
+  document.querySelectorAll<HTMLButtonElement>('[data-share]').forEach((b) =>
+    b.addEventListener('click', async () => {
+      const url = b.dataset.share || location.href;
+      const title = document.title;
+      if (navigator.share) {
+        try { await navigator.share({ title, url }); return; } catch { /* cancelled: fall back to copying */ }
+      }
+      try { await navigator.clipboard.writeText(url); toast(T().linkCopied); } catch { toast(url); }
+    }),
+  );
+
+  // Units: every [data-km] number follows the km/miles setting
+  function paintUnits(u: Units) {
+    document.querySelectorAll<HTMLElement>('[data-km]').forEach((el) => { if (!el.dataset.counting) renderNumber(el); });
+    document.querySelectorAll<HTMLButtonElement>('[data-units]').forEach((b) => {
+      const on = b.dataset.units === u;
+      b.classList.toggle('is-on', on);
+      b.setAttribute('aria-pressed', String(on));
+    });
+  }
+  document.addEventListener('click', (e) => {
+    const b = (e.target as Element).closest<HTMLButtonElement>('[data-units]');
+    if (b) setUnits(b.dataset.units === 'mi' ? 'mi' : 'km');
+  });
+  document.addEventListener('nxg:units', (e) => paintUnits((e as CustomEvent).detail));
+  paintUnits(getUnits());
+
+  // Phone app bar: after the reader has scrolled a little, on phones only, until
+  // closed (then hidden for a week). Safari on iPhone shows Apple's own app
+  // banner instead, so the bar stays out of its way there.
+  const appBar = document.querySelector<HTMLElement>('[data-app-bar]');
+  if (appBar) {
+    const ua = navigator.userAgent;
+    const iosSafari = /iPhone|iPad|iPod/.test(ua) && /Safari/.test(ua) && !/CriOS|FxiOS|EdgiOS/.test(ua);
+    let closedAt = 0;
+    try { closedAt = Number(localStorage.getItem('nxg-appbar-closed') || 0); } catch { /* storage blocked */ }
+    const closedRecently = Date.now() - closedAt < 7 * 24 * 3600 * 1000;
+    if (!iosSafari && !closedRecently) {
+      const phone = window.matchMedia('(max-width: 820px)');
+      const update = () => {
+        const on = phone.matches && window.scrollY > 600;
+        appBar.hidden = !on;
+        document.body.classList.toggle('has-app-bar', on);
+      };
+      window.addEventListener('scroll', update, { passive: true });
+      phone.addEventListener('change', update);
+      appBar.querySelector('[data-app-bar-close]')?.addEventListener('click', () => {
+        try { localStorage.setItem('nxg-appbar-closed', String(Date.now())); } catch { /* storage blocked */ }
+        window.removeEventListener('scroll', update);
+        appBar.hidden = true;
+        document.body.classList.remove('has-app-bar');
+      });
+      update();
+    }
+  }
+
+  // Numbers count up the first time they scroll into view
+  const counters = document.querySelectorAll<HTMLElement>('[data-count]');
+  if (counters.length && 'IntersectionObserver' in window && !reducedMotion()) {
+    counters.forEach((el) => renderNumber(el, 0));
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) return;
+        io.unobserve(entry.target);
+        const el = entry.target as HTMLElement;
+        el.dataset.counting = '1';
+        const t0 = performance.now();
+        const step = (now: number) => {
+          const p = Math.min(1, (now - t0) / 1300);
+          renderNumber(el, 1 - (1 - p) ** 3);
+          if (p < 1) requestAnimationFrame(step);
+          else delete el.dataset.counting;
+        };
+        requestAnimationFrame(step);
+      });
+    }, { threshold: 0.4 });
+    counters.forEach((el) => io.observe(el));
+  }
+</script>

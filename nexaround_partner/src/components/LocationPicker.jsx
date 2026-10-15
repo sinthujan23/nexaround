@@ -20,6 +20,8 @@ export default function LocationPicker({
   // As with ImageUploader: defaulted to the admin path, so admin call sites
   // need no edit at all.
   searchEndpoint = '/admin/experiences/place-search',
+  // Latitude and longitude may stay empty (a vendor listed by country only).
+  optional = false,
 }) {
   const mapRef = useRef(null);
   const markerRef = useRef(null);
@@ -204,14 +206,16 @@ export default function LocationPicker({
         style={{ height: '260px', borderRadius: '12px', marginBottom: '12px' }}
       />
       <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '12px' }}>
-        Pick a search result, click the map, or drag the pin to fine-tune.
+        {optional
+          ? 'Optional: leave the pin empty and your country is enough. Otherwise pick a search result, click the map, or drag the pin.'
+          : 'Pick a search result, click the map, or drag the pin to fine-tune.'}
       </div>
 
       <div className="form-grid-2">
         <div className="form-group">
           <label className="form-label">Latitude</label>
           <input
-            type="number" step="any" required className="form-input"
+            type="number" step="any" required={!optional} className="form-input"
             value={latitude}
             onChange={(e) => onPick({ latitude: e.target.value === '' ? '' : Number(e.target.value) })}
           />
@@ -219,7 +223,7 @@ export default function LocationPicker({
         <div className="form-group">
           <label className="form-label">Longitude</label>
           <input
-            type="number" step="any" required className="form-input"
+            type="number" step="any" required={!optional} className="form-input"
             value={longitude}
             onChange={(e) => onPick({ longitude: e.target.value === '' ? '' : Number(e.target.value) })}
           />

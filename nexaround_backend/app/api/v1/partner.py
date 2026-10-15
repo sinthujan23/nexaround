@@ -12,16 +12,18 @@ would be wrong here:
    simply by pressing Save — even if their schema never declared them.
 """
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Optional
 
 from fastapi import (
-    APIRouter, Depends, File, Header, HTTPException, Query, UploadFile, status,
+    APIRouter, Depends, File, Header, HTTPException, Query, Request, UploadFile,
+    status,
 )
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import VendorPrincipal, get_current_vendor, oauth2_scheme
+from app.core.config import settings
 from app.core.database import async_session, get_db
 from app.core.rate_limiter import auth_rate_limiter, check_account_rate_limit
 from app.core.security import (
@@ -30,6 +32,10 @@ from app.core.security import (
 )
 from app.models.experience import VendorUser
 from app.repositories.experience_repository import ExperienceRepository
+from app.schemas.audit import (
+    PartnerAuditEventOut, PartnerAuditListResponse, PartnerSessionListResponse,
+    PartnerSessionOut,
+)
 from app.schemas.partner import (
     ENQUIRY_STATUSES,
     PartnerActivity, PartnerActivityListResponse, PartnerActivityUnreadResponse,
@@ -40,8 +46,9 @@ from app.schemas.partner import (
     PartnerTokenResponse, PartnerStatsResponse, PartnerVendorProfileResponse,
     PartnerVendorProfileUpdate,
 )
-from app.services import google_places_client, partner_activity, partner_events
+from app.services import audit, google_places_client, partner_activity, partner_events
 from app.services.email_service import send_vendor_invite_email
+from app.services.experience_format import package_field_value
 from app.services.experience_upload import save_experience_images
 from app.services.settings_service import SettingsService
 from app.services.partner_auth import consume_link_token, store_link_token
@@ -53,8 +60,11 @@ router = APIRouter(prefix="/partner", tags=["Partner Portal"])
 # roster for anyone with a browser.
 _BAD_CREDENTIALS = "Invalid email or password."
 
+# How long a sign-in stays "active" after its newest access token was issued.
+_ACCESS_TTL = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
 
-def _claims(login: VendorUser) -> dict:
+
+def _claims(login: VendorUser, sid) -> dict:
     """The claims every partner token carries.
 
     `iat` is set explicitly because `create_access_token` does not add one — it
@@ -69,6 +79,9 @@ def _claims(login: VendorUser) -> dict:
         "sub": str(login.id),
         "role": "vendor",
         "vendor_id": str(login.vendor_id),
+        # Ties the token to a row in `auth_sessions`: that row is what an
+        # admin (or the vendor) revokes to sign this device out.
+        "sid": str(sid),
         "iat": int(datetime.now(timezone.utc).timestamp()),
     }
 
@@ -94,9 +107,25 @@ async def _lookup_login(db: AsyncSession, email: str) -> Optional[VendorUser]:
     ).scalar_one_or_none()
 
 
+async def _failed_sign_in(request: Request, email: str, login, reason: str) -> None:
+    """Record a refused sign-in. Kept against the vendor when the address is
+    theirs, so the portal can warn them about guessing; otherwise admin-only."""
+    await audit.record(
+        actor_type="anonymous",
+        actor_id=str(login.id) if login is not None else None,
+        actor_label=email[:255],
+        vendor_id=login.vendor_id if login is not None else None,
+        category="auth", action="auth.login_failed",
+        summary="Failed sign-in attempt",
+        method="POST", route="/api/v1/partner/auth/login", status_code=401,
+        success=False, meta=audit.client_meta(request), detail={"reason": reason},
+    )
+
+
 @router.post("/auth/login", response_model=PartnerTokenResponse)
 async def partner_login(
     data: PartnerLoginRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     _=Depends(auth_rate_limiter),
 ):
@@ -111,18 +140,25 @@ async def partner_login(
     # `verify_password` returns False for a null hash, so an invite that was
     # never accepted simply fails here rather than needing its own branch.
     if login is None or not verify_password(data.password, login.password_hash):
+        await _failed_sign_in(
+            request, email, login,
+            "no such account" if login is None else "wrong password",
+        )
         raise HTTPException(status_code=401, detail=_BAD_CREDENTIALS)
 
     if not login.is_active:
+        await _failed_sign_in(request, email, login, "login disabled")
         raise HTTPException(
             status_code=403, detail="This login has been disabled. Contact NexAround.",
         )
 
     vendor = await ExperienceRepository(db).get_vendor(login.vendor_id)
     if vendor is None:
+        await _failed_sign_in(request, email, login, "vendor missing")
         raise HTTPException(status_code=401, detail=_BAD_CREDENTIALS)
     # Told plainly here rather than as a puzzling 403 on the next call.
     if not vendor.is_active:
+        await _failed_sign_in(request, email, login, "vendor suspended")
         raise HTTPException(
             status_code=403,
             detail="Your listing is currently suspended. Contact NexAround.",
@@ -133,7 +169,21 @@ async def partner_login(
     await db.commit()
     await db.refresh(login)
 
-    claims = _claims(login)
+    sid = await audit.start_session(
+        actor_type="vendor", actor_id=str(login.id), actor_label=login.email,
+        vendor_id=login.vendor_id, request=request, ttl=_ACCESS_TTL,
+    )
+    meta = audit.client_meta(request)
+    await audit.record(
+        actor_type="vendor", actor_id=str(login.id), actor_label=login.email,
+        vendor_id=login.vendor_id, session_id=sid,
+        category="auth", action="auth.login",
+        summary=f"Signed in from {audit.describe_device(meta['browser'], meta['os'])}",
+        method="POST", route="/api/v1/partner/auth/login", status_code=200,
+        meta=meta,
+    )
+
+    claims = _claims(login, sid)
     principal = VendorPrincipal(login=login, vendor=vendor)
     return PartnerTokenResponse(
         access_token=create_access_token(claims),
@@ -145,6 +195,7 @@ async def partner_login(
 @router.post("/auth/forgot-password", response_model=PartnerMessageResponse)
 async def partner_forgot_password(
     data: PartnerForgotPasswordRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     _=Depends(auth_rate_limiter),
 ):
@@ -172,6 +223,14 @@ async def partner_forgot_password(
             )
             await send_vendor_invite_email(
                 login.email, vendor.name, link, is_reset=True,
+            )
+            await audit.record(
+                actor_type="anonymous", actor_id=str(login.id),
+                actor_label=login.email, vendor_id=login.vendor_id,
+                category="auth", action="auth.password_reset_requested",
+                summary="Password reset link requested",
+                method="POST", route="/api/v1/partner/auth/forgot-password",
+                status_code=200, meta=audit.client_meta(request),
             )
 
     return PartnerMessageResponse(
@@ -213,6 +272,7 @@ async def partner_check_token(
 @router.post("/auth/set-password", response_model=PartnerMessageResponse)
 async def partner_set_password(
     data: PartnerSetPasswordRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     _=Depends(auth_rate_limiter),
 ):
@@ -234,10 +294,27 @@ async def partner_set_password(
         raise HTTPException(status_code=400, detail="This login no longer exists.")
 
     from datetime import datetime, timezone
+    first_password = login.password_hash is None
     login.password_hash = get_password_hash(data.new_password)
     # Signs out every other session: their tokens predate this moment.
     login.password_changed_at = datetime.now(timezone.utc)
     await db.commit()
+    # The same cut-off, made visible: the devices list shows them as signed out.
+    await audit.revoke_sessions_for(
+        actor_type="vendor", actor_id=str(login.id), reason="password",
+        by=login.email,
+    )
+    await audit.record(
+        actor_type="vendor", actor_id=str(login.id), actor_label=login.email,
+        vendor_id=login.vendor_id, category="auth",
+        action="auth.password_set" if first_password else "auth.password_reset",
+        summary=(
+            "Accepted the invite and set a password" if first_password
+            else "Reset the password; all devices signed out"
+        ),
+        method="POST", route="/api/v1/partner/auth/set-password", status_code=200,
+        meta=audit.client_meta(request),
+    )
     await partner_events.publish(login.vendor_id, partner_events.ACCOUNT_CHANGED)
 
     return PartnerMessageResponse(
@@ -247,6 +324,7 @@ async def partner_set_password(
 
 @router.post("/auth/refresh", response_model=PartnerTokenResponse)
 async def partner_refresh(
+    request: Request,
     db: AsyncSession = Depends(get_db),
     authorization: str = Header(...),
 ):
@@ -279,7 +357,17 @@ async def partner_refresh(
     if vendor is None or not vendor.is_active:
         raise HTTPException(status_code=401, detail="Invalid refresh token")
 
-    claims = _claims(login)
+    # The same sign-in, still: a revoked device cannot refresh its way back in.
+    sid = payload.get("sid")
+    from datetime import datetime, timezone
+    if not await audit.session_is_live(
+        sid, actor_type="vendor", actor_id=str(login.id),
+        ip=audit.client_meta(request)["ip"],
+        extend_to=datetime.now(timezone.utc) + _ACCESS_TTL,
+    ):
+        raise HTTPException(status_code=401, detail="Invalid refresh token")
+
+    claims = _claims(login, sid)
     return PartnerTokenResponse(
         access_token=create_access_token(claims),
         refresh_token=create_refresh_token(claims),
@@ -289,11 +377,31 @@ async def partner_refresh(
 
 @router.post("/auth/logout", response_model=PartnerMessageResponse)
 async def partner_logout(
+    request: Request,
     authorization: str = Header(...),
-    _principal: VendorPrincipal = Depends(get_current_vendor),
+    principal: VendorPrincipal = Depends(get_current_vendor),
 ):
-    if authorization.startswith("Bearer "):
-        await blacklist_token(authorization.split(" ", 1)[1])
+    token = authorization.split(" ", 1)[1] if authorization.startswith("Bearer ") else None
+    sid = None
+    if token:
+        await blacklist_token(token)
+        from app.core.security import decode_token
+        sid = (decode_token(token) or {}).get("sid")
+    # Revoking the session (not just blacklisting this one access token) is
+    # what also kills the refresh token that came with it.
+    row = await audit.revoke_session(
+        sid, reason="user", by=principal.login.email,
+        actor_type="vendor", actor_id=str(principal.login.id),
+    )
+    if row is not None:
+        await audit.record(
+            actor_type="vendor", actor_id=str(principal.login.id),
+            actor_label=principal.login.email, vendor_id=principal.vendor.id,
+            session_id=row.id, category="auth", action="auth.logout",
+            summary="Signed out", method="POST",
+            route="/api/v1/partner/auth/logout", status_code=200,
+            meta=audit.client_meta(request),
+        )
     return PartnerMessageResponse(message="Signed out.")
 
 
@@ -388,6 +496,7 @@ _PARTNER_VENDOR_SCALARS = (
 
 _PARTNER_PACKAGE_SCALARS = (
     "title", "summary", "description", "category", "tags", "photo_urls",
+    "unavailable_ranges",
     "price_amount", "price_currency", "price_basis", "duration_minutes",
     "max_participants", "booking_window_days", "inclusions", "languages",
     "uses_vendor_location", "meeting_point_address",
@@ -451,6 +560,7 @@ def _package_out(package) -> PartnerPackageResponse:
         category=package.category,
         tags=package.tags or [],
         photo_urls=package.photo_urls or [],
+        unavailable_ranges=package.unavailable_ranges or [],
         price_amount=float(package.price_amount) if package.price_amount is not None else None,
         price_currency=package.price_currency,
         price_basis=package.price_basis,
@@ -507,13 +617,18 @@ async def update_partner_profile(
     principal: VendorPrincipal = Depends(get_current_vendor),
 ):
     from app.services.experience_service import apply_vendor_cascade
-    from app.utils.geo_utils import create_point
+    from app.services.experience_format import vendor_place_problem
+    from app.utils.geo_utils import point_or_none
+
+    problem = vendor_place_problem(data.latitude, data.longitude, data.country_code)
+    if problem:
+        raise HTTPException(status_code=422, detail=problem)
 
     vendor = principal.vendor
     before = partner_activity.snapshot(vendor, _PARTNER_VENDOR_SCALARS)
     for key in _PARTNER_VENDOR_SCALARS:
         setattr(vendor, key, getattr(data, key))
-    vendor.location = create_point(data.latitude, data.longitude)
+    vendor.location = point_or_none(data.latitude, data.longitude)
 
     # A vendor that moved drags its packages with it. `apply_vendor_cascade`
     # does not commit, so the call and the commit are both needed - forgetting
@@ -558,7 +673,7 @@ async def create_partner_package(
         # Taken from the token, never from the body: a vendor_id in the payload
         # would be a way to file a package under someone else's name.
         vendor_id=principal.vendor.id,
-        **{key: getattr(data, key) for key in _PARTNER_PACKAGE_SCALARS},
+        **{key: package_field_value(data, key) for key in _PARTNER_PACKAGE_SCALARS},
     )
     apply_package_derived_fields(
         package, principal.vendor, data.latitude, data.longitude
@@ -607,7 +722,7 @@ async def update_partner_package(
 
     before = partner_activity.snapshot(package, _PARTNER_PACKAGE_SCALARS)
     for key in _PARTNER_PACKAGE_SCALARS:
-        setattr(package, key, getattr(data, key))
+        setattr(package, key, package_field_value(data, key))
     apply_package_derived_fields(
         package, principal.vendor, data.latitude, data.longitude
     )
@@ -669,6 +784,25 @@ async def list_partner_enquiries(
         page=page,
         page_size=page_size,
     )
+
+
+@router.get("/enquiries/{enquiry_id}", response_model=PartnerEnquiryResponse)
+async def get_partner_enquiry(
+    enquiry_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    principal: VendorPrincipal = Depends(get_current_vendor),
+):
+    """One enquiry, so a link to it opens whichever page of the list it is on.
+
+    Scoped in the query by `get_enquiry_for_vendor`; another vendor's id is a
+    404, the same as one that does not exist.
+    """
+    enquiry = await ExperienceRepository(db).get_enquiry_for_vendor(
+        enquiry_id, principal.vendor.id
+    )
+    if enquiry is None:
+        raise HTTPException(status_code=404, detail="Enquiry not found")
+    return _enquiry_out(enquiry)
 
 
 @router.patch("/enquiries/{enquiry_id}", response_model=PartnerEnquiryResponse)
@@ -893,3 +1027,165 @@ async def partner_place_search(
             "country_name": parts["country_name"],
         })
     return {"places": results}
+
+
+# ── Devices and account activity ────────────────────────────────────────────
+
+def _current_sid(authorization: str):
+    from app.core.security import decode_token
+
+    token = authorization.split(" ", 1)[1] if authorization.startswith("Bearer ") else ""
+    return audit.parse_sid((decode_token(token) or {}).get("sid"))
+
+
+@router.get("/sessions", response_model=PartnerSessionListResponse)
+async def list_partner_sessions(
+    authorization: str = Header(...),
+    principal: VendorPrincipal = Depends(get_current_vendor),
+    db: AsyncSession = Depends(get_db),
+):
+    """The devices signed in to *this* login. Not the vendor's other logins:
+    nobody here can sign a colleague out."""
+    from datetime import timezone
+
+    from sqlalchemy import select
+
+    from app.models.audit import AuthSession
+
+    current = _current_sid(authorization)
+    now = datetime.now(timezone.utc)
+    rows = (await db.execute(
+        select(AuthSession)
+        .where(
+            AuthSession.actor_type == "vendor",
+            AuthSession.actor_id == str(principal.login.id),
+            AuthSession.created_at >= now - timedelta(days=30),
+        )
+        .order_by(AuthSession.last_seen_at.desc())
+        .limit(50)
+    )).scalars().all()
+    return PartnerSessionListResponse(items=[
+        PartnerSessionOut(
+            id=r.id, actor_label=r.actor_label, is_you=True, ip=r.ip,
+            last_ip=r.last_ip, browser=r.browser, os=r.os,
+            device_type=r.device_type, created_at=r.created_at,
+            last_seen_at=r.last_seen_at, status=audit.session_status(r, now),
+            is_current=(r.id == current),
+        )
+        for r in rows
+    ])
+
+
+async def _record_revocation(request, principal, row) -> None:
+    await audit.record(
+        actor_type="vendor", actor_id=str(principal.login.id),
+        actor_label=principal.login.email, vendor_id=principal.vendor.id,
+        category="auth", action="auth.session_revoked",
+        summary=(
+            f"Signed out {audit.describe_device(row.browser, row.os)} "
+            f"({row.ip or 'unknown IP'})"
+        ),
+        method="POST", route="/api/v1/partner/sessions/{session_id}/revoke",
+        path=request.url.path, target_id=str(row.id), status_code=200,
+        meta=audit.client_meta(request),
+    )
+
+
+@router.post("/sessions/revoke-others", response_model=PartnerMessageResponse)
+async def revoke_other_partner_sessions(
+    request: Request,
+    authorization: str = Header(...),
+    principal: VendorPrincipal = Depends(get_current_vendor),
+):
+    """Sign out every device except the one making this request."""
+    count = await audit.revoke_sessions_for(
+        actor_type="vendor", actor_id=str(principal.login.id), reason="user",
+        by=principal.login.email, except_sid=_current_sid(authorization),
+    )
+    if count:
+        await audit.record(
+            actor_type="vendor", actor_id=str(principal.login.id),
+            actor_label=principal.login.email, vendor_id=principal.vendor.id,
+            category="auth", action="auth.sessions_revoked",
+            summary=f"Signed out {count} other device{'s' if count != 1 else ''}",
+            method="POST", route="/api/v1/partner/sessions/revoke-others",
+            status_code=200, meta=audit.client_meta(request),
+        )
+    return PartnerMessageResponse(
+        message=f"Signed out {count} other device{'s' if count != 1 else ''}."
+    )
+
+
+@router.post("/sessions/{session_id}/revoke", response_model=PartnerMessageResponse)
+async def revoke_partner_session(
+    session_id: uuid.UUID,
+    request: Request,
+    authorization: str = Header(...),
+    principal: VendorPrincipal = Depends(get_current_vendor),
+):
+    if _current_sid(authorization) == session_id:
+        raise HTTPException(
+            status_code=400,
+            detail="That is the device you are using. Use Sign out instead.",
+        )
+    # Scoped to this login in the lookup: someone else's session id is a 404,
+    # the same as one that does not exist.
+    row = await audit.revoke_session(
+        session_id, reason="user", by=principal.login.email,
+        actor_type="vendor", actor_id=str(principal.login.id),
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Device not found.")
+    await _record_revocation(request, principal, row)
+    return PartnerMessageResponse(message="Device signed out.")
+
+
+@router.get("/audit", response_model=PartnerAuditListResponse)
+async def list_partner_audit(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(25, ge=1, le=100),
+    category: Optional[str] = Query(None, pattern="^(auth|change)$"),
+    principal: VendorPrincipal = Depends(get_current_vendor),
+    db: AsyncSession = Depends(get_db),
+):
+    """Sign-ins and changes on this vendor's account, newest first.
+
+    Scoped by the vendor on the verified principal, never by a parameter. Admin
+    activity is not listed: that is internal, and the vendor already sees what
+    an admin changed on their listing in the activity feed.
+    """
+    from sqlalchemy import func, select
+
+    from app.models.audit import AuditEvent
+
+    conds = [
+        AuditEvent.vendor_id == principal.vendor.id,
+        AuditEvent.actor_type != "admin",
+        AuditEvent.category.in_(("auth", "change")),
+    ]
+    if category:
+        conds.append(AuditEvent.category == category)
+    total = (await db.execute(
+        select(func.count()).select_from(AuditEvent).where(*conds)
+    )).scalar_one()
+    rows = (await db.execute(
+        select(AuditEvent).where(*conds)
+        .order_by(AuditEvent.occurred_at.desc(), AuditEvent.id)
+        .offset((page - 1) * page_size).limit(page_size)
+    )).scalars().all()
+    me = str(principal.login.id)
+    return PartnerAuditListResponse(
+        items=[
+            PartnerAuditEventOut(
+                id=r.id, occurred_at=r.occurred_at,
+                actor_label=r.actor_label,
+                # A failed attempt carries the login id too, but nobody who is
+                # signed in made it.
+                is_you=(r.actor_type == "vendor" and r.actor_id == me),
+                category=r.category, summary=r.summary, success=r.success,
+                ip=r.ip, browser=r.browser, os=r.os, device_type=r.device_type,
+            )
+            for r in rows
+        ],
+        total=total, page=page, page_size=page_size,
+    )

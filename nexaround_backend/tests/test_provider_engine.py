@@ -9,6 +9,7 @@ The cache is an in-memory dict here. The test container shares Redis with the
 live stack, so nothing in this file may reach the real one.
 """
 import asyncio
+from types import SimpleNamespace
 import json
 import time
 
@@ -344,6 +345,10 @@ def test_a_database_outage_keeps_the_last_good_settings(monkeypatch, settings):
 
 # ── Admin panel ──────────────────────────────────────────────────────────────
 
+# Stands in for the Request the endpoint annotates the audit trail through.
+_REQUEST = SimpleNamespace(state=SimpleNamespace())
+
+
 class _FakeSettings:
     store: dict[str, str] = {}
 
@@ -351,6 +356,9 @@ class _FakeSettings:
         pass
 
     async def get_setting(self, key, default=""):
+        return _FakeSettings.store.get(key, default)
+
+    async def get_setting_fresh(self, key, default=""):
         return _FakeSettings.store.get(key, default)
 
     async def set_setting(self, key, value, description=None):
@@ -372,7 +380,7 @@ def test_the_panel_saves_keys_and_switches_and_tells_the_worker(monkeypatch):
     body = admin.SettingsUpdateRequest(
         travelpayouts_marker=" 781739 ", provider_mode_gettransfer="shadow",
     )
-    out = asyncio.run(admin.update_admin_settings(body, db=None, _=None))
+    out = asyncio.run(admin.update_admin_settings(body, _REQUEST, db=None, _=None))
 
     assert _FakeSettings.store["travelpayouts_marker"] == "781739"
     assert out.provider_mode_gettransfer == "shadow"
@@ -401,6 +409,7 @@ def test_saving_other_settings_does_not_reload_provider_config(monkeypatch):
     monkeypatch.setattr(admin, "SettingsService", _FakeSettings)
     monkeypatch.setattr(admin.provider_config, "refresh", _refresh)
     asyncio.run(admin.update_admin_settings(
-        admin.SettingsUpdateRequest(platform_name="NexARound"), db=None, _=None,
+        admin.SettingsUpdateRequest(platform_name="NexARound"), _REQUEST,
+        db=None, _=None,
     ))
     assert not refreshed

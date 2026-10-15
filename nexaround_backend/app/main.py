@@ -160,6 +160,13 @@ else:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+# Audit trail for everything written under /admin and /partner. Registered
+# before the request-context middleware below so that it runs inside it and can
+# read the request id.
+from app.services.audit import audit_http_middleware
+app.middleware("http")(audit_http_middleware)
+
+
 # Request context — must run before anything that emits telemetry, so it is
 # registered last (Starlette applies http middleware in reverse order).
 @app.middleware("http")

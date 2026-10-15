@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom';
 import { useEffect, useEffectEvent, useRef, useState } from 'react';
 import { apiGet, apiPost, useApi } from '../api';
 import { RESYNC, useLiveEvent } from '../live';
@@ -41,7 +42,8 @@ const actorLabel = (item, loginId) => {
   return null; // a traveller: their name is already the title
 };
 
-export default function NotificationBell({ loginId, onNavigate }) {
+export default function NotificationBell({ loginId }) {
+  const navigate = useNavigate();
   const [unread, setUnread] = useState(0);
   const [open, setOpen] = useState(false);
   const [countVersion, setCountVersion] = useState(0);
@@ -87,10 +89,10 @@ export default function NotificationBell({ loginId, onNavigate }) {
 
   const pick = (item) => {
     setOpen(false);
-    if (item.enquiry_id) onNavigate('enquiries', item.enquiry_id);
-    else if (item.package_id) onNavigate('packages', item.package_id);
-    else if (item.kind.startsWith('package.')) onNavigate('packages');
-    else onNavigate('profile');
+    if (item.enquiry_id) navigate(`/enquiries/${item.enquiry_id}`);
+    else if (item.package_id) navigate(`/packages/${item.package_id}`);
+    else if (item.kind.startsWith('package.')) navigate('/packages');
+    else navigate('/profile');
   };
 
   return (

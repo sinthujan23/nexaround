@@ -255,7 +255,7 @@ def test_the_package_detail_extends_the_card_rather_than_replacing_it():
 
     detail = set(ExperiencePackageDetail.model_fields.keys())
     assert PACKAGE_CARD_KEYS <= detail
-    assert {"description", "photo_urls", "vendor", "inclusions"} <= detail
+    assert {"description", "photo_urls", "video_urls", "vendor", "inclusions"} <= detail
 
 
 def test_the_vendor_email_is_never_exposed_to_the_app():
@@ -272,3 +272,67 @@ def test_the_vendor_email_is_never_exposed_to_the_app():
         "contact_facebook",
         "contact_x",
     } <= fields
+
+
+# --- Vendors listed by country only ------------------------------------------
+
+def test_a_package_following_a_vendor_with_no_point_has_no_point():
+    assert resolve_package_point(None, None, True) == (None, None)
+
+
+def test_a_package_with_its_own_point_keeps_it_when_the_vendor_has_none():
+    assert resolve_package_point(None, None, False, 6.9, 79.8) == (6.9, 79.8)
+
+
+def test_a_vendor_always_needs_a_country():
+    from app.services.experience_format import vendor_place_problem
+
+    assert vendor_place_problem(6.9, 79.8, "LK") is None
+    assert vendor_place_problem(None, None, "LK") is None
+    assert vendor_place_problem(6.9, 79.8, None)
+    assert vendor_place_problem(None, None, None)
+    assert vendor_place_problem(None, None, "  ")
+
+
+def test_half_a_point_is_refused_even_with_a_country():
+    from app.services.experience_format import vendor_place_problem
+
+    assert vendor_place_problem(6.9, None, "LK")
+    assert vendor_place_problem(None, 79.8, "LK")
+
+
+@pytest.mark.parametrize("value", [None, "", "true", "True", "garbage", "1"])
+def test_country_mode_is_on_unless_explicitly_switched_off(value):
+    from app.services.experience_format import parse_country_mode
+
+    assert parse_country_mode(value) is True
+
+
+@pytest.mark.parametrize("value", ["false", "False", " FALSE ", "0", "off", "no"])
+def test_country_mode_can_be_switched_off(value):
+    from app.services.experience_format import parse_country_mode
+
+    assert parse_country_mode(value) is False
+
+
+def test_the_app_models_can_be_built_for_a_vendor_with_no_point():
+    import uuid
+
+    from app.schemas.experience import ExperiencePackageCard, ExperienceVendorPublic
+
+    vendor = ExperienceVendorPublic(id=uuid.uuid4(), name="Boat Co")
+    assert vendor.latitude is None and vendor.longitude is None
+    card = ExperiencePackageCard(
+        id=uuid.uuid4(), title="Day trip", vendor_id=vendor.id, vendor_name="Boat Co",
+    )
+    assert card.latitude is None and card.distance_m is None
+
+
+def test_the_vendor_forms_accept_a_vendor_with_only_a_country():
+    from app.schemas.experience import ExperienceVendorCreate
+    from app.schemas.partner import PartnerVendorProfileUpdate
+
+    admin = ExperienceVendorCreate(name="Boat Co", country_code="LK")
+    assert admin.latitude is None and admin.description is None and admin.contact_phone is None
+    partner = PartnerVendorProfileUpdate(name="Boat Co", country_code="LK")
+    assert partner.latitude is None

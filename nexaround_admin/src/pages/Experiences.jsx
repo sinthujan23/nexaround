@@ -8,7 +8,9 @@ import { Drawer, Switch, SearchBar, Toast } from '../components/Kit';
 import { useToast } from '../hooks';
 import LocationPicker from '../components/LocationPicker';
 import ImageUploader from '../components/ImageUploader';
-import { COUNTRIES, normalizeCountryCode } from '../constants/countries';
+import VideoUploader from '../components/VideoUploader';
+import AvailabilityCalendar from '../components/AvailabilityCalendar';
+import { COUNTRIES, getCountryByCode, normalizeCountryCode } from '../constants/countries';
 
 const CATEGORIES = [
   { value: 'boat', label: 'Boat ride' },
@@ -49,7 +51,7 @@ const bookingWindowOptions = (current) =>
 
 const emptyVendor = {
   name: '', description: '', latitude: '', longitude: '', address: '',
-  google_place_id: '', city: '', country_code: 'LK', contact_phone: '',
+  google_place_id: '', city: '', country_code: '', contact_phone: '',
   contact_whatsapp: '', contact_instagram: '', contact_facebook: '',
   contact_x: '', contact_email: '', website: '', logo_url: '',
   photo_urls: [], rating: '', review_count: 0, internal_notes: '',
@@ -58,7 +60,7 @@ const emptyVendor = {
 
 const emptyPackage = {
   title: '', summary: '', description: '', category: 'boat', tags: [],
-  photo_urls: [], price_amount: '', price_currency: 'LKR',
+  photo_urls: [], video_urls: [], unavailable_ranges: [], price_amount: '', price_currency: 'LKR',
   price_basis: 'per_person', duration_minutes: '', max_participants: '',
   booking_window_days: '',
   inclusions: [], languages: [], uses_vendor_location: true,
@@ -97,12 +99,19 @@ const vendorToForm = (vendor) => ({
 
 const vendorPayload = (form) => ({
   ...form,
-  latitude: Number(form.latitude),
-  longitude: Number(form.longitude),
+  // The map pin is optional: no pin goes up as null, never as 0.
+  latitude: form.latitude === '' || form.latitude == null ? null : Number(form.latitude),
+  longitude: form.longitude === '' || form.longitude == null ? null : Number(form.longitude),
   rating: form.rating === '' ? null : Number(form.rating),
   review_count: Number(form.review_count) || 0,
   sort_order: Number(form.sort_order) || 0,
 });
+
+// The map pin is optional, the country is not: it is what the vendor is found
+// by when there is no pin. A pin fills it in; otherwise the admin chooses.
+const countryProblem = (form) => (form.country_code ? null : 'Choose a country.');
+
+const countryValue = (code) => (code ? normalizeCountryCode(code) : '');
 
 const matches = (query, ...fields) => {
   const q = query.trim().toLowerCase();
@@ -114,6 +123,8 @@ const matches = (query, ...fields) => {
 const pickLocation = (form, patch) => {
   const next = { ...patch };
   if (next.name !== undefined && form.name) delete next.name;
+  // A place with no country of its own must not wipe the one already chosen.
+  if ('country_code' in next && !next.country_code) delete next.country_code;
   if (next.country_code) next.country_code = normalizeCountryCode(next.country_code);
   return next;
 };
@@ -181,6 +192,19 @@ export default function Experiences() {
 
   // Drawers: 'new-vendor' | 'package' | null
   const [drawer, setDrawer] = useState(null);
+  // True while the photo uploader of the open vendor / package form is
+  // uploading. Saving then would leave those photos out, so saves, closing and
+  // switching vendor are held until it finishes.
+  const [vendorPhotosBusy, setVendorPhotosBusy] = useState(false);
+  const [packagePhotosBusy, setPackagePhotosBusy] = useState(false);
+  const [packageVideosBusy, setPackageVideosBusy] = useState(false);
+  const packageMediaBusy = packagePhotosBusy || packageVideosBusy;
+  const PHOTOS_WAIT = 'Uploads are still running. Wait for them to finish, then save.';
+  const PHOTOS_LEAVE = 'Uploads are still running and will be lost if you leave now. Leave anyway?';
+  const closePackageDrawer = () => {
+    if (packageMediaBusy && !confirm(PHOTOS_LEAVE)) return;
+    setDrawer(null);
+  };
   const [packageForm, setPackageForm] = useState(emptyPackage);
   const [editingPackageId, setEditingPackageId] = useState(null);
   const [packageVendorId, setPackageVendorId] = useState(null);
@@ -254,6 +278,7 @@ export default function Experiences() {
   const isDirty = JSON.stringify(form) !== JSON.stringify(formBase);
 
   const selectVendor = (vendor, nextTab = 'packages') => {
+    if (selected && selected.id !== vendor.id && vendorPhotosBusy && !confirm(PHOTOS_LEAVE)) return;
     if (selected && selected.id !== vendor.id && isDirty
       && !confirm('You have unsaved changes to this vendor. Discard them?')) return;
     const next = vendorToForm(vendor);
@@ -269,6 +294,7 @@ export default function Experiences() {
   };
 
   const closeVendor = () => {
+    if (vendorPhotosBusy && !confirm(PHOTOS_LEAVE)) return;
     if (isDirty && !confirm('You have unsaved changes to this vendor. Discard them?')) return;
     setSelected(null);
   };
@@ -276,9 +302,14 @@ export default function Experiences() {
   const patchForm = (patch) => setForm((prev) => ({ ...prev, ...patch }));
 
   const saveVendor = async () => {
-    if (form.latitude === '' || form.longitude === '') {
+    if (vendorPhotosBusy) {
+      notify(PHOTOS_WAIT, 'error');
+      return;
+    }
+    const problem = countryProblem(form);
+    if (problem) {
       setTab('location');
-      notify('Set the vendor location on the map first.', 'error');
+      notify(problem, 'error');
       return;
     }
     setSaving(true);
@@ -337,8 +368,9 @@ export default function Experiences() {
 
   const createVendor = async (e) => {
     e.preventDefault();
-    if (form.latitude === '' || form.longitude === '') {
-      notify('Set the vendor location on the map first.', 'error');
+    const problem = countryProblem(form);
+    if (problem) {
+      notify(problem, 'error');
       return;
     }
     setSaving(true);
@@ -376,6 +408,8 @@ export default function Experiences() {
     setPackageForm({
       ...emptyPackage,
       ...pkg,
+      video_urls: pkg.video_urls || [],
+      unavailable_ranges: pkg.unavailable_ranges || [],
       price_amount: pkg.price_amount ?? '',
       duration_minutes: pkg.duration_minutes ?? '',
       max_participants: pkg.max_participants ?? '',
@@ -390,6 +424,10 @@ export default function Experiences() {
 
   const savePackage = async (e) => {
     e.preventDefault();
+    if (packageMediaBusy) {
+      notify(PHOTOS_WAIT, 'error');
+      return;
+    }
     if (!packageForm.uses_vendor_location
       && [packageForm.latitude, packageForm.longitude].some((v) => v == null || v === '')) {
       notify('Pick the meeting point on the map, or use the vendor address.', 'error');
@@ -585,7 +623,7 @@ export default function Experiences() {
                   <div className="xp-row-main">
                     <div className="xp-row-title">{vendor.name}</div>
                     <div className="xp-row-sub">
-                      {vendor.city || 'No city'} · {vendor.package_count} {vendor.package_count === 1 ? 'package' : 'packages'}
+                      {vendor.city || getCountryByCode(vendor.country_code).name}{vendor.latitude == null ? ' · No map pin' : ''} · {vendor.package_count} {vendor.package_count === 1 ? 'package' : 'packages'}
                     </div>
                   </div>
                   <div className="xp-row-side">
@@ -643,7 +681,10 @@ export default function Experiences() {
                     ['contact', 'Contact'],
                     ['portal', `Partner portal · ${logins.length}`],
                   ].map(([key, label]) => (
-                    <button key={key} className={`xp-tab ${tab === key ? 'active' : ''}`} onClick={() => setTab(key)}>
+                    <button key={key} className={`xp-tab ${tab === key ? 'active' : ''}`} onClick={() => {
+                      if (key !== tab && vendorPhotosBusy && !confirm(PHOTOS_LEAVE)) return;
+                      setTab(key);
+                    }}>
                       {label}
                     </button>
                   ))}
@@ -715,7 +756,7 @@ export default function Experiences() {
                           />
                         </div>
                         <div className="form-group">
-                          <label className="form-label">Description</label>
+                          <label className="form-label">Description (optional)</label>
                           <textarea
                             className="form-textarea" rows={3} value={form.description}
                             placeholder="What the business does, in a sentence or two"
@@ -723,8 +764,10 @@ export default function Experiences() {
                           />
                         </div>
                         <ImageUploader
+                          key={selected?.id}
                           label="Photos"
                           value={form.photo_urls}
+                          onUploadingChange={setVendorPhotosBusy}
                           onChange={(urls) => patchForm({ photo_urls: urls })}
                         />
                       </div>
@@ -787,12 +830,13 @@ export default function Experiences() {
                           />
                         </div>
                         <div className="form-group">
-                          <label className="form-label">Country</label>
+                          <label className="form-label">Country *</label>
                           <select
                             className="form-input"
-                            value={normalizeCountryCode(form.country_code || 'LK')}
+                            value={countryValue(form.country_code)}
                             onChange={(e) => patchForm({ country_code: e.target.value })}
                           >
+                            <option value="" disabled>Choose a country</option>
                             {COUNTRIES.map((c) => (
                               <option key={c.code} value={c.code}>
                                 {c.flag} {c.name} ({c.code})
@@ -801,8 +845,9 @@ export default function Experiences() {
                           </select>
                         </div>
                       </div>
-                      <label className="form-label">Map pin</label>
+                      <label className="form-label">Map pin (optional)</label>
                       <LocationPicker
+                        optional
                         mapId="vendor-detail-map"
                         latitude={form.latitude}
                         longitude={form.longitude}
@@ -819,7 +864,7 @@ export default function Experiences() {
                         <div className="xp-section-hint">The email also receives new enquiry notifications.</div>
                         <div className="form-grid-2">
                           <div className="form-group">
-                            <label className="form-label">Phone</label>
+                            <label className="form-label">Phone (optional)</label>
                             <input
                               type="text" className="form-input" value={form.contact_phone || ''} placeholder="+94 77 123 4567"
                               onChange={(e) => patchForm({ contact_phone: e.target.value })}
@@ -964,8 +1009,8 @@ export default function Experiences() {
                       {isDirty && (
                         <button className="btn btn-ghost btn-sm" onClick={() => setForm(formBase)}>Discard</button>
                       )}
-                      <button className="btn btn-primary btn-sm" disabled={!isDirty || saving} onClick={saveVendor}>
-                        {saving ? 'Saving…' : 'Save changes'}
+                      <button className="btn btn-primary btn-sm" disabled={!isDirty || saving || vendorPhotosBusy} onClick={saveVendor}>
+                        {vendorPhotosBusy ? 'Uploading photos…' : saving ? 'Saving…' : 'Save changes'}
                       </button>
                     </div>
                   </div>
@@ -1057,7 +1102,7 @@ export default function Experiences() {
               />
             </div>
             <div className="form-group">
-              <label className="form-label">Description</label>
+              <label className="form-label">Description (optional)</label>
               <textarea
                 className="form-textarea" rows={2} value={form.description}
                 placeholder="What the business does, in a sentence or two"
@@ -1068,22 +1113,26 @@ export default function Experiences() {
 
           <div className="xp-section">
             <div className="xp-section-title">Location</div>
-            <div className="xp-section-hint">Search for the business or drop a pin. Required.</div>
+            <div className="xp-section-hint">
+              The exact spot is optional. Search for the business or drop a pin and the country is filled in; with no pin, choose the country.
+            </div>
             <div className="form-grid-2">
               <div className="form-group">
-                <label className="form-label">City *</label>
+                <label className="form-label">City</label>
                 <input
-                  type="text" required className="form-input" value={form.city || ''} placeholder="Trincomalee"
+                  type="text" className="form-input" value={form.city || ''} placeholder="Trincomalee"
                   onChange={(e) => patchForm({ city: e.target.value })}
                 />
               </div>
               <div className="form-group">
-                <label className="form-label">Country</label>
+                <label className="form-label">Country *</label>
                 <select
+                  required
                   className="form-input"
-                  value={normalizeCountryCode(form.country_code || 'LK')}
+                  value={countryValue(form.country_code)}
                   onChange={(e) => patchForm({ country_code: e.target.value })}
                 >
+                  <option value="" disabled>Choose a country</option>
                   {COUNTRIES.map((c) => (
                     <option key={c.code} value={c.code}>
                       {c.flag} {c.name} ({c.code})
@@ -1093,6 +1142,7 @@ export default function Experiences() {
               </div>
             </div>
             <LocationPicker
+              optional
               mapId="new-vendor-map"
               latitude={form.latitude}
               longitude={form.longitude}
@@ -1105,7 +1155,7 @@ export default function Experiences() {
             <div className="xp-section-title">Contact</div>
             <div className="form-grid-2">
               <div className="form-group">
-                <label className="form-label">Phone</label>
+                <label className="form-label">Phone (optional)</label>
                 <input
                   type="text" className="form-input" value={form.contact_phone || ''} placeholder="+94 77 123 4567"
                   onChange={(e) => patchForm({ contact_phone: e.target.value })}
@@ -1135,7 +1185,7 @@ export default function Experiences() {
         <Drawer
           title={editingPackageId ? 'Edit package' : 'New package'}
           subtitle={packageVendor ? `For ${packageVendor.name}` : undefined}
-          onClose={() => setDrawer(null)}
+          onClose={closePackageDrawer}
           onSubmit={savePackage}
           footer={
             <>
@@ -1153,9 +1203,9 @@ export default function Experiences() {
                     <TrashIcon size={15} />
                   </button>
                 )}
-                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDrawer(null)}>Cancel</button>
-                <button type="submit" className="btn btn-primary btn-sm" disabled={packageSaving}>
-                  {packageSaving ? 'Saving…' : editingPackageId ? 'Save package' : 'Create package'}
+                <button type="button" className="btn btn-ghost btn-sm" onClick={closePackageDrawer}>Cancel</button>
+                <button type="submit" className="btn btn-primary btn-sm" disabled={packageSaving || packageMediaBusy}>
+                  {packageMediaBusy ? 'Uploading…' : packageSaving ? 'Saving…' : editingPackageId ? 'Save package' : 'Create package'}
                 </button>
               </div>
             </>
@@ -1268,10 +1318,29 @@ export default function Experiences() {
           </div>
 
           <div className="xp-section">
+            <div className="xp-section-title">Availability</div>
+            <div className="xp-section-hint">
+              Available every day unless you block dates here, for example when the vendor is on leave or fully booked.
+              Travellers cannot pick a blocked day.
+            </div>
+            <AvailabilityCalendar
+              value={packageForm.unavailable_ranges}
+              maxDays={Number(packageForm.booking_window_days) || 365}
+              onChange={(ranges) => patchPackage({ unavailable_ranges: ranges })}
+            />
+          </div>
+
+          <div className="xp-section">
             <ImageUploader
               label="Photos"
               value={packageForm.photo_urls}
+              onUploadingChange={setPackagePhotosBusy}
               onChange={(urls) => patchPackage({ photo_urls: urls })}
+            />
+            <VideoUploader
+              value={packageForm.video_urls}
+              onUploadingChange={setPackageVideosBusy}
+              onChange={(urls) => patchPackage({ video_urls: urls })}
             />
           </div>
 

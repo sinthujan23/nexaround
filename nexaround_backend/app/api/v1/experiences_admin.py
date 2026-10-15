@@ -26,9 +26,9 @@ from app.schemas.partner import (
     VendorLoginUpdate,
 )
 from app.api.v1.partner import _PARTNER_PACKAGE_SCALARS, _PARTNER_VENDOR_SCALARS
-from app.services import partner_activity, partner_events
+from app.services import audit, partner_activity, partner_events
 from app.services.email_service import send_vendor_invite_email
-from app.services.experience_upload import save_experience_images
+from app.services.experience_upload import save_experience_images, save_experience_video
 from app.services.partner_auth import store_link_token
 from app.repositories.experience_repository import ExperienceRepository
 from app.schemas.experience import (
@@ -49,7 +49,8 @@ from app.services.experience_service import (
     apply_package_derived_fields, apply_vendor_cascade,
 )
 from app.services.settings_service import SettingsService
-from app.utils.geo_utils import create_point, get_lat_lng
+from app.services.experience_format import package_field_value, vendor_place_problem
+from app.utils.geo_utils import get_lat_lng, point_or_none
 
 router = APIRouter(prefix="/admin/experiences", tags=["Admin Experiences"])
 
@@ -71,7 +72,7 @@ _VENDOR_SCALARS = (
 
 _PACKAGE_SCALARS = (
     "title", "summary", "description", "category", "tags", "photo_urls",
-    "price_amount", "price_currency", "price_basis", "duration_minutes",
+    "video_urls", "unavailable_ranges", "price_amount", "price_currency", "price_basis", "duration_minutes",
     "max_participants", "booking_window_days", "inclusions", "languages",
     "uses_vendor_location", "meeting_point_address", "is_active", "sort_order",
 )
@@ -122,6 +123,8 @@ def _package_response(package: ExperiencePackage) -> ExperiencePackageAdminRespo
         category=package.category,
         tags=package.tags or [],
         photo_urls=package.photo_urls or [],
+        video_urls=package.video_urls or [],
+        unavailable_ranges=package.unavailable_ranges or [],
         price_amount=(
             float(package.price_amount) if package.price_amount is not None else None
         ),
@@ -182,6 +185,13 @@ async def get_vendor(
     return _vendor_response(vendor, len(packages))
 
 
+def _require_findable(data) -> None:
+    """422 unless the vendor has a country and a complete or empty pin."""
+    problem = vendor_place_problem(data.latitude, data.longitude, data.country_code)
+    if problem:
+        raise HTTPException(status_code=422, detail=problem)
+
+
 @router.post(
     "/vendors",
     response_model=ExperienceVendorAdminResponse,
@@ -192,8 +202,9 @@ async def create_vendor(
     db: AsyncSession = Depends(get_db),
     _=Depends(verify_admin_token),
 ):
+    _require_findable(data)
     vendor = ExperienceVendor(
-        location=create_point(data.latitude, data.longitude),
+        location=point_or_none(data.latitude, data.longitude),
         **{key: getattr(data, key) for key in _VENDOR_SCALARS},
     )
     db.add(vendor)
@@ -213,13 +224,14 @@ async def update_vendor(
     vendor = await repo.get_vendor(vendor_id)
     if not vendor:
         raise HTTPException(status_code=404, detail="Vendor not found")
+    _require_findable(data)
 
     # Judged on what the vendor can see, plus is_active for suspend/restore:
     # an edit to internal_notes or sort_order must not reach their feed.
     before = partner_activity.snapshot(vendor, _PARTNER_VENDOR_SCALARS + ("is_active",))
     for key in _VENDOR_SCALARS:
         setattr(vendor, key, getattr(data, key))
-    vendor.location = create_point(data.latitude, data.longitude)
+    vendor.location = point_or_none(data.latitude, data.longitude)
 
     # A vendor that moved drags its packages with it; one that was deactivated
     # hides them. Without this the cards stay at the old coordinates forever.
@@ -287,7 +299,7 @@ async def create_package(
 
     package = ExperiencePackage(
         vendor_id=vendor.id,
-        **{key: getattr(data, key) for key in _PACKAGE_SCALARS},
+        **{key: package_field_value(data, key) for key in _PACKAGE_SCALARS},
     )
     apply_package_derived_fields(package, vendor, data.latitude, data.longitude)
     db.add(package)
@@ -317,7 +329,7 @@ async def update_package(
 
     before = partner_activity.snapshot(package, _PARTNER_PACKAGE_SCALARS)
     for key in _PACKAGE_SCALARS:
-        setattr(package, key, getattr(data, key))
+        setattr(package, key, package_field_value(data, key))
     apply_package_derived_fields(package, vendor, data.latitude, data.longitude)
     activity = partner_activity.package_updated(
         db, package, before, actor=partner_activity.ADMIN,
@@ -421,6 +433,16 @@ async def upload_experience_images(
     two copies.
     """
     return {"urls": await save_experience_images(files)}
+
+
+@router.post("/upload-video")
+async def upload_experience_video(
+    file: UploadFile = File(...),
+    _=Depends(verify_admin_token),
+):
+    """One video for a package. Sent one per request so the panel can show
+    progress per file and each stays under the proxy's body-size cap."""
+    return {"urls": [await save_experience_video(file)]}
 
 
 @router.get("/place-search")
@@ -583,6 +605,12 @@ async def update_vendor_login(
     vu.is_active = data.is_active
     await db.commit()
     await db.refresh(vu)
+    if not vu.is_active:
+        # Requests are already refused for a disabled login; this makes the
+        # devices list say so too.
+        await audit.revoke_sessions_for(
+            actor_type="vendor", actor_id=str(vu.id), reason="admin", by="admin",
+        )
     # A disabled login's open portal tabs are signed out now, not in an hour.
     await partner_events.publish(vu.vendor_id, partner_events.ACCOUNT_CHANGED)
     return await _login_response(vu)
@@ -598,7 +626,11 @@ async def delete_vendor_login(
     if not vu:
         raise HTTPException(status_code=404, detail="Login not found")
     vendor_id = vu.vendor_id
+    login_id_str = str(vu.id)
     await db.delete(vu)
     await db.commit()
+    await audit.revoke_sessions_for(
+        actor_type="vendor", actor_id=login_id_str, reason="admin", by="admin",
+    )
     await partner_events.publish(vendor_id, partner_events.ACCOUNT_CHANGED)
     return {"status": "deleted"}

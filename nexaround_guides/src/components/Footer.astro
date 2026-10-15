@@ -3,6 +3,10 @@ import Icon from './Icon.astro';
 import StoreButtons from './StoreButtons.astro';
 import { PILLARS, PILLAR_KEYS } from '../data/pillars';
 import { SITE } from '../site';
+import { ui, fill, type Lang } from '../lib/i18n';
+interface Props { lang?: Lang }
+const { lang = 'en' } = Astro.props;
+const t = ui(lang);
 const year = new Date().getFullYear();
 ---
 <footer class="site-footer">
@@ -13,26 +17,26 @@ const year = new Date().getFullYear();
           <span class="brand-logo"><img src="/logo_2.png" alt="" width="30" height="30" /></span>
           <span class="brand-title">nexARound <span style="font-weight: 300">Guides</span></span>
         </a>
-        <p>Guides to remote and unusual places: measured, sourced and dated. Plan any of these trips day by day with Odyssey in the nexARound app.</p>
-        <StoreButtons onDark />
+        <p>{t.fBlurb}</p>
+        <StoreButtons onDark medium="footer" lang={lang} />
       </div>
       <div class="footer-col">
-        <h2>Guides</h2>
+        <h2>{t.fGuides}</h2>
         <ul>
-          {PILLAR_KEYS.map((k) => <li><a href={`/${k}/`}>{PILLARS[k].name}</a></li>)}
+          {PILLAR_KEYS.map((k) => <li><a href={`/${k}/`}>{t.pillars[k] ?? PILLARS[k].name}</a></li>)}
         </ul>
       </div>
       <div class="footer-col">
-        <h2>About</h2>
+        <h2>{t.fAbout}</h2>
         <ul>
-          <li><a href="/about/">About us</a></li>
-          <li><a href="/editorial-policy/">Editorial policy</a></li>
-          <li><a href="/affiliate-disclosure/">Affiliate disclosure</a></li>
-          <li><a href="/privacy/">Privacy</a></li>
+          <li><a href="/about/">{t.fAboutUs}</a></li>
+          <li><a href="/editorial-policy/">{t.fEditorial}</a></li>
+          <li><a href="/affiliate-disclosure/">{t.fAffiliate}</a></li>
+          <li><a href="/privacy/">{t.fPrivacy}</a></li>
         </ul>
       </div>
       <div class="footer-col">
-        <h2>Connect</h2>
+        <h2>{t.fConnect}</h2>
         <ul>
           <li><a href={`mailto:${SITE.email}`}><span class="footer-icon"><Icon name="mail" /></span>{SITE.email}</a></li>
           <li><a href={SITE.appSite}><span class="footer-icon"><Icon name="globe" /></span>app.nexaround.com</a></li>
@@ -40,11 +44,11 @@ const year = new Date().getFullYear();
       </div>
     </div>
     <div class="footer-bottom">
-      <span>© {year} {SITE.publisher}. Some links earn us a commission at no cost to you.</span>
+      <span>{fill(t.fRights, { year })}</span>
       <nav aria-label="Legal">
-        <a href="/privacy/">Privacy</a>
-        <a href="/affiliate-disclosure/">Affiliate disclosure</a>
-        <a href="/contact/">Contact</a>
+        <a href="/privacy/">{t.fPrivacy}</a>
+        <a href="/affiliate-disclosure/">{t.fAffiliate}</a>
+        <a href="/contact/">{t.fContact}</a>
       </nav>
     </div>
   </div>

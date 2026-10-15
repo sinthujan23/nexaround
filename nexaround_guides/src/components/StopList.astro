@@ -1,15 +1,63 @@
 ---
+// Every stop on the route, filterable by kind. "Show on map" opens the stop
+// on the route map; the filter also fades the other kinds on the map.
+import Icon from './Icon.astro';
+import { ui, type Lang } from '../lib/i18n';
+
 interface Stop { name: string; kind: string; note?: string }
-interface Props { stops: Stop[] }
-const { stops } = Astro.props;
-const LABEL: Record<string, string> = { town: 'Town', fuel: 'Roadhouse', free: 'Free stop', paid: 'Paid entry' };
+interface Props { stops: Stop[]; onMap?: boolean; lang?: Lang }
+const { stops, onMap = false, lang = 'en' } = Astro.props;
+const t = ui(lang);
+const LABEL = t.kindsShort;
+const CHIP = t.chips;
+const kinds = ['free', 'fuel', 'town', 'paid'].filter((k) => stops.some((s) => s.kind === k));
 ---
-<ul class="stop-list">
-  {stops.map((s) => (
-    <li class:list={{ 'is-free': s.kind === 'free' }}>
-      <span class:list={['stop-kind', `kind-${s.kind}`]}>{LABEL[s.kind] ?? s.kind}</span>
-      <h3>{s.name}</h3>
-      {s.note && <p>{s.note}</p>}
-    </li>
-  ))}
-</ul>
+<div data-stops>
+  {kinds.length > 1 && (
+    <div class="chips" role="group" aria-label={t.kindFilter} style="margin-bottom: 18px">
+      <button type="button" class="chip is-on" data-kind="all" aria-pressed="true">{CHIP.all} <em>{stops.length}</em></button>
+      {kinds.map((k) => (
+        <button type="button" class="chip" data-kind={k} aria-pressed="false">{CHIP[k]} <em>{stops.filter((s) => s.kind === k).length}</em></button>
+      ))}
+    </div>
+  )}
+  <ul class="stop-list sa" data-stop-list>
+    {stops.map((s, i) => (
+      <li class:list={[`k-${s.kind}`, { 'is-free': s.kind === 'free' }]} data-stop-kind={s.kind}>
+        <span class:list={['stop-kind', `kind-${s.kind}`]}>{LABEL[s.kind] ?? s.kind}</span>
+        <h3>{s.name}</h3>
+        {s.note && <p>{s.note}</p>}
+        {onMap && <button type="button" class="showmap" data-show-stop={i}>{t.showOnMap} <Icon name="arrow-up-right" /></button>}
+      </li>
+    ))}
+  </ul>
+</div>
+
+<script>
+  const roots = document.querySelectorAll<HTMLElement>('[data-stops]');
+  roots.forEach((root) => {
+    const list = root.querySelector<HTMLElement>('[data-stop-list]');
+    root.addEventListener('click', (e) => {
+      const t = e.target as Element;
+      const chip = t.closest<HTMLButtonElement>('[data-kind]');
+      if (chip && list) {
+        const kind = chip.dataset.kind ?? 'all';
+        root.querySelectorAll<HTMLButtonElement>('[data-kind]').forEach((b) => {
+          b.classList.toggle('is-on', b === chip);
+          b.setAttribute('aria-pressed', String(b === chip));
+        });
+        let n = 0;
+        list.querySelectorAll<HTMLElement>('[data-stop-kind]').forEach((li) => {
+          const on = kind === 'all' || li.dataset.stopKind === kind;
+          li.hidden = !on;
+          if (on) li.style.animationDelay = `${Math.min(n++, 10) * 40}ms`;
+        });
+        list.classList.toggle('sa');
+        list.classList.toggle('sb');
+        document.dispatchEvent(new CustomEvent('nxg:stopkind', { detail: kind }));
+      }
+      const show = t.closest<HTMLElement>('[data-show-stop]');
+      if (show) document.dispatchEvent(new CustomEvent('nxg:showstop', { detail: Number(show.dataset.showStop) }));
+    });
+  });
+</script>

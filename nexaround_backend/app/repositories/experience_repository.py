@@ -56,7 +56,11 @@ class ExperienceRepository:
 
         query = (
             select(ExperiencePackage, distance)
-            .where(ExperiencePackage.is_published.is_(True))
+            .where(
+                ExperiencePackage.is_published.is_(True),
+                # Country-only vendors have no point; nearest-first cannot rank them.
+                ExperiencePackage.location.isnot(None),
+            )
             .order_by(location.op("<->")(center))
             .offset(offset)
             .limit(limit)
@@ -74,12 +78,52 @@ class ExperienceRepository:
         result = await self.db.execute(query)
         return [(row[0], float(row[1])) for row in result.all()]
 
+    async def get_packages_by_country(
+        self,
+        category: Optional[str] = None,
+        country_code: Optional[str] = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> list[ExperiencePackage]:
+        """Published packages for the by-country list, with no distance.
+
+        Vendor order first (the admin's sort_order), then the package's own,
+        then newest; `id` last so paging is stable. Includes vendors with no
+        exact location, which is the point of this mode.
+        """
+        query = (
+            select(ExperiencePackage)
+            .join(ExperiencePackage.vendor)
+            .where(ExperiencePackage.is_published.is_(True))
+            .order_by(
+                ExperienceVendor.sort_order.desc(),
+                ExperiencePackage.sort_order.desc(),
+                ExperiencePackage.created_at.desc(),
+                ExperiencePackage.id,
+            )
+            .offset(offset)
+            .limit(limit)
+            .options(selectinload(ExperiencePackage.vendor))
+        )
+        if category:
+            query = query.where(ExperiencePackage.category == category)
+        if country_code:
+            cc = country_code.strip().upper()
+            codes = ["LK", "94", "+94"] if cc in ("LK", "94", "+94") else [cc]
+            query = query.where(func.upper(ExperienceVendor.country_code).in_(codes))
+        return list((await self.db.execute(query)).scalars().all())
+
     async def count_published_packages(
-        self, category: Optional[str] = None, country_code: Optional[str] = None
+        self,
+        category: Optional[str] = None,
+        country_code: Optional[str] = None,
+        located_only: bool = False,
     ) -> int:
         query = select(func.count()).select_from(ExperiencePackage).where(
             ExperiencePackage.is_published.is_(True)
         )
+        if located_only:
+            query = query.where(ExperiencePackage.location.isnot(None))
         if category:
             query = query.where(ExperiencePackage.category == category)
         if country_code:

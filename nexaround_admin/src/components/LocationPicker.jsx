@@ -27,6 +27,9 @@ export default function LocationPicker({
   // exists near a place being reviewed.
   extraMarkers = null,
   height = 260,
+  // The pin is not needed (a vendor listed by country only): latitude and
+  // longitude may stay empty.
+  optional = false,
 }) {
   const mapRef = useRef(null);
   const markerRef = useRef(null);
@@ -230,14 +233,16 @@ export default function LocationPicker({
         style={{ height: `${height}px`, borderRadius: '12px', marginBottom: '12px' }}
       />
       <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '12px' }}>
-        Pick a search result, click the map, or drag the pin to fine-tune.
+        {optional
+          ? 'Optional: leave the pin empty and the country above is enough. Otherwise pick a search result, click the map, or drag the pin.'
+          : 'Pick a search result, click the map, or drag the pin to fine-tune.'}
       </div>
 
       <div className="form-grid-2">
         <div className="form-group">
           <label className="form-label">Latitude</label>
           <input
-            type="number" step="any" required className="form-input"
+            type="number" step="any" required={!optional} className="form-input"
             value={latitude}
             onChange={(e) => onPick({ latitude: e.target.value === '' ? '' : Number(e.target.value) })}
           />
@@ -245,7 +250,7 @@ export default function LocationPicker({
         <div className="form-group">
           <label className="form-label">Longitude</label>
           <input
-            type="number" step="any" required className="form-input"
+            type="number" step="any" required={!optional} className="form-input"
             value={longitude}
             onChange={(e) => onPick({ longitude: e.target.value === '' ? '' : Number(e.target.value) })}
           />

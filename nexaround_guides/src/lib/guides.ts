@@ -2,6 +2,14 @@ import { getCollection, type CollectionEntry } from 'astro:content';
 import { isPreview } from './mode';
 
 export type Guide = CollectionEntry<'guides'>;
+export type Translation = CollectionEntry<'translations'>;
+
+/** Translations of published guides, keyed `<lang>/<slug>`. */
+export async function getTranslations(guides: Guide[]): Promise<Map<string, Translation>> {
+  const ids = new Set(guides.map((g) => g.id));
+  const all = await getCollection('translations', (t: Translation) => ids.has(t.data.guide));
+  return new Map(all.map((t: Translation) => [`${t.data.lang}/${t.data.guide}`, t]));
+}
 
 /** Published guides, plus drafts in preview builds; newest first. */
 export async function getGuides(): Promise<Guide[]> {
@@ -13,7 +21,7 @@ const dateOf = (g: Guide) => (g.data.published ?? g.data.lastChecked).getTime();
 
 export const guideUrl = (g: Guide) => `/${g.data.pillar}/${g.id}/`;
 
-export function readMinutes(g: Guide): number {
+export function readMinutes(g: Guide | Translation): number {
   const words = (g.body ?? '').split(/\s+/).filter(Boolean).length;
   return Math.max(3, Math.round(words / 220));
 }

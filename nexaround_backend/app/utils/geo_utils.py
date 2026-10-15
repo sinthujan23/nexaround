@@ -12,3 +12,10 @@ def get_lat_lng(location):
         return None, None
     shape = to_shape(location)
     return shape.y, shape.x
+
+
+def point_or_none(latitude, longitude):
+    """A POINT, or None when either coordinate is missing."""
+    if latitude is None or longitude is None:
+        return None
+    return create_point(latitude, longitude)

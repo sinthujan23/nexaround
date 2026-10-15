@@ -1,3 +1,17 @@
+/// Days a package cannot be booked, both ends included. A single blocked day
+/// has the same start and end. Dates only: the time of day is always midnight.
+class ExperienceDateRange {
+  final DateTime start;
+  final DateTime end;
+
+  const ExperienceDateRange({required this.start, required this.end});
+
+  bool contains(DateTime day) {
+    final d = DateTime(day.year, day.month, day.day);
+    return !d.isBefore(start) && !d.isAfter(end);
+  }
+}
+
 /// A vendor agency selling experiences: boat rides, guided tours, water sports.
 ///
 /// Note there is no email field. The backend deliberately never serialises the
@@ -81,6 +95,13 @@ class ExperiencePackageEntity {
   // Detail-only. Empty on a card.
   final String? description;
   final List<String> photoUrls;
+
+  /// Uploaded clips, as API paths (like photos). Detail-only.
+  final List<String> videoUrls;
+
+  /// Days the package cannot be booked; every other day is available.
+  /// Detail-only, and empty on a card.
+  final List<ExperienceDateRange> unavailableRanges;
   final int? maxParticipants;
 
   /// How many days ahead a date may be requested; null on a card, where the
@@ -116,6 +137,8 @@ class ExperiencePackageEntity {
     this.tags = const [],
     this.description,
     this.photoUrls = const [],
+    this.videoUrls = const [],
+    this.unavailableRanges = const [],
     this.maxParticipants,
     this.bookingWindowDays,
     this.inclusions = const [],
@@ -159,6 +182,21 @@ class ExperiencePackageEntity {
       return '$durationLabel Duration';
     }
     return '';
+  }
+
+  bool isUnavailableOn(DateTime day) =>
+      unavailableRanges.any((range) => range.contains(day));
+
+  /// The first bookable day from [from] to [to] (both included), or null when
+  /// every day in between is blocked.
+  DateTime? firstAvailableFrom(DateTime from, DateTime to) {
+    var day = DateTime(from.year, from.month, from.day);
+    final last = DateTime(to.year, to.month, to.day);
+    while (!day.isAfter(last)) {
+      if (!isUnavailableOn(day)) return day;
+      day = DateTime(day.year, day.month, day.day + 1);
+    }
+    return null;
   }
 
   /// Every image for the gallery, falling back to the cover when the detail

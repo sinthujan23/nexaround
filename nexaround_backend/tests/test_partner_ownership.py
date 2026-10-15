@@ -155,14 +155,15 @@ def test_every_single_package_endpoint_uses_the_scoped_lookup(endpoint):
     )
 
 
-def test_the_enquiry_patch_uses_the_scoped_lookup():
-    source = inspect.getsource(P.update_partner_enquiry)
+@pytest.mark.parametrize("endpoint", [P.update_partner_enquiry, P.get_partner_enquiry])
+def test_the_enquiry_endpoints_use_the_scoped_lookup(endpoint):
+    source = inspect.getsource(endpoint)
     assert "get_enquiry_for_vendor" in source
 
 
 @pytest.mark.parametrize("endpoint", [
     P.get_partner_package, P.update_partner_package, P.delete_partner_package,
-    P.update_partner_enquiry,
+    P.update_partner_enquiry, P.get_partner_enquiry,
 ])
 def test_a_miss_is_404_and_says_nothing_about_who_owns_it(endpoint):
     """403 would confirm the id exists and belongs to someone else.

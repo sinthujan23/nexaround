@@ -1,8 +1,10 @@
 ---
 import { formatKm, formatDuration } from '../lib/guides';
+import { ui, fill, type Lang } from '../lib/i18n';
 interface Leg { from: string; to: string; km: number; min: number }
-interface Props { legs: Leg[] }
-const { legs } = Astro.props;
+interface Props { legs: Leg[]; onMap?: boolean; lang?: Lang }
+const { legs, onMap = false, lang = 'en' } = Astro.props;
+const t = ui(lang);
 const totalKm = legs.reduce((s, l) => s + l.km, 0);
 const totalMin = legs.reduce((s, l) => s + l.min, 0);
 let running = 0;
@@ -11,20 +13,31 @@ const rows = legs.map((l) => ({ ...l, at: (running += l.km) }));
 <div class="card table-wrap">
   <table class="leg-table">
     <thead>
-      <tr><th scope="col">Leg</th><th scope="col" class="num">Distance</th><th scope="col" class="num">Driving</th><th scope="col" class="num">From start</th></tr>
+      <tr>
+        <th scope="col">{t.thLeg}</th><th scope="col" class="num">{t.thDistance}</th><th scope="col" class="num">{t.thDriving}</th><th scope="col" class="num">{t.thFromStart}</th>
+        {onMap && <th scope="col" class="num"><span class="sr-only">{t.thMap}</span></th>}
+      </tr>
     </thead>
     <tbody>
-      {rows.map((l) => (
-        <tr>
+      {rows.map((l, i) => (
+        <tr data-leg-row={i}>
           <td>{l.from}<span class="arrow" aria-label="to">→</span>{l.to}</td>
-          <td class="num">{formatKm(l.km)}</td>
+          <td class="num" data-km={l.km}>{formatKm(l.km)}</td>
           <td class="num">{formatDuration(l.min)}</td>
-          <td class="num">{formatKm(l.at)}</td>
+          <td class="num" data-km={l.at}>{formatKm(l.at)}</td>
+          {onMap && <td class="num"><button type="button" class="row-btn" data-show-leg={i} aria-label={fill(t.showLegAria, { n: i + 1, from: l.from, to: l.to })}>{t.thMap}</button></td>}
         </tr>
       ))}
     </tbody>
     <tfoot>
-      <tr><td>Total</td><td class="num">{formatKm(totalKm)}</td><td class="num">{formatDuration(totalMin)}</td><td></td></tr>
+      <tr><td>{t.total}</td><td class="num" data-km={totalKm}>{formatKm(totalKm)}</td><td class="num">{formatDuration(totalMin)}</td><td></td>{onMap && <td></td>}</tr>
     </tfoot>
   </table>
 </div>
+
+<script>
+  document.addEventListener('click', (e) => {
+    const b = (e.target as Element).closest<HTMLElement>('[data-show-leg]');
+    if (b) document.dispatchEvent(new CustomEvent('nxg:showleg', { detail: Number(b.dataset.showLeg) }));
+  });
+</script>

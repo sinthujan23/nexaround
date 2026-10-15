@@ -1,16 +1,20 @@
+import { Link } from 'react-router-dom';
 import { useApi, mediaUrl } from '../api';
+import { useAuth } from '../auth';
 import { RESYNC, useLiveEvent } from '../live';
 import { TicketIcon, InboxIcon, ClockIcon, CheckIcon, PlusIcon, EditIcon } from '../components/Icons';
 import { Avatar } from '../components/Kit';
+import { EmptyState, EnquiryStatusPill, ListRow, Loader, StatusPill } from '../components/Lists';
 import {
-  STATUS_LABELS, STATUS_TONES, formatAge, formatDateTime, formatDay, guestsLabel,
+  formatAge, formatDateTime, formatDay, guestsLabel,
   formatPrice, basisLabel, visibility, visibilityTone,
 } from '../format';
 
 // The dashboard shows the first few; the rest are one click away.
 const PACKAGE_PREVIEW = 5;
 
-export default function Dashboard({ onNavigate, me }) {
+export default function Dashboard() {
+  const { me } = useAuth();
   const { data: stats, refetch: refetchStats } = useApi('/partner/stats');
   const { data: recent, refetch: refetchRecent } = useApi('/partner/enquiries?page=1&page_size=5');
   const { data: packageData, refetch: refetchPackages } = useApi('/partner/packages');
@@ -28,13 +32,13 @@ export default function Dashboard({ onNavigate, me }) {
 
   const tiles = [
     { label: 'Packages live', value: stats?.packages_published, Icon: CheckIcon,
-      sub: `${stats?.packages_total ?? 0} in total`, page: 'packages' },
+      sub: `${stats?.packages_total ?? 0} in total`, to: '/packages' },
     { label: 'New enquiries', value: stats?.enquiries_new, Icon: InboxIcon,
-      sub: newCount > 0 ? 'waiting for a reply →' : 'waiting for a reply', page: 'enquiries', warm: newCount > 0 },
+      sub: newCount > 0 ? 'waiting for a reply →' : 'waiting for a reply', to: '/enquiries?status=new', warm: newCount > 0 },
     { label: 'Last 30 days', value: stats?.enquiries_last_30d, Icon: ClockIcon,
-      sub: 'enquiries received', page: 'enquiries' },
+      sub: 'enquiries received', to: '/enquiries' },
     { label: 'All enquiries', value: stats?.enquiries_total, Icon: TicketIcon,
-      sub: 'since you joined', page: 'enquiries' },
+      sub: 'since you joined', to: '/enquiries' },
   ];
 
   const vendorName = me?.vendor_name || 'Partner';
@@ -50,22 +54,22 @@ export default function Dashboard({ onNavigate, me }) {
           )}
         </div>
         <div className="dash-actions">
-          <button className="btn btn-ghost" onClick={() => onNavigate('profile')}>
+          <Link className="btn btn-ghost" to="/profile">
             <EditIcon size={15} /> Profile
-          </button>
-          <button className="btn btn-primary" onClick={() => onNavigate('packages', 'new')}>
+          </Link>
+          <Link className="btn btn-primary" to="/packages/new">
             <PlusIcon size={15} /> New package
-          </button>
+          </Link>
         </div>
       </div>
 
       <div className="kpi-grid">
-        {tiles.map(({ label, value, sub, Icon, page, warm }) => (
-          <button key={label} type="button" className={`kpi ${warm ? 'warm' : ''}`} onClick={() => onNavigate(page)}>
+        {tiles.map(({ label, value, sub, Icon, to, warm }) => (
+          <Link key={label} to={to} className={`kpi ${warm ? 'warm' : ''}`}>
             <span className="kpi-label"><Icon size={16} /> {label}</span>
             <span className="kpi-value">{value ?? '–'}</span>
             <span className="kpi-sub">{sub}</span>
-          </button>
+          </Link>
         ))}
       </div>
 
@@ -73,71 +77,70 @@ export default function Dashboard({ onNavigate, me }) {
         <section className="panel">
           <div className="panel-head">
             <span className="panel-title">Latest enquiries</span>
-            <button className="link-btn" onClick={() => onNavigate('enquiries')}>See all</button>
+            <Link className="link-btn" to="/enquiries">See all</Link>
           </div>
 
-          {!recent && <div className="panel-pad"><div className="loader" /></div>}
+          {!recent && <div className="panel-pad"><Loader /></div>}
 
           {recent?.enquiries.length === 0 && (
-            <div className="xp-empty" style={{ padding: 40 }}>
-              <InboxIcon size={32} />
-              <strong>No enquiries yet</strong>
+            <EmptyState icon={InboxIcon} title="No enquiries yet" pad={40}>
               They arrive here when a traveller asks about one of your packages.
-            </div>
+            </EmptyState>
           )}
 
           {recent?.enquiries.map((e) => (
-            <button key={e.id} className="dash-row" onClick={() => onNavigate('enquiries', e.id)}>
-              <Avatar name={e.contact_name} />
-              <div className="dash-row-main">
-                <div className={`dash-row-title ${e.status === 'new' ? 'strong' : ''}`}>{e.contact_name}</div>
-                <div className="dash-row-sub">
-                  {[e.package_title_snapshot || 'General enquiry', guestsLabel(e.party_size), formatDay(e.preferred_date)]
-                    .filter(Boolean).join(' · ')}
-                </div>
-              </div>
-              <div className="dash-row-side">
-                <span title={formatDateTime(e.created_at)}>{formatAge(e.created_at)}</span>
-                <span className={`pill tone-${STATUS_TONES[e.status] || 'gray'}`}>{STATUS_LABELS[e.status] || e.status}</span>
-              </div>
-            </button>
+            <ListRow
+              key={e.id}
+              to={`/enquiries/${e.id}`}
+              lead={<Avatar name={e.contact_name} />}
+              title={e.contact_name}
+              strong={e.status === 'new'}
+              subs={[e.package_title_snapshot || 'General enquiry', guestsLabel(e.party_size), formatDay(e.preferred_date)]
+                .filter(Boolean).join(' · ')}
+              side={(
+                <>
+                  <span title={formatDateTime(e.created_at)}>{formatAge(e.created_at)}</span>
+                  <EnquiryStatusPill status={e.status} />
+                </>
+              )}
+            />
           ))}
         </section>
 
         <section className="panel">
           <div className="panel-head">
             <span className="panel-title">Your packages</span>
-            <button className="link-btn" onClick={() => onNavigate('packages')}>Manage</button>
+            <Link className="link-btn" to="/packages">Manage</Link>
           </div>
 
-          {!packageData && <div className="panel-pad"><div className="loader" /></div>}
+          {!packageData && <div className="panel-pad"><Loader /></div>}
 
           {packageData && packages.length === 0 && (
-            <div className="xp-empty" style={{ padding: 40 }}>
-              <TicketIcon size={32} />
-              <strong>List your first package</strong>
-              Each package appears in the app as its own experience travellers can enquire about.
-              <div style={{ marginTop: 12 }}>
-                <button className="btn btn-primary btn-sm" onClick={() => onNavigate('packages', 'new')}>
+            <EmptyState
+              icon={TicketIcon} title="List your first package" pad={40}
+              action={(
+                <Link className="btn btn-primary btn-sm" to="/packages/new">
                   <PlusIcon size={15} /> Add package
-                </button>
-              </div>
-            </div>
+                </Link>
+              )}
+            >
+              Each package appears in the app as its own experience travellers can enquire about.
+            </EmptyState>
           )}
 
           {packages.slice(0, PACKAGE_PREVIEW).map((pkg) => (
-            <button key={pkg.id} className="dash-row" onClick={() => onNavigate('packages', pkg.id)}>
-              <span className="dash-thumb">
-                {pkg.photo_urls?.[0] ? <img src={mediaUrl(pkg.photo_urls[0])} alt="" /> : <TicketIcon size={18} />}
-              </span>
-              <div className="dash-row-main">
-                <div className="dash-row-title">{pkg.title}</div>
-                <div className="dash-row-sub">
-                  {[formatPrice(pkg), pkg.price_amount != null && basisLabel(pkg.price_basis)].filter(Boolean).join(' · ')}
-                </div>
-              </div>
-              <span className={`pill tone-${visibilityTone(pkg)}`}>{visibility(pkg)}</span>
-            </button>
+            <ListRow
+              key={pkg.id}
+              to={`/packages/${pkg.id}`}
+              lead={(
+                <span className="dash-thumb">
+                  {pkg.photo_urls?.[0] ? <img src={mediaUrl(pkg.photo_urls[0])} alt="" /> : <TicketIcon size={18} />}
+                </span>
+              )}
+              title={pkg.title}
+              subs={[formatPrice(pkg), pkg.price_amount != null && basisLabel(pkg.price_basis)].filter(Boolean).join(' · ')}
+              side={<StatusPill tone={visibilityTone(pkg)}>{visibility(pkg)}</StatusPill>}
+            />
           ))}
         </section>
       </div>

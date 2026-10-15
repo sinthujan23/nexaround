@@ -161,6 +161,55 @@ export async function apiUpload(endpoint, files) {
   return response.json();
 }
 
+// One file, with upload progress. `fetch` cannot report how much of a request
+// body has been sent, and a video takes long enough that the panel needs to.
+// Same auth and 401 handling as `apiUpload`; the file goes in the `file` field.
+export function apiUploadFile(endpoint, file, { onProgress } = {}) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `${API_BASE}${endpoint}`);
+    xhr.setRequestHeader('Authorization', `Bearer ${localStorage.getItem('admin_token')}`);
+
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && onProgress) onProgress(e.loaded / e.total);
+    };
+    xhr.onerror = () => {
+      const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+      const netErr = new Error(
+        isOffline
+          ? 'No internet connection. Please verify your network and try again.'
+          : 'Unable to connect to the server. Please check your internet connection.'
+      );
+      netErr.isNetwork = true;
+      reject(netErr);
+    };
+    xhr.onload = () => {
+      let data = null;
+      try { data = JSON.parse(xhr.responseText); } catch { /* not JSON */ }
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(data || {});
+        return;
+      }
+      if (xhr.status === 401) {
+        localStorage.removeItem('admin_token');
+        window.dispatchEvent(new CustomEvent('auth:unauthorized', {
+          detail: { message: 'Session expired. Please sign in again.' },
+        }));
+      }
+      const detail = data && data.detail;
+      reject(new Error(
+        xhr.status === 413
+          ? 'The file is too large for the server.'
+          : (typeof detail === 'string' ? detail : detail ? JSON.stringify(detail) : '') || 'Upload failed'
+      ));
+    };
+
+    const body = new FormData();
+    body.append('file', file);
+    xhr.send(body);
+  });
+}
+
 export function useApi(endpoint, options = {}) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);

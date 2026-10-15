@@ -2,16 +2,23 @@
 import Icon from './Icon.astro';
 import StoreButtons from './StoreButtons.astro';
 import { SITE } from '../site';
-interface Props { title?: string; text?: string }
-const {
-  title = 'Plan these trips with Odyssey',
-  text = 'Odyssey, the trip planner in the nexARound app, turns a route like this into a day-by-day plan with stops, stays and costs for your dates.',
-} = Astro.props;
+import { getAppLink } from '../lib/app';
+import { ui, type Lang } from '../lib/i18n';
+interface Props { title?: string; text?: string; medium?: string; campaign?: string; lang?: Lang }
+const { medium = 'page-cta', campaign = 'site', lang = 'en' } = Astro.props;
+const t = ui(lang);
+const { title = t.ctaTitle, text = t.ctaText } = Astro.props;
 ---
 <div class="soft-card">
-  <span class="badge badge-teal"><Icon name="sparkle" /> Ready to explore?</span>
+  <span class="badge badge-teal"><Icon name="sparkle" /> {t.ctaBadge}</span>
   <h2>{title}</h2>
   <p>{text}</p>
-  <StoreButtons />
-  <a class="link-arrow" href={`${SITE.appSite}/app`}>See everything the app does <Icon name="arrow-right" /></a>
+  <div class="soft-cta-row">
+    <StoreButtons medium={medium} campaign={campaign} lang={lang} />
+    <a class="qr-mini" href={getAppLink(medium, campaign)}>
+      <img src="/app-qr.svg" alt="" width="64" height="64" />
+      <span>{t.scan1}<br />{t.scan2}</span>
+    </a>
+  </div>
+  <a class="link-arrow" href={`${SITE.appSite}/app`}>{t.ctaMore} <Icon name="arrow-right" /></a>
 </div>

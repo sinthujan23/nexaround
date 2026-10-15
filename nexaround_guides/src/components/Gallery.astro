@@ -1,0 +1,72 @@
+---
+// Photo grid; tapping a photo opens it full size with its caption and credit.
+import { Image, getImage } from 'astro:assets';
+import type { ImageMetadata } from 'astro';
+import Icon from './Icon.astro';
+import { ui, fill, type Lang } from '../lib/i18n';
+
+interface Photo { src: ImageMetadata; alt: string; caption?: string; credit: { author: string; license: string; source: string } }
+interface Props { photos: Photo[]; lang?: Lang }
+const { photos, lang = 'en' } = Astro.props;
+const t = ui(lang);
+const full = await Promise.all(photos.map((p) => getImage({ src: p.src, width: 1600, format: 'webp' })));
+---
+<div class="gallery" data-gallery>
+  {photos.map((p, i) => (
+    <figure class="ph">
+      <button type="button" class="ph-btn" data-ph={i} data-full={full[i].src} data-alt={p.alt} data-caption={p.caption ?? p.alt}
+        data-author={p.credit.author} data-license={p.credit.license} data-source={p.credit.source} aria-label={fill(t.openPhoto, { caption: p.caption ?? p.alt })}>
+        <Image src={p.src} alt={p.alt} widths={[480, 800]} sizes={i === 0 ? '(max-width: 700px) 100vw, 560px' : '(max-width: 700px) 50vw, 280px'} loading="lazy" />
+        <span class="ph-zoom" aria-hidden="true"><Icon name="maximize" /></span>
+      </button>
+      <figcaption>{p.caption ?? p.alt}. {t.photo}: {p.credit.author}, <a href={p.credit.source}>{p.credit.license}</a></figcaption>
+    </figure>
+  ))}
+</div>
+
+<dialog class="lightbox" data-lightbox aria-label={t.photo}>
+  <img alt="" data-lb-img />
+  <div class="lb-bar">
+    <p data-lb-caption></p>
+    <div class="lb-btns">
+      <button type="button" class="round-glass" data-lb-prev aria-label={t.prevPhoto}><Icon name="chevron-left" /></button>
+      <button type="button" class="round-glass" data-lb-next aria-label={t.nextPhoto}><Icon name="chevron-right" /></button>
+      <button type="button" class="round-glass" data-lb-close aria-label={t.closePhoto}><Icon name="x" /></button>
+    </div>
+  </div>
+</dialog>
+
+<script>
+  import { T } from '../lib/client';
+  const gallery = document.querySelector<HTMLElement>('[data-gallery]');
+  const box = document.querySelector<HTMLDialogElement>('[data-lightbox]');
+  if (gallery && box) {
+    const items = [...gallery.querySelectorAll<HTMLButtonElement>('[data-ph]')];
+    const img = box.querySelector<HTMLImageElement>('[data-lb-img]')!;
+    const caption = box.querySelector<HTMLElement>('[data-lb-caption]')!;
+    let current = 0;
+    const show = (i: number) => {
+      current = (i + items.length) % items.length;
+      const d = items[current].dataset;
+      img.classList.remove('in');
+      void img.offsetWidth;
+      img.src = d.full ?? '';
+      img.alt = d.alt ?? '';
+      img.classList.add('in');
+      const link = document.createElement('a');
+      link.href = d.source ?? '#';
+      link.textContent = d.license ?? '';
+      caption.replaceChildren(document.createTextNode(`${d.caption}. ${T().photo}: ${d.author}, `), link);
+      if (!box.open) box.showModal();
+    };
+    items.forEach((b, i) => b.addEventListener('click', () => show(i)));
+    box.querySelector('[data-lb-prev]')?.addEventListener('click', () => show(current - 1));
+    box.querySelector('[data-lb-next]')?.addEventListener('click', () => show(current + 1));
+    box.querySelector('[data-lb-close]')?.addEventListener('click', () => box.close());
+    box.addEventListener('click', (e) => { if (e.target === box) box.close(); });
+    box.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight') show(current + 1);
+      if (e.key === 'ArrowLeft') show(current - 1);
+    });
+  }
+</script>

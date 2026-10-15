@@ -1,3 +1,4 @@
+import { Link, useSearchParams } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { apiGet, apiPost } from '../api';
 import { AuthLayout } from '../components/Kit';
@@ -7,7 +8,7 @@ import { AuthLayout } from '../components/Kit';
  * this is the first page any vendor ever sees.
  */
 export default function SetPassword() {
-  const token = new URLSearchParams(window.location.search).get('token') || '';
+  const token = useSearchParams()[0].get('token') || '';
   // A link with no token needs no round trip, so that case is derived rather
   // than set from an effect — setState in an effect body causes a cascading
   // render, and React flags it.
@@ -69,7 +70,7 @@ export default function SetPassword() {
       {!checking && !linkError && done && (
         <>
           <p className="auth-note">Your password is set.</p>
-          <a className="btn btn-primary btn-block" href="/">Sign in</a>
+          <Link className="btn btn-primary btn-block" to="/login">Sign in</Link>
         </>
       )}
 

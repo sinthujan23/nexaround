@@ -2,34 +2,49 @@
 import { Image } from 'astro:assets';
 import Icon from './Icon.astro';
 import { PILLARS, type PillarKey } from '../data/pillars';
+import { continentOf } from '../data/home';
 import { guideUrl, readMinutes, formatDate, type Guide } from '../lib/guides';
 
-interface Props { guide: Guide; feature?: boolean; eager?: boolean }
-const { guide, feature = false, eager = false } = Astro.props;
+// `order`: position in newest-first order, used by the home page's sorting.
+interface Props { guide: Guide; eager?: boolean; order?: number }
+const { guide, eager = false, order = 0 } = Astro.props;
 const d = guide.data;
 const pillar = PILLARS[d.pillar as PillarKey];
+const min = readMinutes(guide);
 ---
-<a href={guideUrl(guide)} class:list={['card', 'guide-card', { 'feature-guide': feature }]}>
-  <div class="guide-card-img">
-    <Image
-      src={d.cover}
-      alt={d.coverAlt}
-      widths={feature ? [640, 960, 1280] : [480, 720, 960]}
-      sizes={feature ? '(max-width: 1100px) 100vw, 720px' : '(max-width: 700px) 100vw, 420px'}
-      loading={eager ? 'eager' : 'lazy'}
-    />
-  </div>
-  <div class="guide-card-body">
-    {d.draft && <span class="draft-pill">Draft</span>}
-    <span class="eyebrow">{pillar.name} · {d.country}</span>
-    <h3>{d.title}</h3>
-    <p>{d.description}</p>
-    <div class="guide-card-meta">
-      <span>{readMinutes(guide)} min read</span>
-      <span>Checked {formatDate(d.lastChecked)}</span>
+<article
+  class="gcard"
+  data-card
+  data-id={guide.id}
+  data-pillar={d.pillar}
+  data-min={min}
+  data-order={order}
+  data-title={d.title.replace(/^The /, '')}
+  data-search={`${d.title} ${d.country} ${d.region ?? ''} ${continentOf(guide.id)} ${d.description} ${pillar.name}`.toLowerCase()}
+>
+  <a href={guideUrl(guide)} class="gcard-link">
+    <div class="gimg">
+      <Image
+        src={d.cover}
+        alt={d.coverAlt}
+        widths={[480, 720, 960]}
+        sizes="(max-width: 700px) 100vw, 420px"
+        loading={eager ? 'eager' : 'lazy'}
+      />
+      <span class="gtag">{pillar.name}</span>
     </div>
-    {feature && (
-      <span class="link-arrow">Read the guide <Icon name="arrow-right" /></span>
-    )}
-  </div>
-</a>
+    <div class="gbody">
+      {d.draft && <span class="draft-pill">Draft</span>}
+      <span class="eyebrow">{d.country}</span>
+      <h3>{d.title}</h3>
+      <p>{d.description}</p>
+      <div class="gmeta">
+        <span>{min} min read · Checked {formatDate(d.lastChecked)}</span>
+        <span class="gread" aria-hidden="true">Read <Icon name="arrow-right" /></span>
+      </div>
+    </div>
+  </a>
+  <button type="button" class="save" data-save={guide.id} aria-pressed="false" aria-label={`Save guide: ${d.title}`}>
+    <Icon name="bookmark" />
+  </button>
+</article>

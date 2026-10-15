@@ -3,24 +3,32 @@ import secrets
 from typing import List, Literal, Optional
 from datetime import datetime, timezone, date, time, timedelta
 from zoneinfo import ZoneInfo
-from fastapi import APIRouter, Depends, Header, HTTPException, status, Query, BackgroundTasks
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status, Query, BackgroundTasks
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, desc, text
+from sqlalchemy import select, func, desc, text, or_
 
 from app.core.database import get_db
 from app.core.config import settings
+from app.core.rate_limiter import auth_rate_limiter
 from app.core.security import create_access_token, decode_token
+from app.services import audit
 from app.services.user_service import UserService
 from app.services.settings_service import SettingsService
+from app.services.experience_format import COUNTRY_MODE_KEY, parse_country_mode
 from app.services import excluded_keyword_service
 from app.services.providers import config as provider_config
 from app.schemas.user import UserResponse
 from app.schemas.excluded_keyword import ExcludedKeywordResponse, ExcludedKeywordCreate
 from app.models.user import User
 from app.models.attraction import Attraction
-from app.models.experience import ExperienceEnquiry
+from app.models.experience import ExperienceEnquiry, ExperienceVendor
 from app.models.telemetry import ApiAlert
+from app.models.audit import AuditEvent, AuthSession
+from app.schemas.audit import (
+    AuditEventOut, AuditListResponse, AuditStats, SessionListResponse, SessionOut,
+)
+from app.services import partner_events
 
 router = APIRouter(prefix="/admin", tags=["Admin REST API"])
 
@@ -104,6 +112,8 @@ class SettingsResponse(BaseModel):
     provider_mode_atlas: str = "off"
     atlas_key_id: str = ""
     atlas_signing_secret: str = ""
+    # True: Experiences are browsed by country. False: nearest first.
+    experiences_country_mode: bool = True
 
 ProviderMode = Literal["off", "shadow", "live"]
 
@@ -131,11 +141,12 @@ class SettingsUpdateRequest(BaseModel):
     provider_mode_gocity: Optional[ProviderMode] = None
     provider_mode_kiwi: Optional[ProviderMode] = None
     provider_mode_atlas: Optional[ProviderMode] = None
+    experiences_country_mode: Optional[bool] = None
 
 
 # --- Dependency to protect admin routes ---
 
-async def verify_admin_token(authorization: str = Header(...)):
+async def verify_admin_token(request: Request, authorization: str = Header(...)):
     if not authorization.startswith("Bearer "):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -143,11 +154,25 @@ async def verify_admin_token(authorization: str = Header(...)):
         )
     token = authorization.split(" ")[1]
     payload = decode_token(token)
+    denied = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Access Denied: Invalid or expired admin credentials."
+    )
     if not payload or payload.get("role") != "admin":
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Access Denied: Invalid or expired admin credentials."
-        )
+        raise denied
+
+    # The sign-in must still be live: signing a device out from Sessions works
+    # by revoking this row, and a token with no `sid` is refused outright.
+    username = payload.get("sub") or "admin"
+    meta = audit.client_meta(request)
+    if not await audit.session_is_live(
+        payload.get("sid"), actor_type="admin", actor_id=username, ip=meta["ip"],
+    ):
+        raise denied
+    audit.set_actor(
+        request, actor_type="admin", actor_id=username, actor_label=username,
+        session_id=payload["sid"],
+    )
     return token
 
 
@@ -160,19 +185,63 @@ async def require_admin(token: str = Depends(verify_admin_token)) -> str:
 # --- Endpoints ---
 
 @router.post("/login", response_model=AdminLoginResponse)
-async def admin_login(data: AdminLoginRequest):
+async def admin_login(
+    data: AdminLoginRequest, request: Request, _=Depends(auth_rate_limiter),
+):
     """Log in as admin and return a signed JWT token."""
     username_valid = secrets.compare_digest(data.username, settings.ADMIN_USERNAME)
     password_valid = secrets.compare_digest(data.password, settings.ADMIN_PASSWORD)
+    meta = audit.client_meta(request)
 
     if username_valid and password_valid:
-        token = create_access_token({"sub": data.username, "role": "admin"})
+        sid = await audit.start_session(
+            actor_type="admin", actor_id=data.username, actor_label=data.username,
+            request=request, ttl=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
+        )
+        await audit.record(
+            actor_type="admin", actor_id=data.username, actor_label=data.username,
+            session_id=sid, category="auth", action="auth.login",
+            summary=f"Signed in from {audit.describe_device(meta['browser'], meta['os'])}",
+            method="POST", route="/api/v1/admin/login", status_code=200, meta=meta,
+        )
+        token = create_access_token(
+            {"sub": data.username, "role": "admin", "sid": str(sid)}
+        )
         return AdminLoginResponse(token=token)
 
+    # The attempted name is kept (it is the one thing that says whether someone
+    # is guessing the real username); the password never is.
+    await audit.record(
+        actor_type="anonymous", actor_id=None, actor_label=data.username[:255],
+        category="auth", action="auth.login_failed",
+        summary="Failed admin sign-in",
+        method="POST", route="/api/v1/admin/login", status_code=401,
+        success=False, meta=meta,
+        detail={"reason": "wrong password" if username_valid else "unknown username"},
+    )
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Access Denied: Invalid credentials."
     )
+
+
+@router.post("/logout")
+async def admin_logout(request: Request, token: str = Depends(verify_admin_token)):
+    """End this device's session, so the token stops working immediately."""
+    payload = decode_token(token) or {}
+    username = payload.get("sub") or "admin"
+    row = await audit.revoke_session(
+        payload.get("sid"), reason="user", by=username,
+        actor_type="admin", actor_id=username,
+    )
+    if row is not None:
+        await audit.record(
+            actor_type="admin", actor_id=username, actor_label=username,
+            session_id=row.id, category="auth", action="auth.logout",
+            summary="Signed out", method="POST", route="/api/v1/admin/logout",
+            status_code=200, meta=audit.client_meta(request),
+        )
+    return {"status": "signed_out"}
 
 
 @router.get("/dashboard", response_model=AdminDashboardStats)
@@ -687,6 +756,9 @@ async def get_admin_settings(
         default_geofence_radius=await service.get_setting("default_geofence_radius", "100"),
         unsplash_api_key=await service.get_setting("unsplash_api_key", ""),
         serpapi_key=await service.get_setting("serpapi_key", ""),
+        experiences_country_mode=parse_country_mode(
+            await service.get_setting_fresh(COUNTRY_MODE_KEY, "")
+        ),
         **await _provider_settings(service),
     )
 
@@ -694,10 +766,15 @@ async def get_admin_settings(
 @router.put("/settings", response_model=SettingsResponse)
 async def update_admin_settings(
     data: SettingsUpdateRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     _ = Depends(verify_admin_token)
 ):
     """Update platform settings and API keys."""
+    # Which settings, never their values: several are API keys.
+    request.state.audit_detail = {
+        "fields": sorted(k for k, v in data.model_dump().items() if v is not None)
+    }
     service = SettingsService(db)
     if data.platform_name is not None:
         await service.set_setting("platform_name", data.platform_name, "Platform display name")
@@ -717,6 +794,12 @@ async def update_admin_settings(
         await service.set_setting("unsplash_api_key", data.unsplash_api_key, "Unsplash API Access Key")
     if data.serpapi_key is not None:
         await service.set_setting("serpapi_key", data.serpapi_key, "SerpApi Key for Live Google Flight & Hotel Search")
+    if data.experiences_country_mode is not None:
+        await service.set_setting(
+            COUNTRY_MODE_KEY,
+            "true" if data.experiences_country_mode else "false",
+            "Experiences browsed by country (true) or nearest first (false)",
+        )
     provider_changed = False
     for key, description in _PROVIDER_SETTINGS.items():
         value = getattr(data, key)
@@ -737,5 +820,192 @@ async def update_admin_settings(
         default_geofence_radius=await service.get_setting("default_geofence_radius", "100"),
         unsplash_api_key=await service.get_setting("unsplash_api_key", ""),
         serpapi_key=await service.get_setting("serpapi_key", ""),
+        experiences_country_mode=parse_country_mode(
+            await service.get_setting_fresh(COUNTRY_MODE_KEY, "")
+        ),
         **await _provider_settings(service),
     )
+
+
+# --- Audit trail & signed-in devices ---
+
+def _like(text_: str) -> str:
+    """A LIKE pattern for user text, with the wildcards neutralised."""
+    return "%" + text_.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+
+
+def _event_out(e, vendor_names: dict) -> AuditEventOut:
+    return AuditEventOut(
+        id=e.id, occurred_at=e.occurred_at, actor_type=e.actor_type,
+        actor_id=e.actor_id, actor_label=e.actor_label, vendor_id=e.vendor_id,
+        vendor_name=vendor_names.get(e.vendor_id), session_id=e.session_id,
+        category=e.category, action=e.action, summary=e.summary, method=e.method,
+        route=e.route, path=e.path, target_id=e.target_id,
+        status_code=e.status_code, success=e.success, ip=e.ip,
+        browser=e.browser, os=e.os, device_type=e.device_type, detail=e.detail,
+    )
+
+
+async def _vendor_names(db: AsyncSession, ids) -> dict:
+    ids = {i for i in ids if i}
+    if not ids:
+        return {}
+    rows = await db.execute(
+        select(ExperienceVendor.id, ExperienceVendor.name)
+        .where(ExperienceVendor.id.in_(ids))
+    )
+    return {r.id: r.name for r in rows}
+
+
+@router.get("/audit", response_model=AuditListResponse)
+async def list_audit_events(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(25, ge=1, le=100),
+    actor_type: Optional[Literal["admin", "vendor", "anonymous"]] = None,
+    category: Optional[Literal["auth", "change", "access"]] = None,
+    outcome: Optional[Literal["success", "failed"]] = None,
+    vendor_id: Optional[uuid.UUID] = None,
+    q: Optional[str] = Query(None, max_length=100),
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(verify_admin_token),
+):
+    """The audit trail, newest first. Read-only; nothing here can edit it."""
+    conds = []
+    if actor_type:
+        conds.append(AuditEvent.actor_type == actor_type)
+    if category:
+        conds.append(AuditEvent.category == category)
+    if outcome:
+        conds.append(AuditEvent.success.is_(outcome == "success"))
+    if vendor_id:
+        conds.append(AuditEvent.vendor_id == vendor_id)
+    if date_from:
+        conds.append(AuditEvent.occurred_at >= datetime.combine(date_from, time.min, DASHBOARD_TZ))
+    if date_to:
+        conds.append(AuditEvent.occurred_at < datetime.combine(date_to + timedelta(days=1), time.min, DASHBOARD_TZ))
+    if q and q.strip():
+        pat = _like(q.strip())
+        conds.append(or_(
+            AuditEvent.summary.ilike(pat, escape="\\"),
+            AuditEvent.actor_label.ilike(pat, escape="\\"),
+            AuditEvent.ip.ilike(pat, escape="\\"),
+            AuditEvent.path.ilike(pat, escape="\\"),
+            AuditEvent.target_id.ilike(pat, escape="\\"),
+        ))
+
+    total = (await db.execute(
+        select(func.count()).select_from(AuditEvent).where(*conds)
+    )).scalar_one()
+    rows = (await db.execute(
+        select(AuditEvent).where(*conds)
+        .order_by(AuditEvent.occurred_at.desc(), AuditEvent.id)
+        .offset((page - 1) * page_size).limit(page_size)
+    )).scalars().all()
+    names = await _vendor_names(db, [r.vendor_id for r in rows])
+
+    stats = None
+    if page == 1:
+        since = datetime.now(timezone.utc) - timedelta(hours=24)
+        counts = (await db.execute(
+            select(
+                func.count(),
+                func.count().filter(AuditEvent.action == "auth.login_failed"),
+                func.count().filter(AuditEvent.category == "change"),
+            ).where(AuditEvent.occurred_at >= since)
+        )).one()
+        active = (await db.execute(
+            select(func.count()).select_from(AuthSession).where(
+                AuthSession.revoked_at.is_(None),
+                AuthSession.expires_at > datetime.now(timezone.utc),
+            )
+        )).scalar_one()
+        stats = AuditStats(
+            events_24h=counts[0], failed_sign_ins_24h=counts[1],
+            changes_24h=counts[2], active_sessions=active,
+        )
+    return AuditListResponse(
+        items=[_event_out(r, names) for r in rows],
+        total=total, page=page, page_size=page_size, stats=stats,
+    )
+
+
+@router.get("/sessions", response_model=SessionListResponse)
+async def list_sessions(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(25, ge=1, le=100),
+    actor_type: Optional[Literal["admin", "vendor"]] = None,
+    state: Literal["active", "all"] = "active",
+    token: str = Depends(verify_admin_token),
+    db: AsyncSession = Depends(get_db),
+):
+    """Every signed-in device of the admin and the partner portal."""
+    current = audit.parse_sid((decode_token(token) or {}).get("sid"))
+    now = datetime.now(timezone.utc)
+    conds = []
+    if actor_type:
+        conds.append(AuthSession.actor_type == actor_type)
+    if state == "active":
+        conds += [AuthSession.revoked_at.is_(None), AuthSession.expires_at > now]
+
+    total = (await db.execute(
+        select(func.count()).select_from(AuthSession).where(*conds)
+    )).scalar_one()
+    rows = (await db.execute(
+        select(AuthSession).where(*conds)
+        .order_by(AuthSession.last_seen_at.desc(), AuthSession.id)
+        .offset((page - 1) * page_size).limit(page_size)
+    )).scalars().all()
+    names = await _vendor_names(db, [r.vendor_id for r in rows])
+    return SessionListResponse(
+        items=[
+            SessionOut(
+                id=r.id, actor_type=r.actor_type, actor_label=r.actor_label,
+                vendor_id=r.vendor_id, vendor_name=names.get(r.vendor_id),
+                ip=r.ip, last_ip=r.last_ip, browser=r.browser, os=r.os,
+                device_type=r.device_type, created_at=r.created_at,
+                last_seen_at=r.last_seen_at, expires_at=r.expires_at,
+                status=audit.session_status(r, now), revoked_at=r.revoked_at,
+                revoked_reason=r.revoked_reason, revoked_by=r.revoked_by,
+                is_current=(r.id == current),
+            )
+            for r in rows
+        ],
+        total=total, page=page, page_size=page_size,
+    )
+
+
+@router.post("/sessions/{session_id}/revoke")
+async def revoke_session_endpoint(
+    session_id: uuid.UUID,
+    request: Request,
+    token: str = Depends(verify_admin_token),
+):
+    """Sign one device out. Its next request is refused."""
+    payload = decode_token(token) or {}
+    admin_name = payload.get("sub") or "admin"
+    if audit.parse_sid(payload.get("sid")) == session_id:
+        raise HTTPException(
+            status_code=400,
+            detail="That is the device you are using. Sign out instead.",
+        )
+    row = await audit.revoke_session(session_id, reason="admin", by=admin_name)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Session not found or already ended.")
+    if row.vendor_id:
+        await partner_events.publish(row.vendor_id, partner_events.ACCOUNT_CHANGED)
+    await audit.record(
+        actor_type="admin", actor_id=admin_name, actor_label=admin_name,
+        vendor_id=row.vendor_id, session_id=payload.get("sid"),
+        category="auth", action="auth.session_revoked",
+        summary=(
+            f"Signed out {row.actor_label} on "
+            f"{audit.describe_device(row.browser, row.os)} ({row.ip or 'unknown IP'})"
+        ),
+        method="POST", route="/api/v1/admin/sessions/{session_id}/revoke",
+        path=request.url.path, target_id=str(row.id), status_code=200,
+        meta=audit.client_meta(request),
+        detail={"revoked_actor_type": row.actor_type},
+    )
+    return {"status": "revoked"}

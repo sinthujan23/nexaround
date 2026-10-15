@@ -1,0 +1,47 @@
+---
+// /app/: one link (and one QR code) for every "get the app" button. On a
+// phone it goes straight to the right store; on a computer it shows the QR
+// code and both store buttons. ?m= is where the click came from, ?c= the guide.
+import { Image } from 'astro:assets';
+import Base from '../layouts/Base.astro';
+import Icon from '../components/Icon.astro';
+import StoreButtons from '../components/StoreButtons.astro';
+import { PLAY_ID } from '../lib/app';
+import { STORES } from '../site';
+import shot from '../assets/app/odyssey-plan.png';
+---
+<Base title="Get the nexARound app" description="Download nexARound for Android or iPhone: plan trips with Odyssey, ask Neva, and discover places around you." noindex>
+  <section class="hero hero-page app-get">
+    <div class="container app-get-in">
+      <div class="app-get-copy">
+        <span class="badge badge-teal-glow"><Icon name="smartphone" /> The nexARound app</span>
+        <h1 style="margin-top: 20px">Take these guides <span class="text-gradient-bright">on the road</span></h1>
+        <p class="hero-lead">Plan a trip day by day with Odyssey, ask Neva what's around you, and find places on the map and through your camera.</p>
+        <p class="app-get-redirect" data-redirect hidden>Opening your app store…</p>
+        <div style="margin-top: 28px"><StoreButtons onDark medium="app-page" /></div>
+      </div>
+      <div class="app-get-side">
+        <div class="phone"><Image src={shot} alt="The Odyssey trip planner in the nexARound app, showing a trip's budget" widths={[300, 480]} sizes="260px" loading="eager" /></div>
+        <figure class="qr-card">
+          <img src="/app-qr.svg" alt="QR code linking to the nexARound app" width="150" height="150" />
+          <figcaption>On a computer? Scan with your phone's camera.</figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+</Base>
+
+<script define:vars={{ playId: PLAY_ID, apple: STORES.apple }}>
+  const params = new URLSearchParams(location.search);
+  const medium = params.get('m') || 'qr';
+  const campaign = params.get('c') || 'site';
+  const ua = navigator.userAgent || '';
+  const referrer = `utm_source=guides&utm_medium=${medium}&utm_campaign=${campaign}`;
+  let target = '';
+  if (/android/i.test(ua)) target = `https://play.google.com/store/apps/details?id=${playId}&referrer=${encodeURIComponent(referrer)}`;
+  else if (/iPhone|iPad|iPod/i.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) target = apple;
+  if (target) {
+    document.querySelector('[data-redirect]')?.removeAttribute('hidden');
+    location.replace(target);
+  }
+</script>

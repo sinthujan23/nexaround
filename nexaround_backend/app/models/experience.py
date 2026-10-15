@@ -21,7 +21,7 @@ from datetime import date, datetime, timezone
 from sqlalchemy import (
     ARRAY, Boolean, Date, DateTime, ForeignKey, Index, Integer, Numeric, String, Text,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from geoalchemy2 import Geometry
 
@@ -46,7 +46,7 @@ class ExperienceVendor(Base):
     # Positioned by the admin through Google location search. PostGIS POINT,
     # SRID 4326 — the same convention as `attractions.location`.
     location = mapped_column(
-        Geometry(geometry_type="POINT", srid=4326, spatial_index=False), nullable=False
+        Geometry(geometry_type="POINT", srid=4326, spatial_index=False), nullable=True
     )
     address: Mapped[str] = mapped_column(String(500), nullable=True)
     google_place_id: Mapped[str] = mapped_column(String(255), nullable=True, index=True)
@@ -114,6 +114,18 @@ class ExperiencePackage(Base):
     category: Mapped[str] = mapped_column(String(60), nullable=True, index=True)
     tags: Mapped[list] = mapped_column(ARRAY(String), default=list)
     photo_urls: Mapped[list] = mapped_column(ARRAY(String), default=list)
+    # Uploaded clips, served from `/api/v1/experiences/videos/`. Added by the
+    # admin panel; the partner portal neither sets nor clears it.
+    video_urls: Mapped[list] = mapped_column(
+        ARRAY(String), default=list, server_default="{}"
+    )
+
+    # Dates this package cannot be booked, as inclusive ISO ranges:
+    # [{"start": "2026-11-01", "end": "2026-11-05"}]. Empty means available
+    # every day. Kept merged and sorted by `merge_date_ranges`.
+    unavailable_ranges: Mapped[list] = mapped_column(
+        JSONB, default=list, server_default="[]"
+    )
 
     # Numeric, not Float: this is money and it is displayed verbatim.
     price_amount: Mapped[float] = mapped_column(Numeric(12, 2), nullable=True)
@@ -130,11 +142,12 @@ class ExperiencePackage(Base):
     inclusions: Mapped[list] = mapped_column(ARRAY(String), default=list)
     languages: Mapped[list] = mapped_column(ARRAY(String), default=list)
 
-    # Denormalised from the vendor — see the module docstring. NOT NULL, because
-    # the nearest-first query sorts on it and a NULL here would drop the package
-    # out of Discovery entirely.
+    # Denormalised from the vendor — see the module docstring. NULL when the
+    # vendor is listed by country only: such a package appears in the
+    # by-country list and is left out of the nearest-first one, rather than
+    # being given a made-up point.
     location = mapped_column(
-        Geometry(geometry_type="POINT", srid=4326, spatial_index=False), nullable=False
+        Geometry(geometry_type="POINT", srid=4326, spatial_index=False), nullable=True
     )
     uses_vendor_location: Mapped[bool] = mapped_column(Boolean, default=True)
     meeting_point_address: Mapped[str] = mapped_column(String(500), nullable=True)

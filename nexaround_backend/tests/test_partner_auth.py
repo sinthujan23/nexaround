@@ -147,7 +147,7 @@ def test_a_minted_partner_token_carries_iat():
         id = LOGIN
         vendor_id = VENDOR
 
-    claims = _claims(_Login())
+    claims = _claims(_Login(), "5d0e1a53-6f0e-4f0a-9d6a-0d1b8f4a2c11")
     assert "iat" in claims, "a partner token without iat can never be current"
 
     token = create_access_token(claims)
@@ -167,7 +167,18 @@ def test_the_minted_claims_are_the_ones_the_gate_checks():
         id = LOGIN
         vendor_id = VENDOR
 
-    claims = _claims(_Login())
+    claims = _claims(_Login(), "5d0e1a53-6f0e-4f0a-9d6a-0d1b8f4a2c11")
     assert claims["role"] == "vendor"
     assert claims["sub"] == LOGIN
     assert claims["vendor_id"] == VENDOR
+
+
+def test_the_minted_claims_carry_the_session_id():
+    """`sid` is what ties a token to a device an admin can sign out."""
+    from app.api.v1.partner import _claims
+
+    class _Login:
+        id = LOGIN
+        vendor_id = VENDOR
+
+    assert _claims(_Login(), "abc")["sid"] == "abc"

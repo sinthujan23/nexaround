@@ -12,11 +12,25 @@ import uuid
 from datetime import date, datetime
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.services.experience_format import (
-    MAX_BOOKING_WINDOW_DAYS, NEARBY_THRESHOLD_M,
+    MAX_BOOKING_WINDOW_DAYS, MAX_UNAVAILABLE_RANGES, NEARBY_THRESHOLD_M,
 )
+from app.services.experience_upload import MAX_VIDEOS_PER_PACKAGE
+
+
+class DateRange(BaseModel):
+    """Inclusive: a single day is a range whose start and end are the same."""
+
+    start: date
+    end: date
+
+    @model_validator(mode="after")
+    def _ordered(self):
+        if self.end < self.start:
+            raise ValueError("A date range cannot end before it starts.")
+        return self
 
 
 # --- App-facing -------------------------------------------------------------
@@ -28,8 +42,10 @@ class ExperienceVendorPublic(BaseModel):
     name: str
     description: Optional[str] = None
     address: Optional[str] = None
-    latitude: float
-    longitude: float
+    # None when the vendor is listed by country only. The app reads a missing
+    # coordinate as 0.0 and falls back to the address.
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
     contact_phone: Optional[str] = None
     contact_whatsapp: Optional[str] = None
     contact_instagram: Optional[str] = None
@@ -63,8 +79,8 @@ class ExperiencePackageCard(BaseModel):
     price_label: str = ""
     duration_minutes: Optional[int] = None
     duration_label: str = ""
-    latitude: float
-    longitude: float
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
     distance_m: Optional[float] = None
     tags: list[str] = []
 
@@ -72,6 +88,10 @@ class ExperiencePackageCard(BaseModel):
 class ExperiencePackageDetail(ExperiencePackageCard):
     description: Optional[str] = None
     photo_urls: list[str] = []
+    # Relative API paths; the app prefixes the API origin, as for photos.
+    video_urls: list[str] = []
+    # Days the package cannot be booked; everything else is available.
+    unavailable_ranges: list[DateRange] = []
     max_participants: Optional[int] = None
     # How many days ahead the app's calendar lets a traveller pick a date.
     # Always set: a package without its own window gets the platform default.
@@ -116,8 +136,10 @@ class ExperienceEnquiryResponse(BaseModel):
 class ExperienceVendorBase(BaseModel):
     name: str = Field(..., max_length=255)
     description: Optional[str] = None
-    latitude: float = Field(..., ge=-90, le=90)
-    longitude: float = Field(..., ge=-180, le=180)
+    # Both or neither; the country is always required. With no pin it is what
+    # the vendor is found by (checked in the endpoints with `vendor_place_problem`).
+    latitude: Optional[float] = Field(None, ge=-90, le=90)
+    longitude: Optional[float] = Field(None, ge=-180, le=180)
     address: Optional[str] = Field(None, max_length=500)
     google_place_id: Optional[str] = Field(None, max_length=255)
     city: Optional[str] = Field(None, max_length=120)
@@ -167,6 +189,10 @@ class ExperiencePackageBase(BaseModel):
     category: Optional[str] = Field(None, max_length=60)
     tags: list[str] = []
     photo_urls: list[str] = []
+    video_urls: list[str] = Field(default_factory=list, max_length=MAX_VIDEOS_PER_PACKAGE)
+    unavailable_ranges: list[DateRange] = Field(
+        default_factory=list, max_length=MAX_UNAVAILABLE_RANGES
+    )
     price_amount: Optional[float] = Field(None, ge=0)
     price_currency: str = Field("USD", max_length=10)
     price_basis: str = Field("per_person", max_length=20)

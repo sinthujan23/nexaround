@@ -1,0 +1,101 @@
+---
+// Dotted world map with a pin per place we cover. Tapping a pin shows that
+// place's guides in the panel under the map.
+import { Image } from 'astro:assets';
+import Icon from './Icon.astro';
+import { MAP_PLACES, mapPosition } from '../data/home';
+import { PILLARS, type PillarKey } from '../data/pillars';
+import { guideUrl, readMinutes, type Guide } from '../lib/guides';
+
+interface Props { guides: Guide[] }
+const { guides } = Astro.props;
+const byId = new Map(guides.map((g) => [g.id, g]));
+const places = MAP_PLACES.map((p) => ({ ...p, ...mapPosition(p.lat, p.lng), list: p.guides.map((id) => byId.get(id)).filter((g): g is Guide => !!g) }))
+  .filter((p) => p.list.length > 0);
+const placed = new Set(places.flatMap((p) => p.list.map((g) => g.id)));
+const elsewhere = guides.filter((g) => !placed.has(g.id));
+const countries = new Set(guides.flatMap((g) => g.data.country.replace(/.*\((.+)\)/, '$1').split(/ and /)).filter((c) => c !== 'Worldwide'));
+const continents = new Set(places.map((p) => p.continent));
+---
+<section class="map-section" id="map" data-world>
+  <div class="container" style="position: relative">
+    <div class="section-head">
+      <span class="badge badge-teal-glow"><Icon name="globe" /> {countries.size} countries · {continents.size} continents</span>
+      <h2>Pick a spot on <span class="text-gradient-bright">the map</span></h2>
+      <p>Every pin is a guide we have measured and dated. Tap one to preview it.</p>
+    </div>
+
+    <div class="world" role="group" aria-label="World map of our guides">
+      <img class="world-dots" src="/world-dots.svg" alt="" width="1440" height="552" loading="lazy" />
+      {places.map((p, i) => (
+        <button
+          type="button"
+          class:list={['pin', { multi: p.list.length > 1, 'is-on': i === 0 }]}
+          style={`left: ${p.x.toFixed(2)}%; top: ${p.y.toFixed(2)}%; --d: ${(i % 5) * 0.5}s`}
+          data-pin={i}
+          aria-pressed={i === 0 ? 'true' : 'false'}
+          aria-label={`${p.label}: ${p.list.length} guide${p.list.length > 1 ? 's' : ''}`}
+        >
+          <span class="pin-ring"></span>
+          <span class="pin-dot">{p.list.length > 1 ? p.list.length : ''}</span>
+          <span class="pin-tip" aria-hidden="true">{p.label}</span>
+        </button>
+      ))}
+    </div>
+
+    <div class="map-panel" aria-live="polite">
+      <div class="panel-info">
+        <div class="panel-top">
+          <span class="eyebrow" data-pin-count>1 of {places.length}</span>
+          <div style="display: flex; gap: 8px">
+            <button type="button" class="round-glass" data-pin-prev aria-label="Previous place on the map"><Icon name="chevron-left" /></button>
+            <button type="button" class="round-glass" data-pin-next aria-label="Next place on the map"><Icon name="chevron-right" /></button>
+          </div>
+        </div>
+        {places.map((p, i) => <p class="panel-place" data-place-label={i} hidden={i !== 0}>{p.label}</p>)}
+        {elsewhere.length > 0 && (
+          <p class="panel-foot">
+            Plus {elsewhere.length === 1 ? 'one guide that works' : `${elsewhere.length} guides that work`} anywhere:{' '}
+            {elsewhere.map((g, i) => <>{i > 0 && ', '}<a href={guideUrl(g)}>{g.data.title}</a></>)}.
+          </p>
+        )}
+      </div>
+      <div class="panel-cards">
+        {places.map((p, i) =>
+          p.list.map((g) => (
+            <a class="mini" href={guideUrl(g)} data-place={i} hidden={i !== 0}>
+              <Image src={g.data.cover} alt={g.data.coverAlt} widths={[240, 400]} sizes="160px" loading="lazy" />
+              <span class="mini-body">
+                <strong>{g.data.title}</strong>
+                <small>{PILLARS[g.data.pillar as PillarKey].name} · {readMinutes(g)} min read</small>
+                <span class="go">Read the guide <Icon name="arrow-right" /></span>
+              </span>
+            </a>
+          )),
+        )}
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+  const root = document.querySelector<HTMLElement>('[data-world]');
+  if (root) {
+    const pins = [...root.querySelectorAll<HTMLButtonElement>('[data-pin]')];
+    const count = root.querySelector('[data-pin-count]');
+    let current = 0;
+    const show = (i: number) => {
+      current = (i + pins.length) % pins.length;
+      pins.forEach((p, k) => {
+        p.classList.toggle('is-on', k === current);
+        p.setAttribute('aria-pressed', String(k === current));
+      });
+      root.querySelectorAll<HTMLElement>('[data-place-label]').forEach((el) => (el.hidden = Number(el.dataset.placeLabel) !== current));
+      root.querySelectorAll<HTMLElement>('[data-place]').forEach((el) => (el.hidden = Number(el.dataset.place) !== current));
+      if (count) count.textContent = `${current + 1} of ${pins.length}`;
+    };
+    pins.forEach((p, k) => p.addEventListener('click', () => show(k)));
+    root.querySelector('[data-pin-prev]')?.addEventListener('click', () => show(current - 1));
+    root.querySelector('[data-pin-next]')?.addEventListener('click', () => show(current + 1));
+  }
+</script>

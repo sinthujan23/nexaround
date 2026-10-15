@@ -399,11 +399,27 @@ class _EnquirySheetState extends State<_EnquirySheet> {
     final windowDays = widget.package.bookingWindowDays ?? 365;
     final lastDate = now.add(Duration(days: windowDays));
     final tomorrow = now.add(const Duration(days: 1));
+    final package = widget.package;
+
+    // The picker asserts that its initial day is selectable, so start from the
+    // first day the vendor has not blocked.
+    final wanted = _preferredDate ?? (tomorrow.isAfter(lastDate) ? now : tomorrow);
+    final initial = package.firstAvailableFrom(wanted, lastDate) ??
+        package.firstAvailableFrom(now, lastDate);
+    if (initial == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('No dates are available for this experience right now.'),
+      ));
+      return;
+    }
+
     final picked = await showDatePicker(
       context: context,
-      initialDate: _preferredDate ?? (tomorrow.isAfter(lastDate) ? now : tomorrow),
+      initialDate: initial,
       firstDate: now,
       lastDate: lastDate,
+      // Days the vendor has blocked are greyed out and cannot be picked.
+      selectableDayPredicate: (day) => !package.isUnavailableOn(day),
       helpText: windowDays == 1
           ? 'Book up to 1 day ahead'
           : 'Book up to $windowDays days ahead',

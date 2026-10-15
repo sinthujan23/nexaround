@@ -1,7 +1,7 @@
 import uuid
 from typing import NamedTuple
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
@@ -98,6 +98,7 @@ class VendorPrincipal(NamedTuple):
 async def get_current_vendor(
     db: AsyncSession = Depends(get_db),
     token: str = Depends(oauth2_scheme),
+    request: Request = None,
 ) -> VendorPrincipal:
     """Resolve a partner-portal caller, or refuse.
 
@@ -107,6 +108,7 @@ async def get_current_vendor(
     """
     from app.models.experience import ExperienceVendor, VendorUser  # noqa: F401
     from app.repositories.experience_repository import ExperienceRepository
+    from app.services import audit
     from app.services.partner_auth import claims_ok, session_is_current
 
     credentials_exception = HTTPException(
@@ -146,6 +148,18 @@ async def get_current_vendor(
     if not session_is_current(payload.get("iat"), login.password_changed_at):
         raise credentials_exception
 
+    # This device's sign-in must not have been revoked. That is how "sign out
+    # this device" works for a token nobody holds, and it is what refuses any
+    # token with no `sid` - one issued before the audit trail existed.
+    # `request` is absent when the SSE endpoint re-checks a session it already
+    # authenticated, so there is no IP to compare and no audit actor to record.
+    client_ip = audit.client_meta(request)["ip"] if request is not None else None
+    if not await audit.session_is_live(
+        payload.get("sid"), actor_type="vendor", actor_id=str(login.id),
+        ip=client_ip,
+    ):
+        raise credentials_exception
+
     if not login.is_active:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -164,6 +178,13 @@ async def get_current_vendor(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Your listing is currently suspended. Contact NexAround.",
+        )
+
+    if request is not None:
+        audit.set_actor(
+            request, actor_type="vendor", actor_id=str(login.id),
+            actor_label=login.email, session_id=payload["sid"],
+            vendor_id=vendor.id,
         )
 
     # Deliberately NOT calling `set_user_id()`. It feeds `api_events.user_id`,

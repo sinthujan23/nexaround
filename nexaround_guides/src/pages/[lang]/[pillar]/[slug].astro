@@ -1,0 +1,20 @@
+---
+// A guide in another language: /es/, /fr/, /de/ or /hi/ in front of the
+// English address. Built only where a translation exists.
+import GuidePage from '../../../components/GuidePage.astro';
+import { getGuides, getTranslations, type Guide, type Translation } from '../../../lib/guides';
+import type { Lang } from '../../../lib/i18n';
+
+export async function getStaticPaths() {
+  const guides = await getGuides();
+  const translations = await getTranslations(guides);
+  return [...translations.values()].map((tr) => {
+    const guide = guides.find((g) => g.id === tr.data.guide)!;
+    return { params: { lang: tr.data.lang, pillar: guide.data.pillar, slug: guide.id }, props: { guide, all: guides, translations, lang: tr.data.lang } };
+  });
+}
+
+interface Props { guide: Guide; all: Guide[]; translations: Map<string, Translation>; lang: Lang }
+const { guide, all, translations, lang } = Astro.props;
+---
+<GuidePage guide={guide} all={all} lang={lang} translations={translations} />

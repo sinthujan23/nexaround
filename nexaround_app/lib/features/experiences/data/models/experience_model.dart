@@ -77,6 +77,8 @@ class ExperiencePackageModel extends ExperiencePackageEntity {
     super.tags,
     super.description,
     super.photoUrls,
+    super.videoUrls,
+    super.unavailableRanges,
     super.maxParticipants,
     super.bookingWindowDays,
     super.inclusions,
@@ -112,6 +114,8 @@ class ExperiencePackageModel extends ExperiencePackageEntity {
       tags: _stringList(json['tags']),
       description: json['description'] as String?,
       photoUrls: _stringList(json['photo_urls']),
+      videoUrls: _stringList(json['video_urls']),
+      unavailableRanges: _dateRanges(json['unavailable_ranges']),
       maxParticipants: (json['max_participants'] as num?)?.toInt(),
       bookingWindowDays: (json['booking_window_days'] as num?)?.toInt(),
       inclusions: _stringList(json['inclusions']),
@@ -122,6 +126,24 @@ class ExperiencePackageModel extends ExperiencePackageEntity {
           : null,
     );
   }
+}
+
+/// `[{"start": "2026-11-01", "end": "2026-11-05"}]` from the API. A malformed
+/// entry is skipped rather than failing the whole package.
+List<ExperienceDateRange> _dateRanges(dynamic value) {
+  if (value is! List) return const [];
+  final ranges = <ExperienceDateRange>[];
+  for (final item in value) {
+    if (item is! Map) continue;
+    final start = DateTime.tryParse(item['start']?.toString() ?? '');
+    final end = DateTime.tryParse(item['end']?.toString() ?? '');
+    if (start == null || end == null) continue;
+    ranges.add(ExperienceDateRange(
+      start: DateTime(start.year, start.month, start.day),
+      end: DateTime(end.year, end.month, end.day),
+    ));
+  }
+  return ranges;
 }
 
 List<String> _stringList(dynamic value) {

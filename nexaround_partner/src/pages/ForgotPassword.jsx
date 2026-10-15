@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { useState } from 'react';
 import { apiPost } from '../api';
 import { AuthLayout } from '../components/Kit';
@@ -36,7 +37,7 @@ export default function ForgotPassword() {
             If that address has a partner account, a reset link is on its way.
             It is valid for one hour.
           </p>
-          <a className="btn btn-ghost btn-block" href="/">Back to sign in</a>
+          <Link className="btn btn-ghost btn-block" to="/login">Back to sign in</Link>
         </>
       ) : (
         <form onSubmit={submit}>
@@ -51,7 +52,7 @@ export default function ForgotPassword() {
             {busy ? 'Sending…' : 'Send reset link'}
           </button>
           <div className="auth-link">
-            <a href="/">Back to sign in</a>
+            <Link to="/login">Back to sign in</Link>
           </div>
         </form>
       )}
