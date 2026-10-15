@@ -314,6 +314,7 @@ class ExperiencesService {
     String? contactEmail,
     DateTime? preferredDate,
     int? partySize,
+    String? pickupLocation,
     String? message,
   }) async {
     try {
@@ -329,6 +330,8 @@ class ExperiencesService {
             'preferred_date':
                 preferredDate.toIso8601String().split('T').first,
           if (partySize != null) 'party_size': partySize,
+          if (pickupLocation != null && pickupLocation.isNotEmpty)
+            'pickup_location': pickupLocation,
           if (message != null && message.isNotEmpty) 'message': message,
         },
       );

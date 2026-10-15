@@ -83,6 +83,8 @@ class ExperiencePackageCard(BaseModel):
     longitude: Optional[float] = None
     distance_m: Optional[float] = None
     tags: list[str] = []
+    # Admin's free-text region, e.g. "Kerala State · Munnar region".
+    region_label: Optional[str] = None
 
 
 class ExperiencePackageDetail(ExperiencePackageCard):
@@ -122,6 +124,7 @@ class ExperienceEnquiryCreate(BaseModel):
     contact_email: Optional[str] = Field(None, max_length=255)
     preferred_date: Optional[date] = None
     party_size: Optional[int] = Field(None, ge=1, le=100)
+    pickup_location: Optional[str] = Field(None, max_length=500)
     message: Optional[str] = Field(None, max_length=2000)
 
 
@@ -209,6 +212,7 @@ class ExperiencePackageBase(BaseModel):
     latitude: Optional[float] = Field(None, ge=-90, le=90)
     longitude: Optional[float] = Field(None, ge=-180, le=180)
     meeting_point_address: Optional[str] = Field(None, max_length=500)
+    region_label: Optional[str] = Field(None, max_length=120)
     is_active: bool = True
     sort_order: int = 0
 
@@ -246,6 +250,7 @@ class ExperienceEnquiryAdminResponse(BaseModel):
     contact_email: Optional[str] = None
     preferred_date: Optional[date] = None
     party_size: Optional[int] = None
+    pickup_location: Optional[str] = None
     message: Optional[str] = None
     status: str
     admin_notes: Optional[str] = None

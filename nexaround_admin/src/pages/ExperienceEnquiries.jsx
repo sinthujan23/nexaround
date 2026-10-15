@@ -281,6 +281,12 @@ export default function ExperienceEnquiries() {
                         {formatDay(selected.preferred_date) || 'Flexible'}
                       </dd>
                     </div>
+                    <div>
+                      <dt>Pickup</dt>
+                      <dd className={selected.pickup_location ? '' : 'muted'}>
+                        {selected.pickup_location || 'Not given'}
+                      </dd>
+                    </div>
                   </dl>
                   {selected.message && (
                     <div style={{ marginTop: 18 }}>

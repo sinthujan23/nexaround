@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
+import 'package:nexaround_app/core/services/google_places_service.dart';
 import 'package:nexaround_app/core/utils/contact_launcher.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
@@ -36,6 +39,13 @@ class _EnquirySheetState extends State<_EnquirySheet> {
   final _phoneController = TextEditingController();
   final _emailController = TextEditingController();
   final _messageController = TextEditingController();
+  final _pickupController = TextEditingController();
+
+  // Google place suggestions for the pickup box. The traveller may pick one
+  // or keep their own text; either is sent as typed in the box.
+  List<Map<String, dynamic>> _pickupSuggestions = [];
+  Timer? _pickupDebounce;
+  int _pickupQuery = 0;
 
   DateTime? _preferredDate;
   int _partySize = 2;
@@ -72,7 +82,52 @@ class _EnquirySheetState extends State<_EnquirySheet> {
     _phoneController.dispose();
     _emailController.dispose();
     _messageController.dispose();
+    _pickupController.dispose();
+    _pickupDebounce?.cancel();
     super.dispose();
+  }
+
+  void _onPickupChanged(String text) {
+    _pickupDebounce?.cancel();
+    if (text.trim().length < 2) {
+      _pickupQuery++; // drop any search still in flight
+      if (_pickupSuggestions.isNotEmpty) setState(() => _pickupSuggestions = []);
+      return;
+    }
+    _pickupDebounce = Timer(const Duration(milliseconds: 300), () async {
+      final query = ++_pickupQuery;
+      // Lean the results toward the package; a package listed by country
+      // only has no point (0, 0), so search unbiased then.
+      final lat = widget.package.latitude;
+      final lng = widget.package.longitude;
+      final hasPoint = !(lat == 0 && lng == 0);
+      List<Map<String, dynamic>> results = [];
+      try {
+        results = await GooglePlacesService.getAutocompleteSuggestions(
+          input: text,
+          latitude: hasPoint ? lat : null,
+          longitude: hasPoint ? lng : null,
+        );
+      } catch (_) {
+        // No suggestions; whatever they typed is still sent.
+      }
+      if (!mounted || query != _pickupQuery) return;
+      setState(() => _pickupSuggestions = results.take(5).toList());
+    });
+  }
+
+  void _pickPickupSuggestion(Map<String, dynamic> suggestion) {
+    _pickupQuery++;
+    final text = (suggestion['description'] as String?)?.trim() ?? '';
+    setState(() {
+      if (text.isNotEmpty) {
+        _pickupController.text = text;
+        _pickupController.selection =
+            TextSelection.collapsed(offset: text.length);
+      }
+      _pickupSuggestions = [];
+    });
+    FocusScope.of(context).unfocus();
   }
 
   Future<void> _submit() async {
@@ -99,6 +154,7 @@ class _EnquirySheetState extends State<_EnquirySheet> {
       contactEmail: _emailController.text.trim(),
       preferredDate: _preferredDate,
       partySize: _partySize,
+      pickupLocation: _pickupController.text.trim(),
       message: _messageController.text.trim(),
     );
 
@@ -314,11 +370,54 @@ class _EnquirySheetState extends State<_EnquirySheet> {
         const SizedBox(height: 16),
 
         TextField(
+          controller: _pickupController,
+          maxLength: 500,
+          textInputAction: TextInputAction.search,
+          onChanged: _onPickupChanged,
+          decoration: InputDecoration(
+            labelText: 'Pickup hotel or location (optional)',
+            hintText: 'Search your hotel or a place',
+            prefixIcon: const Icon(Icons.location_on_rounded,
+                size: 20, color: AppColors.brandGreen),
+            counterText: '',
+            border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12)),
+          ),
+        ),
+        if (_pickupSuggestions.isNotEmpty)
+          Container(
+            margin: const EdgeInsets.only(top: 6),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Column(
+              children: [
+                for (final suggestion in _pickupSuggestions)
+                  ListTile(
+                    dense: true,
+                    leading: const Icon(Icons.place_outlined,
+                        size: 18, color: AppColors.textTertiary),
+                    title: Text(
+                      suggestion['description'] as String? ?? '',
+                      style: const TextStyle(
+                          fontSize: 13, color: AppColors.textPrimary),
+                    ),
+                    onTap: () => _pickPickupSuggestion(suggestion),
+                  ),
+              ],
+            ),
+          ),
+        const SizedBox(height: 16),
+
+        TextField(
           controller: _messageController,
           maxLines: 3,
           maxLength: 2000,
           decoration: InputDecoration(
-            labelText: 'Anything else? (optional)',
+            labelText: 'Special requests (optional)',
+            helperText: 'Special requests may incur extra charges.',
             border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12)),
           ),
@@ -330,6 +429,13 @@ class _EnquirySheetState extends State<_EnquirySheet> {
               style: const TextStyle(fontSize: 13, color: Colors.redAccent)),
         ],
 
+        const SizedBox(height: 12),
+        const Text(
+          'This is a booking request, not a confirmed booking. The vendor '
+          'will contact you to confirm the date, price and pickup.',
+          style: TextStyle(
+              fontSize: 12, height: 1.4, color: AppColors.textSecondary),
+        ),
         const SizedBox(height: 12),
         SizedBox(
           width: double.infinity,

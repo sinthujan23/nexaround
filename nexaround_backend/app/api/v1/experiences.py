@@ -261,6 +261,7 @@ async def _dispatch_enquiry_email(enquiry_id: uuid.UUID) -> None:
                     enquiry.preferred_date.isoformat() if enquiry.preferred_date else ""
                 ),
                 party_size=str(enquiry.party_size) if enquiry.party_size else "",
+                pickup_location=enquiry.pickup_location or "",
                 message=enquiry.message or "",
             )
 
@@ -312,6 +313,7 @@ async def create_experience_enquiry(
         contact_email=(data.contact_email or "").strip() or None,
         preferred_date=data.preferred_date,
         party_size=data.party_size,
+        pickup_location=(data.pickup_location or "").strip() or None,
         message=(data.message or "").strip() or None,
         status="new",
     )

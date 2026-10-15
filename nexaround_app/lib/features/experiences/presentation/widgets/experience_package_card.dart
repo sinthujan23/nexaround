@@ -28,6 +28,10 @@ class ExperiencePackageCard extends StatelessWidget {
   static const double _radius = 18;
   static const double _thumbSize = 116;
 
+  /// Taller by the region line when there is one, so a two-line title still
+  /// fits; cards without a region keep their size.
+  double get _cardHeight => package.hasRegion ? _thumbSize + 18 : _thumbSize;
+
   @override
   Widget build(BuildContext context) {
     final category = experienceCategoryFor(package.category);
@@ -61,7 +65,7 @@ class ExperiencePackageCard extends StatelessWidget {
                   const SizedBox(width: 12),
                   Expanded(
                     child: SizedBox(
-                      height: _thumbSize,
+                      height: _cardHeight,
                       child: _buildBody(category),
                     ),
                   ),
@@ -85,7 +89,7 @@ class ExperiencePackageCard extends StatelessWidget {
 
     return SizedBox(
       width: _thumbSize,
-      height: _thumbSize,
+      height: _cardHeight,
       child: ClipRRect(
         borderRadius: BorderRadius.circular(14),
         child: Stack(
@@ -212,6 +216,29 @@ class ExperiencePackageCard extends StatelessWidget {
                   ),
                 ],
               ),
+              // The admin's region text, e.g. "Kerala State · Munnar region".
+              // Text only: no map, no directions.
+              if (package.hasRegion) ...[
+                const SizedBox(height: 3),
+                Row(
+                  children: [
+                    const Icon(Icons.location_on_rounded, size: 12, color: AppColors.textSecondary),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        package.regionLabel!.trim(),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ],
           ),
 

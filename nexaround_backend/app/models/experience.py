@@ -151,6 +151,10 @@ class ExperiencePackage(Base):
     )
     uses_vendor_location: Mapped[bool] = mapped_column(Boolean, default=True)
     meeting_point_address: Mapped[str] = mapped_column(String(500), nullable=True)
+    # Free text the admin types, e.g. "Kerala State · Munnar region". Shown in
+    # the app with a pin icon so travellers know roughly where the package is,
+    # without a map point or directions. Admin-only: not in the partner tuple.
+    region_label: Mapped[str] = mapped_column(String(120), nullable=True)
 
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
@@ -211,6 +215,9 @@ class ExperienceEnquiry(Base):
     contact_email: Mapped[str] = mapped_column(String(255), nullable=True)
     preferred_date: Mapped[date] = mapped_column(Date, nullable=True)
     party_size: Mapped[int] = mapped_column(Integer, nullable=True)
+    # Where the traveller wants picking up: a Google place they chose
+    # ("Name, address") or whatever they typed. Optional.
+    pickup_location: Mapped[str] = mapped_column(String(500), nullable=True)
     message: Mapped[str] = mapped_column(Text, nullable=True)
 
     # new | contacted | closed

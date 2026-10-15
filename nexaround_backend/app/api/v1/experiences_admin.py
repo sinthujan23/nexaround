@@ -74,7 +74,8 @@ _PACKAGE_SCALARS = (
     "title", "summary", "description", "category", "tags", "photo_urls",
     "video_urls", "unavailable_ranges", "price_amount", "price_currency", "price_basis", "duration_minutes",
     "max_participants", "booking_window_days", "inclusions", "languages",
-    "uses_vendor_location", "meeting_point_address", "is_active", "sort_order",
+    "uses_vendor_location", "meeting_point_address", "region_label", "is_active",
+    "sort_order",
 )
 
 
@@ -139,6 +140,7 @@ def _package_response(package: ExperiencePackage) -> ExperiencePackageAdminRespo
         latitude=lat,
         longitude=lng,
         meeting_point_address=package.meeting_point_address,
+        region_label=package.region_label,
         is_active=package.is_active,
         is_published=package.is_published,
         sort_order=package.sort_order or 0,

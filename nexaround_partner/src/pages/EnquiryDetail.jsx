@@ -6,6 +6,7 @@ import { useToast } from '../toast';
 import { useUnsavedGuard } from '../hooks';
 import {
   InboxIcon, PhoneIcon, MailIcon, WhatsAppIcon, TicketIcon, UsersIcon, ClockIcon, EditIcon,
+  MapPinIcon,
 } from '../components/Icons';
 import { Section, InfoTile, Avatar } from '../components/Kit';
 import { EmptyState, EnquiryStatusPill, Loader } from '../components/Lists';
@@ -130,6 +131,10 @@ export default function EnquiryDetail({ id, onClose, onChanged }) {
             <InfoTile
               tone="amber" icon={ClockIcon} label="Preferred date"
               value={formatDay(enquiry.preferred_date) || 'Flexible'} muted={!enquiry.preferred_date}
+            />
+            <InfoTile
+              tone="green" icon={MapPinIcon} label="Pickup"
+              value={enquiry.pickup_location || 'Not given'} muted={!enquiry.pickup_location}
             />
           </div>
           {enquiry.message && (

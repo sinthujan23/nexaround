@@ -229,7 +229,7 @@ PACKAGE_CARD_KEYS = {
     "vendor_whatsapp", "vendor_instagram", "vendor_facebook", "vendor_x",
     "cover_photo_url", "photo_count", "price_amount", "price_currency",
     "price_basis", "price_label", "duration_minutes", "duration_label",
-    "latitude", "longitude", "distance_m", "tags",
+    "latitude", "longitude", "distance_m", "tags", "region_label",
 }
 
 NEARBY_RESPONSE_KEYS = {

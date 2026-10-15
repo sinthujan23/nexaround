@@ -206,6 +206,7 @@ class PartnerEnquiryResponse(BaseModel):
     contact_email: Optional[str] = None
     preferred_date: Optional[date] = None
     party_size: Optional[int] = None
+    pickup_location: Optional[str] = None
     message: Optional[str] = None
     status: str
     vendor_notes: Optional[str] = None

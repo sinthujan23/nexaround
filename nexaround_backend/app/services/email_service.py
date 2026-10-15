@@ -1,4 +1,5 @@
 import asyncio
+import html
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -194,6 +195,7 @@ async def send_vendor_enquiry_email(
     contact_email: str = "",
     preferred_date: str = "",
     party_size: str = "",
+    pickup_location: str = "",
     message: str = "",
 ) -> bool:
     """Notify a vendor that a traveller enquired about one of their packages."""
@@ -232,6 +234,7 @@ async def send_vendor_enquiry_email(
           {_row("Email", contact_email)}
           {_row("Preferred date", preferred_date)}
           {_row("Party size", party_size)}
+          {_row("Pickup", html.escape(pickup_location))}
         </table>
         {f'<div class="message">{message}</div>' if message else ''}
         <p style="color:#546E7A;font-size:14px;">Please contact them directly to confirm availability and pricing.</p>

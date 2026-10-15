@@ -92,6 +92,10 @@ class ExperiencePackageEntity {
   final double? distanceM;
   final List<String> tags;
 
+  /// The admin's free-text region, e.g. "Kerala State · Munnar region". Shown
+  /// with a pin icon, never as a map location. On cards and detail.
+  final String? regionLabel;
+
   // Detail-only. Empty on a card.
   final String? description;
   final List<String> photoUrls;
@@ -135,6 +139,7 @@ class ExperiencePackageEntity {
     required this.longitude,
     this.distanceM,
     this.tags = const [],
+    this.regionLabel,
     this.description,
     this.photoUrls = const [],
     this.videoUrls = const [],
@@ -147,6 +152,7 @@ class ExperiencePackageEntity {
     this.vendor,
   });
 
+  bool get hasRegion => (regionLabel ?? '').trim().isNotEmpty;
   bool get hasVendorWhatsapp => (vendorWhatsapp ?? '').trim().isNotEmpty;
   bool get hasVendorInstagram => (vendorInstagram ?? '').trim().isNotEmpty;
   bool get hasVendorFacebook => (vendorFacebook ?? '').trim().isNotEmpty;

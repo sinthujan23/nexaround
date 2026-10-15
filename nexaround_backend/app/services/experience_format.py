@@ -283,4 +283,7 @@ def package_field_value(data, key: str):
     value = getattr(data, key)
     if key == "unavailable_ranges":
         return merge_date_ranges(value or [])
+    if key == "region_label":
+        # A cleared text box arrives as "", which should show nothing.
+        return (value or "").strip() or None
     return value

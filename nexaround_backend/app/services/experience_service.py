@@ -92,6 +92,7 @@ def package_to_card(
         longitude=lng,
         distance_m=distance_m,
         tags=package.tags or [],
+        region_label=package.region_label,
     )
 
 

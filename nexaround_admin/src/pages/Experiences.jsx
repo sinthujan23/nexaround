@@ -64,7 +64,7 @@ const emptyPackage = {
   price_basis: 'per_person', duration_minutes: '', max_participants: '',
   booking_window_days: '',
   inclusions: [], languages: [], uses_vendor_location: true,
-  latitude: null, longitude: null, meeting_point_address: '',
+  latitude: null, longitude: null, meeting_point_address: '', region_label: '',
   is_active: true, sort_order: 0,
 };
 
@@ -416,6 +416,7 @@ export default function Experiences() {
       booking_window_days: pkg.booking_window_days ?? '',
       summary: pkg.summary || '',
       description: pkg.description || '',
+      region_label: pkg.region_label || '',
     });
     setDrawer('package');
   };
@@ -1244,6 +1245,14 @@ export default function Experiences() {
                 type="text" className="form-input" value={packageForm.summary || ''} maxLength={500}
                 placeholder="One line for the card in the app"
                 onChange={(e) => patchPackage({ summary: e.target.value })}
+              />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Region (shown in app)</label>
+              <input
+                type="text" className="form-input" value={packageForm.region_label || ''} maxLength={120}
+                placeholder="e.g. Kerala State · Munnar region"
+                onChange={(e) => patchPackage({ region_label: e.target.value })}
               />
             </div>
             <div className="form-group">

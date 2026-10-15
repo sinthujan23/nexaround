@@ -590,6 +590,7 @@ def _enquiry_out(e) -> PartnerEnquiryResponse:
         contact_email=e.contact_email,
         preferred_date=e.preferred_date,
         party_size=e.party_size,
+        pickup_location=e.pickup_location,
         message=e.message,
         status=e.status,
         vendor_notes=e.vendor_notes,

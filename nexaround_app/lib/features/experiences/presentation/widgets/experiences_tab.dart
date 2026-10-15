@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
-import 'package:nexaround_app/core/constants/countries.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/core/utils/distance_format.dart';
 import 'package:nexaround_app/features/experiences/data/services/experiences_service.dart';
@@ -140,20 +139,12 @@ class ExperiencesTabState extends State<ExperiencesTab> {
     final list = result.countries;
     final mode = result.countryMode;
     if (mode != null && mode != _countryMode) _changeMode(mode);
-    setState(() {
-      if (list.isNotEmpty) {
-        _availableCountries = list;
-      } else if (_availableCountries.isEmpty) {
-        _availableCountries = [
-          const ExperienceCountry(code: 'LK', name: 'Sri Lanka', count: 0, latitude: 6.9271, longitude: 79.8612),
-          const ExperienceCountry(code: 'AE', name: 'United Arab Emirates', count: 0, latitude: 25.2048, longitude: 55.2708),
-          const ExperienceCountry(code: 'TH', name: 'Thailand', count: 0, latitude: 13.7563, longitude: 100.5018),
-          const ExperienceCountry(code: 'ID', name: 'Indonesia', count: 0, latitude: -8.3405, longitude: 115.0920),
-          const ExperienceCountry(code: 'FR', name: 'France', count: 0, latitude: 48.8566, longitude: 2.3522),
-          const ExperienceCountry(code: 'JP', name: 'Japan', count: 0, latitude: 35.6762, longitude: 139.6503),
-        ];
-      }
-    });
+    // An empty answer (or a failed fetch) keeps the last known list rather
+    // than inventing countries: the picker lists only countries that have
+    // experiences, and with none known it shows just "All countries".
+    if (list.isNotEmpty) {
+      setState(() => _availableCountries = list);
+    }
   }
 
   /// The admin flipped the switch since the mode this tab started with. With
@@ -483,15 +474,12 @@ class ExperiencesTabState extends State<ExperiencesTab> {
           builder: (context, setModalState) {
             final q = searchQuery.trim().toLowerCase();
 
-            // Map active countries by ISO code
-            final Map<String, ExperienceCountry> activeMap = {
-              for (final c in _availableCountries) c.code: c,
-            };
-
-            // Filter countries
-            final filteredCountries = countriesList.where((name) {
+            // Only the countries that have live experiences, as the server
+            // reports them; a country joins the list by itself once a package
+            // there goes live.
+            final filteredCountries = _availableCountries.where((c) {
               if (q.isEmpty) return true;
-              return name.toLowerCase().contains(q);
+              return c.name.toLowerCase().contains(q);
             }).toList();
 
             final bottomInset = MediaQuery.of(context).viewInsets.bottom;
@@ -630,10 +618,10 @@ class ExperiencesTabState extends State<ExperiencesTab> {
                         ),
                         const Divider(indent: 16, endIndent: 16, height: 16, color: AppColors.border),
                         // List of countries
-                        ...filteredCountries.map((countryName) {
-                          final code = countryCodeFor(countryName) ?? '';
-                          final active = activeMap[code];
-                          final count = active?.count ?? 0;
+                        ...filteredCountries.map((active) {
+                          final countryName = active.name;
+                          final code = active.code;
+                          final count = active.count;
                           final isSelected = _selectedCountry?.name.toLowerCase() == countryName.toLowerCase() ||
                               (_selectedCountry?.code.isNotEmpty == true && _selectedCountry?.code == code);
 
@@ -674,13 +662,7 @@ class ExperiencesTabState extends State<ExperiencesTab> {
                                 : null,
                             onTap: () {
                               Navigator.pop(ctx);
-                              final picked = active ??
-                                  ExperienceCountry(
-                                    code: code,
-                                    name: countryName,
-                                    count: count,
-                                  );
-                              _selectCountry(picked);
+                              _selectCountry(active);
                             },
                           );
                         }),

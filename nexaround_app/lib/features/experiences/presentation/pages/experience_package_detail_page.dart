@@ -365,6 +365,31 @@ class _ExperiencePackageDetailPageState
             style: const TextStyle(
                 fontSize: 14, color: AppColors.textSecondary),
           ),
+          // The admin's region text. Not tappable: no map, no directions.
+          if (_package.hasRegion) ...[
+            const SizedBox(height: 6),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.only(top: 1),
+                  child: Icon(Icons.location_on_rounded,
+                      size: 16, color: AppColors.brandGreen),
+                ),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    _package.regionLabel!.trim(),
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
           const SizedBox(height: 16),
 
           Wrap(
@@ -485,7 +510,14 @@ class _ExperiencePackageDetailPageState
             ),
           ],
 
-          if (vendor != null) ...[
+          // Only when there is something under it: a vendor with no
+          // description, address, website or socials left a bare
+          // "About ..." heading at the bottom of the page.
+          if (vendor != null &&
+              ((vendor.description ?? '').trim().isNotEmpty ||
+                  (vendor.address ?? '').trim().isNotEmpty ||
+                  vendor.hasWebsite ||
+                  vendor.hasSocials)) ...[
             const SizedBox(height: 24),
             _sectionTitle('About ${vendor.name}'),
             const SizedBox(height: 8),
