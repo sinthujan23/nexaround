@@ -8,7 +8,7 @@ import 'package:nexaround_app/core/network/api_client.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/features/experiences/data/services/experiences_service.dart';
 import 'package:nexaround_app/features/experiences/domain/entities/experience.dart';
-import 'package:nexaround_app/features/experiences/presentation/widgets/experience_enquiry_sheet.dart';
+import 'package:nexaround_app/features/experiences/presentation/pages/experience_request_page.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/legal_body.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -142,8 +142,8 @@ void main() {
     });
   });
 
-  group('the request sheet', () {
-    Future<void> openSheet(WidgetTester tester) async {
+  group('the request page', () {
+    Future<void> openSheet(WidgetTester tester, {bool fill = true}) async {
       tester.view.physicalSize = const Size(1500, 3000);
       tester.view.devicePixelRatio = 3;
       addTearDown(tester.view.reset);
@@ -152,7 +152,7 @@ void main() {
         home: Scaffold(
           body: Builder(
             builder: (context) => TextButton(
-              onPressed: () => showExperienceEnquirySheet(context, _package),
+              onPressed: () => showExperienceRequestPage(context, _package),
               child: const Text('open'),
             ),
           ),
@@ -162,11 +162,42 @@ void main() {
       for (var i = 0; i < 10; i++) {
         await tester.pump(const Duration(milliseconds: 100));
       }
+      if (!fill) return;
       await tester.enterText(
           find.widgetWithText(TextField, 'Your name'), 'Test Traveller');
       await tester.enterText(
           find.widgetWithText(TextField, 'Phone number'), '+94715550000');
     }
+
+    testWidgets('the close button leaves at once when nothing was typed',
+        (tester) async {
+      await openSheet(tester, fill: false);
+      expect(find.text('Request this experience'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Close'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Request this experience'), findsNothing);
+      expect(find.text('open'), findsOneWidget);
+    });
+
+    testWidgets('closing after typing asks before discarding', (tester) async {
+      await openSheet(tester);
+
+      await tester.tap(find.byTooltip('Close'));
+      await tester.pumpAndSettle();
+      expect(find.text('Discard this request?'), findsOneWidget);
+
+      await tester.tap(find.text('Keep editing'));
+      await tester.pumpAndSettle();
+      expect(find.text('Request this experience'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Close'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Discard'));
+      await tester.pumpAndSettle();
+      expect(find.text('Request this experience'), findsNothing);
+    });
 
     Future<void> send(WidgetTester tester) async {
       await tester.ensureVisible(find.text('Send request'));
@@ -185,6 +216,9 @@ void main() {
       expect(find.text('Tick the box to agree to the terms before sending.'),
           findsOneWidget);
 
+      // Below the fold on the full-page form.
+      await tester.ensureVisible(find.byType(Checkbox));
+      await tester.pumpAndSettle();
       await tester.tap(find.byType(Checkbox));
       await tester.pump();
       await send(tester);

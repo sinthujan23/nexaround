@@ -6,7 +6,7 @@ import 'package:nexaround_app/core/utils/place_image_helper.dart';
 import 'package:nexaround_app/core/widgets/full_screen_image_viewer.dart';
 import 'package:nexaround_app/features/experiences/data/services/experiences_service.dart';
 import 'package:nexaround_app/features/experiences/domain/entities/experience.dart';
-import 'package:nexaround_app/features/experiences/presentation/widgets/experience_enquiry_sheet.dart';
+import 'package:nexaround_app/features/experiences/presentation/pages/experience_request_page.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_fitted_photo.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_good_to_know.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_share_sheet.dart';
@@ -697,7 +697,7 @@ class _ExperiencePackageDetailPageState
               height: 52,
               child: ElevatedButton(
                 onPressed: () =>
-                    showExperienceEnquirySheet(context, _package),
+                    showExperienceRequestPage(context, _package),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.brandGreen,
                   foregroundColor: Colors.white,

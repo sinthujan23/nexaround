@@ -1,11 +1,13 @@
 import 'dart:async';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/services/google_places_service.dart';
 import 'package:nexaround_app/core/utils/contact_launcher.dart';
+import 'package:nexaround_app/core/utils/place_image_helper.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
 import 'package:nexaround_app/features/experiences/data/services/experiences_service.dart';
@@ -17,29 +19,33 @@ import 'package:nexaround_app/features/experiences/presentation/pages/my_experie
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_date_picker.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_good_to_know.dart';
 
-Future<void> showExperienceEnquirySheet(
+/// Opens the request form as a full-screen page that slides up, with a close
+/// button: as a bottom sheet it filled the screen and could only be dismissed
+/// by dragging its handle.
+Future<void> showExperienceRequestPage(
   BuildContext context,
   ExperiencePackageEntity package,
 ) {
-  return showModalBottomSheet(
-    context: context,
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
-    showDragHandle: false,
-    builder: (_) => _EnquirySheet(package: package),
+  return Navigator.of(context).push(
+    MaterialPageRoute(
+      fullscreenDialog: true,
+      builder: (_) => ExperienceRequestPage(package: package),
+    ),
   );
 }
 
-class _EnquirySheet extends StatefulWidget {
+/// Request an experience: who is coming, when, from where, and the booking
+/// terms. Ends on a confirmation that points to My requests.
+class ExperienceRequestPage extends StatefulWidget {
   final ExperiencePackageEntity package;
 
-  const _EnquirySheet({required this.package});
+  const ExperienceRequestPage({super.key, required this.package});
 
   @override
-  State<_EnquirySheet> createState() => _EnquirySheetState();
+  State<ExperienceRequestPage> createState() => _ExperienceRequestPageState();
 }
 
-class _EnquirySheetState extends State<_EnquirySheet> {
+class _ExperienceRequestPageState extends State<ExperienceRequestPage> {
   final _nameController = TextEditingController();
   final _phoneController = TextEditingController();
   final _emailController = TextEditingController();
@@ -68,6 +74,10 @@ class _EnquirySheetState extends State<_EnquirySheet> {
   late final TapGestureRecognizer _termsLink = TapGestureRecognizer()
     ..onTap = () => showExperienceTerms(context);
 
+  // The prefilled contact details, so closing asks before discarding only
+  // what the traveller typed themselves.
+  late final String _initialContact;
+
   @override
   void initState() {
     super.initState();
@@ -90,6 +100,47 @@ class _EnquirySheetState extends State<_EnquirySheet> {
     } catch (_) {
       // In case AuthBloc is unavailable in context
     }
+    _initialContact = _contact;
+  }
+
+  String get _contact =>
+      '${_nameController.text}|${_phoneController.text}|${_emailController.text}';
+
+  bool get _hasInput =>
+      _contact != _initialContact ||
+      _preferredDate != null ||
+      _partySize != 2 ||
+      _pickupController.text.trim().isNotEmpty ||
+      _messageController.text.trim().isNotEmpty;
+
+  /// Close (the ✕ or Back): straight away when nothing was typed, otherwise
+  /// only after asking, so a slip does not lose a half-written request.
+  Future<void> _close() async {
+    if (_sent || _sending || !_hasInput) {
+      Navigator.of(context).pop();
+      return;
+    }
+    final discard = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        title: const Text('Discard this request?'),
+        content: const Text("What you've entered won't be sent."),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Keep editing'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.error),
+            child: const Text('Discard'),
+          ),
+        ],
+      ),
+    );
+    if (discard == true && mounted) Navigator.of(context).pop();
   }
 
   @override
@@ -221,18 +272,38 @@ class _EnquirySheetState extends State<_EnquirySheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      // Lift the sheet above the keyboard, or the phone field sits under it.
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-      child: Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+    return PopScope(
+      // Closing is decided in _close, which may ask first.
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _close();
+      },
+      child: Scaffold(
+        backgroundColor: Colors.white,
+        appBar: AppBar(
+          backgroundColor: Colors.white,
+          foregroundColor: AppColors.textPrimary,
+          surfaceTintColor: Colors.transparent,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.close_rounded),
+            tooltip: 'Close',
+            onPressed: _close,
+          ),
+          title: Text(
+            _sent ? '' : 'Request this experience',
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+          ),
         ),
-        padding: const EdgeInsets.fromLTRB(24, 12, 24, 28),
-        child: SingleChildScrollView(
-          child: _sent ? _buildConfirmation() : _buildForm(),
+        body: SafeArea(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            children: [_sent ? _buildConfirmation() : _buildForm()],
+          ),
         ),
+        // Always in reach, however long the form is.
+        bottomNavigationBar: _sent ? null : _buildSendBar(),
       ),
     );
   }
@@ -336,216 +407,336 @@ class _EnquirySheetState extends State<_EnquirySheet> {
   Widget _buildForm() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
       children: [
-        Center(
-          child: Container(
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
-              color: AppColors.border,
-              borderRadius: BorderRadius.circular(2),
+        _buildSummary(),
+        const SizedBox(height: 24),
+
+        _section('Your details', [
+          _field(_nameController, 'Your name', TextInputType.name),
+          const SizedBox(height: 12),
+          _field(_phoneController, 'Phone number', TextInputType.phone),
+          const SizedBox(height: 12),
+          _field(_emailController, 'Email (optional)', TextInputType.emailAddress),
+          const SizedBox(height: 6),
+          const Text(
+            'The provider uses these to contact you about this request.',
+            style: TextStyle(fontSize: 12, color: AppColors.textTertiary),
+          ),
+        ]),
+
+        _section('Your trip', [
+          _buildGuests(),
+          const SizedBox(height: 12),
+          _buildDate(),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _pickupController,
+            maxLength: 500,
+            textInputAction: TextInputAction.search,
+            onChanged: _onPickupChanged,
+            decoration: InputDecoration(
+              labelText: 'Pickup hotel or location (optional)',
+              hintText: 'Search your hotel or a place',
+              prefixIcon: const Icon(Icons.location_on_rounded,
+                  size: 20, color: AppColors.brandGreen),
+              counterText: '',
+              border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12)),
             ),
           ),
-        ),
-        const SizedBox(height: 18),
-        const Text('Request this experience',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
-        const SizedBox(height: 4),
-        Text(
-          '${widget.package.title} · ${widget.package.vendorName}',
-          style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
-        ),
-        const SizedBox(height: 20),
-
-        _field(_nameController, 'Your name', TextInputType.name),
-        const SizedBox(height: 12),
-        _field(_phoneController, 'Phone number', TextInputType.phone),
-        const SizedBox(height: 12),
-        _field(_emailController, 'Email (optional)', TextInputType.emailAddress),
-        const SizedBox(height: 16),
-
-        Row(
-          children: [
-            Expanded(
+          if (_pickupSuggestions.isNotEmpty)
+            Container(
+              margin: const EdgeInsets.only(top: 6),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.border),
+              ),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('How many people?',
-                      style: TextStyle(
-                          fontSize: 13, color: AppColors.textSecondary)),
-                  const SizedBox(height: 6),
-                  Row(
-                    children: [
-                      _stepper(
-                        Icons.remove_rounded,
-                        () => setState(() {
-                          if (_partySize > 1) _partySize--;
-                        }),
-                        enabled: _partySize > 1,
+                  for (final suggestion in _pickupSuggestions)
+                    ListTile(
+                      dense: true,
+                      leading: const Icon(Icons.place_outlined,
+                          size: 18, color: AppColors.textTertiary),
+                      title: Text(
+                        suggestion['description'] as String? ?? '',
+                        style: const TextStyle(
+                            fontSize: 13, color: AppColors.textPrimary),
                       ),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 14),
-                        child: Text(
-                          '$_partySize',
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.textPrimary,
-                          ),
-                        ),
-                      ),
-                      _stepper(
-                        Icons.add_rounded,
-                        () => setState(() {
-                          if (_partySize < 100) _partySize++;
-                        }),
-                        enabled: _partySize < 100,
-                      ),
-                    ],
-                  ),
+                      onTap: () => _pickPickupSuggestion(suggestion),
+                    ),
                 ],
               ),
             ),
+        ]),
+
+        _section('Special requests', [
+          TextField(
+            controller: _messageController,
+            maxLines: 3,
+            maxLength: 2000,
+            decoration: InputDecoration(
+              hintText: 'Dietary needs, accessibility, questions…',
+              helperText: 'Special requests may incur extra charges.',
+              border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12)),
+            ),
+          ),
+        ]),
+
+        _buildTerms(),
+        const SizedBox(height: 14),
+        const Text(
+          'This is a booking request, not a confirmed booking. The provider '
+          'will contact you to confirm the date, price and pickup.',
+          style: TextStyle(
+              fontSize: 12, height: 1.4, color: AppColors.textSecondary),
+        ),
+      ],
+    );
+  }
+
+  /// What is being requested, so the form never loses its context.
+  Widget _buildSummary() {
+    final package = widget.package;
+    final url = PlaceImageHelper.resolveUrl(package.coverPhotoUrl);
+    final facts = [package.priceLabel, package.formattedDuration]
+        .where((s) => s.isNotEmpty)
+        .join(' · ');
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: SizedBox(
+              width: 64,
+              height: 64,
+              child: url == null
+                  ? Container(
+                      color: AppColors.border,
+                      child: const Icon(Icons.kayaking_rounded,
+                          color: AppColors.textTertiary),
+                    )
+                  : CachedNetworkImage(
+                      imageUrl: url,
+                      httpHeaders: PlaceImageHelper.headersFor(url),
+                      fit: BoxFit.cover,
+                      memCacheWidth: 200,
+                      errorWidget: (_, __, ___) =>
+                          Container(color: AppColors.border),
+                    ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  package.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      fontSize: 15, fontWeight: FontWeight.w700, height: 1.3),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  package.vendorName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      fontSize: 12.5, color: AppColors.textSecondary),
+                ),
+                if (facts.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    facts,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.brandGreen),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _section(String title, List<Widget> children) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title,
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 12),
+          ...children,
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGuests() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        border: Border.all(color: AppColors.border),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.group_rounded, size: 20, color: AppColors.brandGreen),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Guests',
+                    style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600)),
+                Text('Everyone in your group',
+                    style: TextStyle(fontSize: 12, color: AppColors.textTertiary)),
+              ],
+            ),
+          ),
+          _stepper(
+            Icons.remove_rounded,
+            () => setState(() {
+              if (_partySize > 1) _partySize--;
+            }),
+            enabled: _partySize > 1,
+          ),
+          SizedBox(
+            width: 40,
+            child: Text(
+              '$_partySize',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textPrimary,
+              ),
+            ),
+          ),
+          _stepper(
+            Icons.add_rounded,
+            () => setState(() {
+              if (_partySize < 100) _partySize++;
+            }),
+            enabled: _partySize < 100,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDate() {
+    final date = _preferredDate;
+    return InkWell(
+      onTap: _pickDate,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(14, 10, 6, 10),
+        decoration: BoxDecoration(
+          border: Border.all(color: AppColors.border),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.calendar_today_rounded,
+                size: 19, color: AppColors.brandGreen),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text('Preferred date',
-                      style: TextStyle(
-                          fontSize: 13, color: AppColors.textSecondary)),
-                  const SizedBox(height: 6),
-                  GestureDetector(
-                    onTap: _pickDate,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 10),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: AppColors.border),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.calendar_today_rounded,
-                              size: 14, color: AppColors.textTertiary),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              _preferredDate == null
-                                  ? 'Any'
-                                  : '${_preferredDate!.day}/${_preferredDate!.month}/${_preferredDate!.year}',
-                              style: const TextStyle(
-                                fontSize: 14,
-                                color: AppColors.textPrimary,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                      style: TextStyle(fontSize: 12, color: AppColors.textTertiary)),
+                  Text(
+                    date == null
+                        ? 'Any date'
+                        : MaterialLocalizations.of(context).formatMediumDate(date),
+                    style: const TextStyle(
+                        fontSize: 14.5, fontWeight: FontWeight.w600),
                   ),
                 ],
               ),
             ),
+            if (date != null)
+              IconButton(
+                tooltip: 'Any date',
+                icon: const Icon(Icons.close_rounded,
+                    size: 18, color: AppColors.textTertiary),
+                onPressed: () => setState(() => _preferredDate = null),
+              )
+            else
+              const Padding(
+                padding: EdgeInsets.all(12),
+                child: Icon(Icons.chevron_right_rounded,
+                    color: AppColors.textTertiary),
+              ),
           ],
         ),
-        const SizedBox(height: 16),
+      ),
+    );
+  }
 
-        TextField(
-          controller: _pickupController,
-          maxLength: 500,
-          textInputAction: TextInputAction.search,
-          onChanged: _onPickupChanged,
-          decoration: InputDecoration(
-            labelText: 'Pickup hotel or location (optional)',
-            hintText: 'Search your hotel or a place',
-            prefixIcon: const Icon(Icons.location_on_rounded,
-                size: 20, color: AppColors.brandGreen),
-            counterText: '',
-            border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12)),
-          ),
-        ),
-        if (_pickupSuggestions.isNotEmpty)
-          Container(
-            margin: const EdgeInsets.only(top: 6),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.border),
+  /// The error and the Send button, pinned under the form.
+  Widget _buildSendBar() {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(top: BorderSide(color: AppColors.border)),
+      ),
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+      child: SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (_error != null) ...[
+              Text(_error!,
+                  style: const TextStyle(fontSize: 13, color: AppColors.error)),
+              const SizedBox(height: 8),
+            ],
+            SizedBox(
+              width: double.infinity,
+              height: 54,
+              child: ElevatedButton(
+                onPressed: _sending ? null : _submit,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.brandGreen,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(18)),
+                ),
+                child: _sending
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white),
+                      )
+                    : const Text('Send request',
+                        style: TextStyle(
+                            fontSize: 15, fontWeight: FontWeight.w700)),
+              ),
             ),
-            child: Column(
-              children: [
-                for (final suggestion in _pickupSuggestions)
-                  ListTile(
-                    dense: true,
-                    leading: const Icon(Icons.place_outlined,
-                        size: 18, color: AppColors.textTertiary),
-                    title: Text(
-                      suggestion['description'] as String? ?? '',
-                      style: const TextStyle(
-                          fontSize: 13, color: AppColors.textPrimary),
-                    ),
-                    onTap: () => _pickPickupSuggestion(suggestion),
-                  ),
-              ],
-            ),
-          ),
-        const SizedBox(height: 16),
-
-        TextField(
-          controller: _messageController,
-          maxLines: 3,
-          maxLength: 2000,
-          decoration: InputDecoration(
-            labelText: 'Special requests (optional)',
-            helperText: 'Special requests may incur extra charges.',
-            border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12)),
-          ),
+          ],
         ),
-
-        if (_error != null) ...[
-          const SizedBox(height: 8),
-          Text(_error!,
-              style: const TextStyle(fontSize: 13, color: Colors.redAccent)),
-        ],
-
-        const SizedBox(height: 12),
-        _buildTerms(),
-        const SizedBox(height: 12),
-        const Text(
-          'This is a booking request, not a confirmed booking. The vendor '
-          'will contact you to confirm the date, price and pickup.',
-          style: TextStyle(
-              fontSize: 12, height: 1.4, color: AppColors.textSecondary),
-        ),
-        const SizedBox(height: 12),
-        SizedBox(
-          width: double.infinity,
-          height: 54,
-          child: ElevatedButton(
-            onPressed: _sending ? null : _submit,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.brandGreen,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(18)),
-            ),
-            child: _sending
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2, color: Colors.white),
-                  )
-                : const Text('Send request',
-                    style: TextStyle(
-                        fontSize: 15, fontWeight: FontWeight.w700)),
-          ),
-        ),
-      ],
+      ),
     );
   }
 
