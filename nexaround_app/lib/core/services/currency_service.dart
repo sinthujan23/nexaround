@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:nexaround_app/core/constants/api_constants.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/core/utils/number_format.dart';
 
@@ -155,13 +156,31 @@ class CurrencyService {
     {'code': 'ZMW', 'name': 'Zambian Kwacha', 'symbol': 'ZK', 'flag': '🇿🇲'},
     {'code': 'ZWL', 'name': 'Zimbabwean Dollar', 'symbol': r'$', 'flag': '🇿🇼'},
   ];
-  // We can use a free API like ExchangeRate-API or similar
-  static const String _baseUrl = 'https://open.er-api.com/v6/latest';
+  /// Today's rates come from our own server, which fetches them from
+  /// ExchangeRate-API once a day with the key kept in the admin panel. No
+  /// phone calls the provider. They are USD-based; any other base is worked
+  /// out here from the same table.
+  static const String _ratesUrl = '${ApiConstants.baseUrl}/api/v1/fx/rates';
+
+  /// One request at a time: a list of cards all asking on first load share it.
+  static Future<Map<String, double>?>? _usdInFlight;
+
+  /// The saved rates for [baseCurrency] when there are fresh ones, without
+  /// waiting: lets a list of prices paint converted on its first frame.
+  static Map<String, double>? cachedExchangeRates(String baseCurrency) {
+    try {
+      final rates = CacheService.getCachedCurrencyRates(baseCurrency.toUpperCase());
+      return rates == null || rates.isEmpty ? null : rates;
+    } catch (_) {
+      return null;
+    }
+  }
 
   static Future<Map<String, double>> getExchangeRates(String baseCurrency) async {
+    final base = baseCurrency.toUpperCase();
     // 1. Check local cache first
     try {
-      final cachedRates = CacheService.getCachedCurrencyRates(baseCurrency);
+      final cachedRates = CacheService.getCachedCurrencyRates(base);
       if (cachedRates != null && cachedRates.isNotEmpty) {
         return cachedRates;
       }
@@ -170,25 +189,45 @@ class CurrencyService {
     }
 
     try {
-      final response = await http.get(Uri.parse('$_baseUrl/$baseCurrency'));
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        final rates = data['rates'] as Map<String, dynamic>;
-        final Map<String, double> parsedRates = rates.map((key, value) => MapEntry(key, (value as num).toDouble()));
-        
-        // 2. Cache the newly fetched rates
+      final usd = await (_usdInFlight ??= _fetchUsdRates().whenComplete(() {
+        _usdInFlight = null;
+      }));
+      final perUsd = usd?[base];
+      if (usd != null && perUsd != null && perUsd > 0) {
+        // Units of each currency per one `base`.
+        final rates = usd.map((code, value) => MapEntry(code, value / perUsd));
         try {
-          await CacheService.cacheCurrencyRates(baseCurrency, parsedRates);
+          await CacheService.cacheCurrencyRates(base, rates);
         } catch (_) {
           // Ignore cache write failures
         }
-        
-        return parsedRates;
+        return rates;
       }
-      return _getFallbackRates(baseCurrency);
-    } catch (e) {
-      return _getFallbackRates(baseCurrency);
+    } catch (_) {
+      // Fall through to the built-in table.
     }
+    return _getFallbackRates(base);
+  }
+
+  static Future<Map<String, double>?> _fetchUsdRates() async {
+    final response = await http
+        .get(Uri.parse(_ratesUrl))
+        .timeout(const Duration(seconds: 15));
+    if (response.statusCode != 200) return null;
+    final data = json.decode(response.body);
+    final rates = data is Map ? data['rates'] : null;
+    if (rates is! Map) return null;
+    final parsed = <String, double>{};
+    rates.forEach((code, value) {
+      if (value is num && value > 0) parsed[code.toString()] = value.toDouble();
+    });
+    if (parsed.isEmpty) return null;
+    try {
+      await CacheService.cacheCurrencyRates('USD', parsed);
+    } catch (_) {
+      // Ignore cache write failures
+    }
+    return parsed;
   }
 
   static Map<String, double> _getFallbackRates(String base) {

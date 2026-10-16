@@ -15,6 +15,7 @@ import ImageUploader from '../components/ImageUploader';
 import AvailabilityCalendar from '../components/AvailabilityCalendar';
 import DescriptionEditor from '../components/DescriptionEditor';
 import { CATEGORIES, PRICE_BASES, bookingWindowOptions } from '../format';
+import { CURRENCY_OPTIONS } from '../constants/currencies';
 import {
   EMPTY_PACKAGE, arrayToLines, fromPackage, linesToArray, toPayload,
 } from './packageForm';
@@ -134,9 +135,15 @@ function PackageForm({ packageId }) {
             label="Price" type="number" step="0.01" min="0" placeholder="7500"
             value={form.price_amount} onChange={(v) => patch({ price_amount: v })}
           />
-          <TextField
-            label="Currency" maxLength={10} value={form.price_currency || ''}
-            onChange={(v) => patch({ price_currency: v.toUpperCase() })}
+          <SelectField
+            label="Currency" value={form.price_currency || 'LKR'}
+            options={
+              // A stored code from before the list stays visible until changed.
+              form.price_currency && !CURRENCY_OPTIONS.some((o) => o.value === form.price_currency)
+                ? [{ value: form.price_currency, label: `${form.price_currency} (not in the list)` }, ...CURRENCY_OPTIONS]
+                : CURRENCY_OPTIONS
+            }
+            onChange={(v) => patch({ price_currency: v })}
           />
           <SelectField
             label="Basis" value={form.price_basis || 'per_person'} options={PRICE_BASES}

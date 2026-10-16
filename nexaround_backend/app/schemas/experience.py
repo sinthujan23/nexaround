@@ -12,11 +12,12 @@ import uuid
 from datetime import date, datetime
 from typing import Optional
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.services.experience_format import (
     MAX_BOOKING_WINDOW_DAYS, MAX_UNAVAILABLE_RANGES, NEARBY_THRESHOLD_M,
 )
+from app.services.currencies import check_price_currency
 from app.services.experience_upload import MAX_VIDEOS_PER_PACKAGE
 
 
@@ -232,10 +233,16 @@ class ExperiencePackageBase(BaseModel):
 
 
 class ExperiencePackageCreate(ExperiencePackageBase):
-    pass
+    # On what the admin sends only, never on responses: a stored value from
+    # before the list must still load.
+    @field_validator("price_currency", mode="before")
+    @classmethod
+    def _known_currency(cls, value):
+        # One of the app's currencies, so every price can be shown converted.
+        return check_price_currency(value) or "USD"
 
 
-class ExperiencePackageUpdate(ExperiencePackageBase):
+class ExperiencePackageUpdate(ExperiencePackageCreate):
     pass
 
 

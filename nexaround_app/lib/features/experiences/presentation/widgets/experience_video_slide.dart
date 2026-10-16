@@ -8,9 +8,9 @@ import 'package:video_player/video_player.dart';
 /// product page: plays by itself, muted, as soon as it is the visible slide,
 /// pauses when swiped away and starts again from the top when swiped back.
 ///
-/// A tap toggles play/pause; the speaker button toggles sound. The video is
-/// shown whole (letter-boxed) rather than cropped, since a phone-shot portrait
-/// clip would otherwise lose most of its frame in a wide banner.
+/// A tap toggles play/pause; the speaker button toggles sound. The video fills
+/// the 4:3 header like the photos, cropped to the frame rather than shown with
+/// bars, so a phone-shot portrait clip shows its middle.
 class ExperienceVideoSlide extends StatefulWidget {
   final String url;
 
@@ -160,8 +160,11 @@ class _ExperienceVideoSlideState extends State<ExperienceVideoSlide>
         fit: StackFit.expand,
         children: [
           const ColoredBox(color: Colors.black),
+          // Fills the frame like the photos do; the edges of a clip of another
+          // shape are cropped rather than shown as bars.
           FittedBox(
-            fit: BoxFit.contain,
+            fit: BoxFit.cover,
+            clipBehavior: Clip.hardEdge,
             child: SizedBox(
               width: controller.value.size.width,
               height: controller.value.size.height,

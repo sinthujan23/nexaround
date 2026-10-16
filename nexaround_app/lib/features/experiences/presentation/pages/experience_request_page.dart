@@ -16,6 +16,7 @@ import 'package:nexaround_app/features/experiences/domain/entities/experience.da
 import 'package:nexaround_app/features/experiences/domain/entities/experience_terms.dart';
 import 'package:nexaround_app/features/experiences/presentation/pages/experience_terms_page.dart';
 import 'package:nexaround_app/features/experiences/presentation/pages/my_experience_requests_page.dart';
+import 'package:nexaround_app/features/experiences/presentation/widgets/experience_price.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_date_picker.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_good_to_know.dart';
 
@@ -501,7 +502,8 @@ class _ExperienceRequestPageState extends State<ExperienceRequestPage> {
   Widget _buildSummary() {
     final package = widget.package;
     final url = PlaceImageHelper.resolveUrl(package.coverPhotoUrl);
-    final facts = [package.priceLabel, package.formattedDuration]
+    // The price in the traveller's currency, like the card and detail page.
+    String factsWith(String price) => [price, package.formattedDuration]
         .where((s) => s.isNotEmpty)
         .join(' · ');
     return Container(
@@ -553,16 +555,19 @@ class _ExperienceRequestPageState extends State<ExperienceRequestPage> {
                   style: const TextStyle(
                       fontSize: 12.5, color: AppColors.textSecondary),
                 ),
-                if (facts.isNotEmpty) ...[
+                if (factsWith(package.priceLabel).isNotEmpty) ...[
                   const SizedBox(height: 2),
-                  Text(
-                    facts,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.brandGreen),
+                  ExperiencePriceBuilder(
+                    package: package,
+                    builder: (context, price) => Text(
+                      factsWith(price),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.brandGreen),
+                    ),
                   ),
                 ],
               ],

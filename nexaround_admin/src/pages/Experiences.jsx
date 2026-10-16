@@ -12,6 +12,7 @@ import VideoUploader from '../components/VideoUploader';
 import AvailabilityCalendar from '../components/AvailabilityCalendar';
 import DescriptionEditor from '../components/DescriptionEditor';
 import { COUNTRIES, getCountryByCode, normalizeCountryCode } from '../constants/countries';
+import { CURRENCY_OPTIONS } from '../constants/currencies';
 
 const CATEGORIES = [
   { value: 'boat', label: 'Boat ride' },
@@ -1289,10 +1290,16 @@ export default function Experiences() {
               </div>
               <div className="form-group">
                 <label className="form-label">Currency</label>
-                <input
-                  type="text" maxLength={4} className="form-input" value={packageForm.price_currency || 'LKR'}
-                  onChange={(e) => patchPackage({ price_currency: e.target.value.toUpperCase() })}
-                />
+                <select
+                  className="form-select" value={packageForm.price_currency || 'LKR'}
+                  onChange={(e) => patchPackage({ price_currency: e.target.value })}
+                >
+                  {/* A stored code from before the list stays visible until changed. */}
+                  {packageForm.price_currency && !CURRENCY_OPTIONS.some((o) => o.value === packageForm.price_currency) && (
+                    <option value={packageForm.price_currency}>{packageForm.price_currency} (not in the list)</option>
+                  )}
+                  {CURRENCY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
               </div>
               <div className="form-group">
                 <label className="form-label">Basis</label>

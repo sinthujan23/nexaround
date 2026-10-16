@@ -12,7 +12,7 @@ from app.core.database import get_db
 from app.core.config import settings
 from app.core.rate_limiter import auth_rate_limiter
 from app.core.security import create_access_token, decode_token
-from app.services import audit
+from app.services import audit, fx_service
 from app.services.user_service import UserService
 from app.services.settings_service import SettingsService
 from app.services.experience_format import COUNTRY_MODE_KEY, parse_country_mode
@@ -114,6 +114,8 @@ class SettingsResponse(BaseModel):
     atlas_signing_secret: str = ""
     # True: Experiences are browsed by country. False: nearest first.
     experiences_country_mode: bool = True
+    # ExchangeRate-API key for the daily currency rates (fx_service).
+    exchangerate_api_key: str = ""
 
 ProviderMode = Literal["off", "shadow", "live"]
 
@@ -142,6 +144,7 @@ class SettingsUpdateRequest(BaseModel):
     provider_mode_kiwi: Optional[ProviderMode] = None
     provider_mode_atlas: Optional[ProviderMode] = None
     experiences_country_mode: Optional[bool] = None
+    exchangerate_api_key: Optional[str] = None
 
 
 # --- Dependency to protect admin routes ---
@@ -759,6 +762,7 @@ async def get_admin_settings(
         experiences_country_mode=parse_country_mode(
             await service.get_setting_fresh(COUNTRY_MODE_KEY, "")
         ),
+        exchangerate_api_key=await service.get_setting_fresh(fx_service.KEY_SETTING, ""),
         **await _provider_settings(service),
     )
 
@@ -800,6 +804,14 @@ async def update_admin_settings(
             "true" if data.experiences_country_mode else "false",
             "Experiences browsed by country (true) or nearest first (false)",
         )
+    fx_key_changed = False
+    if data.exchangerate_api_key is not None:
+        new_key = data.exchangerate_api_key.strip()
+        if new_key != (await service.get_setting_fresh(fx_service.KEY_SETTING, "")).strip():
+            await service.set_setting(
+                fx_service.KEY_SETTING, new_key, "ExchangeRate-API key (daily currency rates)"
+            )
+            fx_key_changed = True
     provider_changed = False
     for key, description in _PROVIDER_SETTINGS.items():
         value = getattr(data, key)
@@ -809,6 +821,10 @@ async def update_admin_settings(
     if provider_changed:
         # This process sees it now; the Odyssey worker within a minute.
         await provider_config.refresh()
+    if fx_key_changed:
+        # Fetch with the new key now, so the Currency card shows at once
+        # whether it works (one request from the monthly allowance).
+        await fx_service.refresh(db)
 
     return SettingsResponse(
         platform_name=await service.get_setting("platform_name", "NexARound"),
@@ -823,6 +839,7 @@ async def update_admin_settings(
         experiences_country_mode=parse_country_mode(
             await service.get_setting_fresh(COUNTRY_MODE_KEY, "")
         ),
+        exchangerate_api_key=await service.get_setting_fresh(fx_service.KEY_SETTING, ""),
         **await _provider_settings(service),
     )
 

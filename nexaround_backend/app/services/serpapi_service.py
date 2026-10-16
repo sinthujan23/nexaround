@@ -347,6 +347,12 @@ def _live_fx_rates() -> dict:
     back to the mirrored constants, which are stale but present.
     """
     import time
+    # The daily table the worker keeps (fx_service) when this process has it:
+    # one source for every price the app shows, and no extra provider calls.
+    from app.services import fx_service
+    stored = fx_service.cached_usd_rates()
+    if stored:
+        return stored
     now = time.time()
     if _fx_cache["rates"] and (now - _fx_cache["at"]) < _FX_TTL_S:
         return _fx_cache["rates"]

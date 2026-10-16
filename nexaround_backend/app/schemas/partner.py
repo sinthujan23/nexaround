@@ -12,9 +12,10 @@ import uuid
 from datetime import date, datetime
 from typing import Optional
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from app.schemas.experience import DateRange
+from app.services.currencies import check_price_currency
 from app.services.enquiry_lifecycle import VENDOR_STATUSES
 from app.services.experience_format import MAX_BOOKING_WINDOW_DAYS, MAX_UNAVAILABLE_RANGES
 
@@ -167,10 +168,16 @@ class PartnerPackageBase(BaseModel):
 
 
 class PartnerPackageCreate(PartnerPackageBase):
-    pass
+    # On what the vendor sends only, never on responses: a stored value from
+    # before the list must still load.
+    @field_validator("price_currency", mode="before")
+    @classmethod
+    def _known_currency(cls, value):
+        # One of the app's currencies, so every price can be shown converted.
+        return check_price_currency(value)
 
 
-class PartnerPackageUpdate(PartnerPackageBase):
+class PartnerPackageUpdate(PartnerPackageCreate):
     pass
 
 

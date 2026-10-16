@@ -22,6 +22,7 @@ from app.models.experience import (
 )
 
 from app.models.audit import AuthSession, AuditEvent
+from app.models.fx_rate import FxRate
 from app.models.legal import LegalAcceptance, LegalDocument
 
 from app.models.forum import (
@@ -42,7 +43,7 @@ __all__ = [
     "VendorActivity",
     "ForumCategory", "ForumTopic", "ForumPost", "ForumLike", "ForumBookmark",
     "ForumTopicView",
-    "AuthSession", "AuditEvent",
+    "AuthSession", "AuditEvent", "FxRate",
     "LegalDocument", "LegalAcceptance",
 ]
 

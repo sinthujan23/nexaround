@@ -45,6 +45,7 @@ async def main() -> None:
     from app.core import job_queue, leader
     from app.core.database import engine
     from app.services import (
+        fx_service,
         google_places_client,
         odyssey_jobs,
         telemetry,
@@ -74,6 +75,9 @@ async def main() -> None:
             # Airalo's eSIM price list, kept warm so no plan downloads it.
             # Idle while the provider is switched off in the admin panel.
             asyncio.create_task(airalo.refresh_loop()),
+            # Today's currency rates: fetched just after each daily publish,
+            # about 30 requests a month (Admin > Settings > Currency rates).
+            asyncio.create_task(fx_service.refresh_loop()),
         ])
         logger.info("telemetry singleton loops started")
     else:

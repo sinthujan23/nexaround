@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/utils/contact_launcher.dart';
@@ -9,6 +11,7 @@ import 'package:nexaround_app/features/experiences/domain/entities/experience.da
 import 'package:nexaround_app/features/experiences/presentation/pages/experience_request_page.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_description.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_fitted_photo.dart';
+import 'package:nexaround_app/features/experiences/presentation/widgets/experience_price.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_reviews_section.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_stars.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_good_to_know.dart';
@@ -227,9 +230,17 @@ class _ExperiencePackageDetailPageState
   Widget _buildGalleryAppBar(List<String> videos, List<String> photos) {
     final isIOS = Theme.of(context).platform == TargetPlatform.iOS;
     final slideCount = videos.length + photos.length;
+    final media = MediaQuery.of(context);
+    // One 4:3 frame from the very top of the screen, the status bar included,
+    // so a 4:3 photo fills it exactly with no bars. SliverAppBar adds the
+    // status bar height to expandedHeight itself, hence the subtraction.
+    final headerHeight = math.max(
+      media.size.width * 3 / 4 - media.padding.top,
+      kToolbarHeight,
+    );
 
     return SliverAppBar(
-      expandedHeight: 320,
+      expandedHeight: headerHeight,
       pinned: true,
       backgroundColor: Colors.white,
       foregroundColor: AppColors.textPrimary,
@@ -296,7 +307,6 @@ class _ExperiencePackageDetailPageState
                             : ExperienceFittedPhoto(
                                 url: url,
                                 headers: PlaceImageHelper.headersFor(url),
-                                topInset: MediaQuery.of(context).padding.top,
                               ),
                       );
                     },
@@ -429,7 +439,11 @@ class _ExperiencePackageDetailPageState
             runSpacing: 8,
             children: [
               if (_package.priceLabel.isNotEmpty)
-                _chip(Icons.sell_rounded, _package.priceLabel, highlight: true),
+                ExperiencePriceBuilder(
+                  package: _package,
+                  builder: (context, label) =>
+                      _chip(Icons.sell_rounded, label, highlight: true),
+                ),
               if (_package.formattedDuration.isNotEmpty)
                 _chip(Icons.schedule_rounded, _package.formattedDuration),
               if (_package.distanceM != null)

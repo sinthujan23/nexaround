@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { apiGet, apiPut } from '../api';
 import { SecretField, PageLoading, Switch } from '../components/Kit';
+import FxStatusCard from '../components/FxStatusCard';
 
 // Travel-data providers feeding Odyssey plans (backend: app/services/providers).
 const PROVIDER_FIELDS = {
@@ -43,6 +44,9 @@ export default function Settings() {
   const [serpapiKey, setSerpapiKey] = useState('');
   const [providers, setProviders] = useState(PROVIDER_FIELDS);
   const [countryMode, setCountryMode] = useState(true);
+  const [fxKey, setFxKey] = useState('');
+  // Bumped after a save, so the currency card re-checks a new key at once.
+  const [fxVersion, setFxVersion] = useState(0);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -63,6 +67,7 @@ export default function Settings() {
         setUnsplashApiKey(res.unsplash_api_key || '');
         setSerpapiKey(res.serpapi_key || '');
         setCountryMode(res.experiences_country_mode !== false);
+        setFxKey(res.exchangerate_api_key || '');
         setProviders(Object.fromEntries(
           Object.entries(PROVIDER_FIELDS).map(([k, dflt]) => [k, res[k] || dflt])
         ));
@@ -88,9 +93,11 @@ export default function Settings() {
         unsplash_api_key: unsplashApiKey,
         serpapi_key: serpapiKey,
         experiences_country_mode: countryMode,
+        exchangerate_api_key: fxKey,
         ...providers,
       });
       setSuccess(true);
+      setFxVersion((n) => n + 1);
       setTimeout(() => setSuccess(false), 3000);
     } catch (err) {
       setError(err.message || 'Failed to save system settings.');
@@ -211,6 +218,21 @@ export default function Settings() {
             </div>
             <Switch checked={countryMode} onChange={setCountryMode} />
           </div>
+        </div>
+
+        <div style={{ borderTop: '1px solid var(--border)', paddingTop: '24px', marginTop: '24px' }}>
+          <h4 style={{ marginBottom: '12px', color: 'var(--text-primary)' }}>Currency Exchange Rates</h4>
+          <p style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
+            Converts experience prices into each traveller's currency in the app. Saving a new key fetches the rates with it straight away.
+          </p>
+          <SecretField
+            label="ExchangeRate-API Key"
+            tag="exchangerate-api.com · free plan, 1,500 requests a month"
+            value={fxKey}
+            onChange={setFxKey}
+            placeholder="ExchangeRate-API dashboard → API key"
+          />
+          <FxStatusCard version={fxVersion} />
         </div>
 
         <div style={{ borderTop: '1px solid var(--border)', paddingTop: '24px', marginTop: '24px' }}>
