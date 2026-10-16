@@ -84,12 +84,15 @@ def test_no_results_at_all_is_not_nearby():
 @pytest.mark.parametrize(
     "amount,currency,basis,expected",
     [
-        (4500, "LKR", "per_person", "Rs 4,500 / person"),
-        (45, "USD", "per_person", "$45 / person"),
-        (180, "USD", "per_group", "$180 / group"),
-        (45, "USD", "from", "From $45"),
-        (45.5, "USD", "per_person", "$45.50 / person"),
-        (1234567, "USD", "per_person", "$1,234,567 / person"),
+        (4500, "LKR", "per_person", "LKR 4,500 / person"),
+        (7500, "INR", "per_group", "INR 7,500 / group"),
+        (499, "QAR", "per_person", "QAR 499 / person"),
+        (45, "USD", "per_person", "USD 45 / person"),
+        (180, "USD", "per_group", "USD 180 / group"),
+        (45, "USD", "from", "From USD 45"),
+        (45.5, "USD", "per_person", "USD 45.50 / person"),
+        (1234567, "USD", "per_person", "USD 1,234,567 / person"),
+        (499, "qar", "per_person", "QAR 499 / person"),
     ],
 )
 def test_a_price_reads_the_way_the_card_shows_it(amount, currency, basis, expected):

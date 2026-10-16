@@ -10,11 +10,12 @@ import 'package:nexaround_app/features/experiences/domain/entities/experience.da
 /// Builds a package's price in the traveller's own currency.
 ///
 /// The provider sets the price in their currency (QAR 499 / person); this
-/// passes [builder] the same price converted with today's rates, in the same
-/// shape the server writes it ("INR 47,500 / person", "From USD 40"), so
-/// callers lay it out exactly as before. Until the rates are known, and for
-/// "Price on request" or a price already in the traveller's currency, it
-/// passes the server's own label.
+/// passes [builder] the price in the traveller's currency, converted with
+/// today's rates, always in one form: the currency code, then the amount
+/// ("INR 13,037 / person", "INR 7,500 / group", "From USD 40"). Every price on
+/// a screen reads the same way, whether it was converted or not. "Price on
+/// request", and a price whose currency has no rate yet, use the server's own
+/// label (which is written in the same form).
 class ExperiencePriceBuilder extends StatelessWidget {
   final ExperiencePackageEntity package;
   final Widget Function(BuildContext context, String label) builder;
@@ -36,7 +37,12 @@ class ExperiencePriceBuilder extends StatelessWidget {
     return BlocBuilder<AuthBloc, AuthState>(
       builder: (context, authState) {
         final target = preferredCurrency(authState);
-        if (target == from) return builder(context, package.priceLabel);
+        if (target == from) {
+          return builder(
+            context,
+            convertedPriceLabel(amount, from, package.priceBasis),
+          );
+        }
 
         String label(Map<String, double>? rates) {
           // Without a rate for the provider's currency, the real price is

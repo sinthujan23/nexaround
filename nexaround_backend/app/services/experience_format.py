@@ -36,14 +36,6 @@ EXPERIENCE_CATEGORIES = (
 
 PRICE_BASES = ("per_person", "per_group", "from", "on_request")
 
-_CURRENCY_SYMBOLS = {
-    "USD": "$",
-    "EUR": "€",
-    "GBP": "£",
-    "LKR": "Rs ",
-    "INR": "₹",
-    "AED": "AED ",
-}
 
 
 def resolve_package_point(
@@ -125,7 +117,10 @@ def format_price(
     if amount is None or basis == "on_request":
         return "Price on request"
 
-    symbol = _CURRENCY_SYMBOLS.get((currency or "").upper(), f"{currency} ")
+    # Always the ISO code ("INR 7,500", "QAR 499"), never a symbol: the app
+    # shows prices converted into the traveller's currency in this same form,
+    # and a list mixing "₹7,500" with "INR 13,037" reads as two systems.
+    symbol = f"{(currency or 'USD').strip().upper()} "
     # Whole numbers read better without trailing zeros on a card.
     whole = float(amount)
     rendered = f"{whole:,.0f}" if whole == int(whole) else f"{whole:,.2f}"
