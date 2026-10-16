@@ -1,6 +1,6 @@
 import { matchPath } from 'react-router-dom';
 import {
-  ClipboardCheckIcon, CompassIcon, TicketIcon, InboxIcon, MapPinIcon, ShieldIcon,
+  ClipboardCheckIcon, CompassIcon, TicketIcon, InboxIcon, MapPinIcon, ShieldIcon, StarIcon,
 } from './components/Icons';
 
 /**
@@ -12,6 +12,7 @@ export const NAV_ITEMS = [
   { to: '/dashboard', label: 'Dashboard', Icon: CompassIcon },
   { to: '/packages', label: 'My Packages', Icon: TicketIcon },
   { to: '/enquiries', label: 'Enquiries', Icon: InboxIcon, badge: 'enquiries' },
+  { to: '/reviews', label: 'Reviews', Icon: StarIcon },
   { to: '/profile', label: 'Business Profile', Icon: MapPinIcon },
   { to: '/security', label: 'Security', Icon: ShieldIcon },
   { to: '/agreement', label: 'Provider Agreement', Icon: ClipboardCheckIcon },
@@ -29,6 +30,7 @@ const HEADERS = [
   { path: '/packages', title: 'My Packages' },
   { path: '/enquiries/:enquiryId', title: 'Enquiries' },
   { path: '/enquiries', title: 'Enquiries' },
+  { path: '/reviews', title: 'Reviews' },
   { path: '/profile/*', title: 'Business Profile' },
   { path: '/security/*', title: 'Security & Devices' },
   { path: '/agreement', title: 'Provider Agreement' },

@@ -18,7 +18,7 @@ from app.models.excluded_keyword import ExcludedKeyword
 from app.models.country_city import CountryCity
 from app.models.experience import (
     ExperienceVendor, ExperiencePackage, ExperienceEnquiry, VendorUser,
-    VendorActivity,
+    VendorActivity, ExperienceReview,
 )
 
 from app.models.audit import AuthSession, AuditEvent
@@ -38,6 +38,7 @@ __all__ = [
     "ApiEvent", "ApiUsageHourly", "ApiUsageUserDaily", "ApiSkuRate", "ApiAlert",
     "ExcludedKeyword", "CountryCity",
     "ExperienceVendor", "ExperiencePackage", "ExperienceEnquiry", "VendorUser",
+    "ExperienceReview",
     "VendorActivity",
     "ForumCategory", "ForumTopic", "ForumPost", "ForumLike", "ForumBookmark",
     "ForumTopicView",

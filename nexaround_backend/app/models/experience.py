@@ -20,7 +20,8 @@ from datetime import date, datetime, timezone
 from typing import Optional
 
 from sqlalchemy import (
-    ARRAY, Boolean, Date, DateTime, ForeignKey, Index, Integer, Numeric, String, Text,
+    ARRAY, Boolean, CheckConstraint, Date, DateTime, ForeignKey, Index, Integer, Numeric, SmallInteger,
+    String, Text, UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -269,6 +270,79 @@ class ExperienceEnquiry(Base):
 
     def __repr__(self) -> str:
         return f"<ExperienceEnquiry {self.contact_name} -> {self.vendor_name_snapshot}>"
+
+
+class ExperienceReview(Base):
+    """A traveller's rating of a package they booked, and the provider's reply.
+
+    One per booking: `enquiry_id` is unique, and the app only offers the form on
+    a request the provider confirmed whose day has passed (the server checks
+    the same, see `services/experience_reviews`). That is what keeps the
+    ratings real - nobody can review a package they never booked.
+
+    Published the moment it is written; an admin can hide it
+    (`status = "hidden"`), which takes the stars out of every average and the
+    text out of every list. The reviewer's name is a snapshot ("Anna K.") so it
+    reads the same after the account or the package is gone.
+    """
+
+    __tablename__ = "experience_reviews"
+    __table_args__ = (
+        UniqueConstraint("enquiry_id", name="uq_experience_reviews_enquiry"),
+        CheckConstraint("rating BETWEEN 1 AND 5", name="ck_experience_reviews_rating"),
+        # The package's review list and its average both read one package's
+        # published rows, newest first.
+        Index("ix_experience_reviews_package_status", "package_id", "status", "created_at"),
+        Index("ix_experience_reviews_vendor_status", "vendor_id", "status", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    package_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("experience_packages.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    vendor_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("experience_vendors.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    enquiry_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("experience_enquiries.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+
+    reviewer_name: Mapped[str] = mapped_column(String(80), nullable=False)
+    # 1-5; the range is also checked in the database.
+    rating: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    comment: Mapped[str] = mapped_column(Text, nullable=True)
+    # "published" | "hidden"
+    status: Mapped[str] = mapped_column(String(12), default="published", nullable=False)
+
+    # The provider's public answer, one per review. Written from the partner
+    # portal; the admin can clear it.
+    vendor_reply: Mapped[str] = mapped_column(Text, nullable=True)
+    vendor_replied_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    # Set only when the traveller changes their review after posting it.
+    edited_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
+    hidden_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    package: Mapped["ExperiencePackage"] = relationship("ExperiencePackage", lazy="joined")
+
+    def __repr__(self) -> str:
+        return f"<ExperienceReview {self.rating}* on {self.package_id}>"
 
 
 class VendorUser(Base):

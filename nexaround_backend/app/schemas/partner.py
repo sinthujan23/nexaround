@@ -246,6 +246,43 @@ class PartnerEnquiryUpdate(BaseModel):
 
 # --- Partner-side: stats ----------------------------------------------------
 
+class PartnerReviewResponse(BaseModel):
+    """A published review of one of this vendor's packages.
+
+    No `user_id`, no contact detail: the vendor sees what a traveller sees, the
+    "Anna K." name included. Hidden reviews are not listed at all.
+    """
+
+    id: uuid.UUID
+    package_id: uuid.UUID
+    package_title: Optional[str] = None
+    reviewer_name: str
+    rating: int
+    comment: Optional[str] = None
+    created_at: datetime
+    edited_at: Optional[datetime] = None
+    vendor_reply: Optional[str] = None
+    vendor_replied_at: Optional[datetime] = None
+
+
+class PartnerReviewListResponse(BaseModel):
+    reviews: list[PartnerReviewResponse]
+    total: int
+    page: int = 1
+    page_size: int = 25
+    # Across every published review, not just this page.
+    average: Optional[float] = None
+    review_count: int = 0
+    # Published reviews without a reply yet.
+    unanswered: int = 0
+
+
+class PartnerReviewReply(BaseModel):
+    """The provider's answer. Empty (or null) takes the reply down."""
+
+    reply: Optional[str] = Field(None, max_length=1000)
+
+
 class PartnerStatsResponse(BaseModel):
     packages_total: int = 0
     packages_published: int = 0

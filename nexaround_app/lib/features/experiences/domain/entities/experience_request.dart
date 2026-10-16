@@ -1,3 +1,5 @@
+import 'package:nexaround_app/features/experiences/domain/entities/experience_review.dart';
+
 /// One request the traveller sent, as My requests shows it.
 ///
 /// The server owns the rules (see enquiry_lifecycle.py): a request becomes a
@@ -24,6 +26,11 @@ class ExperienceRequest {
   final DateTime? freeCancellationLastDay;
   final bool canCancel;
 
+  /// The provider confirmed the booking and its day has come: the traveller
+  /// may rate it. [review] is theirs, once written.
+  final bool canReview;
+  final MyExperienceReview? review;
+
   const ExperienceRequest({
     required this.id,
     required this.packageTitle,
@@ -44,6 +51,8 @@ class ExperienceRequest {
     this.lateCancellation = false,
     this.freeCancellationLastDay,
     this.canCancel = false,
+    this.canReview = false,
+    this.review,
   });
 
   static const statusNew = 'new';
@@ -98,6 +107,10 @@ class ExperienceRequest {
       lateCancellation: json['late_cancellation'] as bool? ?? false,
       freeCancellationLastDay: day('free_cancellation_last_day'),
       canCancel: json['can_cancel'] as bool? ?? false,
+      canReview: json['can_review'] as bool? ?? false,
+      review: json['review'] is Map<String, dynamic>
+          ? MyExperienceReview.fromJson(json['review'] as Map<String, dynamic>)
+          : null,
     );
   }
 }

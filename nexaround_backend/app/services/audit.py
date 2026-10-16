@@ -85,6 +85,8 @@ _SUMMARIES = {
     ("PUT", "/api/v1/partner/packages/{package_id}"): "Updated a package",
     ("DELETE", "/api/v1/partner/packages/{package_id}"): "Deleted a package",
     ("PATCH", "/api/v1/partner/enquiries/{enquiry_id}"): "Updated an enquiry",
+    ("PUT", "/api/v1/partner/reviews/{review_id}/reply"): "Replied to a review",
+    ("PATCH", "/api/v1/admin/experiences/reviews/{review_id}"): "Moderated a review",
     ("POST", "/api/v1/partner/agreement/accept"): "Accepted the Provider Agreement",
     ("PUT", "/api/v1/admin/legal/{kind}"): "Edited a legal document",
     ("POST", "/api/v1/admin/legal/vendors/{vendor_id}/offline-acceptance"):

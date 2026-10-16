@@ -2703,3 +2703,19 @@ a.nav-item, a.dash-row, a.xp-row, a.sec-row, a.kpi, a.link-btn, a.xp-tab { text-
 .rte-preview p { margin: 0 0 12px; }
 .rte-preview ul, .rte-preview ol { margin: 0 0 12px; padding-left: 22px; }
 .rte-preview hr { border: 0; border-top: 1px solid var(--field-border, var(--border)); margin: 16px 0; }
+
+/* ===== Reviews (pages/Reviews.jsx, components/Stars.jsx) ===== */
+.rv-stars { display: inline-flex; gap: 1px; vertical-align: -2px; }
+.rv-stars .on { color: #f59e0b; }
+.rv-stars .off { color: #d9dde5; }
+.rv-list { display: flex; flex-direction: column; gap: 14px; margin-bottom: 18px; }
+.rv-card { display: flex; flex-direction: column; gap: 12px; }
+.rv-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px; align-items: baseline; }
+.rv-reply {
+  border-left: 3px solid var(--accent); background: var(--accent-light);
+  border-radius: 0 10px 10px 0; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px;
+}
+.rv-actions { display: flex; gap: 8px; align-items: center; justify-content: flex-end; }
+.rv-actions .muted { margin-right: auto; }
+.rv-average { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-body); }
+.rv-avg-star { color: #f59e0b; }

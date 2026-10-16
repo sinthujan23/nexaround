@@ -630,9 +630,12 @@ export default function Experiences() {
                   </div>
                   <div className="xp-row-side">
                     <span className={`dot ${vendor.is_active ? 'dot-live' : 'dot-hidden'}`} title={vendor.is_active ? 'Live' : 'Hidden'} />
-                    {vendor.rating ? (
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, color: '#d97706' }}>
-                        <StarIcon size={11} /> {vendor.rating}
+                    {vendor.traveller_rating ? (
+                      <span
+                        title={`${vendor.traveller_review_count} traveller ${vendor.traveller_review_count === 1 ? 'review' : 'reviews'}`}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 3, color: '#d97706' }}
+                      >
+                        <StarIcon size={11} /> {Number(vendor.traveller_rating).toFixed(1)}
                       </span>
                     ) : null}
                   </div>
@@ -731,6 +734,11 @@ export default function Experiences() {
                               <span>{categoryLabel(pkg.category)}</span>
                               {pkg.duration_minutes ? <span>{formatDuration(pkg.duration_minutes)}</span> : null}
                               {pkg.max_participants ? <span>Up to {pkg.max_participants}</span> : null}
+                              {pkg.rating_count > 0 ? (
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, color: '#d97706' }}>
+                                  <StarIcon size={11} /> {Number(pkg.rating_avg).toFixed(1)} ({pkg.rating_count})
+                                </span>
+                              ) : null}
                             </div>
                           </div>
                           <div className="pkg-row-actions">
@@ -776,22 +784,23 @@ export default function Experiences() {
 
                       <div className="xp-section">
                         <div className="xp-section-title">Rating & ordering</div>
-                        <div className="xp-section-hint">Rating is optional and shown as-is in the app.</div>
+                        <div className="xp-section-hint">
+                          The rating comes from travellers’ reviews and cannot be typed in. Manage the reviews under Reviews in the menu.
+                        </div>
                         <div className="form-grid-3">
                           <div className="form-group">
-                            <label className="form-label">Rating (0–5)</label>
-                            <input
-                              type="number" step="0.1" min="0" max="5" className="form-input"
-                              value={form.rating} placeholder="4.8"
-                              onChange={(e) => patchForm({ rating: e.target.value })}
-                            />
-                          </div>
-                          <div className="form-group">
-                            <label className="form-label">Reviews</label>
-                            <input
-                              type="number" min="0" className="form-input" value={form.review_count || 0}
-                              onChange={(e) => patchForm({ review_count: e.target.value })}
-                            />
+                            <label className="form-label">Traveller rating</label>
+                            <div className="form-input" style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--bg-dark)' }}>
+                              {selected?.traveller_review_count > 0 ? (
+                                <>
+                                  <StarIcon size={14} style={{ color: '#d97706' }} />
+                                  <strong>{Number(selected.traveller_rating).toFixed(1)}</strong>
+                                  <span className="muted">
+                                    ({selected.traveller_review_count} {selected.traveller_review_count === 1 ? 'review' : 'reviews'})
+                                  </span>
+                                </>
+                              ) : <span className="muted">No reviews yet</span>}
+                            </div>
                           </div>
                           <div className="form-group">
                             <label className="form-label">Sort order</label>

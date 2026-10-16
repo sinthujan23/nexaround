@@ -9,6 +9,8 @@ import 'package:nexaround_app/features/experiences/domain/entities/experience.da
 import 'package:nexaround_app/features/experiences/presentation/pages/experience_request_page.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_description.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_fitted_photo.dart';
+import 'package:nexaround_app/features/experiences/presentation/widgets/experience_reviews_section.dart';
+import 'package:nexaround_app/features/experiences/presentation/widgets/experience_stars.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_good_to_know.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_share_sheet.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_video_slide.dart';
@@ -367,6 +369,34 @@ class _ExperiencePackageDetailPageState
             style: const TextStyle(
                 fontSize: 14, color: AppColors.textSecondary),
           ),
+          // The package's own average, once travellers have rated it; the
+          // provider's combined rating is the review count's second line.
+          if (_package.hasRating) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                ExperienceStars(value: _package.ratingAvg!, size: 17),
+                const SizedBox(width: 8),
+                Text(
+                  '${_package.ratingAvg!.toStringAsFixed(1)} '
+                  '(${_package.ratingCount} '
+                  '${_package.ratingCount == 1 ? 'review' : 'reviews'})',
+                  style: const TextStyle(
+                      fontSize: 14, fontWeight: FontWeight.w700),
+                ),
+              ],
+            ),
+            if (vendor != null && vendor.reviewCount > _package.ratingCount && vendor.rating != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 3),
+                child: Text(
+                  'Provider rating ${vendor.rating!.toStringAsFixed(1)} '
+                  'from ${vendor.reviewCount} reviews across all their experiences',
+                  style: const TextStyle(
+                      fontSize: 12.5, color: AppColors.textSecondary),
+                ),
+              ),
+          ],
           // The admin's region text. Not tappable: no map, no directions.
           if (_package.hasRegion) ...[
             const SizedBox(height: 6),
@@ -510,6 +540,14 @@ class _ExperiencePackageDetailPageState
               ),
             ),
           ],
+
+          // Travellers' reviews and the provider's replies. Draws nothing until
+          // the package has been rated.
+          ExperienceReviewsSection(
+            packageId: _package.id,
+            vendorName: _package.vendorName,
+            ratingCount: _package.ratingCount,
+          ),
 
           // Only when there is something under it: a vendor with no
           // description, address, website or socials left a bare

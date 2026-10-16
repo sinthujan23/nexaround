@@ -42,7 +42,8 @@ from app.schemas.partner import (
     PartnerEnquiryListResponse, PartnerEnquiryResponse, PartnerEnquiryUpdate,
     PartnerForgotPasswordRequest, PartnerLoginRequest, PartnerMe,
     PartnerMessageResponse, PartnerPackageCreate, PartnerPackageListResponse,
-    PartnerPackageResponse, PartnerPackageUpdate, PartnerSetPasswordRequest,
+    PartnerPackageResponse, PartnerPackageUpdate, PartnerReviewListResponse,
+    PartnerReviewReply, PartnerReviewResponse, PartnerSetPasswordRequest,
     PartnerTokenResponse, PartnerStatsResponse, PartnerVendorProfileResponse,
     PartnerVendorProfileUpdate,
 )
@@ -51,6 +52,7 @@ from app.services import (
     partner_activity, partner_events,
 )
 from app.services.email_service import send_vendor_invite_email
+from app.services import experience_reviews
 from app.services.experience_format import package_field_value
 from app.services.experience_upload import save_experience_images
 from app.services.settings_service import SettingsService
@@ -871,6 +873,77 @@ async def update_partner_enquiry(
     if event in (enquiry_lifecycle.CONFIRMED, enquiry_lifecycle.PROVIDER_CANCELLED):
         background_tasks.add_task(enquiry_notifications.booking_update, enquiry.id, event)
     return _enquiry_out(enquiry)
+
+
+# ── Reviews ─────────────────────────────────────────────────────────────────
+
+def _review_out(r) -> PartnerReviewResponse:
+    return PartnerReviewResponse(
+        id=r.id,
+        package_id=r.package_id,
+        package_title=r.package.title if r.package else None,
+        reviewer_name=r.reviewer_name,
+        rating=r.rating,
+        comment=r.comment,
+        created_at=r.created_at,
+        edited_at=r.edited_at,
+        vendor_reply=r.vendor_reply,
+        vendor_replied_at=r.vendor_replied_at,
+    )
+
+
+@router.get("/reviews", response_model=PartnerReviewListResponse)
+async def list_partner_reviews(
+    unanswered: bool = Query(False),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(25, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+    principal: VendorPrincipal = Depends(get_current_vendor),
+):
+    """This vendor's published reviews. The scope comes from the token, never
+    from a parameter, like the enquiries above; hidden reviews are not listed."""
+    repo = ExperienceRepository(db)
+    vendor_id = principal.vendor.id
+    rows, total = await repo.list_reviews_for_vendor(
+        vendor_id, unanswered_only=unanswered, page=page, page_size=page_size
+    )
+    average, count = (await repo.vendor_rating_summaries([vendor_id])).get(
+        vendor_id, (None, 0)
+    )
+    _, open_count = await repo.list_reviews_for_vendor(
+        vendor_id, unanswered_only=True, page=1, page_size=1
+    )
+    return PartnerReviewListResponse(
+        reviews=[_review_out(r) for r in rows],
+        total=total,
+        page=page,
+        page_size=page_size,
+        average=average,
+        review_count=count,
+        unanswered=open_count,
+    )
+
+
+@router.put("/reviews/{review_id}/reply", response_model=PartnerReviewResponse)
+async def reply_to_partner_review(
+    review_id: uuid.UUID,
+    data: PartnerReviewReply,
+    db: AsyncSession = Depends(get_db),
+    principal: VendorPrincipal = Depends(get_current_vendor),
+):
+    """Answer a review in public, or edit the answer. An empty reply takes it
+    down. Scoped in the query: another vendor's review is a 404."""
+    review = await ExperienceRepository(db).get_review_for_vendor(
+        review_id, principal.vendor.id
+    )
+    if review is None:
+        raise HTTPException(status_code=404, detail="Review not found")
+    reply = experience_reviews.clean_reply(data.reply)
+    review.vendor_reply = reply
+    review.vendor_replied_at = datetime.now(timezone.utc) if reply else None
+    await db.commit()
+    await db.refresh(review)
+    return _review_out(review)
 
 
 # ── Stats ───────────────────────────────────────────────────────────────────

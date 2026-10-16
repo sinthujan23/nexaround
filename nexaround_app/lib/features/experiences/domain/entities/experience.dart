@@ -96,6 +96,10 @@ class ExperiencePackageEntity {
   /// with a pin icon, never as a map location. On cards and detail.
   final String? regionLabel;
 
+  /// Average of travellers' published reviews (one decimal), null with none.
+  final double? ratingAvg;
+  final int ratingCount;
+
   // Detail-only. Empty on a card.
   final String? description;
 
@@ -144,6 +148,8 @@ class ExperiencePackageEntity {
     this.distanceM,
     this.tags = const [],
     this.regionLabel,
+    this.ratingAvg,
+    this.ratingCount = 0,
     this.description,
     this.descriptionMd,
     this.photoUrls = const [],
@@ -157,6 +163,7 @@ class ExperiencePackageEntity {
     this.vendor,
   });
 
+  bool get hasRating => ratingAvg != null && ratingCount > 0;
   bool get hasRegion => (regionLabel ?? '').trim().isNotEmpty;
   bool get hasVendorWhatsapp => (vendorWhatsapp ?? '').trim().isNotEmpty;
   bool get hasVendorInstagram => (vendorInstagram ?? '').trim().isNotEmpty;

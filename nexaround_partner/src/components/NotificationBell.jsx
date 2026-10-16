@@ -5,6 +5,7 @@ import { RESYNC, useLiveEvent } from '../live';
 import { formatAge, formatDateTime } from '../format';
 import {
   BellIcon, CrossIcon, InboxIcon, CheckIcon, PlusIcon, EditIcon, EyeOffIcon, TrashIcon, MapPinIcon,
+  StarIcon,
 } from './Icons';
 
 /**
@@ -24,6 +25,7 @@ const PAGE = 20;
 const KINDS = {
   'enquiry.created': [InboxIcon, 'amber'],
   'enquiry.status': [CheckIcon, 'blue'],
+  'review.created': [StarIcon, 'amber'],
   'package.created': [PlusIcon, 'cyan'],
   'package.updated': [EditIcon, 'cyan'],
   'package.live': [CheckIcon, 'green'],
@@ -89,7 +91,8 @@ export default function NotificationBell({ loginId }) {
 
   const pick = (item) => {
     setOpen(false);
-    if (item.enquiry_id) navigate(`/enquiries/${item.enquiry_id}`);
+    if (item.kind === 'review.created') navigate('/reviews');
+    else if (item.enquiry_id) navigate(`/enquiries/${item.enquiry_id}`);
     else if (item.package_id) navigate(`/packages/${item.package_id}`);
     else if (item.kind.startsWith('package.')) navigate('/packages');
     else navigate('/profile');

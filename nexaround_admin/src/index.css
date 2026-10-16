@@ -3501,3 +3501,11 @@ a.btn { text-decoration: none; }
 .rte-preview p { margin: 0 0 12px; }
 .rte-preview ul, .rte-preview ol { margin: 0 0 12px; padding-left: 22px; }
 .rte-preview hr { border: 0; border-top: 1px solid var(--field-border, var(--border)); margin: 16px 0; }
+
+/* ===== Experience reviews (ExperienceReviews.jsx) ===== */
+.rv-stars { display: inline-flex; gap: 1px; vertical-align: -2px; }
+.rv-stars .on { color: #f59e0b; }
+.rv-stars .off { color: #d9dde5; }
+.rv-clip {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}

@@ -230,6 +230,7 @@ PACKAGE_CARD_KEYS = {
     "cover_photo_url", "photo_count", "price_amount", "price_currency",
     "price_basis", "price_label", "duration_minutes", "duration_label",
     "latitude", "longitude", "distance_m", "tags", "region_label",
+    "rating_avg", "rating_count",
 }
 
 NEARBY_RESPONSE_KEYS = {

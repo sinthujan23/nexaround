@@ -1,7 +1,7 @@
 """App-facing Experiences endpoints: the vendor marketplace in Discovery."""
 
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Optional
 
 from fastapi import (
@@ -13,7 +13,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_current_user_optional
 from app.core.database import async_session, get_db
-from app.models.experience import ExperienceEnquiry, ExperiencePackage, ExperienceVendor
+from app.models.experience import (
+    ExperienceEnquiry, ExperiencePackage, ExperienceReview, ExperienceVendor,
+)
 from app.models.user import User
 from app.repositories.experience_repository import ExperienceRepository
 from app.schemas.experience import (
@@ -25,6 +27,9 @@ from app.schemas.experience import (
     MyEnquiryCancel,
     MyEnquiryListResponse,
     MyEnquiryOut,
+    MyReviewOut,
+    ReviewCreate,
+    ReviewListResponse,
 )
 from app.services.email_service import send_vendor_enquiry_email
 from app.services.experience_format import (
@@ -35,8 +40,10 @@ from app.services.experience_upload import (
     VIDEO_MEDIA_TYPES, parse_range, video_file,
 )
 from app.services.experience_service import (
-    package_to_card, package_to_detail, vendor_to_public,
+    NO_REVIEWS, package_to_card, package_to_detail, review_summary_out,
+    review_to_mine, review_to_public, vendor_to_public,
 )
+from app.services import experience_reviews
 from app.services import (
     audit, enquiry_lifecycle, enquiry_notifications, legal_service,
     partner_activity, partner_events,
@@ -162,9 +169,13 @@ async def nearby_experiences(
         total = await repo.count_published_packages(
             category=category, country_code=country_code
         )
+        ratings = await repo.rating_summaries([pkg.id for pkg in found])
         # `has_nearby` true keeps the app's "showing the nearest" banner away.
         return ExperienceNearbyResponse(
-            packages=[package_to_card(pkg) for pkg in found],
+            packages=[
+                package_to_card(pkg, rating=ratings.get(pkg.id, NO_REVIEWS))
+                for pkg in found
+            ],
             total=total,
             limit=limit,
             offset=offset,
@@ -192,7 +203,11 @@ async def nearby_experiences(
         category=category, country_code=country_code, located_only=True
     )
 
-    packages = [package_to_card(pkg, distance) for pkg, distance in rows]
+    ratings = await repo.rating_summaries([pkg.id for pkg, _ in rows])
+    packages = [
+        package_to_card(pkg, distance, ratings.get(pkg.id, NO_REVIEWS))
+        for pkg, distance in rows
+    ]
     nearest = rows[0][1] if rows else None
 
     return ExperienceNearbyResponse(
@@ -223,7 +238,36 @@ async def get_experience_package(
     if lat is not None and lng is not None:
         distance = await repo.distance_to(package, lat, lng)
 
-    return package_to_detail(package, distance)
+    rating = (await repo.rating_summaries([package.id])).get(package.id, NO_REVIEWS)
+    vendor_rating = (
+        await repo.vendor_rating_summaries([package.vendor_id])
+    ).get(package.vendor_id, NO_REVIEWS)
+    return package_to_detail(package, distance, rating, vendor_rating)
+
+
+@router.get("/packages/{package_id}/reviews", response_model=ReviewListResponse)
+async def list_package_reviews(
+    package_id: uuid.UUID,
+    limit: int = Query(20, ge=1, le=50),
+    offset: int = Query(0, ge=0),
+    db: AsyncSession = Depends(get_db),
+    _user: Optional[User] = Depends(get_current_user_optional),
+):
+    """A package's published reviews, newest first, with its average and the
+    five-to-one breakdown. Open to everyone, like the package itself."""
+    repo = await _public_repo(db)
+    package = await repo.get_package(package_id)
+    if not package:
+        raise HTTPException(status_code=404, detail="Experience not found")
+    summary = await repo.package_review_summary(package_id)
+    reviews = await repo.list_package_reviews(package_id, limit, offset)
+    return ReviewListResponse(
+        summary=review_summary_out(summary),
+        reviews=[review_to_public(r) for r in reviews],
+        total=summary["count"],
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get("/vendors/{vendor_id}", response_model=ExperienceVendorPublic)
@@ -236,7 +280,8 @@ async def get_experience_vendor(
     vendor = await repo.get_vendor(vendor_id)
     if not vendor or not vendor.is_active or vendor.id in repo.hidden_vendor_ids:
         raise HTTPException(status_code=404, detail="Vendor not found")
-    return vendor_to_public(vendor)
+    rating = (await repo.vendor_rating_summaries([vendor.id])).get(vendor.id, NO_REVIEWS)
+    return vendor_to_public(vendor, rating)
 
 
 async def _dispatch_enquiry_email(enquiry_id: uuid.UUID) -> None:
@@ -403,10 +448,15 @@ async def create_experience_enquiry(
 
 # ── My requests: the traveller's own enquiries ──────────────────────────────
 
+def _today() -> date:
+    return datetime.now(timezone.utc).date()
+
+
 def _my_enquiry_out(
     enquiry: ExperienceEnquiry,
     package: Optional[ExperiencePackage],
     vendor: Optional[ExperienceVendor],
+    review=None,
 ) -> MyEnquiryOut:
     """Snapshots first: the package or vendor may have been deleted since."""
     return MyEnquiryOut(
@@ -430,6 +480,14 @@ def _my_enquiry_out(
         late_cancellation=enquiry.late_cancellation,
         free_cancellation_last_day=enquiry.free_cancellation_last_day,
         can_cancel=enquiry_lifecycle.customer_cancel_error(enquiry.status) is None,
+        # Offered only while the package still exists to be reviewed.
+        can_review=(
+            enquiry.package_id is not None
+            and experience_reviews.eligibility_error(
+                enquiry.status, enquiry.confirmed_date, _today()
+            ) is None
+        ),
+        review=review_to_mine(review) if review is not None else None,
     )
 
 
@@ -451,8 +509,11 @@ async def _my_enquiries_out(
             select(ExperienceVendor).where(ExperienceVendor.id.in_(vendor_ids))
         )).scalars().all()
     } if vendor_ids else {}
+    reviews = await ExperienceRepository(db).reviews_for_enquiries([e.id for e in enquiries])
     return [
-        _my_enquiry_out(e, packages.get(e.package_id), vendors.get(e.vendor_id))
+        _my_enquiry_out(
+            e, packages.get(e.package_id), vendors.get(e.vendor_id), reviews.get(e.id)
+        )
         for e in enquiries
     ]
 
@@ -521,4 +582,77 @@ async def cancel_my_enquiry(
     background_tasks.add_task(partner_activity.announce, activity)
     background_tasks.add_task(enquiry_notifications.customer_cancelled, enquiry.id)
 
+    return (await _my_enquiries_out(db, [enquiry]))[0]
+
+
+@router.post("/enquiries/{enquiry_id}/review", response_model=MyEnquiryOut)
+async def review_my_booking(
+    enquiry_id: uuid.UUID,
+    data: ReviewCreate,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Rate a booking, or change the rating already given.
+
+    Only the traveller who sent the request, and only once the provider has
+    confirmed it and the booked day has come: that is what keeps a package's
+    stars honest. It is published at once; an admin can hide it. Returns the
+    request, with the review on it, like cancelling does.
+    """
+    from sqlalchemy import select
+    from sqlalchemy.exc import IntegrityError
+
+    # Scoped in the query: another traveller's request is simply not found.
+    enquiry = (await db.execute(
+        select(ExperienceEnquiry).where(
+            ExperienceEnquiry.id == enquiry_id,
+            ExperienceEnquiry.user_id == current_user.id,
+        )
+    )).scalar_one_or_none()
+    if enquiry is None:
+        raise HTTPException(status_code=404, detail="Request not found")
+
+    error = experience_reviews.eligibility_error(
+        enquiry.status, enquiry.confirmed_date, _today()
+    )
+    package = await db.get(ExperiencePackage, enquiry.package_id) if enquiry.package_id else None
+    if error is None and package is None:
+        error = "This experience is no longer available to review."
+    if error:
+        raise HTTPException(status_code=409, detail=error)
+
+    repo = ExperienceRepository(db)
+    now = datetime.now(timezone.utc)
+    comment = experience_reviews.clean_comment(data.comment)
+    review = await repo.get_review_for_enquiry(enquiry.id)
+    activity = None
+    if review is not None:
+        if review.rating != data.rating or review.comment != comment:
+            review.rating = data.rating
+            review.comment = comment
+            review.edited_at = now
+    else:
+        review = ExperienceReview(
+            id=uuid.uuid4(),
+            package_id=package.id,
+            vendor_id=package.vendor_id,
+            enquiry_id=enquiry.id,
+            user_id=current_user.id,
+            reviewer_name=experience_reviews.reviewer_display_name(enquiry.contact_name),
+            rating=data.rating,
+            comment=comment,
+            status=experience_reviews.PUBLISHED,
+            created_at=now,
+        )
+        db.add(review)
+        activity = partner_activity.review_received(db, review, package)
+    try:
+        await db.commit()
+    except IntegrityError:
+        # A second tap that raced the first: the booking already has its review.
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="You have already reviewed this booking.")
+
+    background_tasks.add_task(partner_activity.announce, activity)
     return (await _my_enquiries_out(db, [enquiry]))[0]

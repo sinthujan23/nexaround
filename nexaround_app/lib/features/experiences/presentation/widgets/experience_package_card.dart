@@ -8,6 +8,7 @@ import 'package:nexaround_app/core/utils/distance_format.dart';
 import 'package:nexaround_app/core/utils/place_image_helper.dart';
 import 'package:nexaround_app/features/experiences/domain/entities/experience.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_category.dart';
+import 'package:nexaround_app/features/experiences/presentation/widgets/experience_stars.dart';
 
 /// Compact horizontal experience package card:
 /// An exact 104x104 square thumbnail on the left, with essential metadata
@@ -247,6 +248,14 @@ class ExperiencePackageCard extends StatelessWidget {
                       ),
                     ),
                   ),
+                  // Travellers' rating, only once there is a review.
+                  if (package.hasRating) ...[
+                    const SizedBox(width: 8),
+                    ExperienceRatingBadge(
+                      average: package.ratingAvg!,
+                      count: package.ratingCount,
+                    ),
+                  ],
                 ],
               ),
             ],

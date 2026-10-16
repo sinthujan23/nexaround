@@ -36,6 +36,9 @@ from app.services.experience_upload import save_experience_images, save_experien
 from app.services.partner_auth import store_link_token
 from app.repositories.experience_repository import ExperienceRepository
 from app.schemas.experience import (
+    ExperienceReviewAdminResponse,
+    ExperienceReviewListResponse,
+    ExperienceReviewUpdate,
     ExperienceEnquiryAdminResponse,
     ExperienceEnquiryListResponse,
     ExperienceEnquiryUpdate,
@@ -48,7 +51,7 @@ from app.schemas.experience import (
     ExperienceVendorListResponse,
     ExperienceVendorUpdate,
 )
-from app.services import google_places_client
+from app.services import experience_reviews, google_places_client
 from app.services.experience_service import (
     apply_package_derived_fields, apply_vendor_cascade,
 )
@@ -84,7 +87,7 @@ _PACKAGE_SCALARS = (
 
 
 def _vendor_response(
-    vendor: ExperienceVendor, package_count: int = 0
+    vendor: ExperienceVendor, package_count: int = 0, rating=(None, 0)
 ) -> ExperienceVendorAdminResponse:
     lat, lng = get_lat_lng(vendor.location)
     return ExperienceVendorAdminResponse(
@@ -112,12 +115,16 @@ def _vendor_response(
         is_active=vendor.is_active,
         sort_order=vendor.sort_order or 0,
         package_count=package_count,
+        traveller_rating=rating[0],
+        traveller_review_count=rating[1],
         created_at=vendor.created_at,
         updated_at=vendor.updated_at,
     )
 
 
-def _package_response(package: ExperiencePackage) -> ExperiencePackageAdminResponse:
+def _package_response(
+    package: ExperiencePackage, rating=(None, 0)
+) -> ExperiencePackageAdminResponse:
     lat, lng = get_lat_lng(package.location)
     return ExperiencePackageAdminResponse(
         id=package.id,
@@ -147,6 +154,8 @@ def _package_response(package: ExperiencePackage) -> ExperiencePackageAdminRespo
         region_label=package.region_label,
         is_active=package.is_active,
         is_published=package.is_published,
+        rating_avg=rating[0],
+        rating_count=rating[1],
         sort_order=package.sort_order or 0,
         created_at=package.created_at,
         updated_at=package.updated_at,
@@ -169,9 +178,10 @@ async def list_vendors(
         search=search, is_active=is_active, page=page, page_size=page_size
     )
     out = []
+    ratings = await repo.vendor_rating_summaries([v.id for v in vendors])
     for vendor in vendors:
         packages = await repo.list_packages_for_vendor(vendor.id)
-        out.append(_vendor_response(vendor, len(packages)))
+        out.append(_vendor_response(vendor, len(packages), ratings.get(vendor.id, (None, 0))))
     return ExperienceVendorListResponse(
         vendors=out, total=total, page=page, page_size=page_size
     )
@@ -188,7 +198,8 @@ async def get_vendor(
     if not vendor:
         raise HTTPException(status_code=404, detail="Vendor not found")
     packages = await repo.list_packages_for_vendor(vendor_id)
-    return _vendor_response(vendor, len(packages))
+    rating = (await repo.vendor_rating_summaries([vendor_id])).get(vendor_id, (None, 0))
+    return _vendor_response(vendor, len(packages), rating)
 
 
 def _require_findable(data) -> None:
@@ -282,8 +293,10 @@ async def list_vendor_packages(
 ):
     repo = ExperienceRepository(db)
     packages = await repo.list_packages_for_vendor(vendor_id)
+    ratings = await repo.rating_summaries([p.id for p in packages])
     return ExperiencePackageListResponse(
-        packages=[_package_response(p) for p in packages], total=len(packages)
+        packages=[_package_response(p, ratings.get(p.id, (None, 0))) for p in packages],
+        total=len(packages),
     )
 
 
@@ -446,6 +459,83 @@ async def update_enquiry(
     elif event == enquiry_lifecycle.CUSTOMER_CANCELLED:
         background_tasks.add_task(enquiry_notifications.customer_cancelled, enquiry.id)
     return ExperienceEnquiryAdminResponse.model_validate(enquiry)
+
+
+# --- Reviews ----------------------------------------------------------------
+
+async def _review_admin_out(db: AsyncSession, review) -> ExperienceReviewAdminResponse:
+    vendor = await db.get(ExperienceVendor, review.vendor_id)
+    return ExperienceReviewAdminResponse(
+        id=review.id,
+        package_id=review.package_id,
+        package_title=review.package.title if review.package else None,
+        vendor_id=review.vendor_id,
+        vendor_name=vendor.name if vendor else None,
+        enquiry_id=review.enquiry_id,
+        reviewer_name=review.reviewer_name,
+        rating=review.rating,
+        comment=review.comment,
+        status=review.status,
+        vendor_reply=review.vendor_reply,
+        vendor_replied_at=review.vendor_replied_at,
+        created_at=review.created_at,
+        edited_at=review.edited_at,
+        hidden_at=review.hidden_at,
+    )
+
+
+@router.get("/reviews", response_model=ExperienceReviewListResponse)
+async def list_reviews(
+    status_filter: Optional[str] = Query(None, alias="status"),
+    package_id: Optional[uuid.UUID] = Query(None),
+    vendor_id: Optional[uuid.UUID] = Query(None),
+    rating: Optional[int] = Query(None, ge=1, le=5),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(25, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+    _=Depends(verify_admin_token),
+):
+    """Every review, hidden ones included, newest first."""
+    if status_filter and status_filter not in experience_reviews.STATUSES:
+        raise HTTPException(status_code=400, detail="Unknown status.")
+    rows, total = await ExperienceRepository(db).list_reviews_admin(
+        status=status_filter, package_id=package_id, vendor_id=vendor_id,
+        rating=rating, page=page, page_size=page_size,
+    )
+    return ExperienceReviewListResponse(
+        reviews=[await _review_admin_out(db, r) for r in rows],
+        total=total, page=page, page_size=page_size,
+    )
+
+
+@router.patch("/reviews/{review_id}", response_model=ExperienceReviewAdminResponse)
+async def update_review(
+    review_id: uuid.UUID,
+    data: ExperienceReviewUpdate,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(verify_admin_token),
+):
+    """Hide or restore a review, and/or take the provider's reply down. A hidden
+    review leaves every average and list at once, and comes back the same way."""
+    from datetime import datetime, timezone
+
+    review = await ExperienceRepository(db).get_review(review_id)
+    if review is None:
+        raise HTTPException(status_code=404, detail="Review not found")
+    if data.status is not None:
+        if data.status not in experience_reviews.STATUSES:
+            raise HTTPException(status_code=400, detail="Unknown status.")
+        if data.status != review.status:
+            review.status = data.status
+            review.hidden_at = (
+                datetime.now(timezone.utc) if data.status == experience_reviews.HIDDEN else None
+            )
+    if data.clear_reply:
+        review.vendor_reply = None
+        review.vendor_replied_at = None
+    await db.commit()
+    await db.refresh(review)
+    return await _review_admin_out(db, review)
 
 
 # --- Supporting endpoints ---------------------------------------------------

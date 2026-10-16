@@ -83,6 +83,9 @@ class ExperiencePackageCard(BaseModel):
     longitude: Optional[float] = None
     distance_m: Optional[float] = None
     tags: list[str] = []
+    # From travellers' published reviews; None with no review yet.
+    rating_avg: Optional[float] = None
+    rating_count: int = 0
     # Admin's free-text region, e.g. "Kerala State · Munnar region".
     region_label: Optional[str] = None
 
@@ -183,6 +186,11 @@ class ExperienceVendorUpdate(ExperienceVendorBase):
 class ExperienceVendorAdminResponse(ExperienceVendorBase):
     id: uuid.UUID
     package_count: int = 0
+    # From travellers' published reviews, across all of the vendor's packages.
+    # `rating` / `review_count` above are the old hand-typed numbers; they are
+    # no longer shown anywhere.
+    traveller_rating: Optional[float] = None
+    traveller_review_count: int = 0
     created_at: datetime
     updated_at: Optional[datetime] = None
 
@@ -235,6 +243,8 @@ class ExperiencePackageAdminResponse(ExperiencePackageBase):
     id: uuid.UUID
     vendor_id: uuid.UUID
     is_published: bool = True
+    rating_avg: Optional[float] = None
+    rating_count: int = 0
     created_at: datetime
     updated_at: Optional[datetime] = None
 
@@ -315,6 +325,10 @@ class MyEnquiryOut(BaseModel):
     late_cancellation: Optional[bool] = None
     free_cancellation_last_day: Optional[date] = None
     can_cancel: bool = False
+    # True once the provider confirmed the booking and the day has come; the app
+    # then offers "Rate this experience". `review` is the traveller's own, if any.
+    can_review: bool = False
+    review: Optional["MyReviewOut"] = None
 
 
 class MyEnquiryListResponse(BaseModel):
@@ -323,3 +337,91 @@ class MyEnquiryListResponse(BaseModel):
 
 class MyEnquiryCancel(BaseModel):
     reason: Optional[str] = Field(None, max_length=1000)
+
+
+# --- Ratings and reviews ----------------------------------------------------
+
+class ReviewCreate(BaseModel):
+    """What a traveller sends to rate a booking (a repeat send edits it)."""
+
+    rating: int = Field(..., ge=1, le=5)
+    comment: Optional[str] = Field(None, max_length=1000)
+
+
+class MyReviewOut(BaseModel):
+    """The traveller's own review of a booking."""
+
+    id: uuid.UUID
+    rating: int
+    comment: Optional[str] = None
+    # "hidden" when a moderator took it down; the traveller is told, the
+    # public list no longer shows it.
+    status: str = "published"
+    created_at: datetime
+    edited_at: Optional[datetime] = None
+    vendor_reply: Optional[str] = None
+    vendor_replied_at: Optional[datetime] = None
+
+
+class ReviewPublic(BaseModel):
+    """A review as any traveller sees it. First name and last initial only."""
+
+    id: uuid.UUID
+    reviewer_name: str
+    rating: int
+    comment: Optional[str] = None
+    created_at: datetime
+    edited: bool = False
+    vendor_reply: Optional[str] = None
+    vendor_replied_at: Optional[datetime] = None
+
+
+class ReviewSummary(BaseModel):
+    average: Optional[float] = None
+    count: int = 0
+    # How many reviews gave 5, 4, 3, 2 and 1 stars, in that order.
+    breakdown: list[int] = [0, 0, 0, 0, 0]
+
+
+class ReviewListResponse(BaseModel):
+    summary: ReviewSummary
+    reviews: list[ReviewPublic]
+    total: int
+    limit: int
+    offset: int
+
+
+class ExperienceReviewAdminResponse(BaseModel):
+    """A review as the admin panel sees it, hidden ones included."""
+
+    id: uuid.UUID
+    package_id: uuid.UUID
+    package_title: Optional[str] = None
+    vendor_id: uuid.UUID
+    vendor_name: Optional[str] = None
+    enquiry_id: uuid.UUID
+    reviewer_name: str
+    rating: int
+    comment: Optional[str] = None
+    status: str
+    vendor_reply: Optional[str] = None
+    vendor_replied_at: Optional[datetime] = None
+    created_at: datetime
+    edited_at: Optional[datetime] = None
+    hidden_at: Optional[datetime] = None
+
+
+class ExperienceReviewListResponse(BaseModel):
+    reviews: list[ExperienceReviewAdminResponse]
+    total: int
+    page: int = 1
+    page_size: int = 25
+
+
+class ExperienceReviewUpdate(BaseModel):
+    status: Optional[str] = Field(None, max_length=12)
+    # Takes the provider's reply down (the provider can write another).
+    clear_reply: bool = False
+
+
+MyEnquiryOut.model_rebuild()

@@ -9,6 +9,7 @@ import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/features/experiences/data/models/experience_model.dart';
 import 'package:nexaround_app/features/experiences/domain/entities/experience.dart';
 import 'package:nexaround_app/features/experiences/domain/entities/experience_request.dart';
+import 'package:nexaround_app/features/experiences/domain/entities/experience_review.dart';
 import 'package:nexaround_app/features/experiences/domain/entities/experience_terms.dart';
 
 /// One active country where vendors exist.
@@ -402,6 +403,59 @@ class ExperiencesService {
           ?.map(ExperienceRequest.fromJson)
           .toList();
 
+  /// One page of a package's published reviews with its summary, or null when
+  /// they could not be fetched.
+  static Future<ExperienceReviewPage?> fetchReviews(
+    String packageId, {
+    int offset = 0,
+    int limit = 10,
+  }) async {
+    try {
+      final response = await ApiClient.instance.get(
+        '${ApiConstants.experiencePackages}/$packageId/reviews',
+        queryParameters: {'offset': offset, 'limit': limit},
+      );
+      final data = response.data;
+      if (data is Map<String, dynamic>) {
+        return ExperienceReviewPage.fromJson(data);
+      }
+    } catch (e) {
+      debugPrint('❌ Error fetching experience reviews: $e');
+    }
+    return null;
+  }
+
+  /// Rates a booking, or changes the rating already given. The server checks
+  /// that the provider confirmed it and the day has come.
+  static Future<ReviewSubmission> submitReview(
+    String requestId, {
+    required int rating,
+    String? comment,
+  }) async {
+    try {
+      final response = await ApiClient.instance.post(
+        '${ApiConstants.experienceEnquiries}/$requestId/review',
+        data: {
+          'rating': rating,
+          if (comment != null && comment.trim().isNotEmpty)
+            'comment': comment.trim(),
+        },
+      );
+      final data = response.data;
+      if (data is Map<String, dynamic>) {
+        return ReviewSubmission(request: ExperienceRequest.fromJson(data));
+      }
+      return const ReviewSubmission(
+          error: 'Could not save your review. Please try again.');
+    } catch (e) {
+      debugPrint('❌ Error saving experience review: $e');
+      return ReviewSubmission(
+        error: (e is DioException ? safeServerDetail(e.response) : null) ??
+            'Could not save your review. Please try again.',
+      );
+    }
+  }
+
   /// Cancels one of the traveller's requests. The server stamps the time,
   /// which is what the 72-hour rule is judged on.
   static Future<RequestCancellation> cancelRequest(
@@ -429,6 +483,17 @@ class ExperiencesService {
       );
     }
   }
+}
+
+/// How rating a booking went: the updated request (with the review on it), or
+/// a message to show.
+class ReviewSubmission {
+  final ExperienceRequest? request;
+  final String? error;
+
+  const ReviewSubmission({this.request, this.error});
+
+  bool get saved => error == null && request != null;
 }
 
 /// How a cancellation went: the updated request, or a message to show.

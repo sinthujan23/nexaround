@@ -7,6 +7,8 @@ import 'package:nexaround_app/features/experiences/data/services/experiences_ser
 import 'package:nexaround_app/features/experiences/domain/entities/experience_request.dart';
 import 'package:nexaround_app/features/experiences/presentation/pages/experience_link_page.dart';
 import 'package:nexaround_app/features/experiences/presentation/pages/experience_terms_page.dart';
+import 'package:nexaround_app/features/experiences/presentation/widgets/experience_review_sheet.dart';
+import 'package:nexaround_app/features/experiences/presentation/widgets/experience_stars.dart';
 
 /// Opens My requests; with [openRequestId] (a notification tap), that
 /// request's details open on top once the list has loaded.
@@ -363,6 +365,16 @@ class _ExperienceRequestSheetState extends State<ExperienceRequestSheet> {
   late ExperienceRequest _request = widget.request;
   bool _cancelling = false;
 
+  Future<void> _review() async {
+    final updated = await showExperienceReviewSheet(context, _request);
+    if (updated == null || !mounted) return;
+    setState(() => _request = updated);
+    widget.onChanged(updated);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Thank you. Your review is saved.')),
+    );
+  }
+
   Future<void> _cancel() async {
     final reason = await showDialog<String>(
       context: context,
@@ -448,6 +460,10 @@ class _ExperienceRequestSheetState extends State<ExperienceRequestSheet> {
               if (r.createdAt != null)
                 _row(context, Icons.schedule_rounded, 'Sent',
                     _day(context, r.createdAt)),
+              if (r.canReview) ...[
+                const SizedBox(height: 12),
+                _reviewCard(r),
+              ],
               const SizedBox(height: 12),
               Wrap(
                 spacing: 10,
@@ -519,6 +535,76 @@ class _ExperienceRequestSheetState extends State<ExperienceRequestSheet> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  /// Rate the booking, or show the rating already given with a way to change it.
+  Widget _reviewCard(ExperienceRequest r) {
+    final review = r.review;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (review == null) ...[
+            const Text('How was it?',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 2),
+            const Text(
+              'Rate this experience to help other travellers.',
+              style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+            ),
+          ] else ...[
+            Row(
+              children: [
+                const Text('Your review',
+                    style:
+                        TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                const SizedBox(width: 10),
+                ExperienceStars(value: review.rating.toDouble(), size: 16),
+              ],
+            ),
+            if (review.isHidden) ...[
+              const SizedBox(height: 4),
+              const Text(
+                'This review was hidden by NexAround and is not shown to '
+                'other travellers.',
+                style: TextStyle(fontSize: 12.5, color: AppColors.error),
+              ),
+            ],
+            if (review.comment != null) ...[
+              const SizedBox(height: 6),
+              Text(review.comment!,
+                  style: const TextStyle(fontSize: 14, height: 1.4)),
+            ],
+            if (review.vendorReply != null) ...[
+              const SizedBox(height: 8),
+              Text('Provider reply: ${review.vendorReply!}',
+                  style: const TextStyle(
+                      fontSize: 13,
+                      height: 1.4,
+                      color: AppColors.textSecondary)),
+            ],
+          ],
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+            onPressed: _review,
+            icon: Icon(
+                review == null ? Icons.star_rounded : Icons.edit_rounded,
+                size: 17),
+            label: Text(review == null ? 'Rate this experience' : 'Edit review'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.brandGreen,
+              side: const BorderSide(color: AppColors.brandGreen),
+            ),
+          ),
+        ],
       ),
     );
   }

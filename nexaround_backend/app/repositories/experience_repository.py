@@ -16,8 +16,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.experience import (
-    ExperienceEnquiry, ExperiencePackage, ExperienceVendor,
+    ExperienceEnquiry, ExperiencePackage, ExperienceReview, ExperienceVendor,
 )
+from app.services.experience_reviews import PUBLISHED, round_average, summarize
 from app.services.ride_apps_service import COUNTRY_NAMES
 from app.utils.geo_utils import create_point
 
@@ -348,3 +349,168 @@ class ExperienceRepository:
             "enquiries_new": int(enq_row.new or 0),
             "enquiries_last_30d": int(enq_row.recent or 0),
         }
+
+
+    # ── Reviews ──────────────────────────────────────────────────────────────
+    # Only published reviews count anywhere a traveller can see a number: a
+    # hidden review leaves the average, the count and the list together.
+
+    async def rating_summaries(
+        self, package_ids: Sequence[uuid.UUID]
+    ) -> dict[uuid.UUID, tuple[Optional[float], int]]:
+        """`{package_id: (average, count)}` for the packages that have a review.
+        One grouped query for a whole page of cards."""
+        if not package_ids:
+            return {}
+        rows = (await self.db.execute(
+            select(
+                ExperienceReview.package_id,
+                func.count(),
+                func.sum(ExperienceReview.rating),
+            )
+            .where(
+                ExperienceReview.package_id.in_(list(package_ids)),
+                ExperienceReview.status == PUBLISHED,
+            )
+            .group_by(ExperienceReview.package_id)
+        )).all()
+        return {pid: (round_average(float(total), int(n)), int(n)) for pid, n, total in rows}
+
+    async def vendor_rating_summaries(
+        self, vendor_ids: Sequence[uuid.UUID]
+    ) -> dict[uuid.UUID, tuple[Optional[float], int]]:
+        """The same, per provider, across all of its packages."""
+        if not vendor_ids:
+            return {}
+        rows = (await self.db.execute(
+            select(
+                ExperienceReview.vendor_id,
+                func.count(),
+                func.sum(ExperienceReview.rating),
+            )
+            .where(
+                ExperienceReview.vendor_id.in_(list(vendor_ids)),
+                ExperienceReview.status == PUBLISHED,
+            )
+            .group_by(ExperienceReview.vendor_id)
+        )).all()
+        return {vid: (round_average(float(total), int(n)), int(n)) for vid, n, total in rows}
+
+    async def package_review_summary(self, package_id: uuid.UUID) -> dict:
+        """Average, count and the 1-5 breakdown for one package."""
+        rows = (await self.db.execute(
+            select(ExperienceReview.rating, func.count())
+            .where(
+                ExperienceReview.package_id == package_id,
+                ExperienceReview.status == PUBLISHED,
+            )
+            .group_by(ExperienceReview.rating)
+        )).all()
+        return summarize([rating for rating, n in rows for _ in range(int(n))])
+
+    async def list_package_reviews(
+        self, package_id: uuid.UUID, limit: int, offset: int
+    ) -> list[ExperienceReview]:
+        return list((await self.db.execute(
+            select(ExperienceReview)
+            .where(
+                ExperienceReview.package_id == package_id,
+                ExperienceReview.status == PUBLISHED,
+            )
+            .order_by(ExperienceReview.created_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )).scalars().all())
+
+    async def reviews_for_enquiries(
+        self, enquiry_ids: Sequence[uuid.UUID]
+    ) -> dict[uuid.UUID, ExperienceReview]:
+        """The reviews on a page of one traveller's requests, by enquiry. A
+        hidden review is still the traveller's own: they see it as theirs."""
+        if not enquiry_ids:
+            return {}
+        rows = (await self.db.execute(
+            select(ExperienceReview).where(ExperienceReview.enquiry_id.in_(list(enquiry_ids)))
+        )).scalars().all()
+        return {r.enquiry_id: r for r in rows}
+
+    async def get_review_for_enquiry(self, enquiry_id: uuid.UUID) -> Optional[ExperienceReview]:
+        return (await self.db.execute(
+            select(ExperienceReview).where(ExperienceReview.enquiry_id == enquiry_id)
+        )).scalar_one_or_none()
+
+    async def get_review_for_vendor(
+        self, review_id: uuid.UUID, vendor_id: uuid.UUID
+    ) -> Optional[ExperienceReview]:
+        """One published review, only if it is on this vendor's package. A hidden
+        review is not the vendor's to see or answer."""
+        return (await self.db.execute(
+            select(ExperienceReview).where(
+                ExperienceReview.id == review_id,
+                ExperienceReview.vendor_id == vendor_id,
+                ExperienceReview.status == PUBLISHED,
+            )
+        )).scalar_one_or_none()
+
+    async def list_reviews_for_vendor(
+        self,
+        vendor_id: uuid.UUID,
+        *,
+        unanswered_only: bool = False,
+        page: int = 1,
+        page_size: int = 25,
+    ) -> tuple[list[ExperienceReview], int]:
+        """A vendor's published reviews, newest first, and how many there are."""
+        conditions = [
+            ExperienceReview.vendor_id == vendor_id,
+            ExperienceReview.status == PUBLISHED,
+        ]
+        if unanswered_only:
+            conditions.append(ExperienceReview.vendor_reply.is_(None))
+        total = (await self.db.execute(
+            select(func.count()).select_from(ExperienceReview).where(*conditions)
+        )).scalar() or 0
+        rows = (await self.db.execute(
+            select(ExperienceReview)
+            .where(*conditions)
+            .order_by(ExperienceReview.created_at.desc())
+            .limit(page_size)
+            .offset((page - 1) * page_size)
+        )).scalars().all()
+        return list(rows), int(total)
+
+    async def list_reviews_admin(
+        self,
+        *,
+        status: Optional[str] = None,
+        package_id: Optional[uuid.UUID] = None,
+        vendor_id: Optional[uuid.UUID] = None,
+        rating: Optional[int] = None,
+        page: int = 1,
+        page_size: int = 25,
+    ) -> tuple[list[ExperienceReview], int]:
+        conditions = []
+        if status:
+            conditions.append(ExperienceReview.status == status)
+        if package_id:
+            conditions.append(ExperienceReview.package_id == package_id)
+        if vendor_id:
+            conditions.append(ExperienceReview.vendor_id == vendor_id)
+        if rating:
+            conditions.append(ExperienceReview.rating == rating)
+        total = (await self.db.execute(
+            select(func.count()).select_from(ExperienceReview).where(*conditions)
+        )).scalar() or 0
+        rows = (await self.db.execute(
+            select(ExperienceReview)
+            .where(*conditions)
+            .order_by(ExperienceReview.created_at.desc())
+            .limit(page_size)
+            .offset((page - 1) * page_size)
+        )).scalars().all()
+        return list(rows), int(total)
+
+    async def get_review(self, review_id: uuid.UUID) -> Optional[ExperienceReview]:
+        return (await self.db.execute(
+            select(ExperienceReview).where(ExperienceReview.id == review_id)
+        )).scalar_one_or_none()

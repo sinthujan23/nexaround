@@ -14,11 +14,14 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.experience import ExperiencePackage, ExperienceVendor
+from app.models.experience import ExperiencePackage, ExperienceReview, ExperienceVendor
 from app.schemas.experience import (
     ExperiencePackageCard,
     ExperiencePackageDetail,
     ExperienceVendorPublic,
+    MyReviewOut,
+    ReviewPublic,
+    ReviewSummary,
 )
 from app.services.experience_format import (
     DEFAULT_BOOKING_WINDOW_DAYS, format_duration, format_price, is_published,
@@ -31,7 +34,14 @@ def _cover(photo_urls: Optional[list]) -> Optional[str]:
     return photo_urls[0] if photo_urls else None
 
 
-def vendor_to_public(vendor: ExperienceVendor) -> ExperienceVendorPublic:
+# (average, count) from published reviews, as the repository returns them.
+RatingSummary = tuple[Optional[float], int]
+NO_REVIEWS: RatingSummary = (None, 0)
+
+
+def vendor_to_public(
+    vendor: ExperienceVendor, rating: RatingSummary = NO_REVIEWS
+) -> ExperienceVendorPublic:
     lat, lng = get_lat_lng(vendor.location)
     return ExperienceVendorPublic(
         id=vendor.id,
@@ -48,13 +58,53 @@ def vendor_to_public(vendor: ExperienceVendor) -> ExperienceVendorPublic:
         website=vendor.website,
         logo_url=vendor.logo_url,
         photo_urls=vendor.photo_urls or [],
-        rating=float(vendor.rating) if vendor.rating is not None else None,
-        review_count=vendor.review_count or 0,
+        # Travellers' real reviews. The hand-typed numbers on the vendor row are
+        # not served any more: they could not be told from the real thing.
+        rating=rating[0],
+        review_count=rating[1],
+    )
+
+
+def review_to_public(review: ExperienceReview) -> ReviewPublic:
+    return ReviewPublic(
+        id=review.id,
+        reviewer_name=review.reviewer_name,
+        rating=review.rating,
+        comment=review.comment,
+        created_at=review.created_at,
+        edited=review.edited_at is not None,
+        vendor_reply=review.vendor_reply,
+        vendor_replied_at=review.vendor_replied_at,
+    )
+
+
+def review_to_mine(review: ExperienceReview) -> MyReviewOut:
+    return MyReviewOut(
+        id=review.id,
+        rating=review.rating,
+        comment=review.comment,
+        status=review.status,
+        created_at=review.created_at,
+        edited_at=review.edited_at,
+        vendor_reply=review.vendor_reply if review.status == "published" else None,
+        vendor_replied_at=review.vendor_replied_at if review.status == "published" else None,
+    )
+
+
+def review_summary_out(summary: dict) -> ReviewSummary:
+    """`summarize()`'s dict as the API shape, five stars first."""
+    breakdown = summary["breakdown"]
+    return ReviewSummary(
+        average=summary["average"],
+        count=summary["count"],
+        breakdown=[breakdown[star] for star in (5, 4, 3, 2, 1)],
     )
 
 
 def package_to_card(
-    package: ExperiencePackage, distance_m: Optional[float] = None
+    package: ExperiencePackage,
+    distance_m: Optional[float] = None,
+    rating: RatingSummary = NO_REVIEWS,
 ) -> ExperiencePackageCard:
     lat, lng = get_lat_lng(package.location)
     amount = float(package.price_amount) if package.price_amount is not None else None
@@ -93,13 +143,18 @@ def package_to_card(
         distance_m=distance_m,
         tags=package.tags or [],
         region_label=package.region_label,
+        rating_avg=rating[0],
+        rating_count=rating[1],
     )
 
 
 def package_to_detail(
-    package: ExperiencePackage, distance_m: Optional[float] = None
+    package: ExperiencePackage,
+    distance_m: Optional[float] = None,
+    rating: RatingSummary = NO_REVIEWS,
+    vendor_rating: RatingSummary = NO_REVIEWS,
 ) -> ExperiencePackageDetail:
-    card = package_to_card(package, distance_m)
+    card = package_to_card(package, distance_m, rating)
     return ExperiencePackageDetail(
         **card.model_dump(),
         description=strip_markdown(package.description),
@@ -112,7 +167,7 @@ def package_to_detail(
         inclusions=package.inclusions or [],
         languages=package.languages or [],
         meeting_point_address=package.meeting_point_address,
-        vendor=vendor_to_public(package.vendor),
+        vendor=vendor_to_public(package.vendor, vendor_rating),
     )
 
 

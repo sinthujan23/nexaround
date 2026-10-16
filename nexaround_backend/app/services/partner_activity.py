@@ -189,6 +189,18 @@ def enquiry_cancelled_by_traveller(db, enquiry) -> dict:
     )
 
 
+def review_received(db, review, package) -> dict:
+    """A traveller rated one of the vendor's packages: the nudge to answer it."""
+    stars = f"{review.rating}/5"
+    return record(
+        db, review.vendor_id, "review.created",
+        f"{review.reviewer_name} rated {package.title} {stars}",
+        body=(review.comment or "")[:200] or None,
+        actor=TRAVELLER,
+        package_id=package.id,
+    )
+
+
 def package_created(db, package, *, actor: str, login=None) -> dict:
     return record(
         db, package.vendor_id, "package.created", f"{package.title} added",
