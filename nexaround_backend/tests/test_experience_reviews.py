@@ -83,3 +83,14 @@ def test_a_review_belongs_to_a_user_and_a_package_not_an_enquiry():
 def test_cards_and_requests_carry_the_new_fields():
     assert {"rating_avg", "rating_count"} <= set(ExperiencePackageCard.model_fields)
     assert {"can_review", "review"} <= set(MyEnquiryOut.model_fields)
+
+
+def test_delete_review_endpoint_exists():
+    from app.api.v1.experiences import router
+    delete_routes = [
+        r.path for r in router.routes
+        if "DELETE" in getattr(r, "methods", set())
+    ]
+    assert "/experiences/packages/{package_id}/review" in delete_routes
+
+

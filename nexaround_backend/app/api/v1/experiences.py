@@ -654,3 +654,20 @@ async def review_package(
 
     background_tasks.add_task(partner_activity.announce, activity)
     return review_to_mine(review)
+
+
+@router.delete("/packages/{package_id}/review", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_package_review(
+    package_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Delete the signed-in traveller's own review of this package."""
+    repo = ExperienceRepository(db)
+    review = await repo.get_user_review(current_user.id, package_id)
+    if review is None:
+        raise HTTPException(status_code=404, detail="Review not found")
+    await db.delete(review)
+    await db.commit()
+    return None
+

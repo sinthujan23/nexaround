@@ -470,6 +470,20 @@ class ExperiencesService {
     }
   }
 
+  /// Deletes the traveller's review for a package.
+  static Future<bool> deleteReview(String packageId) async {
+    try {
+      final response = await ApiClient.instance.delete(
+        '${ApiConstants.experiencePackages}/$packageId/review',
+      );
+      return response.statusCode == 200 || response.statusCode == 204;
+    } catch (e) {
+      debugPrint('❌ Error deleting experience review: $e');
+      return false;
+    }
+  }
+
+
   /// Cancels one of the traveller's requests. The server stamps the time,
   /// which is what the 72-hour rule is judged on.
   static Future<RequestCancellation> cancelRequest(

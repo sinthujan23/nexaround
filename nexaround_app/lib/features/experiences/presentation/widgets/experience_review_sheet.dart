@@ -4,19 +4,29 @@ import 'package:nexaround_app/features/experiences/data/services/experiences_ser
 import 'package:nexaround_app/features/experiences/domain/entities/experience_review.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_stars.dart';
 
+/// The outcome of the review sheet.
+class ExperienceReviewSheetResult {
+  final MyExperienceReview? review;
+  final bool isDeleted;
+
+  const ExperienceReviewSheetResult.saved(this.review) : isDeleted = false;
+  const ExperienceReviewSheetResult.deleted() : review = null, isDeleted = true;
+}
+
 /// Opens the rating form for a package. Returns the saved review, or null when
 /// the traveller closed the sheet. [existing] fills the form for an edit.
-Future<MyExperienceReview?> showExperienceReviewSheet(
+Future<ExperienceReviewSheetResult?> showExperienceReviewSheet(
   BuildContext context, {
   required String packageId,
   required String packageTitle,
   String? vendorName,
   MyExperienceReview? existing,
 }) {
-  return showModalBottomSheet<MyExperienceReview>(
+  return showModalBottomSheet<ExperienceReviewSheetResult>(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
+    showDragHandle: false,
     builder: (_) => _ReviewSheet(
       packageId: packageId,
       packageTitle: packageTitle,
@@ -52,6 +62,7 @@ class _ReviewSheetState extends State<_ReviewSheet> {
   late final TextEditingController _comment =
       TextEditingController(text: widget.existing?.comment ?? '');
   bool _saving = false;
+  bool _deleting = false;
   String? _error;
 
   @override
@@ -76,12 +87,51 @@ class _ReviewSheetState extends State<_ReviewSheet> {
     );
     if (!mounted) return;
     if (result.saved) {
-      Navigator.of(context).pop(result.review);
+      Navigator.of(context).pop(ExperienceReviewSheetResult.saved(result.review));
       return;
     }
     setState(() {
       _saving = false;
       _error = result.error;
+    });
+  }
+
+  Future<void> _confirmDelete() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete review?'),
+        content: const Text(
+          'Are you sure you want to delete your review and rating? This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.error),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() {
+      _deleting = true;
+      _error = null;
+    });
+    final ok = await ExperiencesService.deleteReview(widget.packageId);
+    if (!mounted) return;
+    if (ok) {
+      Navigator.of(context).pop(const ExperienceReviewSheetResult.deleted());
+      return;
+    }
+    setState(() {
+      _deleting = false;
+      _error = 'Could not delete your review. Please try again.';
     });
   }
 
@@ -116,16 +166,32 @@ class _ReviewSheetState extends State<_ReviewSheet> {
                   ),
                 ),
                 const SizedBox(height: 18),
-                Text(
-                  editing ? 'Your review' : 'Rate this experience',
-                  style: const TextStyle(
-                      fontSize: 20, fontWeight: FontWeight.w800),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        editing ? 'Your review' : 'Rate this experience',
+                        style: const TextStyle(
+                            fontSize: 20, fontWeight: FontWeight.w800),
+                      ),
+                    ),
+                    if (editing)
+                      IconButton(
+                        onPressed: _saving || _deleting ? null : _confirmDelete,
+                        icon: const Icon(Icons.delete_outline_rounded,
+                            color: AppColors.error),
+                        tooltip: 'Delete review',
+                        visualDensity: VisualDensity.compact,
+                      ),
+                  ],
                 ),
                 const SizedBox(height: 4),
                 Text(
                   widget.vendorName == null
                       ? widget.packageTitle
                       : '${widget.packageTitle} · ${widget.vendorName}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                       fontSize: 13.5, color: AppColors.textSecondary),
                 ),
@@ -183,7 +249,7 @@ class _ReviewSheetState extends State<_ReviewSheet> {
                   width: double.infinity,
                   height: 52,
                   child: ElevatedButton(
-                    onPressed: _saving ? null : _submit,
+                    onPressed: _saving || _deleting ? null : _submit,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.brandGreen,
                       foregroundColor: Colors.white,
@@ -204,6 +270,33 @@ class _ReviewSheetState extends State<_ReviewSheet> {
                           ),
                   ),
                 ),
+                if (editing) ...[
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 44,
+                    child: TextButton.icon(
+                      onPressed: _saving || _deleting ? null : _confirmDelete,
+                      icon: _deleting
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: AppColors.error),
+                            )
+                          : const Icon(Icons.delete_outline_rounded,
+                              color: AppColors.error, size: 18),
+                      label: Text(
+                        _deleting ? 'Deleting...' : 'Delete review',
+                        style: const TextStyle(
+                          color: AppColors.error,
+                          fontSize: 14.5,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -212,3 +305,4 @@ class _ReviewSheetState extends State<_ReviewSheet> {
     );
   }
 }
+

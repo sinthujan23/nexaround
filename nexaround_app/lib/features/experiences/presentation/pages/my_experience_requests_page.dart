@@ -90,6 +90,7 @@ class _MyExperienceRequestsPageState extends State<MyExperienceRequestsPage> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
+      showDragHandle: false,
       builder: (_) => ExperienceRequestSheet(
         request: request,
         onChanged: _replace,
@@ -368,15 +369,24 @@ class _ExperienceRequestSheetState extends State<ExperienceRequestSheet> {
   Future<void> _review() async {
     final packageId = _request.packageId;
     if (packageId == null) return;
-    final saved = await showExperienceReviewSheet(
+    final result = await showExperienceReviewSheet(
       context,
       packageId: packageId,
       packageTitle: _request.packageTitle,
       vendorName: _request.vendorName,
       existing: _request.review,
     );
-    if (saved == null || !mounted) return;
-    final updated = _request.withReview(saved);
+    if (result == null || !mounted) return;
+    if (result.isDeleted) {
+      final updated = _request.withReview(null);
+      setState(() => _request = updated);
+      widget.onChanged(updated);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Your review was deleted.')),
+      );
+      return;
+    }
+    final updated = _request.withReview(result.review);
     setState(() => _request = updated);
     widget.onChanged(updated);
     ScaffoldMessenger.of(context).showSnackBar(

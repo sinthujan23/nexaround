@@ -65,21 +65,81 @@ class _ExperienceReviewsSectionState extends State<ExperienceReviewsSection> {
       );
       return;
     }
-    final saved = await showExperienceReviewSheet(
+    final result = await showExperienceReviewSheet(
       context,
       packageId: widget.packageId,
       packageTitle: widget.packageTitle,
       vendorName: widget.vendorName,
       existing: _mine,
     );
-    if (saved == null || !mounted) return;
+    if (result == null || !mounted) return;
+    if (result.isDeleted) {
+      setState(() {
+        _mine = null;
+        _reviews.clear();
+        _summary = null;
+        _total = 0;
+      });
+      await _loadMore();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Your review was deleted.')),
+        );
+      }
+      return;
+    }
     setState(() {
-      _mine = saved;
+      _mine = result.review;
       _reviews.clear();
       _summary = null;
       _total = 0;
     });
     await _loadMore();
+  }
+
+  Future<void> _deleteMine() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete review?'),
+        content: const Text(
+          'Are you sure you want to delete your review and rating? This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.error),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final ok = await ExperiencesService.deleteReview(widget.packageId);
+    if (!mounted) return;
+    if (ok) {
+      setState(() {
+        _mine = null;
+        _reviews.clear();
+        _summary = null;
+        _total = 0;
+      });
+      await _loadMore();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Your review was deleted.')),
+        );
+      }
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not delete your review. Please try again.')),
+      );
+    }
   }
 
   @override
@@ -132,7 +192,11 @@ class _ExperienceReviewsSectionState extends State<ExperienceReviewsSection> {
             style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 14),
-          _MyReviewCard(review: _mine, onTap: _write),
+          _MyReviewCard(
+            review: _mine,
+            onTap: _write,
+            onDelete: _mine == null ? null : _deleteMine,
+          ),
           const SizedBox(height: 16),
           if (!hasReviews)
             const Text(
@@ -186,8 +250,13 @@ class _ExperienceReviewsSectionState extends State<ExperienceReviewsSection> {
 class _MyReviewCard extends StatelessWidget {
   final MyExperienceReview? review;
   final VoidCallback onTap;
+  final VoidCallback? onDelete;
 
-  const _MyReviewCard({required this.review, required this.onTap});
+  const _MyReviewCard({
+    required this.review,
+    required this.onTap,
+    this.onDelete,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -235,16 +304,30 @@ class _MyReviewCard extends StatelessWidget {
             ],
           ],
           const SizedBox(height: 10),
-          OutlinedButton.icon(
-            onPressed: onTap,
-            icon: Icon(
-                mine == null ? Icons.star_rounded : Icons.edit_rounded,
-                size: 17),
-            label: Text(mine == null ? 'Rate this experience' : 'Edit review'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: AppColors.brandGreen,
-              side: const BorderSide(color: AppColors.brandGreen),
-            ),
+          Row(
+            children: [
+              OutlinedButton.icon(
+                onPressed: onTap,
+                icon: Icon(
+                    mine == null ? Icons.star_rounded : Icons.edit_rounded,
+                    size: 17),
+                label: Text(mine == null ? 'Rate this experience' : 'Edit review'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.brandGreen,
+                  side: const BorderSide(color: AppColors.brandGreen),
+                ),
+              ),
+              if (mine != null && onDelete != null) ...[
+                const SizedBox(width: 8),
+                IconButton(
+                  onPressed: onDelete,
+                  icon: const Icon(Icons.delete_outline_rounded,
+                      color: AppColors.error, size: 20),
+                  tooltip: 'Delete review',
+                  visualDensity: VisualDensity.compact,
+                ),
+              ],
+            ],
           ),
         ],
       ),
