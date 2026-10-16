@@ -96,7 +96,7 @@ export default function Home() {
     }
   ];
 
-  // 10 Interactive In-App Screens from website/app.html
+  // 11 Interactive In-App Screens from website/app.html
   const appScreens = [
     {
       num: '01',
@@ -163,10 +163,17 @@ export default function Home() {
     },
     {
       num: '10',
-      title: 'Curated Experiences & Dining',
-      tag: 'Local Delicacies',
-      desc: 'Beyond standard tourist spots, discover authentic local food stalls, scenic viewpoints, and cultural micro-tours handpicked by experts.',
+      title: 'Discover',
+      tag: 'Nearby Places',
+      desc: "Find what's around you at a glance. Browse nearby landmarks, culture, museums, leisure, nature, food, shopping, and medical services, with ratings and distance on every card.",
       image: '/discovery_food_tab_v4.png'
+    },
+    {
+      num: '11',
+      title: 'Curated Experiences & Adventures',
+      tag: 'Local Experiences',
+      desc: 'Discover bookable local experiences such as jeep safaris, boat rides, water sports, and wildlife tours. Browse by country or category, with the closest first.',
+      image: '/app_experiences.png'
     }
   ];
 
@@ -647,7 +654,7 @@ export default function Home() {
               <Layers style={{ width: '14px', height: '14px' }} /> Inside the App
             </div>
             <h2 style={{ fontSize: 'clamp(2.2rem, 4vw, 3.2rem)', fontWeight: 500, color: 'var(--dark-charcoal)', margin: '0 0 16px', letterSpacing: '-0.025em' }}>
-              10 Screens, <span className="text-gradient-teal">One Unified Experience</span>
+              11 Screens, <span className="text-gradient-teal">One Unified Experience</span>
             </h2>
             <p style={{ fontSize: '1.08rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.7 }}>
               Tap any feature below to view its live screen mockup and explore the full mobile capabilities.

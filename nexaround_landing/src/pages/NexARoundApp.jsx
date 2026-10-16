@@ -175,18 +175,34 @@ export default function NexARoundApp() {
       ]
     },
     {
-      id: 'dining',
+      id: 'discover',
       num: '10',
-      badge: 'Curated Experiences',
-      title: 'Authentic Local Food & Discovery',
-      subtitle: 'Hand-Picked Culinary and Culture Spots',
-      desc: 'Beyond standard tourist spots, discover authentic local food stalls, scenic viewpoints, and cultural micro-tours handpicked by experts and verified explorers.',
-      icon: <Award style={{ width: '26px', height: '26px', color: '#007A7C' }} />,
+      badge: 'Nearby Discovery',
+      title: 'Discover',
+      subtitle: 'Points of Interest Around You',
+      desc: "Find what's around you at a glance. Discover lists nearby landmarks, culture, museums, leisure, nature, food, shopping, and medical services, with ratings and distance on every card.",
+      icon: <MapPin style={{ width: '26px', height: '26px', color: '#007A7C' }} />,
       image: '/discovery_food_tab_v4.png',
       highlights: [
-        'Locally verified street food & culinary treasures',
-        'Dietary and allergy filtering via Neva AI',
-        'Scenic trails, hidden beaches & cultural workshops'
+        'Category tabs: POI, Nature, Food, Shopping & Medical',
+        'Landmarks, culture, museums & leisure at a tap',
+        'Ratings and live distance on every place'
+      ]
+    },
+    {
+      id: 'experiences',
+      num: '11',
+      badge: 'Curated Experiences',
+      title: 'Curated Experiences & Adventures',
+      subtitle: 'Bookable Local Adventures, Closest First',
+      desc: 'Go beyond the tourist trail with experiences run by local operators: jeep safaris, boat rides, water sports, wildlife tours, and more. See photos, duration, and per-group pricing at a glance.',
+      icon: <Award style={{ width: '26px', height: '26px', color: '#007A7C' }} />,
+      image: '/app_experiences.png',
+      highlights: [
+        'Category filters: Adventure, Wildlife, Boat & Water sports',
+        'Country switcher with closest-first sorting',
+        'Photo galleries, duration & per-group pricing',
+        'Send an enquiry directly to the operator'
       ]
     }
   ];

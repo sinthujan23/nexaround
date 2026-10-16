@@ -156,22 +156,56 @@ class ExperiencePackageCard extends StatelessWidget {
                   ],
                 ),
               ),
-              const Spacer(),
-              if (package.distanceM != null)
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.near_me_rounded, size: 11, color: AppColors.textTertiary),
-                    const SizedBox(width: 3),
-                    Text(
-                      formatDistance(package.distanceM),
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.textTertiary,
+              // The admin's region text, e.g. "Kerala · Munnar", right-aligned
+              // in the top row. Text only: no map, no directions.
+              if (package.hasRegion)
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 8),
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.location_on_rounded, size: 12, color: AppColors.textSecondary),
+                          const SizedBox(width: 3),
+                          Flexible(
+                            child: Text(
+                              package.regionLabel!.trim(),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ],
+                  ),
+                )
+              else
+                const Spacer(),
+              if (package.distanceM != null)
+                Padding(
+                  padding: const EdgeInsets.only(left: 8),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.near_me_rounded, size: 11, color: AppColors.textTertiary),
+                      const SizedBox(width: 3),
+                      Text(
+                        formatDistance(package.distanceM),
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textTertiary,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
             ],
           ),
