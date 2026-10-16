@@ -10,6 +10,7 @@ import LocationPicker from '../components/LocationPicker';
 import ImageUploader from '../components/ImageUploader';
 import VideoUploader from '../components/VideoUploader';
 import AvailabilityCalendar from '../components/AvailabilityCalendar';
+import DescriptionEditor from '../components/DescriptionEditor';
 import { COUNTRIES, getCountryByCode, normalizeCountryCode } from '../constants/countries';
 
 const CATEGORIES = [
@@ -1257,10 +1258,10 @@ export default function Experiences() {
             </div>
             <div className="form-group">
               <label className="form-label">Description</label>
-              <textarea
-                className="form-textarea" rows={4} value={packageForm.description || ''}
+              <DescriptionEditor
+                value={packageForm.description || ''}
                 placeholder="Itinerary, what to bring, safety notes…"
-                onChange={(e) => patchPackage({ description: e.target.value })}
+                onChange={(v) => patchPackage({ description: v })}
               />
             </div>
           </div>

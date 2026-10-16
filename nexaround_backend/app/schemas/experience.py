@@ -88,7 +88,10 @@ class ExperiencePackageCard(BaseModel):
 
 
 class ExperiencePackageDetail(ExperiencePackageCard):
+    # Plain text: the formatting symbols stripped, for app versions that cannot
+    # show formatting. `description_md` is the formatted text itself.
     description: Optional[str] = None
+    description_md: Optional[str] = None
     photo_urls: list[str] = []
     # Relative API paths; the app prefixes the API origin, as for photos.
     video_urls: list[str] = []

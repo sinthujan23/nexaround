@@ -3459,3 +3459,45 @@ a.btn { text-decoration: none; }
 .legal-preview p { font-size: 13px; line-height: 1.6; color: var(--text-secondary); margin: 0 0 8px; }
 .legal-preview ul { padding-left: 18px; margin: 0 0 8px; }
 .legal-preview li { font-size: 13px; line-height: 1.6; color: var(--text-secondary); }
+
+/* ===== Package description editor (DescriptionEditor.jsx) ===== */
+.rte-bar {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.rte-tools { display: flex; gap: 6px; flex-wrap: wrap; }
+.rte-btn {
+  font: inherit; font-size: var(--fs-small); font-weight: 600; line-height: 1;
+  padding: 8px 11px; border-radius: 8px; cursor: pointer;
+  background: #ffffff; color: var(--text-primary);
+  border: 1px solid var(--field-border, var(--border));
+  transition: var(--transition);
+}
+.rte-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
+.rte-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.rte-bold { font-weight: 800; }
+.rte-italic { font-style: italic; font-weight: 600; font-family: Georgia, serif; }
+.rte-tabs {
+  display: inline-flex; padding: 3px; gap: 2px; border-radius: 9px;
+  background: var(--accent-light); border: 1px solid var(--field-border, var(--border));
+}
+.rte-tabs button {
+  font: inherit; font-size: var(--fs-small); font-weight: 600; padding: 5px 12px;
+  border: 0; border-radius: 7px; cursor: pointer; background: transparent; color: var(--text-secondary);
+}
+.rte-tabs button.is-on { background: #ffffff; color: var(--accent); box-shadow: 0 1px 2px rgba(16, 24, 40, 0.12); }
+.rte-text { min-height: 220px; line-height: 1.55; }
+.rte-preview, .rte-empty {
+  min-height: 220px; max-height: 480px; overflow-y: auto;
+  background: #ffffff; border: 1px solid var(--field-border, var(--border)); border-radius: 10px;
+  padding: 14px 16px; font-size: 15px; line-height: 1.6; color: var(--text-primary);
+}
+.rte-empty { color: var(--text-muted); }
+.rte-preview > :first-child { margin-top: 0; }
+.rte-preview > :last-child { margin-bottom: 0; }
+.rte-preview h1 { font-size: 19px; font-weight: 800; margin: 18px 0 6px; }
+.rte-preview h2 { font-size: 18px; font-weight: 800; margin: 18px 0 6px; }
+.rte-preview h3 { font-size: 16px; font-weight: 700; margin: 14px 0 4px; }
+.rte-preview p { margin: 0 0 12px; }
+.rte-preview ul, .rte-preview ol { margin: 0 0 12px; padding-left: 22px; }
+.rte-preview hr { border: 0; border-top: 1px solid var(--field-border, var(--border)); margin: 16px 0; }

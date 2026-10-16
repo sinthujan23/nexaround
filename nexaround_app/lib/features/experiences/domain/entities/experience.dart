@@ -98,6 +98,10 @@ class ExperiencePackageEntity {
 
   // Detail-only. Empty on a card.
   final String? description;
+
+  /// The description with its formatting (headings, bold, lists) as light
+  /// Markdown. Null from a server that predates it; then [description] is shown.
+  final String? descriptionMd;
   final List<String> photoUrls;
 
   /// Uploaded clips, as API paths (like photos). Detail-only.
@@ -141,6 +145,7 @@ class ExperiencePackageEntity {
     this.tags = const [],
     this.regionLabel,
     this.description,
+    this.descriptionMd,
     this.photoUrls = const [],
     this.videoUrls = const [],
     this.unavailableRanges = const [],

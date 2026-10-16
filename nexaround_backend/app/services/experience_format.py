@@ -7,6 +7,7 @@ be tested on this box. The rules most likely to break silently live here rather
 than inline in a router.
 """
 
+import re
 from datetime import date, timedelta
 from typing import Optional
 
@@ -287,3 +288,40 @@ def package_field_value(data, key: str):
         # A cleared text box arrives as "", which should show nothing.
         return (value or "").strip() or None
     return value
+
+
+# --- Description formatting --------------------------------------------------
+#
+# A package description is stored as light Markdown: `#`/`##`/`###` headings,
+# `**bold**`, `*italic*`, `- ` / `1. ` lists and a `---` divider. That is all
+# the admin and partner editors can write. App versions that predate the
+# formatting would print those symbols, so the API's plain `description` is the
+# same text with the symbols removed, and the formatted text travels separately.
+
+_HEADING = re.compile(r"^\s{0,3}#{1,6}\s+")
+_DIVIDER = re.compile(r"^\s*([-*_])(\s*\1){2,}\s*$")
+_BULLET = re.compile(r"^(\s*)[-*+]\s+")
+_BOLD = re.compile(r"(\*\*|__)(?=\S)(.+?)(?<=\S)\1")
+_ITALIC = re.compile(r"(?<![\w*])\*(?=\S)([^*\n]+?)(?<=\S)\*(?![\w*])")
+
+
+def strip_markdown(text: Optional[str]) -> Optional[str]:
+    """`text` with the formatting symbols removed and its line breaks kept.
+
+    None and "" come back unchanged so a package with no description still
+    reads as having none.
+    """
+    if not text:
+        return text
+    lines: list[str] = []
+    for line in text.replace("\r\n", "\n").split("\n"):
+        if _DIVIDER.match(line):
+            lines.append("")
+            continue
+        line = _HEADING.sub("", line)
+        line = _BULLET.sub(lambda m: f"{m.group(1)}\u2022 ", line)
+        line = _BOLD.sub(r"\2", line)
+        line = _ITALIC.sub(r"\1", line)
+        lines.append(line.rstrip())
+    out = "\n".join(lines)
+    return re.sub(r"\n{3,}", "\n\n", out).strip()

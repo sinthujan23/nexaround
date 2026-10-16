@@ -13,6 +13,7 @@ import { FieldGrid, SaveBar, SelectField, TextArea, TextField, Field } from '../
 import LocationPicker from '../components/LocationPicker';
 import ImageUploader from '../components/ImageUploader';
 import AvailabilityCalendar from '../components/AvailabilityCalendar';
+import DescriptionEditor from '../components/DescriptionEditor';
 import { CATEGORIES, PRICE_BASES, bookingWindowOptions } from '../format';
 import {
   EMPTY_PACKAGE, arrayToLines, fromPackage, linesToArray, toPayload,
@@ -118,11 +119,13 @@ function PackageForm({ packageId }) {
           placeholder="One line for the card in the app"
           onChange={(v) => patch({ summary: v })}
         />
-        <TextArea
-          label="Description" value={form.description}
-          placeholder="Itinerary, what to bring, safety notes…"
-          onChange={(v) => patch({ description: v })}
-        />
+        <Field label="Description" hint="Select text and use the buttons to add headings, bold and lists. Preview shows what travellers will see.">
+          <DescriptionEditor
+            value={form.description}
+            placeholder="Itinerary, what to bring, safety notes…"
+            onChange={(v) => patch({ description: v })}
+          />
+        </Field>
       </Section>
 
       <Section tone="amber" icon={DollarIcon} title="Price & capacity" hint="Leave the price empty to show “On request”.">

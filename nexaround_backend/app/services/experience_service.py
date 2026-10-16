@@ -22,7 +22,7 @@ from app.schemas.experience import (
 )
 from app.services.experience_format import (
     DEFAULT_BOOKING_WINDOW_DAYS, format_duration, format_price, is_published,
-    resolve_package_point,
+    resolve_package_point, strip_markdown,
 )
 from app.utils.geo_utils import get_lat_lng, point_or_none
 
@@ -102,7 +102,8 @@ def package_to_detail(
     card = package_to_card(package, distance_m)
     return ExperiencePackageDetail(
         **card.model_dump(),
-        description=package.description,
+        description=strip_markdown(package.description),
+        description_md=package.description,
         photo_urls=package.photo_urls or [],
         video_urls=package.video_urls or [],
         unavailable_ranges=package.unavailable_ranges or [],

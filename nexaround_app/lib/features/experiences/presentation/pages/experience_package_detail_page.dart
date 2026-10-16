@@ -7,6 +7,7 @@ import 'package:nexaround_app/core/widgets/full_screen_image_viewer.dart';
 import 'package:nexaround_app/features/experiences/data/services/experiences_service.dart';
 import 'package:nexaround_app/features/experiences/domain/entities/experience.dart';
 import 'package:nexaround_app/features/experiences/presentation/pages/experience_request_page.dart';
+import 'package:nexaround_app/features/experiences/presentation/widgets/experience_description.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_fitted_photo.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_good_to_know.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_share_sheet.dart';
@@ -419,12 +420,11 @@ class _ExperiencePackageDetailPageState
             ),
           ],
 
-          if ((_package.description ?? '').isNotEmpty) ...[
+          if ((_package.descriptionMd ?? _package.description ?? '').isNotEmpty) ...[
             const SizedBox(height: 16),
-            Text(
-              _package.description!,
-              style: const TextStyle(
-                  fontSize: 15, height: 1.6, color: AppColors.textPrimary),
+            ExperienceDescription(
+              markdown: _package.descriptionMd,
+              plain: _package.description,
             ),
           ],
 
