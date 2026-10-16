@@ -448,9 +448,6 @@ async def create_experience_enquiry(
 
 # ── My requests: the traveller's own enquiries ──────────────────────────────
 
-def _today() -> date:
-    return datetime.now(timezone.utc).date()
-
 
 def _my_enquiry_out(
     enquiry: ExperienceEnquiry,
@@ -480,12 +477,11 @@ def _my_enquiry_out(
         late_cancellation=enquiry.late_cancellation,
         free_cancellation_last_day=enquiry.free_cancellation_last_day,
         can_cancel=enquiry_lifecycle.customer_cancel_error(enquiry.status) is None,
-        # Offered only while the package still exists to be reviewed.
+        # Offered only while the package still exists to be reviewed, and not
+        # on a request that was cancelled.
         can_review=(
             enquiry.package_id is not None
-            and experience_reviews.eligibility_error(
-                enquiry.status, enquiry.confirmed_date, _today()
-            ) is None
+            and enquiry.status not in enquiry_lifecycle.CANCELLED
         ),
         review=review_to_mine(review) if review is not None else None,
     )
@@ -499,6 +495,8 @@ async def _my_enquiries_out(
 
     package_ids = {e.package_id for e in enquiries if e.package_id}
     vendor_ids = {e.vendor_id for e in enquiries if e.vendor_id}
+    # Every caller passes one traveller's own requests.
+    user_id = next((e.user_id for e in enquiries if e.user_id), None)
     packages = {
         p.id: p for p in (await db.execute(
             select(ExperiencePackage).where(ExperiencePackage.id.in_(package_ids))
@@ -509,10 +507,13 @@ async def _my_enquiries_out(
             select(ExperienceVendor).where(ExperienceVendor.id.in_(vendor_ids))
         )).scalars().all()
     } if vendor_ids else {}
-    reviews = await ExperienceRepository(db).reviews_for_enquiries([e.id for e in enquiries])
+    reviews = await ExperienceRepository(db).reviews_by_user(
+        user_id, list(package_ids)
+    ) if user_id else {}
     return [
         _my_enquiry_out(
-            e, packages.get(e.package_id), vendors.get(e.vendor_id), reviews.get(e.id)
+            e, packages.get(e.package_id), vendors.get(e.vendor_id),
+            reviews.get(e.package_id),
         )
         for e in enquiries
     ]
@@ -585,47 +586,44 @@ async def cancel_my_enquiry(
     return (await _my_enquiries_out(db, [enquiry]))[0]
 
 
-@router.post("/enquiries/{enquiry_id}/review", response_model=MyEnquiryOut)
-async def review_my_booking(
-    enquiry_id: uuid.UUID,
+@router.get("/packages/{package_id}/review/mine", response_model=Optional[MyReviewOut])
+async def my_package_review(
+    package_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """The signed-in traveller's own review of this package, or null."""
+    review = await ExperienceRepository(db).get_user_review(current_user.id, package_id)
+    return review_to_mine(review) if review is not None else None
+
+
+@router.put("/packages/{package_id}/review", response_model=MyReviewOut)
+async def review_package(
+    package_id: uuid.UUID,
     data: ReviewCreate,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Rate a booking, or change the rating already given.
+    """Rate a package, or change the rating already given.
 
-    Only the traveller who sent the request, and only once the provider has
-    confirmed it and the booked day has come: that is what keeps a package's
-    stars honest. It is published at once; an admin can hide it. Returns the
-    request, with the review on it, like cancelling does.
+    Open to every signed-in traveller, once per package: a second send edits
+    the first. Published at once; an admin can hide it, and the provider can
+    reply to it.
     """
-    from sqlalchemy import select
     from sqlalchemy.exc import IntegrityError
 
-    # Scoped in the query: another traveller's request is simply not found.
-    enquiry = (await db.execute(
-        select(ExperienceEnquiry).where(
-            ExperienceEnquiry.id == enquiry_id,
-            ExperienceEnquiry.user_id == current_user.id,
-        )
-    )).scalar_one_or_none()
-    if enquiry is None:
-        raise HTTPException(status_code=404, detail="Request not found")
-
-    error = experience_reviews.eligibility_error(
-        enquiry.status, enquiry.confirmed_date, _today()
-    )
-    package = await db.get(ExperiencePackage, enquiry.package_id) if enquiry.package_id else None
-    if error is None and package is None:
-        error = "This experience is no longer available to review."
-    if error:
-        raise HTTPException(status_code=409, detail=error)
+    # The same view a traveller has of the package: an unpublished package, or
+    # one whose provider is hidden, cannot be reviewed.
+    public = await _public_repo(db)
+    package = await public.get_package(package_id)
+    if package is None:
+        raise HTTPException(status_code=404, detail="Experience not found")
 
     repo = ExperienceRepository(db)
     now = datetime.now(timezone.utc)
     comment = experience_reviews.clean_comment(data.comment)
-    review = await repo.get_review_for_enquiry(enquiry.id)
+    review = await repo.get_user_review(current_user.id, package.id)
     activity = None
     if review is not None:
         if review.rating != data.rating or review.comment != comment:
@@ -637,9 +635,8 @@ async def review_my_booking(
             id=uuid.uuid4(),
             package_id=package.id,
             vendor_id=package.vendor_id,
-            enquiry_id=enquiry.id,
             user_id=current_user.id,
-            reviewer_name=experience_reviews.reviewer_display_name(enquiry.contact_name),
+            reviewer_name=experience_reviews.reviewer_display_name(current_user.display_name),
             rating=data.rating,
             comment=comment,
             status=experience_reviews.PUBLISHED,
@@ -650,9 +647,10 @@ async def review_my_booking(
     try:
         await db.commit()
     except IntegrityError:
-        # A second tap that raced the first: the booking already has its review.
+        # A second tap that raced the first: the package already has the review.
         await db.rollback()
-        raise HTTPException(status_code=409, detail="You have already reviewed this booking.")
+        raise HTTPException(status_code=409, detail="You have already reviewed this experience.")
+    await db.refresh(review)
 
     background_tasks.add_task(partner_activity.announce, activity)
-    return (await _my_enquiries_out(db, [enquiry]))[0]
+    return review_to_mine(review)

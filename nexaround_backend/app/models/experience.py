@@ -273,12 +273,13 @@ class ExperienceEnquiry(Base):
 
 
 class ExperienceReview(Base):
-    """A traveller's rating of a package they booked, and the provider's reply.
+    """A signed-in traveller's rating of a package, and the provider's reply.
 
-    One per booking: `enquiry_id` is unique, and the app only offers the form on
-    a request the provider confirmed whose day has passed (the server checks
-    the same, see `services/experience_reviews`). That is what keeps the
-    ratings real - nobody can review a package they never booked.
+    Anyone with an account can review any published package, once: (`user_id`,
+    `package_id`) is unique and a second send edits the first. That is a
+    deliberate choice over limiting reviews to confirmed bookings, which left
+    most packages with nothing to show. The safeguards are the account, the
+    one-per-package rule, and the admin's power to hide a review.
 
     Published the moment it is written; an admin can hide it
     (`status = "hidden"`), which takes the stars out of every average and the
@@ -288,7 +289,7 @@ class ExperienceReview(Base):
 
     __tablename__ = "experience_reviews"
     __table_args__ = (
-        UniqueConstraint("enquiry_id", name="uq_experience_reviews_enquiry"),
+        UniqueConstraint("user_id", "package_id", name="uq_experience_reviews_user_package"),
         CheckConstraint("rating BETWEEN 1 AND 5", name="ck_experience_reviews_rating"),
         # The package's review list and its average both read one package's
         # published rows, newest first.
@@ -307,11 +308,6 @@ class ExperienceReview(Base):
     vendor_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("experience_vendors.id", ondelete="CASCADE"),
-        nullable=False,
-    )
-    enquiry_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("experience_enquiries.id", ondelete="CASCADE"),
         nullable=False,
     )
     user_id: Mapped[uuid.UUID] = mapped_column(

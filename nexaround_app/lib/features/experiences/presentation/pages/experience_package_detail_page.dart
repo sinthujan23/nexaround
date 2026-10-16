@@ -541,10 +541,11 @@ class _ExperiencePackageDetailPageState
             ),
           ],
 
-          // Travellers' reviews and the provider's replies. Draws nothing until
-          // the package has been rated.
+          // Travellers' reviews and the provider's replies, and the way to
+          // write one: open to every signed-in traveller.
           ExperienceReviewsSection(
             packageId: _package.id,
+            packageTitle: _package.title,
             vendorName: _package.vendorName,
             ratingCount: _package.ratingCount,
           ),

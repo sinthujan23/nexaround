@@ -1,6 +1,4 @@
-"""Ratings and reviews: who may review, how a rating reads, what each side sees."""
-from datetime import date, timedelta
-
+"""Ratings and reviews: how a rating reads, what each side sees."""
 import pytest
 from pydantic import ValidationError
 
@@ -9,38 +7,6 @@ from app.schemas.experience import (
 )
 from app.schemas.partner import PartnerReviewResponse
 from app.services import experience_reviews as rv
-
-TODAY = date(2026, 10, 20)
-
-
-# --- who may review --------------------------------------------------------
-
-def test_a_confirmed_booking_whose_day_has_come_may_be_reviewed():
-    assert rv.eligibility_error("confirmed", TODAY, TODAY) is None
-    assert rv.eligibility_error("confirmed", TODAY - timedelta(days=3), TODAY) is None
-
-
-def test_a_finished_trip_marked_closed_may_be_reviewed_if_it_was_confirmed():
-    assert rv.eligibility_error("closed", TODAY - timedelta(days=1), TODAY) is None
-
-
-def test_the_day_must_have_come():
-    assert rv.eligibility_error("confirmed", TODAY + timedelta(days=1), TODAY)
-
-
-@pytest.mark.parametrize("status", ["new", "contacted", "spam"])
-def test_an_unconfirmed_request_may_not_be_reviewed(status):
-    assert rv.eligibility_error(status, TODAY - timedelta(days=5), TODAY)
-
-
-def test_closed_without_ever_being_confirmed_does_not_count():
-    # An enquiry the provider closed without booking has no confirmed day.
-    assert rv.eligibility_error("closed", None, TODAY)
-
-
-@pytest.mark.parametrize("status", ["customer_cancelled", "provider_cancelled"])
-def test_a_cancelled_booking_may_not_be_reviewed(status):
-    assert rv.eligibility_error(status, TODAY - timedelta(days=5), TODAY)
 
 
 # --- the rating itself -----------------------------------------------------
@@ -99,6 +65,19 @@ def test_the_public_review_carries_no_user_or_contact_detail():
 def test_the_partner_review_carries_no_user_or_contact_detail():
     fields = set(PartnerReviewResponse.model_fields)
     assert not fields & {"user_id", "enquiry_id", "contact_name", "contact_phone", "contact_email"}
+
+
+def test_a_review_belongs_to_a_user_and_a_package_not_an_enquiry():
+    from app.models.experience import ExperienceReview
+
+    columns = ExperienceReview.__table__.c
+    assert "enquiry_id" not in columns
+    unique = [
+        sorted(c.name for c in con.columns)
+        for con in ExperienceReview.__table__.constraints
+        if con.__class__.__name__ == "UniqueConstraint"
+    ]
+    assert ["package_id", "user_id"] in unique
 
 
 def test_cards_and_requests_carry_the_new_fields():

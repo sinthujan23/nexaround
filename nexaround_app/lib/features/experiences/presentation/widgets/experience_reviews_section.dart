@@ -1,14 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
+import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/features/experiences/data/services/experiences_service.dart';
 import 'package:nexaround_app/features/experiences/domain/entities/experience_review.dart';
+import 'package:nexaround_app/features/experiences/presentation/widgets/experience_review_sheet.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_stars.dart';
 
-/// A package's reviews on its detail page: the average with the 5-to-1
-/// breakdown, then the reviews newest first, each with the provider's public
-/// reply when there is one. Draws nothing until the package has a review.
+/// A package's reviews on its detail page: the traveller's own review (or the
+/// way to write one), the average with the 5-to-1 breakdown, then the reviews
+/// newest first, each with the provider's public reply when there is one.
+/// Any signed-in traveller may review.
 class ExperienceReviewsSection extends StatefulWidget {
   final String packageId;
+  final String packageTitle;
   final String vendorName;
 
   /// From the package itself, so the section knows at once whether there is
@@ -18,6 +22,7 @@ class ExperienceReviewsSection extends StatefulWidget {
   const ExperienceReviewsSection({
     super.key,
     required this.packageId,
+    required this.packageTitle,
     required this.vendorName,
     required this.ratingCount,
   });
@@ -33,6 +38,7 @@ class _ExperienceReviewsSectionState extends State<ExperienceReviewsSection> {
   ReviewSummary? _summary;
   final List<ExperienceReview> _reviews = [];
   int _total = 0;
+  MyExperienceReview? _mine;
   bool _loading = false;
   bool _failed = false;
 
@@ -40,6 +46,40 @@ class _ExperienceReviewsSectionState extends State<ExperienceReviewsSection> {
   void initState() {
     super.initState();
     if (widget.ratingCount > 0) _loadMore();
+    _loadMine();
+  }
+
+  Future<void> _loadMine() async {
+    if (!CacheService.isLoggedIn()) return;
+    final mine = await ExperiencesService.fetchMyReview(widget.packageId);
+    if (!mounted) return;
+    setState(() => _mine = mine);
+  }
+
+  /// Opens the form; after saving, the list and the average are fetched again
+  /// so the new review is in them.
+  Future<void> _write() async {
+    if (!CacheService.isLoggedIn()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Sign in to leave a review.')),
+      );
+      return;
+    }
+    final saved = await showExperienceReviewSheet(
+      context,
+      packageId: widget.packageId,
+      packageTitle: widget.packageTitle,
+      vendorName: widget.vendorName,
+      existing: _mine,
+    );
+    if (saved == null || !mounted) return;
+    setState(() {
+      _mine = saved;
+      _reviews.clear();
+      _summary = null;
+      _total = 0;
+    });
+    await _loadMore();
   }
 
   @override
@@ -80,7 +120,7 @@ class _ExperienceReviewsSectionState extends State<ExperienceReviewsSection> {
   @override
   Widget build(BuildContext context) {
     final summary = _summary;
-    if (widget.ratingCount == 0 && summary == null) return const SizedBox.shrink();
+    final hasReviews = (summary?.count ?? widget.ratingCount) > 0;
 
     return Padding(
       padding: const EdgeInsets.only(top: 28),
@@ -92,6 +132,13 @@ class _ExperienceReviewsSectionState extends State<ExperienceReviewsSection> {
             style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 14),
+          _MyReviewCard(review: _mine, onTap: _write),
+          const SizedBox(height: 16),
+          if (!hasReviews)
+            const Text(
+              'No reviews yet. Be the first to share how it went.',
+              style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
+            ),
           if (summary != null && summary.count > 0) _Summary(summary: summary),
           if (summary != null && summary.count > 0) const SizedBox(height: 8),
           for (final review in _reviews)
@@ -129,6 +176,76 @@ class _ExperienceReviewsSectionState extends State<ExperienceReviewsSection> {
                 child: Text('Show more reviews (${_total - _reviews.length} more)'),
               ),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The traveller's own review, or the invitation to write one.
+class _MyReviewCard extends StatelessWidget {
+  final MyExperienceReview? review;
+  final VoidCallback onTap;
+
+  const _MyReviewCard({required this.review, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final mine = review;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.brandGreenLight,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (mine == null) ...[
+            const Text('Been here? Rate it',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 2),
+            const Text(
+              'Your rating helps other travellers choose.',
+              style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+            ),
+          ] else ...[
+            Row(
+              children: [
+                const Text('Your review',
+                    style:
+                        TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                const SizedBox(width: 10),
+                ExperienceStars(value: mine.rating.toDouble(), size: 16),
+              ],
+            ),
+            if (mine.isHidden) ...[
+              const SizedBox(height: 4),
+              const Text(
+                'This review was hidden by NexAround and is not shown to '
+                'other travellers.',
+                style: TextStyle(fontSize: 12.5, color: AppColors.error),
+              ),
+            ],
+            if (mine.comment != null) ...[
+              const SizedBox(height: 6),
+              Text(mine.comment!,
+                  style: const TextStyle(fontSize: 14, height: 1.4)),
+            ],
+          ],
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+            onPressed: onTap,
+            icon: Icon(
+                mine == null ? Icons.star_rounded : Icons.edit_rounded,
+                size: 17),
+            label: Text(mine == null ? 'Rate this experience' : 'Edit review'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.brandGreen,
+              side: const BorderSide(color: AppColors.brandGreen),
+            ),
+          ),
         ],
       ),
     );

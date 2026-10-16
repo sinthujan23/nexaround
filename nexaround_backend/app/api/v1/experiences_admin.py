@@ -471,7 +471,6 @@ async def _review_admin_out(db: AsyncSession, review) -> ExperienceReviewAdminRe
         package_title=review.package.title if review.package else None,
         vendor_id=review.vendor_id,
         vendor_name=vendor.name if vendor else None,
-        enquiry_id=review.enquiry_id,
         reviewer_name=review.reviewer_name,
         rating=review.rating,
         comment=review.comment,

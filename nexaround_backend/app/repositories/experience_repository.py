@@ -422,21 +422,29 @@ class ExperienceRepository:
             .offset(offset)
         )).scalars().all())
 
-    async def reviews_for_enquiries(
-        self, enquiry_ids: Sequence[uuid.UUID]
+    async def reviews_by_user(
+        self, user_id: uuid.UUID, package_ids: Sequence[uuid.UUID]
     ) -> dict[uuid.UUID, ExperienceReview]:
-        """The reviews on a page of one traveller's requests, by enquiry. A
-        hidden review is still the traveller's own: they see it as theirs."""
-        if not enquiry_ids:
+        """One traveller's own reviews of these packages, by package. A hidden
+        review is still theirs: they see it as theirs."""
+        if not package_ids:
             return {}
         rows = (await self.db.execute(
-            select(ExperienceReview).where(ExperienceReview.enquiry_id.in_(list(enquiry_ids)))
+            select(ExperienceReview).where(
+                ExperienceReview.user_id == user_id,
+                ExperienceReview.package_id.in_(list(package_ids)),
+            )
         )).scalars().all()
-        return {r.enquiry_id: r for r in rows}
+        return {r.package_id: r for r in rows}
 
-    async def get_review_for_enquiry(self, enquiry_id: uuid.UUID) -> Optional[ExperienceReview]:
+    async def get_user_review(
+        self, user_id: uuid.UUID, package_id: uuid.UUID
+    ) -> Optional[ExperienceReview]:
         return (await self.db.execute(
-            select(ExperienceReview).where(ExperienceReview.enquiry_id == enquiry_id)
+            select(ExperienceReview).where(
+                ExperienceReview.user_id == user_id,
+                ExperienceReview.package_id == package_id,
+            )
         )).scalar_one_or_none()
 
     async def get_review_for_vendor(

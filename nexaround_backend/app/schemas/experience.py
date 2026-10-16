@@ -325,8 +325,9 @@ class MyEnquiryOut(BaseModel):
     late_cancellation: Optional[bool] = None
     free_cancellation_last_day: Optional[date] = None
     can_cancel: bool = False
-    # True once the provider confirmed the booking and the day has come; the app
-    # then offers "Rate this experience". `review` is the traveller's own, if any.
+    # Whether the package still exists to be rated and the request was not
+    # cancelled: the app offers "Rate this experience" on the request itself.
+    # `review` is the traveller's own review of that package, if any.
     can_review: bool = False
     review: Optional["MyReviewOut"] = None
 
@@ -399,7 +400,6 @@ class ExperienceReviewAdminResponse(BaseModel):
     package_title: Optional[str] = None
     vendor_id: uuid.UUID
     vendor_name: Optional[str] = None
-    enquiry_id: uuid.UUID
     reviewer_name: str
     rating: int
     comment: Optional[str] = None

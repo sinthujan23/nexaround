@@ -1,29 +1,45 @@
 import 'package:flutter/material.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/features/experiences/data/services/experiences_service.dart';
-import 'package:nexaround_app/features/experiences/domain/entities/experience_request.dart';
+import 'package:nexaround_app/features/experiences/domain/entities/experience_review.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_stars.dart';
 
-/// Opens the rating form for a booking. Returns the updated request (with the
-/// review on it) once saved, or null when the traveller closed the sheet.
-Future<ExperienceRequest?> showExperienceReviewSheet(
-  BuildContext context,
-  ExperienceRequest request,
-) {
-  return showModalBottomSheet<ExperienceRequest>(
+/// Opens the rating form for a package. Returns the saved review, or null when
+/// the traveller closed the sheet. [existing] fills the form for an edit.
+Future<MyExperienceReview?> showExperienceReviewSheet(
+  BuildContext context, {
+  required String packageId,
+  required String packageTitle,
+  String? vendorName,
+  MyExperienceReview? existing,
+}) {
+  return showModalBottomSheet<MyExperienceReview>(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
-    builder: (_) => _ReviewSheet(request: request),
+    builder: (_) => _ReviewSheet(
+      packageId: packageId,
+      packageTitle: packageTitle,
+      vendorName: vendorName,
+      existing: existing,
+    ),
   );
 }
 
 const _labels = ['', 'Poor', 'Fair', 'Good', 'Very good', 'Excellent'];
 
 class _ReviewSheet extends StatefulWidget {
-  final ExperienceRequest request;
+  final String packageId;
+  final String packageTitle;
+  final String? vendorName;
+  final MyExperienceReview? existing;
 
-  const _ReviewSheet({required this.request});
+  const _ReviewSheet({
+    required this.packageId,
+    required this.packageTitle,
+    this.vendorName,
+    this.existing,
+  });
 
   @override
   State<_ReviewSheet> createState() => _ReviewSheetState();
@@ -32,9 +48,9 @@ class _ReviewSheet extends StatefulWidget {
 class _ReviewSheetState extends State<_ReviewSheet> {
   static const _maxComment = 1000;
 
-  late int _rating = widget.request.review?.rating ?? 0;
+  late int _rating = widget.existing?.rating ?? 0;
   late final TextEditingController _comment =
-      TextEditingController(text: widget.request.review?.comment ?? '');
+      TextEditingController(text: widget.existing?.comment ?? '');
   bool _saving = false;
   String? _error;
 
@@ -54,13 +70,13 @@ class _ReviewSheetState extends State<_ReviewSheet> {
       _error = null;
     });
     final result = await ExperiencesService.submitReview(
-      widget.request.id,
+      widget.packageId,
       rating: _rating,
       comment: _comment.text,
     );
     if (!mounted) return;
     if (result.saved) {
-      Navigator.of(context).pop(result.request);
+      Navigator.of(context).pop(result.review);
       return;
     }
     setState(() {
@@ -71,8 +87,7 @@ class _ReviewSheetState extends State<_ReviewSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final r = widget.request;
-    final editing = r.review != null;
+    final editing = widget.existing != null;
     final keyboard = MediaQuery.of(context).viewInsets.bottom;
 
     return Padding(
@@ -108,9 +123,9 @@ class _ReviewSheetState extends State<_ReviewSheet> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  r.vendorName == null
-                      ? r.packageTitle
-                      : '${r.packageTitle} · ${r.vendorName}',
+                  widget.vendorName == null
+                      ? widget.packageTitle
+                      : '${widget.packageTitle} · ${widget.vendorName}',
                   style: const TextStyle(
                       fontSize: 13.5, color: AppColors.textSecondary),
                 ),

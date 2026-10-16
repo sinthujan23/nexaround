@@ -425,16 +425,30 @@ class ExperiencesService {
     return null;
   }
 
-  /// Rates a booking, or changes the rating already given. The server checks
-  /// that the provider confirmed it and the day has come.
+  /// The signed-in traveller's own review of a package, or null when they
+  /// have none (or it could not be fetched).
+  static Future<MyExperienceReview?> fetchMyReview(String packageId) async {
+    try {
+      final response = await ApiClient.instance
+          .get('${ApiConstants.experiencePackages}/$packageId/review/mine');
+      final data = response.data;
+      if (data is Map<String, dynamic>) return MyExperienceReview.fromJson(data);
+    } catch (e) {
+      debugPrint('❌ Error fetching my experience review: $e');
+    }
+    return null;
+  }
+
+  /// Rates a package, or changes the rating already given. Open to every
+  /// signed-in traveller, once per package.
   static Future<ReviewSubmission> submitReview(
-    String requestId, {
+    String packageId, {
     required int rating,
     String? comment,
   }) async {
     try {
-      final response = await ApiClient.instance.post(
-        '${ApiConstants.experienceEnquiries}/$requestId/review',
+      final response = await ApiClient.instance.put(
+        '${ApiConstants.experiencePackages}/$packageId/review',
         data: {
           'rating': rating,
           if (comment != null && comment.trim().isNotEmpty)
@@ -443,7 +457,7 @@ class ExperiencesService {
       );
       final data = response.data;
       if (data is Map<String, dynamic>) {
-        return ReviewSubmission(request: ExperienceRequest.fromJson(data));
+        return ReviewSubmission(review: MyExperienceReview.fromJson(data));
       }
       return const ReviewSubmission(
           error: 'Could not save your review. Please try again.');
@@ -485,15 +499,14 @@ class ExperiencesService {
   }
 }
 
-/// How rating a booking went: the updated request (with the review on it), or
-/// a message to show.
+/// How rating a package went: the saved review, or a message to show.
 class ReviewSubmission {
-  final ExperienceRequest? request;
+  final MyExperienceReview? review;
   final String? error;
 
-  const ReviewSubmission({this.request, this.error});
+  const ReviewSubmission({this.review, this.error});
 
-  bool get saved => error == null && request != null;
+  bool get saved => error == null && review != null;
 }
 
 /// How a cancellation went: the updated request, or a message to show.

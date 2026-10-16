@@ -366,8 +366,17 @@ class _ExperienceRequestSheetState extends State<ExperienceRequestSheet> {
   bool _cancelling = false;
 
   Future<void> _review() async {
-    final updated = await showExperienceReviewSheet(context, _request);
-    if (updated == null || !mounted) return;
+    final packageId = _request.packageId;
+    if (packageId == null) return;
+    final saved = await showExperienceReviewSheet(
+      context,
+      packageId: packageId,
+      packageTitle: _request.packageTitle,
+      vendorName: _request.vendorName,
+      existing: _request.review,
+    );
+    if (saved == null || !mounted) return;
+    final updated = _request.withReview(saved);
     setState(() => _request = updated);
     widget.onChanged(updated);
     ScaffoldMessenger.of(context).showSnackBar(
@@ -553,11 +562,11 @@ class _ExperienceRequestSheetState extends State<ExperienceRequestSheet> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (review == null) ...[
-            const Text('How was it?',
+            const Text('Rate this experience',
                 style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
             const SizedBox(height: 2),
             const Text(
-              'Rate this experience to help other travellers.',
+              'Share what you think to help other travellers choose.',
               style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
             ),
           ] else ...[

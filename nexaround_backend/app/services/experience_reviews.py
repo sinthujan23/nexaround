@@ -1,13 +1,10 @@
 """Rules for ratings and reviews on experience packages.
 
 Plain functions over plain values, like `experience_format`: no database, so the
-rules most likely to break quietly (who may review, how an average is rounded,
-what a hidden review leaves behind) can be tested without one.
+rules most likely to break quietly (how an average is rounded, what a reviewer's
+name looks like, what a hidden review leaves behind) can be tested without one.
 """
-from datetime import date
 from typing import Iterable, Optional
-
-from app.services import enquiry_lifecycle
 
 MIN_RATING = 1
 MAX_RATING = 5
@@ -17,28 +14,6 @@ MAX_REPLY_LENGTH = 1000
 PUBLISHED = "published"
 HIDDEN = "hidden"
 STATUSES = (PUBLISHED, HIDDEN)
-
-# Statuses a review may be written under: the provider confirmed the booking
-# and it was not cancelled afterwards (`closed` is how a finished trip ends up,
-# but only counts if it was confirmed first; see `eligibility_error`).
-REVIEWABLE_STATUSES = (enquiry_lifecycle.CONFIRMED, enquiry_lifecycle.CLOSED)
-
-
-def eligibility_error(
-    status: str, confirmed_date: Optional[date], today: date
-) -> Optional[str]:
-    """Why a traveller may not review this request yet, or None when they may.
-
-    The rule that keeps ratings real: the provider confirmed the booking for a
-    day, the day has come, and the booking was not cancelled by either side.
-    """
-    if status in enquiry_lifecycle.CANCELLED:
-        return "A cancelled booking cannot be reviewed."
-    if status not in REVIEWABLE_STATUSES or confirmed_date is None:
-        return "You can review an experience once the provider has confirmed your booking and the day has passed."
-    if confirmed_date > today:
-        return "You can review this experience after your booked day."
-    return None
 
 
 def clean_comment(comment: Optional[str]) -> Optional[str]:
@@ -51,10 +26,10 @@ def clean_reply(reply: Optional[str]) -> Optional[str]:
     return clean_comment(reply)
 
 
-def reviewer_display_name(contact_name: Optional[str]) -> str:
+def reviewer_display_name(name: Optional[str]) -> str:
     """"Anna Kowalski" -> "Anna K.". A review is public: first name and the
     initial of the last, never the full name or any contact detail."""
-    parts = (contact_name or "").split()
+    parts = (name or "").split()
     if not parts:
         return "Traveller"
     first = parts[0][:30]

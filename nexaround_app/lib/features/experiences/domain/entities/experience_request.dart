@@ -26,8 +26,8 @@ class ExperienceRequest {
   final DateTime? freeCancellationLastDay;
   final bool canCancel;
 
-  /// The provider confirmed the booking and its day has come: the traveller
-  /// may rate it. [review] is theirs, once written.
+  /// The package still exists and the request was not cancelled: the traveller
+  /// may rate it from here. [review] is their review of that package, if any.
   final bool canReview;
   final MyExperienceReview? review;
 
@@ -54,6 +54,31 @@ class ExperienceRequest {
     this.canReview = false,
     this.review,
   });
+
+  /// The same request with the traveller's review of its package replaced.
+  ExperienceRequest withReview(MyExperienceReview? review) => ExperienceRequest(
+        id: id,
+        packageTitle: packageTitle,
+        status: status,
+        packageId: packageId,
+        vendorName: vendorName,
+        coverPhotoUrl: coverPhotoUrl,
+        vendorPhone: vendorPhone,
+        vendorWhatsapp: vendorWhatsapp,
+        preferredDate: preferredDate,
+        partySize: partySize,
+        pickupLocation: pickupLocation,
+        message: message,
+        createdAt: createdAt,
+        confirmedDate: confirmedDate,
+        cancelledAt: cancelledAt,
+        cancellationReason: cancellationReason,
+        lateCancellation: lateCancellation,
+        freeCancellationLastDay: freeCancellationLastDay,
+        canCancel: canCancel,
+        canReview: canReview,
+        review: review,
+      );
 
   static const statusNew = 'new';
   static const statusContacted = 'contacted';
