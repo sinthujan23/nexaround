@@ -23,7 +23,37 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
+def _existing():
+    """Tables and enquiry columns already present. The API's startup
+    `create_all` makes both new tables if it runs before this migration (it
+    cannot add columns), so each step below is skipped when already done."""
+    inspector = sa.inspect(op.get_bind())
+    tables = set(inspector.get_table_names())
+    columns = {c['name'] for c in inspector.get_columns('experience_enquiries')}
+    return tables, columns
+
+
 def upgrade() -> None:
+    tables, columns = _existing()
+
+    if 'legal_documents' not in tables:
+        _create_legal_documents()
+    if 'legal_acceptances' not in tables:
+        _create_legal_acceptances()
+
+    if 'terms_version' not in columns:
+        op.add_column(
+            'experience_enquiries',
+            sa.Column('terms_version', sa.Integer(), nullable=True),
+        )
+    if 'terms_accepted_at' not in columns:
+        op.add_column(
+            'experience_enquiries',
+            sa.Column('terms_accepted_at', sa.DateTime(timezone=True), nullable=True),
+        )
+
+
+def _create_legal_documents() -> None:
     op.create_table(
         'legal_documents',
         sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True),
@@ -42,6 +72,8 @@ def upgrade() -> None:
     )
     op.create_index('ix_legal_documents_kind', 'legal_documents', ['kind'])
 
+
+def _create_legal_acceptances() -> None:
     op.create_table(
         'legal_acceptances',
         sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True),
@@ -78,15 +110,6 @@ def upgrade() -> None:
     op.create_index('ix_legal_acceptances_vendor_id', 'legal_acceptances', ['vendor_id'])
     op.create_index(
         'ix_legal_acceptances_accepted_at', 'legal_acceptances', ['accepted_at']
-    )
-
-    op.add_column(
-        'experience_enquiries',
-        sa.Column('terms_version', sa.Integer(), nullable=True),
-    )
-    op.add_column(
-        'experience_enquiries',
-        sa.Column('terms_accepted_at', sa.DateTime(timezone=True), nullable=True),
     )
 
 
