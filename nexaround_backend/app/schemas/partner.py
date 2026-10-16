@@ -15,6 +15,7 @@ from typing import Optional
 from pydantic import BaseModel, EmailStr, Field
 
 from app.schemas.experience import DateRange
+from app.services.enquiry_lifecycle import VENDOR_STATUSES
 from app.services.experience_format import MAX_BOOKING_WINDOW_DAYS, MAX_UNAVAILABLE_RANGES
 
 
@@ -187,7 +188,8 @@ class PartnerPackageListResponse(BaseModel):
 
 # --- Partner-side: enquiries ------------------------------------------------
 
-ENQUIRY_STATUSES = ("new", "contacted", "closed")
+# What a vendor may set; see enquiry_lifecycle for the transitions.
+ENQUIRY_STATUSES = VENDOR_STATUSES
 
 
 class PartnerEnquiryResponse(BaseModel):
@@ -210,6 +212,18 @@ class PartnerEnquiryResponse(BaseModel):
     message: Optional[str] = None
     status: str
     vendor_notes: Optional[str] = None
+    # Which Experience Booking Terms the traveller accepted, so the vendor can
+    # point to the payment and 72-hour cancellation rules.
+    terms_version: Optional[int] = None
+    terms_accepted_at: Optional[datetime] = None
+    # The booking: confirmed by the provider for a day, or cancelled by either
+    # side (the status says whose). `free_cancellation_last_day` is derived.
+    confirmed_date: Optional[date] = None
+    confirmed_at: Optional[datetime] = None
+    cancelled_at: Optional[datetime] = None
+    cancellation_reason: Optional[str] = None
+    late_cancellation: Optional[bool] = None
+    free_cancellation_last_day: Optional[date] = None
     created_at: Optional[datetime] = None
 
 
@@ -223,6 +237,11 @@ class PartnerEnquiryListResponse(BaseModel):
 class PartnerEnquiryUpdate(BaseModel):
     status: Optional[str] = Field(None, max_length=20)
     vendor_notes: Optional[str] = None
+    # With status "confirmed": the day agreed with the traveller. Defaults to
+    # their preferred date; required when they asked for a flexible date.
+    confirmed_date: Optional[date] = None
+    # With status "provider_cancelled": why, shown to the traveller.
+    cancellation_reason: Optional[str] = Field(None, max_length=1000)
 
 
 # --- Partner-side: stats ----------------------------------------------------

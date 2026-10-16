@@ -8,6 +8,7 @@ import 'package:nexaround_app/features/experiences/data/services/experiences_ser
 import 'package:nexaround_app/features/experiences/domain/entities/experience.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_enquiry_sheet.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_fitted_photo.dart';
+import 'package:nexaround_app/features/experiences/presentation/widgets/experience_good_to_know.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_share_sheet.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_video_slide.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/vendor_social_bar.dart';
@@ -609,6 +610,10 @@ class _ExperiencePackageDetailPageState
               ),
             ],
           ],
+
+          // Last, so it sits just above the Request button.
+          const SizedBox(height: 28),
+          const ExperienceGoodToKnow(),
         ],
       ),
     );

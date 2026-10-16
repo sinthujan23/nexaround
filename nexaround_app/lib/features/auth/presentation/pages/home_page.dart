@@ -26,6 +26,7 @@ import 'package:nexaround_app/features/planning/presentation/pages/odyssey_detai
 import 'package:nexaround_app/features/living_map/presentation/widgets/discovery_engine_sheet.dart';
 import 'package:nexaround_app/core/services/google_places_service.dart';
 import 'package:nexaround_app/features/living_map/presentation/pages/smart_tourism_map_page.dart';
+import 'package:nexaround_app/features/experiences/presentation/pages/my_experience_requests_page.dart';
 
 class HomePage extends StatefulWidget {
   static final GlobalKey<HomePageState> homeKey = GlobalKey<HomePageState>();
@@ -76,6 +77,11 @@ class HomePageState extends State<HomePage> with WidgetsBindingObserver {
         }
       }
       if (data['type'] == 'story_comment') switchToExplore();
+      // A provider confirmed or cancelled an experience request.
+      if (type == 'experience_request' && mounted) {
+        showMyExperienceRequests(context,
+            openRequestId: data['enquiry_id']?.toString());
+      }
       if (type == 'discovery_ready' || data['type'] == 'discovery_ready') {
         final discoveryId = (data['discovery_id'] ?? data['id'])?.toString();
         switchToExplore();

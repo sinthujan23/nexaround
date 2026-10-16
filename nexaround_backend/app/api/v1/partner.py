@@ -12,12 +12,12 @@ would be wrong here:
    simply by pressing Save — even if their schema never declared them.
 """
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 from fastapi import (
-    APIRouter, Depends, File, Header, HTTPException, Query, Request, UploadFile,
-    status,
+    APIRouter, BackgroundTasks, Depends, File, Header, HTTPException, Query, Request,
+    UploadFile, status,
 )
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -46,7 +46,10 @@ from app.schemas.partner import (
     PartnerTokenResponse, PartnerStatsResponse, PartnerVendorProfileResponse,
     PartnerVendorProfileUpdate,
 )
-from app.services import audit, google_places_client, partner_activity, partner_events
+from app.services import (
+    audit, enquiry_lifecycle, enquiry_notifications, google_places_client,
+    partner_activity, partner_events,
+)
 from app.services.email_service import send_vendor_invite_email
 from app.services.experience_format import package_field_value
 from app.services.experience_upload import save_experience_images
@@ -594,6 +597,14 @@ def _enquiry_out(e) -> PartnerEnquiryResponse:
         message=e.message,
         status=e.status,
         vendor_notes=e.vendor_notes,
+        terms_version=e.terms_version,
+        terms_accepted_at=e.terms_accepted_at,
+        confirmed_date=e.confirmed_date,
+        confirmed_at=e.confirmed_at,
+        cancelled_at=e.cancelled_at,
+        cancellation_reason=e.cancellation_reason,
+        late_cancellation=e.late_cancellation,
+        free_cancellation_last_day=e.free_cancellation_last_day,
         created_at=e.created_at,
     )
 
@@ -810,6 +821,7 @@ async def get_partner_enquiry(
 async def update_partner_enquiry(
     enquiry_id: uuid.UUID,
     data: PartnerEnquiryUpdate,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     principal: VendorPrincipal = Depends(get_current_vendor),
 ):
@@ -820,17 +832,26 @@ async def update_partner_enquiry(
         raise HTTPException(status_code=404, detail="Enquiry not found")
 
     activity = None
+    event = None
     if data.status is not None:
         # The column has no CHECK constraint, so an unvalidated status would
         # let a vendor write "deleted" and vanish the row from every filtered
-        # admin view.
-        if data.status not in ENQUIRY_STATUSES:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Status must be one of: {', '.join(ENQUIRY_STATUSES)}",
-            )
-        if data.status != enquiry.status:
-            enquiry.status = data.status
+        # admin view. The lifecycle also keeps a cancellation final and a
+        # confirmation dated.
+        error = enquiry_lifecycle.vendor_status_error(
+            enquiry.status, data.status,
+            enquiry_lifecycle.booked_date(enquiry, data.confirmed_date),
+        )
+        if error:
+            raise HTTPException(status_code=400, detail=error)
+        before = enquiry.status
+        event = enquiry_lifecycle.apply_status(
+            enquiry, data.status,
+            now=datetime.now(timezone.utc),
+            confirmed_date=data.confirmed_date,
+            reason=data.cancellation_reason,
+        )
+        if enquiry.status != before:
             activity = partner_activity.enquiry_status(
                 db, enquiry, actor=partner_activity.VENDOR, login=principal.login,
             )
@@ -844,9 +865,11 @@ async def update_partner_enquiry(
     await partner_events.publish(
         principal.vendor.id,
         partner_events.ENQUIRY_UPDATED,
-        {"id": enquiry.id, "status": enquiry.status, "vendor_notes": enquiry.vendor_notes},
+        partner_events.enquiry_payload(enquiry),
     )
     await partner_activity.announce(activity)
+    if event in (enquiry_lifecycle.CONFIRMED, enquiry_lifecycle.PROVIDER_CANCELLED):
+        background_tasks.add_task(enquiry_notifications.booking_update, enquiry.id, event)
     return _enquiry_out(enquiry)
 
 

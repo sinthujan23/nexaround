@@ -27,6 +27,8 @@ class CacheService {
     await _prefs.remove('notifications');
     await _prefs.remove('odysseys_cache');
     await _prefs.remove('discovery_history_cache');
+    await _prefs.remove(_experienceTermsKey);
+    await _prefs.remove(_myExperienceRequestsKey);
 
     savedPlacesNotifier.value++;
     favoritePlacesNotifier.value++;
@@ -932,6 +934,11 @@ class CacheService {
   static const String _experiencesNearbyKey = 'experiences_nearby_v1';
   static const String _experienceDetailsKey = 'experience_details_v1';
   static const String _experienceCountriesKey = 'experience_countries_v1';
+  // Per account: it carries whether this traveller accepted the version, so
+  // clearUserData drops it.
+  static const String _experienceTermsKey = 'experience_terms_v1';
+  // Per account, so dropped on sign-out.
+  static const String _myExperienceRequestsKey = 'my_experience_requests_v1';
   static const int _maxCachedExperienceLists = 8;
   static const int _maxCachedExperienceDetails = 30;
 
@@ -961,6 +968,47 @@ class CacheService {
   }
 
   /// The whole `/experiences/countries` response: the list and the browse mode.
+  /// The traveller's My requests list, so it opens at once and offline.
+  static Future<void> cacheMyExperienceRequests(List<Map<String, dynamic>> raw) async {
+    if (_prefsOrNull == null) return;
+    try {
+      await _prefs.setString(_myExperienceRequestsKey, json.encode(raw));
+    } catch (_) {}
+  }
+
+  static List<Map<String, dynamic>>? getCachedMyExperienceRequests() {
+    if (_prefsOrNull == null) return null;
+    final str = _prefs.getString(_myExperienceRequestsKey);
+    if (str == null || str.isEmpty) return null;
+    try {
+      return (json.decode(str) as List).whereType<Map<String, dynamic>>().toList();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// The `/legal/experience_customer` response, including `accepted`.
+  static Future<void> cacheExperienceTerms(Map<String, dynamic> raw) async {
+    if (_prefsOrNull == null) return;
+    try {
+      await _prefs.setString(_experienceTermsKey, json.encode(raw));
+    } catch (_) {}
+  }
+
+  static Map<String, dynamic>? getCachedExperienceTerms() {
+    final map = _readJsonMap(_experienceTermsKey);
+    return map.isEmpty ? null : map;
+  }
+
+  /// After a request goes through: the saved terms, if they are the version
+  /// just sent, now count as accepted, so the next sheet shows the one-line
+  /// reminder even before the terms are refetched.
+  static Future<void> markExperienceTermsAccepted(int version) async {
+    final saved = getCachedExperienceTerms();
+    if (saved == null || saved['version'] != version) return;
+    await cacheExperienceTerms({...saved, 'accepted': true});
+  }
+
   static Future<void> cacheExperienceCountries(Map<String, dynamic> raw) async {
     if (_prefsOrNull == null) return;
     try {

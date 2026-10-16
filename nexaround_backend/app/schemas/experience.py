@@ -126,6 +126,9 @@ class ExperienceEnquiryCreate(BaseModel):
     party_size: Optional[int] = Field(None, ge=1, le=100)
     pickup_location: Optional[str] = Field(None, max_length=500)
     message: Optional[str] = Field(None, max_length=2000)
+    # The Experience Booking Terms version the traveller ticked. Absent only
+    # from apps older than the terms (see legal_service.customer_terms_error).
+    accepted_terms_version: Optional[int] = Field(None, ge=1)
 
 
 class ExperienceEnquiryResponse(BaseModel):
@@ -254,6 +257,16 @@ class ExperienceEnquiryAdminResponse(BaseModel):
     message: Optional[str] = None
     status: str
     admin_notes: Optional[str] = None
+    terms_version: Optional[int] = None
+    terms_accepted_at: Optional[datetime] = None
+    # The booking: confirmed by the provider for a day, or cancelled by either
+    # side (the status says whose). `free_cancellation_last_day` is derived.
+    confirmed_date: Optional[date] = None
+    confirmed_at: Optional[datetime] = None
+    cancelled_at: Optional[datetime] = None
+    cancellation_reason: Optional[str] = None
+    late_cancellation: Optional[bool] = None
+    free_cancellation_last_day: Optional[date] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -269,3 +282,41 @@ class ExperienceEnquiryListResponse(BaseModel):
 class ExperienceEnquiryUpdate(BaseModel):
     status: Optional[str] = Field(None, max_length=20)
     admin_notes: Optional[str] = None
+    confirmed_date: Optional[date] = None
+    cancellation_reason: Optional[str] = Field(None, max_length=1000)
+
+
+# --- The traveller's own requests (app: My requests) ------------------------
+
+class MyEnquiryOut(BaseModel):
+    """One request as the traveller who sent it sees it."""
+
+    id: uuid.UUID
+    package_id: Optional[uuid.UUID] = None
+    package_title: str
+    vendor_name: Optional[str] = None
+    cover_photo_url: Optional[str] = None
+    # So the traveller can reach the provider from the request itself.
+    vendor_phone: Optional[str] = None
+    vendor_whatsapp: Optional[str] = None
+    preferred_date: Optional[date] = None
+    party_size: Optional[int] = None
+    pickup_location: Optional[str] = None
+    message: Optional[str] = None
+    status: str
+    created_at: datetime
+    confirmed_date: Optional[date] = None
+    confirmed_at: Optional[datetime] = None
+    cancelled_at: Optional[datetime] = None
+    cancellation_reason: Optional[str] = None
+    late_cancellation: Optional[bool] = None
+    free_cancellation_last_day: Optional[date] = None
+    can_cancel: bool = False
+
+
+class MyEnquiryListResponse(BaseModel):
+    enquiries: list[MyEnquiryOut]
+
+
+class MyEnquiryCancel(BaseModel):
+    reason: Optional[str] = Field(None, max_length=1000)

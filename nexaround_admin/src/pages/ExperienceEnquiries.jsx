@@ -7,8 +7,21 @@ import { SearchBar, Toast } from '../components/Kit';
 import { useToast } from '../hooks';
 
 const PAGE_SIZE = 50;
-const STATUSES = ['new', 'contacted', 'closed', 'spam'];
-const STATUS_LABELS = { new: 'New', contacted: 'Contacted', closed: 'Closed', spam: 'Spam' };
+// The server's enquiry_lifecycle.py owns the rules. Unlike a vendor, an admin
+// may set any of these, including recording a cancellation a traveller made
+// by phone; confirming still needs a date.
+const STATUSES = [
+  'new', 'contacted', 'confirmed', 'closed', 'customer_cancelled', 'provider_cancelled', 'spam',
+];
+const STATUS_LABELS = {
+  new: 'New',
+  contacted: 'Contacted',
+  confirmed: 'Confirmed',
+  closed: 'Closed',
+  customer_cancelled: 'Cancelled by traveller',
+  provider_cancelled: 'Cancelled by provider',
+  spam: 'Spam',
+};
 
 const TZ = 'Asia/Colombo';
 
@@ -287,6 +300,35 @@ export default function ExperienceEnquiries() {
                         {selected.pickup_location || 'Not given'}
                       </dd>
                     </div>
+                    {selected.confirmed_date && (
+                      <div>
+                        <dt>Confirmed for</dt>
+                        <dd>
+                          {formatDay(selected.confirmed_date)}
+                          {selected.free_cancellation_last_day
+                            && ` · free cancellation until the end of ${formatDay(selected.free_cancellation_last_day)}`}
+                        </dd>
+                      </div>
+                    )}
+                    {selected.cancelled_at && (
+                      <div>
+                        <dt>Cancelled</dt>
+                        <dd>
+                          {new Date(selected.cancelled_at).toLocaleString()}
+                          {' · '}{STATUS_LABELS[selected.status] || selected.status}
+                          {selected.late_cancellation && ' · late (under 72 hours)'}
+                          {selected.cancellation_reason && <div className="muted">Reason: {selected.cancellation_reason}</div>}
+                        </dd>
+                      </div>
+                    )}
+                    <div>
+                      <dt>Booking terms</dt>
+                      <dd className={selected.terms_version ? '' : 'muted'}>
+                        {selected.terms_version
+                          ? `Version ${selected.terms_version}, accepted ${new Date(selected.terms_accepted_at).toLocaleString()}`
+                          : 'Not recorded (sent before the terms, or from an old app)'}
+                      </dd>
+                    </div>
                   </dl>
                   {selected.message && (
                     <div style={{ marginTop: 18 }}>
@@ -305,7 +347,27 @@ export default function ExperienceEnquiries() {
                         key={s}
                         className={selected.status === s ? 'active' : ''}
                         disabled={saving || selected.status === s}
-                        onClick={() => update({ status: s }, `Marked as ${STATUS_LABELS[s].toLowerCase()}`)}
+                        onClick={() => {
+                          const body = { status: s };
+                          if (s === 'confirmed') {
+                            const day = prompt(
+                              'Confirmed date (YYYY-MM-DD). The traveller is notified.',
+                              selected.confirmed_date || selected.preferred_date || '',
+                            );
+                            if (!day) return;
+                            body.confirmed_date = day.trim();
+                          } else if (s.endsWith('_cancelled')) {
+                            const why = prompt(
+                              s === 'provider_cancelled'
+                                ? 'Reason (shown to the traveller, who is notified). Leave empty for none.'
+                                : 'Reason the traveller gave, if any. The vendor is notified.',
+                              '',
+                            );
+                            if (why === null) return;
+                            body.cancellation_reason = why;
+                          }
+                          update(body, `Marked as ${STATUS_LABELS[s].toLowerCase()}`);
+                        }}
                       >
                         <span className={`dot dot-${s}`} /> {STATUS_LABELS[s]}
                       </button>

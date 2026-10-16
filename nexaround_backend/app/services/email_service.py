@@ -259,3 +259,74 @@ async def send_vendor_enquiry_email(
     except Exception as e:
         print(f"❌ Failed to send enquiry email via SMTP to {to_email}: {e}")
         return False
+
+
+async def send_experience_update_email(
+    to_email: str,
+    *,
+    subject: str,
+    heading: str,
+    intro: str,
+    rows: tuple = (),
+    notes: tuple = (),
+    link_label: str = "",
+    link_url: str = "",
+) -> bool:
+    """One email about an experience request: to a traveller (request received,
+    booking confirmed, cancelled by the provider) or a vendor (cancelled by the
+    traveller). Every value is escaped here, since names and reasons are typed
+    by the other side."""
+    esc = html.escape
+
+    table = "".join(
+        f'<tr><td style="padding:6px 12px 6px 0;color:#78909C;vertical-align:top;">{esc(label)}</td>'
+        f'<td style="padding:6px 0;color:#263238;"><strong>{esc(str(value))}</strong></td></tr>'
+        for label, value in rows if value
+    )
+    note_html = "".join(
+        f'<li style="margin-bottom:6px;">{esc(note)}</li>' for note in notes if note
+    )
+    button = (
+        f'<p style="margin:22px 0 0;"><a href="{esc(link_url)}" '
+        f'style="color:#00897B;font-weight:bold;">{esc(link_label)}</a></p>'
+        if link_url and link_label else ""
+    )
+
+    html_body = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <style>
+        body {{ font-family: 'Segoe UI', Arial, sans-serif; background-color: #f4f7f6; margin: 0; padding: 20px; }}
+        .card {{ max-width: 540px; margin: 0 auto; background: #ffffff; border-radius: 12px; padding: 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }}
+        .logo {{ color: #00897B; font-size: 24px; font-weight: bold; text-align: center; margin-bottom: 20px; }}
+        .notes {{ background: #E0F2F1; border-radius: 8px; padding: 14px 16px 8px 34px; margin: 20px 0 0; color: #004D40; font-size: 14px; }}
+        .footer {{ font-size: 12px; color: #78909C; text-align: center; margin-top: 24px; }}
+      </style>
+    </head>
+    <body>
+      <div class="card">
+        <div class="logo">nexaround</div>
+        <h2>{esc(heading)}</h2>
+        <p style="color:#37474F;font-size:15px;line-height:1.5;">{esc(intro)}</p>
+        {f'<table style="width:100%;border-collapse:collapse;font-size:14px;">{table}</table>' if table else ''}
+        {f'<ul class="notes">{note_html}</ul>' if note_html else ''}
+        {button}
+        <div class="footer">&copy; NexAround POI &amp; Discovery Platform</div>
+      </div>
+    </body>
+    </html>
+    """
+
+    print(f"📧 [EXPERIENCE UPDATE] To: {to_email} | {subject}")
+
+    if not settings.SMTP_HOST or not settings.SMTP_USER:
+        print(f"ℹ️ [DEV SIMULATOR] SMTP not configured. '{subject}' not emailed.")
+        return True
+
+    try:
+        await asyncio.to_thread(_send_smtp_sync, to_email, subject, html_body)
+        return True
+    except Exception as e:
+        print(f"❌ Failed to send '{subject}' via SMTP to {to_email}: {e}")
+        return False

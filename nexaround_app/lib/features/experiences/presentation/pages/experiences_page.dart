@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
+import 'package:nexaround_app/features/experiences/presentation/pages/my_experience_requests_page.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experiences_tab.dart';
 
 /// Dedicated page for browsing and booking local experiences and tours.
@@ -90,6 +91,16 @@ class _ExperiencesPageState extends State<ExperiencesPage> {
             letterSpacing: -0.2,
           ),
         ),
+        actions: [
+          if (!ExperiencesPage.isComingSoon)
+            IconButton(
+              tooltip: 'My requests',
+              icon: const Icon(Icons.receipt_long_rounded,
+                  color: AppColors.textPrimary),
+              onPressed: () => showMyExperienceRequests(context),
+            ),
+          const SizedBox(width: 4),
+        ],
       ),
       body: ExperiencesPage.isComingSoon
           ? _buildComingSoonBody(context)

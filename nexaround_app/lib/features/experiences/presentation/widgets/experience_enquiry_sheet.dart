@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
@@ -10,7 +11,11 @@ import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
 import 'package:nexaround_app/features/experiences/data/services/experiences_service.dart';
 import 'package:nexaround_app/features/experiences/domain/enquiry_validation.dart';
 import 'package:nexaround_app/features/experiences/domain/entities/experience.dart';
+import 'package:nexaround_app/features/experiences/domain/entities/experience_terms.dart';
+import 'package:nexaround_app/features/experiences/presentation/pages/experience_terms_page.dart';
+import 'package:nexaround_app/features/experiences/presentation/pages/my_experience_requests_page.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_date_picker.dart';
+import 'package:nexaround_app/features/experiences/presentation/widgets/experience_good_to_know.dart';
 
 Future<void> showExperienceEnquirySheet(
   BuildContext context,
@@ -53,9 +58,20 @@ class _EnquirySheetState extends State<_EnquirySheet> {
   bool _sent = false;
   String? _error;
 
+  // The Experience Booking Terms. The saved copy shows at once and the
+  // current version replaces it; a request is sent with the version shown.
+  ExperienceTerms? _terms = ExperiencesService.cachedTerms();
+  bool _termsFailed = false;
+  bool _termsTicked = false;
+  // Send was tapped without ticking: outline the box and say why.
+  bool _termsNudge = false;
+  late final TapGestureRecognizer _termsLink = TapGestureRecognizer()
+    ..onTap = () => showExperienceTerms(context);
+
   @override
   void initState() {
     super.initState();
+    _loadTerms();
     try {
       final authState = context.read<AuthBloc>().state;
       if (authState is AuthAuthenticated) {
@@ -84,8 +100,27 @@ class _EnquirySheetState extends State<_EnquirySheet> {
     _messageController.dispose();
     _pickupController.dispose();
     _pickupDebounce?.cancel();
+    _termsLink.dispose();
     super.dispose();
   }
+
+  Future<void> _loadTerms() async {
+    final fresh = await ExperiencesService.fetchTerms();
+    if (!mounted) return;
+    setState(() {
+      if (fresh != null) {
+        // A new version has to be ticked afresh.
+        if (fresh.version != _terms?.version) _termsTicked = false;
+        _terms = fresh;
+      }
+      _termsFailed = _terms == null;
+    });
+  }
+
+  void _setTicked(bool value) => setState(() {
+        _termsTicked = value;
+        _termsNudge = false;
+      });
 
   void _onPickupChanged(String text) {
     _pickupDebounce?.cancel();
@@ -141,16 +176,27 @@ class _EnquirySheetState extends State<_EnquirySheet> {
       setState(() => _error = error);
       return;
     }
+    final terms = _terms;
+    if (terms == null) {
+      setState(() => _error =
+          "Couldn't load the booking terms. Please try again.");
+      return;
+    }
+    if (!terms.accepted && !_termsTicked) {
+      setState(() => _termsNudge = true);
+      return;
+    }
 
     setState(() {
       _sending = true;
       _error = null;
     });
 
-    final failure = await ExperiencesService.submitEnquiry(
+    final result = await ExperiencesService.submitEnquiry(
       packageId: widget.package.id,
       contactName: _nameController.text.trim(),
       contactPhone: _phoneController.text.trim(),
+      acceptedTermsVersion: terms.version,
       contactEmail: _emailController.text.trim(),
       preferredDate: _preferredDate,
       partySize: _partySize,
@@ -161,9 +207,16 @@ class _EnquirySheetState extends State<_EnquirySheet> {
     if (!mounted) return;
     setState(() {
       _sending = false;
-      _error = failure;
-      _sent = failure == null;
+      _error = result.error;
+      _sent = result.sent;
+      if (result.termsChanged) {
+        // Published since this sheet loaded them: drop the old version so it
+        // cannot be sent again, and show the new one to accept.
+        _terms = null;
+        _termsTicked = false;
+      }
     });
+    if (result.termsChanged) await _loadTerms();
   }
 
   @override
@@ -212,6 +265,26 @@ class _EnquirySheetState extends State<_EnquirySheet> {
           textAlign: TextAlign.center,
           style: const TextStyle(fontSize: 14, color: AppColors.textSecondary),
         ),
+        if ((_terms?.highlights ?? const []).isNotEmpty) ...[
+          const SizedBox(height: 18),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(14, 14, 14, 6),
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Good to know',
+                    style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 10),
+                ExperienceHighlights(lines: _terms!.highlights),
+              ],
+            ),
+          ),
+        ],
         const SizedBox(height: 20),
         if (vendor != null && vendor.hasWhatsapp)
           SizedBox(
@@ -245,6 +318,16 @@ class _EnquirySheetState extends State<_EnquirySheet> {
             ),
             child: const Text('Done'),
           ),
+        ),
+        const SizedBox(height: 6),
+        TextButton(
+          onPressed: () {
+            final navigator = Navigator.of(context);
+            navigator.pop();
+            showMyExperienceRequests(navigator.context);
+          },
+          style: TextButton.styleFrom(foregroundColor: AppColors.brandGreen),
+          child: const Text('Follow or cancel it in My requests'),
         ),
       ],
     );
@@ -430,6 +513,8 @@ class _EnquirySheetState extends State<_EnquirySheet> {
         ],
 
         const SizedBox(height: 12),
+        _buildTerms(),
+        const SizedBox(height: 12),
         const Text(
           'This is a booking request, not a confirmed booking. The vendor '
           'will contact you to confirm the date, price and pickup.',
@@ -461,6 +546,124 @@ class _EnquirySheetState extends State<_EnquirySheet> {
           ),
         ),
       ],
+    );
+  }
+
+  /// The clickwrap: the key rules, then a checkbox the first time this
+  /// account meets this version of the terms, or a one-line reminder after.
+  Widget _buildTerms() {
+    final terms = _terms;
+    const small = TextStyle(
+        fontSize: 12.5, height: 1.45, color: AppColors.textSecondary);
+    if (terms == null) {
+      return Row(
+        children: _termsFailed
+            ? [
+                const Expanded(
+                  child: Text("Couldn't load the booking terms.", style: small),
+                ),
+                TextButton(
+                  onPressed: () {
+                    setState(() => _termsFailed = false);
+                    _loadTerms();
+                  },
+                  style: TextButton.styleFrom(
+                      foregroundColor: AppColors.brandGreen),
+                  child: const Text('Try again'),
+                ),
+              ]
+            : const [
+                SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                SizedBox(width: 10),
+                Text('Loading booking terms…', style: small),
+              ],
+      );
+    }
+
+    final link = TextSpan(
+      text: terms.title,
+      style: const TextStyle(
+        color: AppColors.brandGreen,
+        fontWeight: FontWeight.w700,
+        decoration: TextDecoration.underline,
+        decorationColor: AppColors.brandGreen,
+      ),
+      recognizer: _termsLink,
+    );
+    final nudged = _termsNudge && !_termsTicked;
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 8),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: nudged ? AppColors.error : AppColors.border,
+          width: nudged ? 1.5 : 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Before you send',
+              style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 10),
+          ExperienceHighlights(lines: terms.highlights),
+          if (terms.accepted)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Text.rich(TextSpan(style: small, children: [
+                const TextSpan(text: 'By sending this request you agree to the '),
+                link,
+                const TextSpan(text: '.'),
+              ])),
+            )
+          else
+            InkWell(
+              onTap: () => _setTicked(!_termsTicked),
+              borderRadius: BorderRadius.circular(8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Checkbox(
+                    value: _termsTicked,
+                    onChanged: (value) => _setTicked(value ?? false),
+                    activeColor: AppColors.brandGreen,
+                    side: BorderSide(
+                      color: nudged ? AppColors.error : AppColors.textTertiary,
+                      width: 1.5,
+                    ),
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 9, bottom: 6),
+                      child: Text.rich(TextSpan(style: small, children: [
+                        const TextSpan(text: 'I have read and agree to the '),
+                        link,
+                        const TextSpan(text: '.'),
+                      ])),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          if (nudged)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 6),
+              child: Text(
+                'Tick the box to agree to the terms before sending.',
+                style: TextStyle(fontSize: 12, color: AppColors.error),
+              ),
+            ),
+        ],
+      ),
     );
   }
 

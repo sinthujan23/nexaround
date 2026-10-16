@@ -22,6 +22,7 @@ from app.models.experience import (
 )
 
 from app.models.audit import AuthSession, AuditEvent
+from app.models.legal import LegalAcceptance, LegalDocument
 
 from app.models.forum import (
     ForumCategory, ForumTopic, ForumPost, ForumLike, ForumBookmark,
@@ -41,5 +42,6 @@ __all__ = [
     "ForumCategory", "ForumTopic", "ForumPost", "ForumLike", "ForumBookmark",
     "ForumTopicView",
     "AuthSession", "AuditEvent",
+    "LegalDocument", "LegalAcceptance",
 ]
 

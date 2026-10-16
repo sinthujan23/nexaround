@@ -5,6 +5,7 @@ import { AuthProvider, RequireAuth } from './auth';
 import { ConfirmProvider } from './confirm';
 import { ToastProvider } from './toast';
 import AppShell from './components/AppShell';
+import { AgreementGate, AgreementPage } from './components/Agreement';
 import Login from './pages/Login';
 import ForgotPassword from './pages/ForgotPassword';
 import SetPassword from './pages/SetPassword';
@@ -47,7 +48,8 @@ const router = createBrowserRouter(createRoutesFromElements(
     <Route path="/forgot-password" element={<ForgotPassword />} />
     <Route path="/set-password" element={<SetPassword />} />
 
-    <Route element={<RequireAuth><AppShell /></RequireAuth>}>
+    {/* The gate shows the Provider Agreement, full page, until it is accepted. */}
+    <Route element={<RequireAuth><AgreementGate><AppShell /></AgreementGate></RequireAuth>}>
       <Route path="/dashboard" element={<Dashboard />} />
 
       <Route path="/packages" element={<Packages />} />
@@ -63,6 +65,8 @@ const router = createBrowserRouter(createRoutesFromElements(
         <Route path="location" element={<ProfileLocation />} />
         <Route path="contact" element={<ProfileContact />} />
       </Route>
+
+      <Route path="/agreement" element={<AgreementPage />} />
 
       <Route path="/security" element={<SecurityLayout />}>
         <Route index element={<Devices />} />

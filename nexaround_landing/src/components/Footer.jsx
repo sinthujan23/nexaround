@@ -173,6 +173,8 @@ export default function Footer() {
           <div className="site-footer-legal">
             <NavLink to="/privacy" className="footer-link" style={{ fontSize: '0.85rem' }}>Privacy Policy</NavLink>
             <NavLink to="/terms" className="footer-link" style={{ fontSize: '0.85rem' }}>Terms of Service</NavLink>
+            <NavLink to="/experience-terms" className="footer-link" style={{ fontSize: '0.85rem' }}>Experience Booking Terms</NavLink>
+            <NavLink to="/provider-agreement" className="footer-link" style={{ fontSize: '0.85rem' }}>Provider Agreement</NavLink>
           </div>
         </div>
 

@@ -18,7 +18,7 @@ from decimal import Decimal
 from typing import Iterable, Optional
 
 from app.models.experience import VendorActivity
-from app.services import partner_events
+from app.services import enquiry_lifecycle, partner_events
 
 ACTIVITY_CREATED = "activity.created"
 
@@ -26,7 +26,7 @@ TRAVELLER = "traveller"
 VENDOR = "vendor"
 ADMIN = "admin"
 
-STATUS_LABELS = {"new": "New", "contacted": "Contacted", "closed": "Closed", "spam": "Spam"}
+STATUS_LABELS = enquiry_lifecycle.VENDOR_LABELS
 
 
 def guests(party_size: Optional[int]) -> Optional[str]:
@@ -171,6 +171,20 @@ def enquiry_status(db, enquiry, *, actor: str, login=None) -> dict:
         f"{enquiry.contact_name}'s enquiry marked {label}",
         body=enquiry.package_title_snapshot or "General enquiry",
         actor=actor, login=login,
+        enquiry_id=enquiry.id,
+    )
+
+
+def enquiry_cancelled_by_traveller(db, enquiry) -> dict:
+    """The traveller cancelled in the app. Same kind as a status change, so the
+    portal's bell draws it with the others."""
+    late = " · late cancellation (under 72 hours)" if enquiry.late_cancellation else ""
+    return record(
+        db, enquiry.vendor_id, "enquiry.status",
+        f"{enquiry.contact_name} cancelled their "
+        f"{'booking' if enquiry.confirmed_date else 'request'}",
+        body=(enquiry.package_title_snapshot or "General enquiry") + late,
+        actor=TRAVELLER,
         enquiry_id=enquiry.id,
     )
 

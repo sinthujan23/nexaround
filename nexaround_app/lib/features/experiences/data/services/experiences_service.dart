@@ -8,6 +8,8 @@ import 'package:nexaround_app/core/network/api_client.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/features/experiences/data/models/experience_model.dart';
 import 'package:nexaround_app/features/experiences/domain/entities/experience.dart';
+import 'package:nexaround_app/features/experiences/domain/entities/experience_request.dart';
+import 'package:nexaround_app/features/experiences/domain/entities/experience_terms.dart';
 
 /// One active country where vendors exist.
 class ExperienceCountry {
@@ -307,10 +309,12 @@ class ExperiencesService {
   }
 
   /// Submits an enquiry. Returns null on success, or a message to show.
-  static Future<String?> submitEnquiry({
+  /// Sends a request with the terms version the traveller accepted.
+  static Future<EnquirySubmission> submitEnquiry({
     required String packageId,
     required String contactName,
     required String contactPhone,
+    required int acceptedTermsVersion,
     String? contactEmail,
     DateTime? preferredDate,
     int? partySize,
@@ -324,6 +328,7 @@ class ExperiencesService {
           'package_id': packageId,
           'contact_name': contactName,
           'contact_phone': contactPhone,
+          'accepted_terms_version': acceptedTermsVersion,
           if (contactEmail != null && contactEmail.isNotEmpty)
             'contact_email': contactEmail,
           if (preferredDate != null)
@@ -335,13 +340,112 @@ class ExperiencesService {
           if (message != null && message.isNotEmpty) 'message': message,
         },
       );
-      return null;
+      CacheService.markExperienceTermsAccepted(acceptedTermsVersion);
+      return const EnquirySubmission();
     } catch (e) {
       debugPrint('❌ Error submitting experience enquiry: $e');
-      // The server's own sentence when it has one, e.g. a date past the
-      // vendor's booking window.
-      return (e is DioException ? safeServerDetail(e.response) : null) ??
-          'Could not send your request. Please try again.';
+      final response = e is DioException ? e.response : null;
+      return EnquirySubmission(
+        // The server's own sentence when it has one, e.g. a date past the
+        // vendor's booking window.
+        error: safeServerDetail(response) ??
+            'Could not send your request. Please try again.',
+        termsChanged: response?.statusCode == 409,
+      );
     }
   }
+
+  /// The current Experience Booking Terms, saving them for [cachedTerms].
+  /// Null when they cannot be fetched.
+  static Future<ExperienceTerms?> fetchTerms() async {
+    try {
+      final response = await ApiClient.instance.get(ApiConstants.experienceTerms);
+      final data = response.data;
+      if (data is Map<String, dynamic> && data['version'] is num) {
+        CacheService.cacheExperienceTerms(data);
+        return ExperienceTerms.fromJson(data);
+      }
+    } catch (e) {
+      debugPrint('❌ Error fetching experience terms: $e');
+    }
+    return null;
+  }
+
+  /// The terms as last fetched by this account, or null.
+  static ExperienceTerms? cachedTerms() {
+    final data = CacheService.getCachedExperienceTerms();
+    return data == null ? null : ExperienceTerms.fromJson(data);
+  }
+
+  /// The signed-in traveller's requests, newest first, saved for
+  /// [cachedMyRequests]. Null when they cannot be fetched.
+  static Future<List<ExperienceRequest>?> fetchMyRequests() async {
+    try {
+      final response =
+          await ApiClient.instance.get(ApiConstants.myExperienceRequests);
+      final data = response.data;
+      if (data is Map<String, dynamic> && data['enquiries'] is List) {
+        final raw = (data['enquiries'] as List)
+            .whereType<Map<String, dynamic>>()
+            .toList();
+        CacheService.cacheMyExperienceRequests(raw);
+        return raw.map(ExperienceRequest.fromJson).toList();
+      }
+    } catch (e) {
+      debugPrint('❌ Error fetching my experience requests: $e');
+    }
+    return null;
+  }
+
+  static List<ExperienceRequest>? cachedMyRequests() =>
+      CacheService.getCachedMyExperienceRequests()
+          ?.map(ExperienceRequest.fromJson)
+          .toList();
+
+  /// Cancels one of the traveller's requests. The server stamps the time,
+  /// which is what the 72-hour rule is judged on.
+  static Future<RequestCancellation> cancelRequest(
+    String requestId, {
+    String? reason,
+  }) async {
+    try {
+      final response = await ApiClient.instance.post(
+        '${ApiConstants.experienceEnquiries}/$requestId/cancel',
+        data: {
+          if (reason != null && reason.trim().isNotEmpty) 'reason': reason.trim(),
+        },
+      );
+      final data = response.data;
+      return RequestCancellation(
+        request: data is Map<String, dynamic>
+            ? ExperienceRequest.fromJson(data)
+            : null,
+      );
+    } catch (e) {
+      debugPrint('❌ Error cancelling experience request: $e');
+      return RequestCancellation(
+        error: (e is DioException ? safeServerDetail(e.response) : null) ??
+            'Could not cancel your request. Please try again.',
+      );
+    }
+  }
+}
+
+/// How a cancellation went: the updated request, or a message to show.
+class RequestCancellation {
+  final ExperienceRequest? request;
+  final String? error;
+
+  const RequestCancellation({this.request, this.error});
+}
+
+/// How a request went. [termsChanged]: the terms were updated since the
+/// traveller accepted them, so the sheet must show them again.
+class EnquirySubmission {
+  final String? error;
+  final bool termsChanged;
+
+  const EnquirySubmission({this.error, this.termsChanged = false});
+
+  bool get sent => error == null;
 }

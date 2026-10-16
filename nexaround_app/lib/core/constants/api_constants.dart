@@ -53,6 +53,8 @@ class ApiConstants {
   static const String experiencePackages = '$apiVersion/experiences/packages';
   static const String experienceVendors = '$apiVersion/experiences/vendors';
   static const String experienceEnquiries = '$apiVersion/experiences/enquiries';
+  static const String experienceTerms = '$apiVersion/legal/experience_customer';
+  static const String myExperienceRequests = '$apiVersion/experiences/enquiries/mine';
   static const String discoveryGenerate = '$apiVersion/discovery/generate';
 
   // Forum endpoints

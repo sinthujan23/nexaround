@@ -19,6 +19,7 @@ import 'package:nexaround_app/features/travel_stories/presentation/pages/travel_
 import 'package:nexaround_app/core/services/avatar_service.dart';
 import 'package:nexaround_app/features/planning/data/odyssey_repository.dart';
 import 'package:nexaround_app/features/planning/presentation/pages/history_page.dart';
+import 'package:nexaround_app/features/experiences/presentation/pages/my_experience_requests_page.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -495,6 +496,12 @@ class _ProfilePageState extends State<ProfilePage> {
           onTap: () {
             context.push('/journal');
           },
+        ),
+        _buildMenuItem(
+          Icons.receipt_long_rounded,
+          'My experience requests',
+          '',
+          onTap: () => showMyExperienceRequests(context),
         ),
         const SizedBox(height: 14),
         // Account Actions

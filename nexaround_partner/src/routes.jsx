@@ -1,5 +1,7 @@
 import { matchPath } from 'react-router-dom';
-import { CompassIcon, TicketIcon, InboxIcon, MapPinIcon, ShieldIcon } from './components/Icons';
+import {
+  ClipboardCheckIcon, CompassIcon, TicketIcon, InboxIcon, MapPinIcon, ShieldIcon,
+} from './components/Icons';
 
 /**
  * The sidebar, in order. The route tree in App.jsx holds the pages; this list
@@ -12,6 +14,7 @@ export const NAV_ITEMS = [
   { to: '/enquiries', label: 'Enquiries', Icon: InboxIcon, badge: 'enquiries' },
   { to: '/profile', label: 'Business Profile', Icon: MapPinIcon },
   { to: '/security', label: 'Security', Icon: ShieldIcon },
+  { to: '/agreement', label: 'Provider Agreement', Icon: ClipboardCheckIcon },
 ];
 
 /**
@@ -28,6 +31,7 @@ const HEADERS = [
   { path: '/enquiries', title: 'Enquiries' },
   { path: '/profile/*', title: 'Business Profile' },
   { path: '/security/*', title: 'Security & Devices' },
+  { path: '/agreement', title: 'Provider Agreement' },
 ];
 
 export function headerFor(pathname) {

@@ -11,6 +11,7 @@ import ApiUsage from './pages/ApiUsage';
 import Experiences from './pages/Experiences';
 import ExperienceEnquiries from './pages/ExperienceEnquiries';
 import AuditTrail from './pages/AuditTrail';
+import Legal from './pages/Legal';
 import Sessions from './pages/Sessions';
 import {
   CompassIcon, UsersIcon, MapPinIcon, CreditCardIcon, MegaphoneIcon, ImageIcon, SettingsIcon,
@@ -43,6 +44,7 @@ export const NAV_SECTIONS = [
     items: [
       { path: '/experiences', label: 'Experiences', title: 'Experiences & Vendors', icon: TicketIcon, page: Experiences },
       { path: '/enquiries', label: 'Enquiries', title: 'Experience Enquiries', icon: InboxIcon, page: ExperienceEnquiries },
+      { path: '/legal', label: 'Legal & Terms', title: 'Legal & Terms', icon: ClipboardCheckIcon, page: Legal },
       { path: '/payments', label: 'Payments & Plans', title: 'Payments & Plans', icon: CreditCardIcon, page: Payments },
     ],
   },

@@ -7,11 +7,11 @@ earth rather than an empty screen.
 """
 
 import uuid
-from typing import Optional
+from typing import Optional, Sequence
 
 from geoalchemy2 import Geography
 from geoalchemy2.functions import ST_Distance
-from sqlalchemy import func, select
+from sqlalchemy import func, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -23,8 +23,21 @@ from app.utils.geo_utils import create_point
 
 
 class ExperienceRepository:
-    def __init__(self, db: AsyncSession):
+    def __init__(
+        self, db: AsyncSession, hidden_vendor_ids: Sequence[uuid.UUID] = ()
+    ):
+        """`hidden_vendor_ids`: vendors kept out of every app-facing query, today
+        those who have not accepted the Provider Agreement in time
+        (legal_service.hidden_vendor_ids). Admin and partner callers pass none."""
         self.db = db
+        self.hidden_vendor_ids = list(hidden_vendor_ids)
+
+    def _not_hidden(self):
+        """A predicate on the package row alone: an id list, not a join, so the
+        KNN query below keeps its single-table plan."""
+        if not self.hidden_vendor_ids:
+            return true()
+        return ExperiencePackage.vendor_id.notin_(self.hidden_vendor_ids)
 
     async def get_nearest_packages(
         self,
@@ -60,6 +73,7 @@ class ExperienceRepository:
                 ExperiencePackage.is_published.is_(True),
                 # Country-only vendors have no point; nearest-first cannot rank them.
                 ExperiencePackage.location.isnot(None),
+                self._not_hidden(),
             )
             .order_by(location.op("<->")(center))
             .offset(offset)
@@ -94,7 +108,7 @@ class ExperienceRepository:
         query = (
             select(ExperiencePackage)
             .join(ExperiencePackage.vendor)
-            .where(ExperiencePackage.is_published.is_(True))
+            .where(ExperiencePackage.is_published.is_(True), self._not_hidden())
             .order_by(
                 ExperienceVendor.sort_order.desc(),
                 ExperiencePackage.sort_order.desc(),
@@ -120,7 +134,7 @@ class ExperienceRepository:
         located_only: bool = False,
     ) -> int:
         query = select(func.count()).select_from(ExperiencePackage).where(
-            ExperiencePackage.is_published.is_(True)
+            ExperiencePackage.is_published.is_(True), self._not_hidden()
         )
         if located_only:
             query = query.where(ExperiencePackage.location.isnot(None))
@@ -147,6 +161,7 @@ class ExperienceRepository:
             .where(
                 ExperiencePackage.is_published.is_(True),
                 ExperienceVendor.country_code.isnot(None),
+                self._not_hidden(),
             )
             .group_by(ExperienceVendor.country_code)
             .order_by(func.count(ExperiencePackage.id).desc())
@@ -182,7 +197,9 @@ class ExperienceRepository:
             .options(selectinload(ExperiencePackage.vendor))
         )
         if published_only:
-            query = query.where(ExperiencePackage.is_published.is_(True))
+            query = query.where(
+                ExperiencePackage.is_published.is_(True), self._not_hidden()
+            )
         return (await self.db.execute(query)).scalar_one_or_none()
 
     async def distance_to(

@@ -10,7 +10,8 @@ import uuid
 from typing import List, Optional
 
 from fastapi import (
-    APIRouter, Depends, File, HTTPException, Query, UploadFile, status,
+    APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile,
+    status,
 )
 from PIL import Image
 from sqlalchemy import select
@@ -26,7 +27,10 @@ from app.schemas.partner import (
     VendorLoginUpdate,
 )
 from app.api.v1.partner import _PARTNER_PACKAGE_SCALARS, _PARTNER_VENDOR_SCALARS
-from app.services import audit, partner_activity, partner_events
+from app.services import (
+    audit, enquiry_lifecycle, enquiry_notifications, partner_activity,
+    partner_events,
+)
 from app.services.email_service import send_vendor_invite_email
 from app.services.experience_upload import save_experience_images, save_experience_video
 from app.services.partner_auth import store_link_token
@@ -392,18 +396,37 @@ async def list_enquiries(
 async def update_enquiry(
     enquiry_id: uuid.UUID,
     data: ExperienceEnquiryUpdate,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     _=Depends(verify_admin_token),
 ):
+    from datetime import datetime, timezone
+
     from app.models.experience import ExperienceEnquiry
 
     enquiry = await db.get(ExperienceEnquiry, enquiry_id)
     if not enquiry:
         raise HTTPException(status_code=404, detail="Enquiry not found")
     activity = None
-    if data.status is not None and data.status != enquiry.status:
-        enquiry.status = data.status
-        if enquiry.vendor_id:
+    event = None
+    # Unlike a vendor, an admin may set any status, including reopening a
+    # cancelled request; a confirmation still needs a date.
+    if data.status is not None and data.status not in (*enquiry_lifecycle.ALL_STATUSES, "spam"):
+        raise HTTPException(status_code=400, detail="Unknown status.")
+    booked = enquiry_lifecycle.booked_date(enquiry, data.confirmed_date)
+    if data.status == enquiry_lifecycle.CONFIRMED and booked is None:
+        raise HTTPException(status_code=400, detail="Choose the confirmed date.")
+    if data.status is not None and (
+        data.status != enquiry.status or data.confirmed_date is not None
+    ):
+        before = enquiry.status
+        event = enquiry_lifecycle.apply_status(
+            enquiry, data.status,
+            now=datetime.now(timezone.utc),
+            confirmed_date=data.confirmed_date,
+            reason=data.cancellation_reason,
+        )
+        if enquiry.vendor_id and enquiry.status != before:
             activity = partner_activity.enquiry_status(
                 db, enquiry, actor=partner_activity.ADMIN,
             )
@@ -415,9 +438,13 @@ async def update_enquiry(
     await partner_events.publish(
         enquiry.vendor_id,
         partner_events.ENQUIRY_UPDATED,
-        {"id": enquiry.id, "status": enquiry.status, "vendor_notes": enquiry.vendor_notes},
+        partner_events.enquiry_payload(enquiry),
     )
     await partner_activity.announce(activity)
+    if event in (enquiry_lifecycle.CONFIRMED, enquiry_lifecycle.PROVIDER_CANCELLED):
+        background_tasks.add_task(enquiry_notifications.booking_update, enquiry.id, event)
+    elif event == enquiry_lifecycle.CUSTOMER_CANCELLED:
+        background_tasks.add_task(enquiry_notifications.customer_cancelled, enquiry.id)
     return ExperienceEnquiryAdminResponse.model_validate(enquiry)
 
 

@@ -1593,6 +1593,8 @@ td { padding: 14px 16px; color: var(--text-primary); vertical-align: middle; }
 .dot-hidden, .dot-closed { background: #c4c9d4; }
 .dot-new { background: #f59e0b; box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.18); }
 .dot-spam { background: var(--danger); }
+.dot-confirmed { background: #047857; }
+.dot-customer_cancelled, .dot-provider_cancelled { background: #e11d48; }
 
 .status-label {
   display: inline-flex;
@@ -3449,3 +3451,11 @@ a.btn { text-decoration: none; }
 .avail-chip button { border: 0; background: rgba(163, 38, 38, 0.12); color: #a32626; width: 18px; height: 18px; border-radius: 50%; line-height: 1; cursor: pointer; padding: 0; }
 .avail-chip button:hover { background: rgba(163, 38, 38, 0.25); }
 .avail-note { margin-top: 8px; font-size: var(--fs-caption); color: var(--text-muted); }
+
+/* ── Legal & Terms (pages/Legal.jsx) ──────────────────────────────────────── */
+.legal-preview { margin-top: 8px; border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; max-height: 60vh; overflow-y: auto; }
+.legal-preview h4 { font-size: 15px; font-weight: 700; color: var(--text-primary); margin: 18px 0 6px; }
+.legal-preview h4:first-child { margin-top: 0; }
+.legal-preview p { font-size: 13px; line-height: 1.6; color: var(--text-secondary); margin: 0 0 8px; }
+.legal-preview ul { padding-left: 18px; margin: 0 0 8px; }
+.legal-preview li { font-size: 13px; line-height: 1.6; color: var(--text-secondary); }

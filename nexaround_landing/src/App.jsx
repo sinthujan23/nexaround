@@ -13,6 +13,7 @@ import Contact from './pages/Contact';
 import GetApp from './pages/GetApp';
 import Privacy from './pages/Privacy';
 import Terms from './pages/Terms';
+import ExperienceTerms from './pages/ExperienceTerms';
 
 import FaqChatbot from './components/FaqChatbot';
 
@@ -53,6 +54,8 @@ export default function App() {
             <Route path="/download" element={<GetApp />} />
             <Route path="/privacy" element={<Privacy />} />
             <Route path="/terms" element={<Terms />} />
+            <Route path="/experience-terms" element={<ExperienceTerms kind="experience_customer" />} />
+            <Route path="/provider-agreement" element={<ExperienceTerms kind="experience_provider" />} />
           </Routes>
         </main>
         <Footer />

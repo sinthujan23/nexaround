@@ -48,6 +48,23 @@ def channel(vendor_id) -> str:
     return f"partner_events:{vendor_id}"
 
 
+def enquiry_payload(enquiry) -> dict:
+    """What an ENQUIRY_UPDATED event carries: the fields either side can change,
+    so an open enquiry follows a status change, a confirmation or a
+    cancellation without a reload. Never `admin_notes`: those are the
+    platform's, not the vendor's."""
+    return {
+        "id": enquiry.id,
+        "status": enquiry.status,
+        "vendor_notes": enquiry.vendor_notes,
+        "confirmed_date": enquiry.confirmed_date,
+        "cancelled_at": enquiry.cancelled_at,
+        "cancellation_reason": enquiry.cancellation_reason,
+        "late_cancellation": enquiry.late_cancellation,
+        "free_cancellation_last_day": enquiry.free_cancellation_last_day,
+    }
+
+
 def sse(event: str, data: dict) -> str:
     """One Server-Sent Events frame. `json.dumps` never emits a raw newline,
     so the payload always fits on the single `data:` line."""

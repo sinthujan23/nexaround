@@ -17,6 +17,7 @@ has given this one package its own meeting point.
 
 import uuid
 from datetime import date, datetime, timezone
+from typing import Optional
 
 from sqlalchemy import (
     ARRAY, Boolean, Date, DateTime, ForeignKey, Index, Integer, Numeric, String, Text,
@@ -26,6 +27,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from geoalchemy2 import Geometry
 
 from app.core.database import Base
+from app.services import enquiry_lifecycle
 
 
 def _utcnow() -> datetime:
@@ -220,8 +222,32 @@ class ExperienceEnquiry(Base):
     pickup_location: Mapped[str] = mapped_column(String(500), nullable=True)
     message: Mapped[str] = mapped_column(Text, nullable=True)
 
-    # new | contacted | closed
+    # The Experience Booking Terms version the traveller accepted with this
+    # request, and when. NULL on requests from before the terms, or from an
+    # app too old to show them (allowed during legal_service's grace period).
+    terms_version: Mapped[int] = mapped_column(Integer, nullable=True)
+    terms_accepted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    # new | contacted | confirmed | closed | customer_cancelled |
+    # provider_cancelled. The transitions are in enquiry_lifecycle.
     status: Mapped[str] = mapped_column(String(20), default="new", index=True)
+
+    # Set when the provider confirms: the booked day (the preferred date unless
+    # they agreed another, and required for a "flexible" request). The 72-hour
+    # rule counts back from it.
+    confirmed_date: Mapped[date] = mapped_column(Date, nullable=True)
+    confirmed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # Set by either side's cancellation; the status says whose.
+    cancelled_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    cancellation_reason: Mapped[str] = mapped_column(Text, nullable=True)
+    # A traveller's cancellation of a confirmed booking inside the 72 hours.
+    late_cancellation: Mapped[bool] = mapped_column(Boolean, nullable=True)
     admin_notes: Mapped[str] = mapped_column(Text, nullable=True)
     # The vendor's own note, kept apart from `admin_notes` deliberately. That
     # column already holds the admin's private commentary about vendors and
@@ -235,6 +261,11 @@ class ExperienceEnquiry(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
     )
+
+    @property
+    def free_cancellation_last_day(self) -> Optional[date]:
+        """Derived from `confirmed_date`, for the response schemas to read."""
+        return enquiry_lifecycle.free_cancellation_last_day(self.confirmed_date)
 
     def __repr__(self) -> str:
         return f"<ExperienceEnquiry {self.contact_name} -> {self.vendor_name_snapshot}>"

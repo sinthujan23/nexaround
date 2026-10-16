@@ -825,6 +825,7 @@ class ExperiencesTabState extends State<ExperiencesTab> {
 
   Widget _buildSectionHeader() {
     final String title;
+    final bool showClosestFirst = !_countryMode && _selectedCountry == null;
     if (_selectedCountry != null) {
       title = _category == null
           ? 'Experiences in ${_selectedCountry!.name}'
@@ -853,10 +854,11 @@ class ExperiencesTabState extends State<ExperiencesTab> {
               ),
             ),
           ),
-          const Text(
-            'Closest first',
-            style: TextStyle(fontSize: 12, color: AppColors.textTertiary),
-          ),
+          if (showClosestFirst)
+            const Text(
+              'Closest first',
+              style: TextStyle(fontSize: 12, color: AppColors.textTertiary),
+            ),
         ],
       ),
     );
@@ -979,7 +981,7 @@ class ExperiencesTabState extends State<ExperiencesTab> {
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(11),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(18),
@@ -990,15 +992,15 @@ class ExperiencesTabState extends State<ExperiencesTab> {
           ClipRRect(
             borderRadius: BorderRadius.circular(14),
             child: Container(
-              width: 116,
-              height: 116,
+              width: 110,
+              height: 124,
               color: Colors.grey[200],
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 10),
           Expanded(
             child: SizedBox(
-              height: 116,
+              height: 124,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,

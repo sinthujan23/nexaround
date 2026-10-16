@@ -6,13 +6,14 @@ import { useToast } from '../toast';
 import { useUnsavedGuard } from '../hooks';
 import {
   InboxIcon, PhoneIcon, MailIcon, WhatsAppIcon, TicketIcon, UsersIcon, ClockIcon, EditIcon,
-  MapPinIcon,
+  MapPinIcon, ClipboardCheckIcon,
 } from '../components/Icons';
 import { Section, InfoTile, Avatar } from '../components/Kit';
 import { EmptyState, EnquiryStatusPill, Loader } from '../components/Lists';
 import { Field } from '../components/Forms';
 import {
-  ENQUIRY_STATUSES, STATUS_LABELS, STATUS_TONES, formatDateTime, formatDay, guestsLabel, digitsOnly,
+  CANCELLED_STATUSES, STATUS_LABELS, STATUS_TONES, VENDOR_STATUSES, formatDateTime, formatDay,
+  freeCancellationLastDay, guestsLabel, digitsOnly,
 } from '../format';
 
 const whatsAppLink = (enquiry, vendorName) => {
@@ -27,6 +28,28 @@ const whatsAppLink = (enquiry, vendorName) => {
  * the list it is on. The parent keys this by id, so opening another enquiry
  * starts clean: no note carried over, no stale status.
  */
+/** A cancelled request: who, when, why, and whether it was late. Final. */
+function CancelledNote({ enquiry }) {
+  const byTraveller = enquiry.status === 'customer_cancelled';
+  return (
+    <div className="booking-note cancelled">
+      {byTraveller
+        ? <>The traveller cancelled this {enquiry.confirmed_date ? 'booking' : 'request'} on <strong>{formatDateTime(enquiry.cancelled_at)}</strong>.</>
+        : <>You cancelled this on <strong>{formatDateTime(enquiry.cancelled_at)}</strong>.</>}
+      {enquiry.cancellation_reason && <div style={{ marginTop: 6 }}>Reason: {enquiry.cancellation_reason}</div>}
+      {byTraveller && enquiry.late_cancellation && (
+        <div className="late">
+          Late cancellation: less than 72 hours before {formatDay(enquiry.confirmed_date)}. Under the booking
+          terms the traveller may have to pay the booking price.
+        </div>
+      )}
+      <div className="form-hint" style={{ marginTop: 8 }}>
+        A cancelled request cannot be reopened. Contact NexAround if this was a mistake.
+      </div>
+    </div>
+  );
+}
+
 export default function EnquiryDetail({ id, onClose, onChanged }) {
   const { me } = useAuth();
   const notify = useToast();
@@ -36,6 +59,10 @@ export default function EnquiryDetail({ id, onClose, onChanged }) {
   // null until the vendor types, so the box follows the server until then.
   const [draft, setDraft] = useState(null);
   const [busy, setBusy] = useState(false);
+  // 'confirm' or 'cancel' while that form is open: both need more than a click.
+  const [mode, setMode] = useState(null);
+  const [confirmDate, setConfirmDate] = useState('');
+  const [reason, setReason] = useState('');
 
   const enquiry = latest || data;
   const savedNote = enquiry?.vendor_notes || '';
@@ -50,7 +77,8 @@ export default function EnquiryDetail({ id, onClose, onChanged }) {
   // except a note the vendor is part-way through typing (draft is kept).
   useLiveEvent(['enquiry.updated', RESYNC], ({ type, data: update }) => {
     if (type === 'enquiry.updated' && update.id === id) {
-      setLatest((prev) => ({ ...(prev || data), status: update.status, vendor_notes: update.vendor_notes }));
+      // Includes the booking: a traveller cancelling shows up here live.
+      setLatest((prev) => ({ ...(prev || data), ...update }));
     }
   });
 
@@ -60,6 +88,7 @@ export default function EnquiryDetail({ id, onClose, onChanged }) {
       const updated = await apiPatch(`/partner/enquiries/${id}`, body);
       setLatest(updated);
       if ('vendor_notes' in body) setDraft(null);
+      setMode(null);
       onChanged();
       notify(message);
     } catch (err) {
@@ -136,6 +165,15 @@ export default function EnquiryDetail({ id, onClose, onChanged }) {
               tone="green" icon={MapPinIcon} label="Pickup"
               value={enquiry.pickup_location || 'Not given'} muted={!enquiry.pickup_location}
             />
+            {/* So the vendor can point to the payment and 72-hour rules the
+                traveller agreed to. Older requests carry no version. */}
+            <InfoTile
+              tone="teal" icon={ClipboardCheckIcon} label="Booking terms"
+              value={enquiry.terms_version
+                ? `Accepted version ${enquiry.terms_version} · ${formatDateTime(enquiry.terms_accepted_at)}`
+                : 'Not recorded'}
+              muted={!enquiry.terms_version}
+            />
           </div>
           {enquiry.message && (
             <div style={{ marginTop: 18 }}>
@@ -147,19 +185,101 @@ export default function EnquiryDetail({ id, onClose, onChanged }) {
 
         <div className="xp-section">
           <div className="xp-section-title">Status</div>
-          <div className="xp-section-hint">Changes save immediately.</div>
-          <div className="status-seg">
-            {ENQUIRY_STATUSES.map((s) => (
-              <button
-                key={s}
-                className={`tone-${STATUS_TONES[s]} ${enquiry.status === s ? 'active' : ''}`}
-                disabled={busy || enquiry.status === s}
-                onClick={() => patch({ status: s }, `Marked as ${STATUS_LABELS[s].toLowerCase()}`)}
-              >
-                <span className={`dot dot-${s}`} /> {STATUS_LABELS[s]}
-              </button>
-            ))}
-          </div>
+          {CANCELLED_STATUSES.includes(enquiry.status) ? (
+            <CancelledNote enquiry={enquiry} />
+          ) : (
+            <>
+              <div className="xp-section-hint">
+                Confirming or cancelling notifies the traveller. Other changes save immediately.
+              </div>
+              <div className="status-seg">
+                {VENDOR_STATUSES.map((s) => (
+                  <button
+                    key={s}
+                    className={`tone-${STATUS_TONES[s]} ${enquiry.status === s ? 'active' : ''}`}
+                    disabled={busy || (enquiry.status === s && s !== 'confirmed')}
+                    onClick={() => {
+                      if (s === 'confirmed') {
+                        setConfirmDate(enquiry.confirmed_date || enquiry.preferred_date || '');
+                        setMode('confirm');
+                      } else if (s === 'provider_cancelled') {
+                        setReason('');
+                        setMode('cancel');
+                      } else {
+                        patch({ status: s }, `Marked as ${STATUS_LABELS[s].toLowerCase()}`);
+                      }
+                    }}
+                  >
+                    <span className={`dot dot-${s}`} />{' '}
+                    {s === 'confirmed' && enquiry.status === 'confirmed' ? 'Change date' : STATUS_LABELS[s]}
+                  </button>
+                ))}
+              </div>
+
+              {mode === 'confirm' && (
+                <div className="booking-form">
+                  <label className="form-label" htmlFor="confirm-date">Date agreed with the traveller</label>
+                  <input
+                    id="confirm-date" type="date" className="form-input" value={confirmDate}
+                    onChange={(e) => setConfirmDate(e.target.value)}
+                  />
+                  {confirmDate && (
+                    <div className="form-hint">
+                      The traveller is notified, and can cancel for free until the end of{' '}
+                      {formatDay(freeCancellationLastDay(confirmDate))}.
+                    </div>
+                  )}
+                  <div className="booking-form-actions">
+                    <button className="btn btn-ghost btn-sm" onClick={() => setMode(null)}>Back</button>
+                    <button
+                      className="btn btn-primary btn-sm" disabled={busy || !confirmDate}
+                      onClick={() => patch(
+                        { status: 'confirmed', confirmed_date: confirmDate },
+                        'Booking confirmed. The traveller has been notified.',
+                      )}
+                    >
+                      {busy ? 'Saving…' : 'Confirm booking'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {mode === 'cancel' && (
+                <div className="booking-form">
+                  <label className="form-label" htmlFor="cancel-reason">Reason (shown to the traveller)</label>
+                  <textarea
+                    id="cancel-reason" className="form-textarea" rows={3} value={reason} maxLength={1000}
+                    placeholder="e.g. The boat is under repair that week"
+                    onChange={(e) => setReason(e.target.value)}
+                  />
+                  <div className="form-hint">
+                    The traveller is notified. A cancellation cannot be undone, and you must arrange any
+                    refund or rescheduling.
+                  </div>
+                  <div className="booking-form-actions">
+                    <button className="btn btn-ghost btn-sm" onClick={() => setMode(null)}>Back</button>
+                    <button
+                      className="btn btn-danger btn-sm" disabled={busy}
+                      onClick={() => patch(
+                        { status: 'provider_cancelled', cancellation_reason: reason },
+                        'Cancelled. The traveller has been notified.',
+                      )}
+                    >
+                      {busy ? 'Saving…' : `Cancel this ${enquiry.status === 'confirmed' ? 'booking' : 'request'}`}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {enquiry.status === 'confirmed' && mode !== 'confirm' && (
+                <div className="booking-note">
+                  Confirmed for <strong>{formatDay(enquiry.confirmed_date)}</strong>. The traveller can
+                  cancel for free until the end of {formatDay(enquiry.free_cancellation_last_day)};
+                  after that they may have to pay the booking price.
+                </div>
+              )}
+            </>
+          )}
         </div>
 
         <div className="xp-section">

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/features/auth/presentation/pages/home_page.dart';
+import 'package:nexaround_app/features/experiences/presentation/pages/my_experience_requests_page.dart';
 import 'package:nexaround_app/core/services/discovery_history_service.dart';
 
 import 'package:nexaround_app/features/planning/data/odyssey_repository.dart';
@@ -62,6 +63,9 @@ class _NotificationsPageState extends State<NotificationsPage> {
           HomePage.homeKey.currentState?.switchToPlans();
         }
       }
+    } else if (type == 'experience_request') {
+      final requestId = (data['enquiry_id'] ?? n['enquiry_id'])?.toString();
+      await showMyExperienceRequests(context, openRequestId: requestId);
     } else if (type == 'discovery_ready' || type.contains('discovery')) {
       Navigator.pop(context);
       final discoveryId = (data['discovery_id'] ?? data['id'] ?? n['discovery_id'] ?? n['id'])?.toString();
@@ -114,6 +118,8 @@ class _NotificationsPageState extends State<NotificationsPage> {
         return Icons.auto_awesome_rounded;
       case 'discovery_ready':
         return Icons.explore_rounded;
+      case 'experience_request':
+        return Icons.receipt_long_rounded;
       default:
         return Icons.notifications_rounded;
     }

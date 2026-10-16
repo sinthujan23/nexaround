@@ -37,9 +37,35 @@ export const bookingWindowOptions = (current) =>
     ? BOOKING_WINDOWS
     : [...BOOKING_WINDOWS, { value: Number(current), label: `${current} days ahead` }];
 
-// The partner API accepts only these three; spam is an admin-only status.
-export const ENQUIRY_STATUSES = ['new', 'contacted', 'closed'];
-export const STATUS_LABELS = { new: 'New', contacted: 'Contacted', closed: 'Closed', spam: 'Spam' };
+// Every status a request can be in, for the inbox filters. The server's
+// enquiry_lifecycle.py owns the rules; spam is an admin-only status.
+export const ENQUIRY_STATUSES = [
+  'new', 'contacted', 'confirmed', 'closed', 'customer_cancelled', 'provider_cancelled',
+];
+// What a vendor may set. Only the traveller can record their own cancellation.
+export const VENDOR_STATUSES = ['new', 'contacted', 'confirmed', 'closed', 'provider_cancelled'];
+export const CANCELLED_STATUSES = ['customer_cancelled', 'provider_cancelled'];
+export const STATUS_LABELS = {
+  new: 'New',
+  contacted: 'Contacted',
+  confirmed: 'Confirmed',
+  closed: 'Closed',
+  customer_cancelled: 'Cancelled by traveller',
+  provider_cancelled: 'Cancelled by you',
+  spam: 'Spam',
+};
+
+// The last day a confirmed booking can be cancelled for free: 72 hours before
+// the start of the booked day ("2026-10-20" -> "2026-10-17"). The server sends
+// the same as free_cancellation_last_day; this is for the confirm form, before
+// there is one.
+export const freeCancellationLastDay = (isoDate) => {
+  if (!isoDate) return null;
+  const d = new Date(`${isoDate}T00:00:00`);
+  d.setDate(d.getDate() - 3);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
 
 // Colour families (see the .tone-* classes in index.css). One per category,
 // so a boat trip and a food tour read differently at a glance.
@@ -55,9 +81,17 @@ const CATEGORY_TONES = {
 
 export const categoryTone = (value) => CATEGORY_TONES[value] || 'teal';
 
-// New needs action (amber), contacted is in progress (blue), closed is done
-// (green).
-export const STATUS_TONES = { new: 'amber', contacted: 'blue', closed: 'green', spam: 'rose' };
+// New needs action (amber), contacted is in progress (blue), confirmed is a
+// booking (teal), closed is done (green), and either cancellation is rose.
+export const STATUS_TONES = {
+  new: 'amber',
+  contacted: 'blue',
+  confirmed: 'teal',
+  closed: 'green',
+  customer_cancelled: 'rose',
+  provider_cancelled: 'rose',
+  spam: 'rose',
+};
 
 // is_published is the server's word, not the form's: it also needs the whole
 // listing to be live, which only NexAround can switch.

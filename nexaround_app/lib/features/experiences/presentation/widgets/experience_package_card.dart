@@ -26,7 +26,8 @@ class ExperiencePackageCard extends StatelessWidget {
   });
 
   static const double _radius = 18;
-  static const double _thumbSize = 116;
+  static const double _thumbWidth = 110;
+  static const double _cardHeight = 124;
 
   @override
   Widget build(BuildContext context) {
@@ -54,14 +55,14 @@ class ExperiencePackageCard extends StatelessWidget {
           child: InkWell(
             onTap: onTap,
             child: Padding(
-              padding: const EdgeInsets.all(11),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
               child: Row(
                 children: [
                   _buildThumbnail(category),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 10),
                   Expanded(
                     child: SizedBox(
-                      height: _thumbSize,
+                      height: _cardHeight,
                       child: _buildBody(category),
                     ),
                   ),
@@ -84,8 +85,8 @@ class ExperiencePackageCard extends StatelessWidget {
     final url = PlaceImageHelper.resolveUrl(package.coverPhotoUrl);
 
     return SizedBox(
-      width: _thumbSize,
-      height: _thumbSize,
+      width: _thumbWidth,
+      height: _cardHeight,
       child: ClipRRect(
         borderRadius: BorderRadius.circular(14),
         child: Stack(
@@ -128,27 +129,27 @@ class ExperiencePackageCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // 1. Top row: Category tag (left) + Distance (right corner)
+          // 1. Top row: Category tag (left) + Location / Distance (right)
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
                 decoration: BoxDecoration(
                   color: category.accent.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(6),
+                  borderRadius: BorderRadius.circular(5),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(category.icon, size: 11.5, color: category.accent),
-                    const SizedBox(width: 4),
+                    Icon(category.icon, size: 10, color: category.accent),
+                    const SizedBox(width: 3.5),
                     Text(
                       category.label,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontSize: 10.5,
+                        fontSize: 9.5,
                         fontWeight: FontWeight.w700,
                         color: category.accent,
                       ),
@@ -161,22 +162,23 @@ class ExperiencePackageCard extends StatelessWidget {
               if (package.hasRegion)
                 Expanded(
                   child: Padding(
-                    padding: const EdgeInsets.only(left: 8),
+                    padding: const EdgeInsets.only(left: 6),
                     child: Align(
                       alignment: Alignment.centerRight,
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(Icons.location_on_rounded, size: 12, color: AppColors.textSecondary),
-                          const SizedBox(width: 3),
+                          const Icon(Icons.location_on_rounded, size: 10.5, color: AppColors.textSecondary),
+                          const SizedBox(width: 2.5),
                           Flexible(
                             child: Text(
                               package.regionLabel!.trim(),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
-                                fontSize: 11,
+                                fontSize: 9.5,
                                 fontWeight: FontWeight.w600,
+                                letterSpacing: -0.2,
                                 color: AppColors.textSecondary,
                               ),
                             ),
@@ -190,17 +192,18 @@ class ExperiencePackageCard extends StatelessWidget {
                 const Spacer(),
               if (package.distanceM != null)
                 Padding(
-                  padding: const EdgeInsets.only(left: 8),
+                  padding: const EdgeInsets.only(left: 6),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.near_me_rounded, size: 11, color: AppColors.textTertiary),
-                      const SizedBox(width: 3),
+                      const Icon(Icons.near_me_rounded, size: 10, color: AppColors.textTertiary),
+                      const SizedBox(width: 2.5),
                       Text(
                         formatDistance(package.distanceM),
                         style: const TextStyle(
-                          fontSize: 11,
+                          fontSize: 9.5,
                           fontWeight: FontWeight.w600,
+                          letterSpacing: -0.2,
                           color: AppColors.textTertiary,
                         ),
                       ),
