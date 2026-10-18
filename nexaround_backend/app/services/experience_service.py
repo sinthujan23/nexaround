@@ -27,6 +27,7 @@ from app.services.experience_format import (
     DEFAULT_BOOKING_WINDOW_DAYS, format_duration, format_price, is_published,
     resolve_package_point, strip_markdown,
 )
+from app.services.ride_apps_service import COUNTRY_NAMES
 from app.utils.geo_utils import get_lat_lng, point_or_none
 
 
@@ -114,6 +115,9 @@ def package_to_card(
     vendor_instagram = vendor.contact_instagram if vendor else None
     vendor_facebook = vendor.contact_facebook if vendor else None
     vendor_x = vendor.contact_x if vendor else None
+    country_code = ((vendor.country_code if vendor else None) or "").strip().upper()
+    if country_code == "94":  # legacy rows hold the dial code, as in the country list
+        country_code = "LK"
 
     return ExperiencePackageCard(
         id=package.id,
@@ -147,6 +151,8 @@ def package_to_card(
         distance_m=distance_m,
         tags=package.tags or [],
         region_label=package.region_label,
+        country_code=country_code or None,
+        country_name=COUNTRY_NAMES.get(country_code) if country_code else None,
         rating_avg=rating[0],
         rating_count=rating[1],
     )

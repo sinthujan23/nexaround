@@ -96,6 +96,11 @@ class ExperiencePackageEntity {
   /// with a pin icon, never as a map location. On cards and detail.
   final String? regionLabel;
 
+  /// The vendor's country: ISO alpha-2 code and English name. Cards show it in
+  /// the "All countries" list, where the region alone does not say where.
+  final String? countryCode;
+  final String? countryName;
+
   /// Average of travellers' published reviews (one decimal), null with none.
   final double? ratingAvg;
   final int ratingCount;
@@ -148,6 +153,8 @@ class ExperiencePackageEntity {
     this.distanceM,
     this.tags = const [],
     this.regionLabel,
+    this.countryCode,
+    this.countryName,
     this.ratingAvg,
     this.ratingCount = 0,
     this.description,
@@ -165,6 +172,7 @@ class ExperiencePackageEntity {
 
   bool get hasRating => ratingAvg != null && ratingCount > 0;
   bool get hasRegion => (regionLabel ?? '').trim().isNotEmpty;
+  bool get hasCountry => (countryName ?? '').trim().isNotEmpty;
   bool get hasVendorWhatsapp => (vendorWhatsapp ?? '').trim().isNotEmpty;
   bool get hasVendorInstagram => (vendorInstagram ?? '').trim().isNotEmpty;
   bool get hasVendorFacebook => (vendorFacebook ?? '').trim().isNotEmpty;

@@ -941,6 +941,7 @@ class ExperiencesTabState extends State<ExperiencesTab> {
         (index) => ExperiencePackageCard(
           package: _packages[index],
           index: index,
+          showCountry: _countryMode && _selectedCountry == null,
           onTap: () => Navigator.push(
             context,
             MaterialPageRoute(

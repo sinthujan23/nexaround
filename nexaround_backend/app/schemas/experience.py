@@ -91,6 +91,10 @@ class ExperiencePackageCard(BaseModel):
     max_participants: Optional[int] = None
     # Admin's free-text region, e.g. "Kerala State · Munnar region".
     region_label: Optional[str] = None
+    # The vendor's country, ISO 3166-1 alpha-2 and its English name. The app
+    # shows it on cards in the "All countries" list.
+    country_code: Optional[str] = None
+    country_name: Optional[str] = None
 
 
 class ExperiencePackageDetail(ExperiencePackageCard):

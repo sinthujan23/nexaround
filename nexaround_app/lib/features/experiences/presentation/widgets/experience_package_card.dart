@@ -6,6 +6,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/utils/distance_format.dart';
 import 'package:nexaround_app/core/utils/place_image_helper.dart';
+import 'package:nexaround_app/features/experiences/data/services/experiences_service.dart';
 import 'package:nexaround_app/features/experiences/domain/entities/experience.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_category.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_price.dart';
@@ -20,11 +21,16 @@ class ExperiencePackageCard extends StatelessWidget {
   final int index;
   final VoidCallback onTap;
 
+  /// Lead the location with the country, for the "All countries" list where
+  /// "Doha" alone does not say where. A list of one country leaves it out.
+  final bool showCountry;
+
   const ExperiencePackageCard({
     super.key,
     required this.package,
     required this.index,
     required this.onTap,
+    this.showCountry = false,
   });
 
   static const double _radius = 18;
@@ -159,34 +165,16 @@ class ExperiencePackageCard extends StatelessWidget {
                   ],
                 ),
               ),
-              // The admin's region text, e.g. "Kerala · Munnar", right-aligned
-              // in the top row. Text only: no map, no directions.
-              if (package.hasRegion)
+              // Where it is, right-aligned in the top row: the admin's region
+              // text, led by the country in "All countries". Text only: no
+              // map, no directions.
+              if (_showsCountry || package.hasRegion)
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.only(left: 6),
                     child: Align(
                       alignment: Alignment.centerRight,
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.location_on_rounded, size: 10.5, color: AppColors.textSecondary),
-                          const SizedBox(width: 2.5),
-                          Flexible(
-                            child: Text(
-                              package.regionLabel!.trim(),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 9.5,
-                                fontWeight: FontWeight.w600,
-                                letterSpacing: -0.2,
-                                color: AppColors.textSecondary,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
+                      child: _buildLocation(),
                     ),
                   ),
                 )
@@ -298,6 +286,72 @@ class ExperiencePackageCard extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+
+  bool get _showsCountry => showCountry && package.hasCountry;
+
+  /// Pin and region, e.g. "Kerala · Munnar". With the country it is the flag
+  /// and the country in bold, then the region: "🇶🇦 Qatar · Doha". One line,
+  /// where an ellipsis cuts the region before the country.
+  Widget _buildLocation() {
+    const regionStyle = TextStyle(
+      fontSize: 9.5,
+      fontWeight: FontWeight.w600,
+      letterSpacing: -0.2,
+      color: AppColors.textSecondary,
+    );
+    final region = package.hasRegion ? package.regionLabel!.trim() : null;
+
+    if (!_showsCountry) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.location_on_rounded, size: 10.5, color: AppColors.textSecondary),
+          const SizedBox(width: 2.5),
+          Flexible(
+            child: Text(
+              region!,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: regionStyle,
+            ),
+          ),
+        ],
+      );
+    }
+
+    final country = package.countryName!.trim();
+    final flag = ExperienceCountry(code: package.countryCode ?? '', name: country).flag;
+    // A region that only repeats the country adds nothing.
+    final showRegion = region != null && region.toLowerCase() != country.toLowerCase();
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(flag, style: const TextStyle(fontSize: 10.5, height: 1)),
+        const SizedBox(width: 3),
+        Flexible(
+          child: Text.rich(
+            TextSpan(
+              children: [
+                TextSpan(
+                  text: country,
+                  style: const TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.2,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                if (showRegion) TextSpan(text: ' · $region', style: regionStyle),
+              ],
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
     );
   }
 
