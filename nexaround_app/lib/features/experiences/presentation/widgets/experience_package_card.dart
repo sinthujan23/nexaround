@@ -291,9 +291,9 @@ class ExperiencePackageCard extends StatelessWidget {
 
   bool get _showsCountry => showCountry && package.hasCountry;
 
-  /// Pin and region, e.g. "Kerala · Munnar". With the country it is the flag
-  /// and the country in bold, then the region: "🇶🇦 Qatar · Doha". One line,
-  /// where an ellipsis cuts the region before the country.
+  /// Pin and region, e.g. "Kerala · Munnar". With the country it is a badge of
+  /// the flag and the country in bold, then the region: [🇶🇦 Qatar]  Doha. One
+  /// line, where the region gives way before the badge does.
   Widget _buildLocation() {
     const regionStyle = TextStyle(
       fontSize: 9.5,
@@ -326,32 +326,60 @@ class ExperiencePackageCard extends StatelessWidget {
     // A region that only repeats the country adds nothing.
     final showRegion = region != null && region.toLowerCase() != country.toLowerCase();
 
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(flag, style: const TextStyle(fontSize: 10.5, height: 1)),
-        const SizedBox(width: 3),
-        Flexible(
-          child: Text.rich(
-            TextSpan(
-              children: [
-                TextSpan(
-                  text: country,
-                  style: const TextStyle(
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -0.2,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                if (showRegion) TextSpan(text: ' · $region', style: regionStyle),
-              ],
+    // Styled as the duration tag, so the card keeps one kind of chip.
+    final badge = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(5),
+        border: Border.all(color: AppColors.border.withValues(alpha: 0.8)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(flag, style: const TextStyle(fontSize: 10, height: 1.15)),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              country,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 9.5,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.1,
+                color: AppColors.textPrimary,
+              ),
             ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
           ),
-        ),
-      ],
+        ],
+      ),
+    );
+
+    // The badge takes what it needs, up to the whole width, and the region the
+    // rest: a long country name never pushes the row past the card's edge.
+    return LayoutBuilder(
+      builder: (context, constraints) => Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: constraints.maxWidth),
+            child: badge,
+          ),
+          if (showRegion)
+            Flexible(
+              child: Padding(
+                padding: const EdgeInsets.only(left: 6),
+                child: Text(
+                  region,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: regionStyle,
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 
