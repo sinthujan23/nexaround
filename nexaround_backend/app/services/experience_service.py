@@ -134,8 +134,12 @@ def package_to_card(
         # Rendered server-side so the app, the admin panel and any future
         # surface cannot disagree about how a price reads.
         price_label=format_price(
-            amount, package.price_currency or "USD", package.price_basis or "per_person"
+            amount,
+            package.price_currency or "USD",
+            package.price_basis or "per_person",
+            package.max_participants,
         ),
+        max_participants=package.max_participants,
         duration_minutes=package.duration_minutes,
         duration_label=format_duration(package.duration_minutes),
         latitude=lat,
@@ -162,7 +166,6 @@ def package_to_detail(
         photo_urls=package.photo_urls or [],
         video_urls=package.video_urls or [],
         unavailable_ranges=package.unavailable_ranges or [],
-        max_participants=package.max_participants,
         booking_window_days=package.booking_window_days or DEFAULT_BOOKING_WINDOW_DAYS,
         inclusions=package.inclusions or [],
         languages=package.languages or [],

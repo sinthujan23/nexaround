@@ -98,10 +98,20 @@ def test_the_liability_exclusions_are_qualified_by_law(body):
 
 
 @pytest.mark.parametrize("body", [legal_texts.CUSTOMER_BODY, legal_texts.PROVIDER_BODY])
-def test_no_single_country_is_named_as_governing_law(body):
-    # The app is released worldwide; the client has not chosen a jurisdiction.
+def test_the_governing_law_is_where_the_company_is_registered(body):
+    # NEXAROUND TECHNOLOGIES LLC is registered in Dubai (decided 2026-10-16,
+    # customer terms v3 and provider agreement v2).
     assert "Sri Lanka" not in body
-    assert "operating company is registered" in body
+    assert "laws of the United Arab Emirates" in body
+    assert "courts of Dubai" in body
+
+
+def test_customers_are_not_invited_to_sue_at_home():
+    # The client asked to drop this line; the non-waivable rights stay.
+    body = legal_texts.CUSTOMER_BODY
+    assert "bring a claim in your local courts" not in body
+    assert "rights that cannot be removed by agreement" in body
+    assert "contact Nexaround support first" in body
 
 
 @pytest.mark.parametrize("body", [legal_texts.CUSTOMER_BODY, legal_texts.PROVIDER_BODY])

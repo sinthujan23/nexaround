@@ -87,6 +87,8 @@ class ExperiencePackageCard(BaseModel):
     # From travellers' published reviews; None with no review yet.
     rating_avg: Optional[float] = None
     rating_count: int = 0
+    # Group size; a group price also shows it in `price_label` ("(max 4)").
+    max_participants: Optional[int] = None
     # Admin's free-text region, e.g. "Kerala State · Munnar region".
     region_label: Optional[str] = None
 

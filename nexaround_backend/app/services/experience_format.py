@@ -112,8 +112,14 @@ def format_price(
     amount: Optional[float],
     currency: str = "USD",
     basis: str = "per_person",
+    max_participants: Optional[int] = None,
 ) -> str:
-    """Human price for a card. `None` means the vendor quotes on request."""
+    """Human price for a card. `None` means the vendor quotes on request.
+
+    A group price carries the group size from the package's "Max
+    participants" field: "QAR 499 / group (max 4)". Nothing is typed into the
+    label itself; Price, Currency, Basis and Max participants make it.
+    """
     if amount is None or basis == "on_request":
         return "Price on request"
 
@@ -129,6 +135,8 @@ def format_price(
     if basis == "per_person":
         return f"{price} / person"
     if basis == "per_group":
+        if max_participants:
+            return f"{price} / group (max {max_participants})"
         return f"{price} / group"
     if basis == "from":
         return f"From {price}"

@@ -86,7 +86,9 @@ Nexaround may update these terms. When it does, the app shows the new version an
 
 If any part of these terms is found to be unenforceable, the rest remains in effect.
 
-Your booking with an experience provider is governed by the laws of the country where the experience takes place. These terms are governed by the laws of the country where Nexaround's operating company is registered. Nothing in these terms takes away the protection you have under the mandatory consumer laws of the country where you live, including any right to bring a claim in your local courts.
+Your booking with an experience provider is governed by the laws of the country where the experience takes place. These terms are governed by the laws of the United Arab Emirates, and any dispute with Nexaround will be handled by the courts of Dubai, United Arab Emirates, except where the law of the country you live in gives you rights that cannot be removed by agreement.
+
+Before starting any legal claim, please contact Nexaround support first so we can try to resolve it. Most issues can be settled within 30 days.
 """
 
 PROVIDER_TITLE = "Experience Provider Agreement"
@@ -169,5 +171,5 @@ Nexaround may update this agreement. When it does, the partner portal shows the 
 
 If any part of this agreement is found to be unenforceable, the rest remains in effect.
 
-This agreement is governed by the laws of the country where Nexaround's operating company is registered. You must also comply with the laws of every country where you offer experiences.
+This agreement is governed by the laws of the United Arab Emirates, and any dispute between you and Nexaround will be handled by the courts of Dubai, United Arab Emirates. You must also comply with the laws of every country where you offer experiences.
 """

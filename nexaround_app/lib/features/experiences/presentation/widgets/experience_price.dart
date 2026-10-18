@@ -40,7 +40,12 @@ class ExperiencePriceBuilder extends StatelessWidget {
         if (target == from) {
           return builder(
             context,
-            convertedPriceLabel(amount, from, package.priceBasis),
+            convertedPriceLabel(
+              amount,
+              from,
+              package.priceBasis,
+              maxPeople: package.maxParticipants,
+            ),
           );
         }
 
@@ -54,7 +59,12 @@ class ExperiencePriceBuilder extends StatelessWidget {
             toCurrency: target,
             ratesOfToCurrency: rates,
           );
-          return convertedPriceLabel(converted, target, package.priceBasis);
+          return convertedPriceLabel(
+            converted,
+            target,
+            package.priceBasis,
+            maxPeople: package.maxParticipants,
+          );
         }
 
         // Saved rates paint at once; only a first run waits for the network.
@@ -69,8 +79,14 @@ class ExperiencePriceBuilder extends StatelessWidget {
   }
 }
 
-/// "INR 47,500 / person", "INR 7,500 / group", "From USD 40", "USD 12.50".
-String convertedPriceLabel(double amount, String currency, String basis) {
+/// "INR 47,500 / person", "INR 7,500 / group (max 6)", "From USD 40",
+/// "USD 12.50". A group price carries the group size, like the server's label.
+String convertedPriceLabel(
+  double amount,
+  String currency,
+  String basis, {
+  int? maxPeople,
+}) {
   // Cents only where they matter: a small amount in a strong currency.
   final decimals = amount < 20 && amount != amount.roundToDouble() ? 2 : 0;
   final price = '$currency ${formatAmount(amount, decimals: decimals)}';
@@ -78,7 +94,9 @@ String convertedPriceLabel(double amount, String currency, String basis) {
     case 'per_person':
       return '$price / person';
     case 'per_group':
-      return '$price / group';
+      return maxPeople != null && maxPeople > 0
+          ? '$price / group (max $maxPeople)'
+          : '$price / group';
     case 'from':
       return 'From $price';
     default:

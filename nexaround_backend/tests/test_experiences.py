@@ -99,6 +99,21 @@ def test_a_price_reads_the_way_the_card_shows_it(amount, currency, basis, expect
     assert format_price(amount, currency, basis) == expected
 
 
+@pytest.mark.parametrize(
+    "amount,currency,basis,max_people,expected",
+    [
+        (499, "QAR", "per_group", 4, "QAR 499 / group (max 4)"),
+        (7500, "INR", "per_group", 6, "INR 7,500 / group (max 6)"),
+        (7500, "INR", "per_group", None, "INR 7,500 / group"),
+        # Only a group price carries the size; a per-person price does not.
+        (2000, "LKR", "per_person", 5, "LKR 2,000 / person"),
+        (45, "USD", "from", 8, "From USD 45"),
+    ],
+)
+def test_a_group_price_carries_the_group_size(amount, currency, basis, max_people, expected):
+    assert format_price(amount, currency, basis, max_people) == expected
+
+
 def test_a_missing_price_reads_as_on_request():
     assert format_price(None) == "Price on request"
     assert format_price(100, "USD", "on_request") == "Price on request"
@@ -233,7 +248,7 @@ PACKAGE_CARD_KEYS = {
     "cover_photo_url", "photo_count", "price_amount", "price_currency",
     "price_basis", "price_label", "duration_minutes", "duration_label",
     "latitude", "longitude", "distance_m", "tags", "region_label",
-    "rating_avg", "rating_count",
+    "rating_avg", "rating_count", "max_participants",
 }
 
 NEARBY_RESPONSE_KEYS = {
