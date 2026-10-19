@@ -83,7 +83,6 @@ class _LivingMapPageState extends State<LivingMapPage>
   double? _lastFetchedLatitude;
   double? _lastFetchedLongitude;
   StreamSubscription<geo.Position>? _positionSubscription;
-  bool _isLocationServiceEnabled = true;
   bool _isLocationOverridden = false;
 
   // We'll use the state data instead of these dummy lists
@@ -210,10 +209,6 @@ class _LivingMapPageState extends State<LivingMapPage>
 
     // Then check if location service (GPS) is on
     final serviceEnabled = await geo.Geolocator.isLocationServiceEnabled();
-
-    if (mounted) {
-      setState(() => _isLocationServiceEnabled = serviceEnabled);
-    }
 
     if (serviceEnabled && _positionSubscription == null) {
       _fetchInitialData();
@@ -634,8 +629,8 @@ class _LivingMapPageState extends State<LivingMapPage>
   /// Colombo attractions. For anyone outside Sri Lanka that turned "we don't
   /// know where you are" into a confident wrong answer that looked like a
   /// working screen. When we have no last-known position either, the honest
-  /// outcome is to say nothing and let the existing location banner offer the
-  /// user a way to switch location on.
+  /// outcome is to say "Location unavailable" and let the user pick a place
+  /// from the location pill; Android's own dialog offers to switch location on.
   void _useFallbackLocation() {
     if (!mounted) return;
 
@@ -644,7 +639,6 @@ class _LivingMapPageState extends State<LivingMapPage>
 
     if (lastLat == null || lastLng == null) {
       setState(() {
-        _isLocationServiceEnabled = false;
         _currentLocationName = 'Location unavailable';
         _currentDistrict = '';
       });
@@ -903,62 +897,6 @@ class _LivingMapPageState extends State<LivingMapPage>
           backgroundColor: AppColors.background,
           body: Stack(
             children: [
-              // Location disabled warning banner
-              if (!_isLocationServiceEnabled)
-                Positioned(
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  child: SafeArea(
-                    child: Container(
-                      margin: const EdgeInsets.all(16),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AppColors.warning.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: AppColors.warning.withOpacity(0.3),
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.location_off,
-                            color: AppColors.warning,
-                            size: 20,
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              'Location is off. Enable location for nearby attractions.',
-                              style: TextStyle(
-                                color: AppColors.warning,
-                                fontSize: 13,
-                              ),
-                            ),
-                          ),
-                          TextButton(
-                            onPressed: () =>
-                                geo.Geolocator.openLocationSettings(),
-                            style: TextButton.styleFrom(
-                              foregroundColor: AppColors.warning,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                              ),
-                            ),
-                            child: const Text(
-                              'ENABLE',
-                              style: TextStyle(fontWeight: FontWeight.w700),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
               // Layer 2: Content
               CustomScrollView(
                 physics: const BouncingScrollPhysics(),
