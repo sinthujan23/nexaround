@@ -14,10 +14,11 @@ import ExperienceReviews from './pages/ExperienceReviews';
 import AuditTrail from './pages/AuditTrail';
 import Legal from './pages/Legal';
 import Sessions from './pages/Sessions';
+import OfficialStories from './pages/OfficialStories';
 import {
   CompassIcon, UsersIcon, MapPinIcon, CreditCardIcon, MegaphoneIcon, ImageIcon, SettingsIcon,
   ClipboardCheckIcon, TrendingUpIcon, EyeOffIcon, TicketIcon, InboxIcon, ShieldIcon, MonitorIcon,
-  StarIcon,
+  StarIcon, BookOpenIcon,
 } from './components/Icons';
 
 /**
@@ -32,6 +33,7 @@ export const NAV_SECTIONS = [
       { path: '/dashboard', label: 'Dashboard', title: 'Dashboard Overview', icon: CompassIcon, page: Dashboard },
       { path: '/exclude-keywords', label: 'Exclude Keywords', title: 'Exclude Keywords (Around You)', icon: EyeOffIcon, page: ExcludeKeywords },
       { path: '/media', label: 'Media Library', title: 'Media Library', icon: ImageIcon, page: Media },
+      { path: '/stories', label: 'nexARound Stories', title: 'nexARound Stories', icon: BookOpenIcon, page: OfficialStories },
     ],
   },
   {

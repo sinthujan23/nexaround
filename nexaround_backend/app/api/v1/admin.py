@@ -16,6 +16,7 @@ from app.services import audit, fx_service
 from app.services.user_service import UserService
 from app.services.settings_service import SettingsService
 from app.services.experience_format import COUNTRY_MODE_KEY, parse_country_mode
+from app.services.official_stories import OFFICIAL_USER_ID
 from app.services import excluded_keyword_service
 from app.services.providers import config as provider_config
 from app.schemas.user import UserResponse
@@ -259,10 +260,13 @@ async def get_dashboard_stats(
     """
     week_ago = datetime.now(timezone.utc) - timedelta(days=7)
 
-    # 1. Explorers, and how many joined this week
-    explorers_count = (await db.execute(select(func.count(User.id)))).scalar_one()
+    # 1. Explorers, and how many joined this week. The nexARound account that
+    # owns official stories is not an explorer.
+    explorers_count = (await db.execute(
+        select(func.count(User.id)).where(User.id != OFFICIAL_USER_ID)
+    )).scalar_one()
     new_explorers_7d = (await db.execute(
-        select(func.count(User.id)).where(User.created_at >= week_ago)
+        select(func.count(User.id)).where(User.created_at >= week_ago, User.id != OFFICIAL_USER_ID)
     )).scalar_one()
 
     # 2. Live places, and how many were added this week
@@ -301,9 +305,9 @@ async def get_dashboard_stats(
     signup_rows = await db.execute(text("""
         SELECT to_char(created_at AT TIME ZONE :tz, 'YYYY-MM') AS month, count(*) AS signups
         FROM users
-        WHERE created_at >= :start
+        WHERE created_at >= :start AND id != :official
         GROUP BY 1
-    """), {"tz": DASHBOARD_TZ_NAME, "start": first_month})
+    """), {"tz": DASHBOARD_TZ_NAME, "start": first_month, "official": OFFICIAL_USER_ID})
     signups_by_month = {row.month: row.signups for row in signup_rows}
     explorer_growth = [
         MonthlySignups(month=m, signups=signups_by_month.get(m, 0)) for m in months
@@ -311,7 +315,9 @@ async def get_dashboard_stats(
 
     # 6. Recent Activity list
     # Query last 5 users
-    recent_users_stmt = select(User).order_by(desc(User.created_at)).limit(5)
+    recent_users_stmt = (
+        select(User).where(User.id != OFFICIAL_USER_ID).order_by(desc(User.created_at)).limit(5)
+    )
     recent_users_res = await db.execute(recent_users_stmt)
     recent_users = recent_users_res.scalars().all()
 

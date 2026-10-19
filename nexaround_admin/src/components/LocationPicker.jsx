@@ -30,6 +30,8 @@ export default function LocationPicker({
   // The pin is not needed (a vendor listed by country only): latitude and
   // longitude may stay empty.
   optional = false,
+  // Forms that keep no address (official travel stories) hide its box.
+  showAddress = true,
 }) {
   const mapRef = useRef(null);
   const markerRef = useRef(null);
@@ -257,14 +259,16 @@ export default function LocationPicker({
         </div>
       </div>
 
-      <div className="form-group">
-        <label className="form-label">Address</label>
-        <input
-          type="text" className="form-input"
-          value={address || ''}
-          onChange={(e) => onPick({ address: e.target.value })}
-        />
-      </div>
+      {showAddress && (
+        <div className="form-group">
+          <label className="form-label">Address</label>
+          <input
+            type="text" className="form-input"
+            value={address || ''}
+            onChange={(e) => onPick({ address: e.target.value })}
+          />
+        </div>
+      )}
     </div>
   );
 }

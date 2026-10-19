@@ -60,6 +60,34 @@ class TravelStoryResponse(TravelStoryBase):
     # Metres from the location the feed was asked for; only set when the
     # request sent lat/lng and the story has a position.
     distance_m: Optional[float] = None
+    # Posted by the team as the verified nexARound account; `article_md` is
+    # the long read opened from the story (light Markdown).
+    is_official: bool = False
+    title: Optional[str] = None
+    article_md: Optional[str] = None
 
     class Config:
         from_attributes = True
+
+
+class OfficialStoryIn(BaseModel):
+    """An official story as the admin panel writes it."""
+    title: str = Field(..., min_length=1, max_length=200)
+    # The short intro on the story card.
+    description: str = Field(..., min_length=1, max_length=1000)
+    article_md: str = Field("", max_length=30000)
+    location_name: str = Field(..., min_length=1, max_length=255)
+    country: str = Field(..., min_length=1, max_length=100)
+    latitude: float = Field(..., ge=-90, le=90)
+    longitude: float = Field(..., ge=-180, le=180)
+    category: str = Field(..., min_length=1, max_length=100)
+    # The first photo is the cover.
+    image_urls: List[str] = Field(..., min_length=1, max_length=20)
+    is_public: bool = True
+
+
+class OfficialStoryAdminOut(OfficialStoryIn):
+    id: UUID
+    likes_count: int
+    comments_count: int
+    created_at: datetime

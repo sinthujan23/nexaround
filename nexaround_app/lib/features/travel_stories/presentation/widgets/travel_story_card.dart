@@ -8,6 +8,7 @@ import '../../data/models/travel_story.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
+import 'official_story_widgets.dart';
 
 class TravelStoryCard extends StatefulWidget {
   final TravelStory story;
@@ -261,6 +262,9 @@ class _TravelStoryCardState extends State<TravelStoryCard> {
                 padding: const EdgeInsets.all(12),
                 child: Row(
                   children: [
+                    if (widget.story.isOfficial)
+                      const OfficialAvatar(radius: 16)
+                    else
                     CircleAvatar(
                       radius: 16,
                       backgroundColor: Colors.grey[200],
@@ -281,6 +285,16 @@ class _TravelStoryCardState extends State<TravelStoryCard> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          if (widget.story.isOfficial)
+                            OfficialName(
+                              name: widget.story.userName,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.textPrimary,
+                              ),
+                            )
+                          else
                           BlocBuilder<AuthBloc, AuthState>(
                             builder: (context, authState) {
                               String display = widget.story.userName;
@@ -444,7 +458,24 @@ class _TravelStoryCardState extends State<TravelStoryCard> {
                 ),
               ),
 
-              // Story description
+              // Story description. An official story's intro stops at two
+              // lines: its footer carries the "Read the experience" tab.
+              if (widget.story.hasArticle)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+                  child: Text(
+                    widget.story.description,
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      height: 1.4,
+                      fontWeight: FontWeight.w400,
+                      color: AppColors.textSecondary,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                )
+              else
               Padding(
                 padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
                 child: Text.rich(
@@ -560,6 +591,13 @@ class _TravelStoryCardState extends State<TravelStoryCard> {
                         ],
                       ),
                     ),
+                    if (widget.story.hasArticle) ...[
+                      const Spacer(),
+                      ReadExperienceTab(
+                        compact: true,
+                        onTap: () => openStoryExperience(context, widget.story),
+                      ),
+                    ],
                   ],
                 ),
               ),

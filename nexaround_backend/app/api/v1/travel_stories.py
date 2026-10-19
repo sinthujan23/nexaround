@@ -63,6 +63,15 @@ def _order_nearby(pairs: list) -> list:
     )
 
 
+def _pin_official(pairs: list) -> list:
+    """nexARound's own stories first, newest first; the rest keep their order."""
+    official = sorted(
+        (p for p in pairs if p[0].is_official),
+        key=lambda p: p[0].created_at, reverse=True,
+    )
+    return official + [p for p in pairs if not p[0].is_official]
+
+
 @router.get("", response_model=List[TravelStoryResponse])
 async def get_travel_stories(
     country: Optional[str] = None,
@@ -77,6 +86,7 @@ async def get_travel_stories(
     and - unless a `country` is picked - the list is ordered "Near you" style
     (see `_order_nearby`). Without them the response is unchanged, so app
     builds that don't send a location keep their newest-first feed.
+    Either way, nexARound's official stories are pinned first.
     """
     stmt = select(TravelStory).where(
         TravelStory.is_journal == False,
@@ -94,6 +104,7 @@ async def get_travel_stories(
             pairs = _order_nearby(pairs)
     else:
         pairs = [(s, None) for s in stories]
+    pairs = _pin_official(pairs)
 
     response_list = []
     for s, distance in pairs:
@@ -122,6 +133,7 @@ async def get_travel_stories(
                 travel_date=s.travel_date, country=s.country,
                 created_at=s.created_at, comments=comments_list,
                 distance_m=round(distance) if distance is not None else None,
+                is_official=s.is_official, title=s.title, article_md=s.article_md,
             )
         )
 
@@ -371,8 +383,9 @@ async def create_comment(
     await db.flush()
     await db.commit()
 
-    # Notify story owner if commenter is someone else
-    if story.user_id != current_user.id:
+    # Notify story owner if commenter is someone else. Nobody reads the
+    # nexARound account's notifications.
+    if story.user_id != current_user.id and not story.is_official:
         await _notify_story_comment(
             db=db,
             story_owner_id=story.user_id,

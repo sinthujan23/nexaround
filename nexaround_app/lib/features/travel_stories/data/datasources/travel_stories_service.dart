@@ -82,7 +82,10 @@ class TravelStoriesService {
     }
 
     final ordered = stories.map((s) => s.copyWith(distanceM: distanceOf(s))).toList();
+    // nexARound's official stories first, as the server lists them.
     ordered.sort((a, b) {
+      if (a.isOfficial != b.isOfficial) return a.isOfficial ? -1 : 1;
+      if (a.isOfficial) return b.createdAt.compareTo(a.createdAt);
       final byBand = bandOf(a.distanceM).compareTo(bandOf(b.distanceM));
       return byBand != 0 ? byBand : b.createdAt.compareTo(a.createdAt);
     });

@@ -13,6 +13,7 @@ import '../../data/models/travel_story.dart';
 import '../../data/datasources/travel_stories_service.dart';
 import '../widgets/stories_comments_dialog.dart';
 import '../widgets/post_story_sheet.dart';
+import '../widgets/official_story_widgets.dart';
 import '../../../../features/living_map/presentation/pages/smart_tourism_map_page.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/core/error/user_message.dart';
@@ -98,6 +99,14 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
   void _resumeTimer() {
     _isPaused = false;
     _startStoryTimer();
+  }
+
+  /// The long read of an official story. The photos stop advancing while it
+  /// is open and carry on when the traveller comes back.
+  Future<void> _openExperience(TravelStory story) async {
+    _pauseTimer();
+    await openStoryExperience(context, story);
+    if (mounted) _resumeTimer();
   }
 
   void _goToNext() {
@@ -491,6 +500,9 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
                           Expanded(
                             child: Row(
                               children: [
+                                if (currentStory.isOfficial)
+                                  const OfficialAvatar(radius: 18)
+                                else
                                 CircleAvatar(
                                   radius: 18,
                                   backgroundColor: Colors.white24,
@@ -506,6 +518,16 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
+                                      if (currentStory.isOfficial)
+                                        OfficialName(
+                                          name: currentStory.userName,
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 13,
+                                          ),
+                                        )
+                                      else
                                       BlocBuilder<AuthBloc, AuthState>(
                                         builder: (context, authState) {
                                           String display = currentStory.userName;
@@ -828,6 +850,10 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
                                       );
                                     },
                                   ),
+                                  if (story.hasArticle) ...[
+                                    const SizedBox(height: 12),
+                                    ReadExperienceTab(onTap: () => _openExperience(story)),
+                                  ],
                                   const SizedBox(height: 12),
                                   Row(
                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,

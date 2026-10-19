@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import String, DateTime, ForeignKey
+from sqlalchemy import String, DateTime, ForeignKey, Text, false
 from sqlalchemy.dialects.postgresql import UUID, ARRAY
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
@@ -33,6 +33,14 @@ class TravelStory(Base):
     cloud_folder_url: Mapped[str] = mapped_column(String(500), nullable=True)
     travel_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
     country: Mapped[str] = mapped_column(String(100), nullable=True)
+
+    # Stories the team posts from the admin panel. They belong to the
+    # nexARound system account (app/services/official_stories.py), are pinned
+    # first in the feed, and carry a long read: `description` stays the short
+    # intro on the card, `article_md` is the full text in light Markdown.
+    is_official: Mapped[bool] = mapped_column(default=False, server_default=false())
+    title: Mapped[str] = mapped_column(String(200), nullable=True)
+    article_md: Mapped[str] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

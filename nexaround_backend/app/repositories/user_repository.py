@@ -55,8 +55,12 @@ class UserRepository:
         from datetime import datetime, timezone, timedelta, date as d_date
         from sqlalchemy import func
         
-        query = select(User)
-        count_query = select(func.count()).select_from(User)
+        from app.services.official_stories import OFFICIAL_USER_ID
+
+        # The nexARound account that owns official travel stories is not an
+        # explorer, and deleting it would delete every official story.
+        query = select(User).where(User.id != OFFICIAL_USER_ID)
+        count_query = select(func.count()).select_from(User).where(User.id != OFFICIAL_USER_ID)
         
         if search_query:
             search = f"%{search_query}%"

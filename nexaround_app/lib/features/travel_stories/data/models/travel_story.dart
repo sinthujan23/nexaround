@@ -101,6 +101,15 @@ class TravelStory {
   /// 'saved'. Sent to the server only; never read back from it.
   final String? locationSource;
 
+  /// Posted by the team from the admin panel as the verified nexARound
+  /// account. The server lists these first; [articleMd] is the long read
+  /// "Read the experience" opens, in light Markdown, and [title] heads it.
+  final bool isOfficial;
+  final String? title;
+  final String? articleMd;
+
+  bool get hasArticle => isOfficial && (articleMd ?? '').trim().isNotEmpty;
+
   TravelStory({
     required this.id,
     required this.userId,
@@ -128,6 +137,9 @@ class TravelStory {
     this.travelDate,
     this.distanceM,
     this.locationSource,
+    this.isOfficial = false,
+    this.title,
+    this.articleMd,
   });
 
   TravelStory copyWith({
@@ -157,6 +169,9 @@ class TravelStory {
     DateTime? travelDate,
     double? distanceM,
     String? locationSource,
+    bool? isOfficial,
+    String? title,
+    String? articleMd,
   }) {
     return TravelStory(
       id: id ?? this.id,
@@ -185,6 +200,9 @@ class TravelStory {
       travelDate: travelDate ?? this.travelDate,
       distanceM: distanceM ?? this.distanceM,
       locationSource: locationSource ?? this.locationSource,
+      isOfficial: isOfficial ?? this.isOfficial,
+      title: title ?? this.title,
+      articleMd: articleMd ?? this.articleMd,
     );
   }
 
@@ -234,6 +252,9 @@ class TravelStory {
           ? DateTime.parse(json['travel_date'] as String) 
           : null,
       distanceM: (json['distance_m'] as num?)?.toDouble(),
+      isOfficial: json['is_official'] as bool? ?? false,
+      title: json['title'] as String?,
+      articleMd: json['article_md'] as String?,
     );
   }
 
@@ -264,6 +285,11 @@ class TravelStory {
       'country': country,
       'travel_date': travelDate?.toIso8601String(),
       if (locationSource != null) 'location_source': locationSource,
+      // Kept so the offline cache shows official stories as they were.
+      // The server ignores all three when a traveller posts.
+      'is_official': isOfficial,
+      'title': title,
+      'article_md': articleMd,
     };
   }
 }
