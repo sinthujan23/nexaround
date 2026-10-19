@@ -101,7 +101,7 @@ class TravelStory {
   /// 'saved'. Sent to the server only; never read back from it.
   final String? locationSource;
 
-  /// Posted by the team from the admin panel as the verified nexARound
+  /// Posted by the team from the admin panel as the verified TravelByte
   /// account. The server lists these first; [articleMd] is the long read
   /// "Read the experience" opens, in light Markdown, and [title] heads it.
   final bool isOfficial;

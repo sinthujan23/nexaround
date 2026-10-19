@@ -1,4 +1,4 @@
-"""Official travel stories: the ones the team posts as nexARound.
+"""Official travel stories: the ones the team posts as TravelByte.
 
 They live in `travel_stories` with `is_official` set, owned by the system
 account in `app/services/official_stories.py`, so the app's feed, likes and

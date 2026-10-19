@@ -682,83 +682,6 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
                                           child: Container(color: Colors.transparent),
                                         ),
                                       ),
-                                      // Category Pill
-                                      Positioned(
-                                        top: 16,
-                                        left: 16,
-                                        child: ClipRRect(
-                                          borderRadius: BorderRadius.circular(8),
-                                          child: BackdropFilter(
-                                            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                                            child: Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                                              color: Colors.black.withValues(alpha: 0.4),
-                                              child: Text(
-                                                story.category,
-                                                style: TextStyle(
-                                                  color: isSelCatColor,
-                                                  fontWeight: FontWeight.w800,
-                                                  fontSize: 10.5,
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                      // Location Pin overlay
-                                      Positioned(
-                                        top: 50,
-                                        left: 20,
-                                        child: GestureDetector(
-                                          onTap: () {
-                                            if (story.latitude != null && story.longitude != null) {
-                                              Navigator.push(
-                                                context,
-                                                MaterialPageRoute(
-                                                  builder: (context) => SmartTourismMapPage(
-                                                    initialLat: story.latitude!,
-                                                    initialLng: story.longitude!,
-                                                    destinationName: story.locationName,
-                                                  ),
-                                                ),
-                                              );
-                                            }
-                                          },
-                                          child: ClipRRect(
-                                            borderRadius: BorderRadius.circular(20),
-                                            child: BackdropFilter(
-                                              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                                              child: Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                                decoration: BoxDecoration(
-                                                  color: Colors.black.withValues(alpha: 0.3),
-                                                  borderRadius: BorderRadius.circular(20),
-                                                  border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
-                                                ),
-                                                child: Row(
-                                                  mainAxisSize: MainAxisSize.min,
-                                                  children: [
-                                                    const Icon(Icons.location_on, size: 12, color: Colors.redAccent),
-                                                    const SizedBox(width: 4),
-                                                    Text(
-                                                      story.locationName,
-                                                      style: const TextStyle(
-                                                        color: Colors.white,
-                                                        fontWeight: FontWeight.bold,
-                                                        fontSize: 10.5,
-                                                      ),
-                                                    ),
-                                                    if (story.latitude != null && story.longitude != null) ...[
-                                                      const SizedBox(width: 4),
-                                                      const Icon(Icons.arrow_forward_ios_rounded, size: 8, color: Colors.white70),
-                                                    ]
-                                                  ],
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ),
                                     ],
                                   ),
                                 ),
@@ -776,6 +699,81 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
+                                  // Place and category, under the photo so
+                                  // nothing covers the picture.
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Align(
+                                          alignment: Alignment.centerLeft,
+                                          child: GestureDetector(
+                                            onTap: () {
+                                              if (story.latitude != null && story.longitude != null) {
+                                                Navigator.push(
+                                                  context,
+                                                  MaterialPageRoute(
+                                                    builder: (context) => SmartTourismMapPage(
+                                                      initialLat: story.latitude!,
+                                                      initialLng: story.longitude!,
+                                                      destinationName: story.locationName,
+                                                    ),
+                                                  ),
+                                                );
+                                              }
+                                            },
+                                            child: Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                                              decoration: BoxDecoration(
+                                                color: Colors.white.withValues(alpha: 0.1),
+                                                borderRadius: BorderRadius.circular(20),
+                                                border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+                                              ),
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  const Icon(Icons.location_on, size: 13, color: Colors.redAccent),
+                                                  const SizedBox(width: 4),
+                                                  Flexible(
+                                                    child: Text(
+                                                      story.locationName,
+                                                      maxLines: 1,
+                                                      overflow: TextOverflow.ellipsis,
+                                                      style: const TextStyle(
+                                                        color: Colors.white,
+                                                        fontWeight: FontWeight.bold,
+                                                        fontSize: 11.5,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  if (story.latitude != null && story.longitude != null) ...[
+                                                    const SizedBox(width: 4),
+                                                    const Icon(Icons.arrow_forward_ios_rounded, size: 8, color: Colors.white70),
+                                                  ]
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                        decoration: BoxDecoration(
+                                          color: Colors.black.withValues(alpha: 0.3),
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        child: Text(
+                                          story.category,
+                                          style: TextStyle(
+                                            color: isSelCatColor,
+                                            fontWeight: FontWeight.w800,
+                                            fontSize: 10.5,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 12),
                                   LayoutBuilder(
                                     builder: (context, constraints) {
                                       final isExpanded = _expandedStoryIds.contains(story.id);

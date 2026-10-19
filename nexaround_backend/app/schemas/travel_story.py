@@ -60,7 +60,7 @@ class TravelStoryResponse(TravelStoryBase):
     # Metres from the location the feed was asked for; only set when the
     # request sent lat/lng and the story has a position.
     distance_m: Optional[float] = None
-    # Posted by the team as the verified nexARound account; `article_md` is
+    # Posted by the team as the verified TravelByte account; `article_md` is
     # the long read opened from the story (light Markdown).
     is_official: bool = False
     title: Optional[str] = None

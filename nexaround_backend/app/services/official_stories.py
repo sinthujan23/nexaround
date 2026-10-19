@@ -1,4 +1,4 @@
-"""The nexARound account that admin-posted travel stories belong to.
+"""The TravelByte account that admin-posted travel stories belong to.
 
 Every story needs a `users` row as its owner, but admins are not users (one
 shared credential from the environment). Official stories are owned by this
@@ -21,7 +21,7 @@ from app.models.user import User
 
 OFFICIAL_USER_ID = uuid.UUID("6e3a0b7c-5f1d-4c2a-9e8b-a0b1c2d3e4f5")
 OFFICIAL_EMAIL = "stories@nexaround.invalid"
-OFFICIAL_NAME = "nexARound"
+OFFICIAL_NAME = "TravelByte"
 # The square pin mark. Absolute, because app builds before official stories
 # only draw an avatar whose URL starts with http.
 OFFICIAL_AVATAR_PATH = "/static/brand/nexaround_mark.png"

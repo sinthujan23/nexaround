@@ -4,7 +4,7 @@ import '../../../../app/theme/app_colors.dart';
 import '../../data/models/travel_story.dart';
 import '../pages/story_experience_page.dart';
 
-/// The pieces that mark a story the team posted as nexARound: the logo in
+/// The pieces that mark a story the team posted as TravelByte: the logo in
 /// place of a profile photo, the blue tick, and the "Read the experience" tab.
 
 const Color kVerifiedBlue = Color(0xFF1D9BF0);
@@ -28,7 +28,7 @@ class OfficialAvatar extends StatelessWidget {
   }
 }
 
-/// "nexARound" with the blue verified tick after it.
+/// The account name ("TravelByte") with the blue verified tick after it.
 class OfficialName extends StatelessWidget {
   final String name;
   final TextStyle style;

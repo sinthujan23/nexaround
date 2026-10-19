@@ -20,7 +20,36 @@ class StoryExperiencePage extends StatefulWidget {
 }
 
 class _StoryExperiencePageState extends State<StoryExperiencePage> {
+  // The photo header's height, as a share of the screen width.
+  static const double _heroFraction = 0.9;
+
+  final ScrollController _scroll = ScrollController();
   int _photo = 0;
+
+  /// The photos have scrolled away and the white bar is pinned on its own:
+  /// it then shows the article's title, so the reader keeps their bearings.
+  bool _collapsed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scroll.addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    // A pinned SliverAppBar finishes collapsing after scrolling its expanded
+    // height less the toolbar that stays; the title comes in just before.
+    final collapseAt =
+        MediaQuery.of(context).size.width * _heroFraction - kToolbarHeight - 24;
+    final collapsed = _scroll.offset > collapseAt;
+    if (collapsed != _collapsed) setState(() => _collapsed = collapsed);
+  }
 
   List<String> get _photos {
     final story = widget.story;
@@ -41,16 +70,37 @@ class _StoryExperiencePageState extends State<StoryExperiencePage> {
       story.locationName,
       if ((story.country ?? '').isNotEmpty) story.country!,
     ].join(' · ');
+    final heading = (story.title ?? '').trim().isNotEmpty
+        ? story.title!.trim()
+        : story.locationName;
 
     return Scaffold(
       backgroundColor: Colors.white,
       body: CustomScrollView(
+        controller: _scroll,
         slivers: [
           SliverAppBar(
             pinned: true,
-            expandedHeight: width * 0.9,
+            expandedHeight: width * _heroFraction,
             backgroundColor: Colors.white,
             surfaceTintColor: Colors.white,
+            centerTitle: false,
+            titleSpacing: 4,
+            title: AnimatedOpacity(
+              opacity: _collapsed ? 1 : 0,
+              duration: const Duration(milliseconds: 200),
+              child: Text(
+                heading,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.2,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+            ),
             leading: Padding(
               padding: const EdgeInsets.all(8),
               child: Material(

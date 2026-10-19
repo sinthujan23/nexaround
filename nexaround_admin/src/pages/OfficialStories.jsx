@@ -38,7 +38,7 @@ const formatDate = (value) =>
   new Date(value).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: TZ });
 
 /**
- * Travel stories the team posts as the verified nexARound account. In the app
+ * Travel stories the team posts as the verified TravelByte account. In the app
  * they sit first in the Travel Stories row, and "Read the experience" on them
  * opens the long text written here.
  */
@@ -133,7 +133,7 @@ export default function OfficialStories() {
     <div>
       <div className="xp-toolbar">
         <div className="xp-section-hint" style={{ margin: 0 }}>
-          Posted as <strong>nexARound</strong> with a blue tick, first in the app’s Travel Stories row.
+          Posted as <strong>TravelByte</strong> with a blue tick, first in the app’s Travel Stories row.
         </div>
         <div className="xp-toolbar-right">
           <button className="btn btn-ghost btn-sm" onClick={refetch} title="Refresh">
