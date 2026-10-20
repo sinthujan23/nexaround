@@ -21,6 +21,10 @@ class ExclusivePage extends StatefulWidget {
 class _ExclusivePageState extends State<ExclusivePage> {
   static const double _headerHeight = 124;
 
+  /// Below the status bar, where the header's big text is cut off as the
+  /// header folds away: just under the back button, so it never covers it.
+  static const double _textClipTop = 40;
+
   final ScrollController _scroll = ScrollController();
   late List<TravelStory> _stories;
   bool _loading = true;
@@ -140,41 +144,67 @@ class _ExclusivePageState extends State<ExclusivePage> {
           style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w800),
         ),
       ),
-      flexibleSpace: FlexibleSpaceBar(
-        background: Container(
-          decoration: const BoxDecoration(gradient: AppColors.brandGradient),
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
-          alignment: Alignment.bottomLeft,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'EXCLUSIVE',
-                style: TextStyle(
-                  color: Colors.white70,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 2.5,
+      // As the page scrolls the header folds into the bar. Its big text
+      // fades out on the way and is cut off under the back button, so all
+      // that is left is the bar with its own small title.
+      flexibleSpace: LayoutBuilder(
+        builder: (context, constraints) {
+          final top = MediaQuery.paddingOf(context).top;
+          // 1 with the header fully open, 0 once only the bar is left.
+          final open = ((constraints.maxHeight - top - kToolbarHeight) /
+                  (_headerHeight - kToolbarHeight))
+              .clamp(0.0, 1.0);
+          return DecoratedBox(
+            decoration: const BoxDecoration(gradient: AppColors.brandGradient),
+            child: Padding(
+              padding: EdgeInsets.only(top: top + _textClipTop),
+              child: ClipRect(
+                child: Opacity(
+                  // Gone before the bar's title comes in (see _onScroll).
+                  opacity: ((open - 0.4) / 0.6).clamp(0.0, 1.0),
+                  child: Stack(
+                    children: [
+                      Positioned(
+                        left: 20,
+                        right: 20,
+                        bottom: 14,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'EXCLUSIVE',
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 2.5,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Row(
+                              children: [
+                                const Text('Travel guides by ', style: titleStyle),
+                                Flexible(child: OfficialName(name: name, style: titleStyle)),
+                              ],
+                            ),
+                            if (count > 0) ...[
+                              const SizedBox(height: 2),
+                              Text(
+                                count == 1 ? '1 guide' : '$count guides',
+                                style: const TextStyle(color: Colors.white70, fontSize: 13),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-              const SizedBox(height: 4),
-              Row(
-                children: [
-                  const Text('Travel guides by ', style: titleStyle),
-                  Flexible(child: OfficialName(name: name, style: titleStyle)),
-                ],
-              ),
-              if (count > 0) ...[
-                const SizedBox(height: 2),
-                Text(
-                  count == 1 ? '1 guide' : '$count guides',
-                  style: const TextStyle(color: Colors.white70, fontSize: 13),
-                ),
-              ],
-            ],
-          ),
-        ),
+            ),
+          );
+        },
       ),
     );
   }
