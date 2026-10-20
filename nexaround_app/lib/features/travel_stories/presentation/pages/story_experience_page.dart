@@ -119,12 +119,17 @@ class _StoryExperiencePageState extends State<StoryExperiencePage> {
                   : Stack(
                       fit: StackFit.expand,
                       children: [
+                        // Each photo whole, as it was uploaded, on plain
+                        // black: a TravelByte photo can carry a caption
+                        // printed near its edge, which filling the frame
+                        // would cut off.
+                        const ColoredBox(color: Colors.black),
                         PageView.builder(
                           itemCount: photos.length,
                           onPageChanged: (i) => setState(() => _photo = i),
                           itemBuilder: (_, i) => CachedNetworkImage(
                             imageUrl: _resolve(photos[i]),
-                            fit: BoxFit.cover,
+                            fit: BoxFit.contain,
                             memCacheWidth: 1440,
                             placeholder: (_, __) => Container(color: AppColors.surface),
                             errorWidget: (_, __, ___) => Container(color: AppColors.surfaceVariant),

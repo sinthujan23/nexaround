@@ -3064,6 +3064,10 @@ class _LivingMapPageState extends State<LivingMapPage>
     }
   }
 
+  /// TravelBytes lead [_travelStories] (the server puts them first) and share
+  /// one card at the front of the row: this many stories sit behind it.
+  int get _travelByteCount => _travelStories.takeWhile((s) => s.isOfficial).length;
+
   void _navigateToTravelStories(int startIndex, {int initialImageIndex = 0}) async {
     await Navigator.push(
       context,
@@ -3115,7 +3119,8 @@ class _LivingMapPageState extends State<LivingMapPage>
             final savedStory = await TravelStoriesService().addStory(newStory);
             if (mounted) {
               setState(() {
-                _travelStories.insert(0, savedStory ?? newStory);
+                // After the TravelBytes, which always lead the row.
+                _travelStories.insert(_travelByteCount, savedStory ?? newStory);
               });
             }
           },
@@ -3192,11 +3197,17 @@ class _LivingMapPageState extends State<LivingMapPage>
       child: ListView.builder(
         padding: const EdgeInsets.fromLTRB(24, 12, 6, 0),
         scrollDirection: Axis.horizontal,
-        itemCount: _travelStories.length,
-        itemBuilder: (context, index) {
+        // All TravelBytes share the first card; it opens the viewer on the
+        // first of them, and the viewer goes on through the rest.
+        itemCount: _travelStories.length -
+            (_travelByteCount > 1 ? _travelByteCount - 1 : 0),
+        itemBuilder: (context, row) {
+          final travelBytes = _travelByteCount;
+          final index = travelBytes > 1 && row > 0 ? row + travelBytes - 1 : row;
           final story = _travelStories[index];
           return TravelStoryCard(
             story: story,
+            travelByteCount: index == 0 && travelBytes > 1 ? travelBytes : 1,
             onLikeTap: () {
               TravelStoriesService().toggleLike(story.id);
             },

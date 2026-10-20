@@ -18,6 +18,11 @@ class TravelStoryCard extends StatefulWidget {
   final VoidCallback? onTap;
   final void Function(int imageIndex)? onImageTap;
 
+  /// How many TravelBytes this card stands for. All of them share the first
+  /// card of the row, which shows the first; above one, it says how many and
+  /// the edge of a second card shows behind it.
+  final int travelByteCount;
+
   const TravelStoryCard({
     super.key,
     required this.story,
@@ -26,6 +31,7 @@ class TravelStoryCard extends StatefulWidget {
     this.onLocationTap,
     this.onTap,
     this.onImageTap,
+    this.travelByteCount = 1,
   });
 
   @override
@@ -234,7 +240,7 @@ class _TravelStoryCardState extends State<TravelStoryCard> {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: widget.onTap,
-      child: Container(
+      child: _withStackEdge(Container(
         width: 280,
         margin: const EdgeInsets.only(right: 18, bottom: 8, top: 4),
         decoration: BoxDecoration(
@@ -320,7 +326,9 @@ class _TravelStoryCardState extends State<TravelStoryCard> {
                             },
                           ),
                           Text(
-                            _timeAgo(widget.story.createdAt),
+                            widget.travelByteCount > 1
+                                ? '${_timeAgo(widget.story.createdAt)} · ${widget.travelByteCount} TravelBytes'
+                                : _timeAgo(widget.story.createdAt),
                             style: const TextStyle(
                               fontSize: 9,
                               color: AppColors.textTertiary,
@@ -604,7 +612,42 @@ class _TravelStoryCardState extends State<TravelStoryCard> {
             ],
           ),
         ),
-      ),
+      )),
+    );
+  }
+
+  /// Puts the edge of a second card behind [card] when it holds more than one
+  /// TravelByte. The edge pokes out on the right, into the gap before the
+  /// next card, so the row keeps its spacing.
+  Widget _withStackEdge(Widget card) {
+    if (widget.travelByteCount <= 1) return card;
+    return Stack(
+      // The card's own shadow reaches past the Stack's box; clipping it would
+      // make this one card look different from the rest of the row.
+      clipBehavior: Clip.none,
+      children: [
+        Positioned(
+          top: 18,
+          bottom: 22,
+          right: 8,
+          width: 60,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(color: AppColors.border.withOpacity(0.8)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.04),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+          ),
+        ),
+        card,
+      ],
     );
   }
 

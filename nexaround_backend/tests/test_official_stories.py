@@ -1,9 +1,12 @@
-"""Official travel stories: the ones the team posts as nexARound.
+"""TravelBytes: the travel stories the team posts as the TravelByte account.
 
-They are pinned first in the feed whatever else orders it, and the admin form
-is checked before anything is written. No database: the ordering is a pure
-function and the form is a schema plus `_apply`.
+They lead the feed under every filter - the ones about the traveller's own
+country (or the country they picked) first, nearest first, then the rest
+newest first - and the admin form is checked before anything is written.
+No database: the ordering is a pure function and the form is a schema plus
+`_apply`.
 """
+import asyncio
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
@@ -11,52 +14,112 @@ import pytest
 from fastapi import HTTPException
 from pydantic import ValidationError
 
-from app.api.v1.travel_stories import _distance_m, _order_nearby, _pin_official
+from app.api.v1.travel_stories import (
+    OFFICIAL_IN_OLD_FEED,
+    OFFICIAL_IN_STACK,
+    _distance_m,
+    _order_nearby,
+    _order_official,
+)
 from app.api.v1.travel_stories_admin import _apply
 from app.schemas.travel_story import OfficialStoryIn, TravelStoryResponse
+from app.services import user_country
 from app.services.official_stories import place_label
 
 TRINCOMALEE = (8.5874, 81.2152)
+BEIJING = (39.904, 116.407)
 NOW = datetime(2026, 10, 19, tzinfo=timezone.utc)
 
+FURONG = (28.7506, 109.9482)
+VIETNAM = (14.0583, 108.2772)
 
-def story(name, lat, lng, days_old, official=False):
+
+def story(name, lat, lng, days_old, official=False, country=None):
     return SimpleNamespace(
         name=name, latitude=lat, longitude=lng, is_official=official,
-        created_at=NOW - timedelta(days=days_old),
+        country=country, created_at=NOW - timedelta(days=days_old),
     )
 
 
-def feed(stories, here=TRINCOMALEE):
+def feed(stories, first_country=None, here=TRINCOMALEE, stack=True):
+    """The feed's order: TravelBytes first, then travellers' stories near-you style."""
     pairs = [(s, _distance_m(s, *here)) for s in stories]
-    return [s.name for s, _ in _pin_official(_order_nearby(pairs))]
+    official = _order_official([p for p in pairs if p[0].is_official], first_country, stack)
+    others = _order_nearby([p for p in pairs if not p[0].is_official])
+    return [s.name for s, _ in official + others]
 
 
-def test_official_story_far_away_still_comes_first():
+def furong(days_old=3):
+    return story("furong", *FURONG, days_old, official=True, country="China")
+
+
+def vietnam(days_old=0):
+    return story("vietnam", *VIETNAM, days_old, official=True, country="Vietnam")
+
+
+def test_travelbytes_lead_the_row_even_far_away():
     stories = [
         story("nilaveli", 8.700, 81.192, 1),
-        story("furong", 28.853, 109.987, 3, official=True),
+        furong(),
         story("colombo", 6.927, 79.861, 0),
     ]
     assert feed(stories) == ["furong", "nilaveli", "colombo"]
 
 
-def test_official_stories_newest_first_and_the_rest_keep_their_order():
-    stories = [
-        story("nilaveli", 8.700, 81.192, 1),
-        story("older_official", 8.600, 81.215, 9, official=True),
-        story("tokyo", 35.658, 139.702, 0),
-        story("newer_official", 28.853, 109.987, 2, official=True),
-        story("no_coords", None, None, 0),
-    ]
-    assert feed(stories) == [
-        "newer_official", "older_official", "nilaveli", "tokyo", "no_coords",
+def test_the_travelbyte_about_your_country_comes_first():
+    # Standing in China: Furong first although Vietnam is newer.
+    assert feed([vietnam(0), furong(3)], first_country="CN", here=BEIJING) == ["furong", "vietnam"]
+    # Standing in Vietnam: the other way round.
+    assert feed([furong(0), vietnam(3)], first_country="VN") == ["vietnam", "furong"]
+
+
+def test_in_your_country_the_nearest_comes_first():
+    great_wall = story("great_wall", 40.432, 116.570, 9, official=True, country="China")
+    shanghai = story("shanghai", 31.230, 121.474, 0, official=True, country="China")
+    assert feed([shanghai, great_wall, vietnam()], first_country="CN", here=BEIJING) == [
+        "great_wall", "shanghai", "vietnam",
     ]
 
 
-def test_without_official_stories_nothing_moves():
+def test_elsewhere_newest_first():
+    # In Sri Lanka there is no TravelByte about Sri Lanka: newest to oldest.
+    assert feed([furong(3), vietnam(0)], first_country="LK") == ["vietnam", "furong"]
+    # No location at all: the same.
+    assert feed([furong(3), vietnam(0)], first_country=None) == ["vietnam", "furong"]
+
+
+def test_older_app_builds_get_one_travelbyte():
+    many = [story(f"tb{i}", None, None, i, official=True, country="Japan") for i in range(15)]
+    assert OFFICIAL_IN_OLD_FEED == 1
+    assert feed(many, stack=False) == ["tb0"]
+    assert feed(many, stack=True) == [f"tb{i}" for i in range(OFFICIAL_IN_STACK)]
+
+
+def test_without_travelbytes_the_row_is_the_near_you_order():
     pairs = [(story(n, None, None, d), None) for n, d in (("a", 0), ("b", 5), ("c", 1))]
-    assert [s.name for s, _ in _pin_official(pairs)] == ["a", "b", "c"]
+    assert _order_official([], "LK", True) == []
+    assert [s.name for s, _ in _order_nearby(pairs)] == ["a", "c", "b"]
+
+
+def test_country_cache_cell_is_a_few_km():
+    assert user_country.cache_key(39.904, 116.407) == user_country.cache_key(39.910, 116.400)
+    assert user_country.cache_key(39.904, 116.407) != user_country.cache_key(39.904, 116.507)
+
+
+def test_country_lookup_without_a_key_answers_none(monkeypatch):
+    async def no_redis():
+        return None
+
+    class NoKeySettings:
+        def __init__(self, db):
+            pass
+
+        async def get_setting(self, key, default=""):
+            return ""
+
+    monkeypatch.setattr(user_country, "get_redis_client", no_redis)
+    monkeypatch.setattr(user_country, "SettingsService", NoKeySettings)
+    assert asyncio.run(user_country.country_at(None, 39.9, 116.4)) is None
 
 
 def _form(**over):

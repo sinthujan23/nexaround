@@ -21,6 +21,10 @@ class TravelStoriesService {
   /// [lat] and [lng] ask for the "Near you" feed: the server orders stories by
   /// distance band, newest first within a band, and gives each its
   /// distance. They are not sent when a country is picked.
+  ///
+  /// TravelBytes come first whatever the filter. `official_stack` asks for
+  /// all of them (the row shows them as one card); without it the server
+  /// sends one, for builds that draw each story as its own card.
   Future<List<TravelStory>> getStories({String? country, double? lat, double? lng}) async {
     final byCountry = country != null && country != 'Global';
     final nearby = !byCountry && lat != null && lng != null;
@@ -31,6 +35,7 @@ class TravelStoriesService {
           if (byCountry) 'country': country,
           if (nearby) 'lat': lat,
           if (nearby) 'lng': lng,
+          'official_stack': true,
         },
       );
       if (response.statusCode == 200 && response.data != null) {
@@ -52,7 +57,11 @@ class TravelStoriesService {
     // Hive fallback: retrieve all and filter locally
     final allStories = _getStoriesFromHive(isJournal: false);
     if (byCountry) {
-      return allStories.where((s) => s.country == country).toList();
+      // TravelBytes stay first under every country, as the server does it.
+      return [
+        ...allStories.where((s) => s.isOfficial),
+        ...allStories.where((s) => !s.isOfficial && s.country == country),
+      ];
     }
     if (nearby) {
       return _orderNearby(allStories, lat!, lng!);

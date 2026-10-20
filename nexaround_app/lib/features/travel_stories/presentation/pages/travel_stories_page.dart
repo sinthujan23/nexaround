@@ -175,11 +175,12 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
     }
   }
 
-  Widget _buildMainImage(String url) {
+  /// [fit] is contain for a TravelByte, whose photo is shown whole.
+  Widget _buildMainImage(String url, {BoxFit fit = BoxFit.cover}) {
     if (url.startsWith('http://') || url.startsWith('https://')) {
       return CachedNetworkImage(
         imageUrl: url,
-        fit: BoxFit.cover,
+        fit: fit,
         // Full-bleed story image: 1440px covers a 1080p screen at 3x DPR with
         // headroom, while still capping multi-megapixel camera uploads.
         memCacheWidth: 1440,
@@ -195,7 +196,7 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
       final fullUrl = '${ApiConstants.baseUrl}$url';
       return CachedNetworkImage(
         imageUrl: fullUrl,
-        fit: BoxFit.cover,
+        fit: fit,
         memCacheWidth: 1440, // full-bleed story image
         placeholder: (context, val) => Container(
           color: Colors.white10,
@@ -210,14 +211,14 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
       if (file.existsSync()) {
         return Image.file(
           file,
-          fit: BoxFit.cover,
+          fit: fit,
           errorBuilder: (context, error, stackTrace) => Container(color: Colors.white10),
         );
       } else {
         final fullUrl = url.startsWith('/') ? '${ApiConstants.baseUrl}$url' : url;
         return CachedNetworkImage(
           imageUrl: fullUrl,
-          fit: BoxFit.cover,
+          fit: fit,
           memCacheWidth: 1440, // full-bleed story image
           placeholder: (context, val) => Container(
             color: Colors.white10,
@@ -651,7 +652,20 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
                                   child: Stack(
                                     fit: StackFit.expand,
                                     children: [
-                                      _buildMainImage(_imageUrlOf(story)),
+                                      // A TravelByte photo is shown whole, as it
+                                      // was uploaded: one can carry a caption
+                                      // printed near its edge, which filling
+                                      // the frame would cut off. Plain black
+                                      // around it, not the blurred backdrop.
+                                      story.isOfficial
+                                          ? ColoredBox(
+                                              color: Colors.black,
+                                              child: _buildMainImage(
+                                                _imageUrlOf(story),
+                                                fit: BoxFit.contain,
+                                              ),
+                                            )
+                                          : _buildMainImage(_imageUrlOf(story)),
                                       // Left tap area to go to previous story
                                       Positioned(
                                         left: 0,

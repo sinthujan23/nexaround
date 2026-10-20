@@ -20,7 +20,8 @@ from app.schemas.travel_story import (
     TravelStoryCommentResponse
 )
 from app.utils.place_match import haversine_m
-from app.services import story_location
+from app.services import story_location, user_country
+from app.services.trip_cost_floor import country_for
 
 router = APIRouter(prefix="/travel-stories", tags=["travel-stories"])
 
@@ -63,13 +64,35 @@ def _order_nearby(pairs: list) -> list:
     )
 
 
-def _pin_official(pairs: list) -> list:
-    """TravelByte's official stories first, newest first; the rest keep their order."""
-    official = sorted(
-        (p for p in pairs if p[0].is_official),
-        key=lambda p: p[0].created_at, reverse=True,
+# TravelBytes - the stories the team posts - share one card at the front of
+# the row, whatever the filter. App builds that draw that card ask for the set
+# with `official_stack`; older builds draw each story as a card of its own, so
+# they get only the first, and a growing number of TravelBytes can never push
+# travellers' stories out of the row.
+OFFICIAL_IN_STACK = 10
+OFFICIAL_IN_OLD_FEED = 1
+
+
+def _created_ts(story) -> float:
+    return story.created_at.timestamp() if story.created_at else 0
+
+
+def _order_official(pairs: list, first_country: Optional[str], stack: bool) -> list:
+    """The TravelBytes the feed leads with, in the order the card shows them.
+
+    First the ones about `first_country` (ISO code: the country the traveller
+    picked, or else the one they are in), nearest first; then every other one,
+    newest first. Cut to what the asking app build can show.
+    """
+    def is_first(story) -> bool:
+        return bool(first_country) and country_for(story.country or "") == first_country
+
+    first = sorted(
+        (p for p in pairs if is_first(p[0])),
+        key=lambda p: (p[1] is None, p[1] or 0, -_created_ts(p[0])),
     )
-    return official + [p for p in pairs if not p[0].is_official]
+    rest = sorted((p for p in pairs if not is_first(p[0])), key=lambda p: -_created_ts(p[0]))
+    return (first + rest)[:OFFICIAL_IN_STACK if stack else OFFICIAL_IN_OLD_FEED]
 
 
 @router.get("", response_model=List[TravelStoryResponse])
@@ -77,6 +100,7 @@ async def get_travel_stories(
     country: Optional[str] = None,
     lat: Optional[float] = Query(None, ge=-90, le=90),
     lng: Optional[float] = Query(None, ge=-180, le=180),
+    official_stack: bool = Query(False),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -86,25 +110,35 @@ async def get_travel_stories(
     and - unless a `country` is picked - the list is ordered "Near you" style
     (see `_order_nearby`). Without them the response is unchanged, so app
     builds that don't send a location keep their newest-first feed.
-    Either way, TravelByte's official stories are pinned first.
+
+    TravelBytes lead the list under every filter (see `_order_official`):
+    up to OFFICIAL_IN_STACK for app builds that send `official_stack`,
+    otherwise one.
     """
     stmt = select(TravelStory).where(
         TravelStory.is_journal == False,
         or_(TravelStory.is_public == True, TravelStory.user_id == current_user.id)
     )
     if country:
-        stmt = stmt.where(TravelStory.country == country)
+        stmt = stmt.where(or_(TravelStory.country == country, TravelStory.is_official == True))
     stmt = stmt.order_by(TravelStory.created_at.desc())
     res = await db.execute(stmt)
     stories = res.scalars().all()
 
-    if lat is not None and lng is not None:
-        pairs = [(s, _distance_m(s, lat, lng)) for s in stories]
-        if not country:
-            pairs = _order_nearby(pairs)
-    else:
-        pairs = [(s, None) for s in stories]
-    pairs = _pin_official(pairs)
+    near = lat is not None and lng is not None
+    pairs = [(s, _distance_m(s, lat, lng) if near else None) for s in stories]
+    official = [p for p in pairs if p[0].is_official]
+    pairs = [p for p in pairs if not p[0].is_official]
+    if near and not country:
+        pairs = _order_nearby(pairs)
+    if official:
+        if country:
+            first_country = country_for(country)
+        elif near:
+            first_country = await user_country.country_at(db, lat, lng)
+        else:
+            first_country = None
+        pairs = _order_official(official, first_country, official_stack) + pairs
 
     response_list = []
     for s, distance in pairs:
