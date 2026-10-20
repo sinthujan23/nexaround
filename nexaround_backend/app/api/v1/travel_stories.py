@@ -77,12 +77,12 @@ def _created_ts(story) -> float:
     return story.created_at.timestamp() if story.created_at else 0
 
 
-def _order_official(pairs: list, first_country: Optional[str], stack: bool) -> list:
-    """The TravelBytes the feed leads with, in the order the card shows them.
+def _order_official(pairs: list, first_country: Optional[str], limit: Optional[int]) -> list:
+    """TravelBytes in the order the app shows them, at most `limit` (None: all).
 
     First the ones about `first_country` (ISO code: the country the traveller
     picked, or else the one they are in), nearest first; then every other one,
-    newest first. Cut to what the asking app build can show.
+    newest first.
     """
     def is_first(story) -> bool:
         return bool(first_country) and country_for(story.country or "") == first_country
@@ -92,7 +92,34 @@ def _order_official(pairs: list, first_country: Optional[str], stack: bool) -> l
         key=lambda p: (p[1] is None, p[1] or 0, -_created_ts(p[0])),
     )
     rest = sorted((p for p in pairs if not is_first(p[0])), key=lambda p: -_created_ts(p[0]))
-    return (first + rest)[:OFFICIAL_IN_STACK if stack else OFFICIAL_IN_OLD_FEED]
+    return (first + rest)[:limit]
+
+
+def _feed_response(s, viewer_id, distance: Optional[float]) -> TravelStoryResponse:
+    """One story as the feed sends it, `is_liked` from `viewer_id`'s side."""
+    comments_list = [
+        TravelStoryCommentResponse(
+            id=c.id, story_id=c.story_id, user_id=c.user_id,
+            user_display_name=c.user.display_name, user_avatar_url=c.user.avatar_url,
+            comment_text=c.comment_text, image_index=c.image_index, created_at=c.created_at
+        )
+        for c in s.comments
+    ]
+    return TravelStoryResponse(
+        id=s.id, user_id=s.user_id, user_display_name=s.user.display_name,
+        user_avatar_url=s.user.avatar_url, location_name=s.location_name,
+        category=s.category, description=s.description, image_url=s.image_url,
+        image_urls=s.image_urls, latitude=s.latitude, longitude=s.longitude,
+        is_public=s.is_public, likes_count=len(s.likes),
+        is_liked=any(like.user_id == viewer_id for like in s.likes),
+        is_journal=s.is_journal, journal_date=s.journal_date,
+        total_spend=s.total_spend, spend_currency=s.spend_currency,
+        cloud_provider=s.cloud_provider, cloud_folder_url=s.cloud_folder_url,
+        travel_date=s.travel_date, country=s.country,
+        created_at=s.created_at, comments=comments_list,
+        distance_m=round(distance) if distance is not None else None,
+        is_official=s.is_official, title=s.title, article_md=s.article_md,
+    )
 
 
 @router.get("", response_model=List[TravelStoryResponse])
@@ -138,40 +165,39 @@ async def get_travel_stories(
             first_country = await user_country.country_at(db, lat, lng)
         else:
             first_country = None
-        pairs = _order_official(official, first_country, official_stack) + pairs
+        limit = OFFICIAL_IN_STACK if official_stack else OFFICIAL_IN_OLD_FEED
+        pairs = _order_official(official, first_country, limit) + pairs
 
-    response_list = []
-    for s, distance in pairs:
-        is_liked = any(like.user_id == current_user.id for like in s.likes)
-        
-        comments_list = []
-        for c in s.comments:
-            comments_list.append(
-                TravelStoryCommentResponse(
-                    id=c.id, story_id=c.story_id, user_id=c.user_id,
-                    user_display_name=c.user.display_name, user_avatar_url=c.user.avatar_url,
-                    comment_text=c.comment_text, image_index=c.image_index, created_at=c.created_at
-                )
-            )
-            
-        response_list.append(
-            TravelStoryResponse(
-                id=s.id, user_id=s.user_id, user_display_name=s.user.display_name,
-                user_avatar_url=s.user.avatar_url, location_name=s.location_name,
-                category=s.category, description=s.description, image_url=s.image_url,
-                image_urls=s.image_urls, latitude=s.latitude, longitude=s.longitude,
-                is_public=s.is_public, likes_count=len(s.likes), is_liked=is_liked,
-                is_journal=s.is_journal, journal_date=s.journal_date,
-                total_spend=s.total_spend, spend_currency=s.spend_currency,
-                cloud_provider=s.cloud_provider, cloud_folder_url=s.cloud_folder_url,
-                travel_date=s.travel_date, country=s.country,
-                created_at=s.created_at, comments=comments_list,
-                distance_m=round(distance) if distance is not None else None,
-                is_official=s.is_official, title=s.title, article_md=s.article_md,
-            )
-        )
+    return [_feed_response(s, current_user.id, distance) for s, distance in pairs]
 
-    return response_list
+
+@router.get("/travelbytes", response_model=List[TravelStoryResponse])
+async def get_travelbytes(
+    lat: Optional[float] = Query(None, ge=-90, le=90),
+    lng: Optional[float] = Query(None, ge=-180, le=180),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Every published TravelByte, for the app's Exclusive page.
+
+    In the same order as the TravelByte card in the feed (`_order_official`,
+    by the country at `lat`/`lng`), but all of them: the card carries at most
+    OFFICIAL_IN_STACK.
+    """
+    stmt = (
+        select(TravelStory)
+        .where(TravelStory.is_official == True, TravelStory.is_public == True)
+        .order_by(TravelStory.created_at.desc())
+    )
+    stories = (await db.execute(stmt)).scalars().all()
+
+    near = lat is not None and lng is not None
+    pairs = [(s, _distance_m(s, lat, lng) if near else None) for s in stories]
+    first_country = await user_country.country_at(db, lat, lng) if near and pairs else None
+    return [
+        _feed_response(s, current_user.id, distance)
+        for s, distance in _order_official(pairs, first_country, None)
+    ]
 
 @router.get("/journal", response_model=List[TravelStoryResponse])
 async def get_travel_journal(

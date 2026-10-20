@@ -2,18 +2,22 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../../../app/theme/app_colors.dart';
-import '../../../../core/constants/api_constants.dart';
 import '../../../experiences/presentation/widgets/experience_description.dart';
+import '../../data/datasources/travel_stories_service.dart';
 import '../../data/models/travel_story.dart';
 import '../widgets/official_story_widgets.dart';
 
 /// The long read behind an official story: its photos, the place, the intro
 /// from the card, then the sections written in the admin panel (light
 /// Markdown, rendered the same way as an experience package's description).
+/// It ends with more TravelBytes and the way to all of them in Exclusive.
 class StoryExperiencePage extends StatefulWidget {
   final TravelStory story;
 
-  const StoryExperiencePage({super.key, required this.story});
+  /// Opened from Exclusive: "See all in Exclusive" goes back to it.
+  final bool fromExclusive;
+
+  const StoryExperiencePage({super.key, required this.story, this.fromExclusive = false});
 
   @override
   State<StoryExperiencePage> createState() => _StoryExperiencePageState();
@@ -30,10 +34,41 @@ class _StoryExperiencePageState extends State<StoryExperiencePage> {
   /// it then shows the article's title, so the reader keeps their bearings.
   bool _collapsed = false;
 
+  /// Other TravelBytes for the end of the page, in Exclusive's order.
+  List<TravelStory> _more = const [];
+
   @override
   void initState() {
     super.initState();
     _scroll.addListener(_onScroll);
+    _loadMore();
+  }
+
+  Future<void> _loadMore() async {
+    final all = await TravelStoriesService().getTravelBytes();
+    if (!mounted) return;
+    setState(() {
+      _more = all.where((s) => s.id != widget.story.id).take(3).toList();
+    });
+  }
+
+  void _seeAll() {
+    if (widget.fromExclusive) {
+      Navigator.pop(context);
+    } else {
+      openExclusive(context);
+    }
+  }
+
+  /// Another TravelByte's read takes this one's place, so going back from it
+  /// returns to where this one was opened from.
+  void _openOther(TravelStory other) {
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (_) => StoryExperiencePage(story: other, fromExclusive: widget.fromExclusive),
+      ),
+    );
   }
 
   @override
@@ -56,10 +91,6 @@ class _StoryExperiencePageState extends State<StoryExperiencePage> {
     if (story.imageUrls.isNotEmpty) return story.imageUrls;
     return story.imageUrl.isNotEmpty ? [story.imageUrl] : const [];
   }
-
-  // Official stories' photos are server uploads, stored as /static/... paths.
-  static String _resolve(String url) =>
-      url.startsWith('http') ? url : '${ApiConstants.baseUrl}$url';
 
   @override
   Widget build(BuildContext context) {
@@ -128,7 +159,7 @@ class _StoryExperiencePageState extends State<StoryExperiencePage> {
                           itemCount: photos.length,
                           onPageChanged: (i) => setState(() => _photo = i),
                           itemBuilder: (_, i) => CachedNetworkImage(
-                            imageUrl: _resolve(photos[i]),
+                            imageUrl: storyPhotoUrl(photos[i]),
                             fit: BoxFit.contain,
                             memCacheWidth: 1440,
                             placeholder: (_, __) => Container(color: AppColors.surface),
@@ -178,6 +209,7 @@ class _StoryExperiencePageState extends State<StoryExperiencePage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  ...[
                   Row(
                     children: [
                       const OfficialAvatar(radius: 16),
@@ -252,14 +284,104 @@ class _StoryExperiencePageState extends State<StoryExperiencePage> {
                   ),
                   const SizedBox(height: 6),
                   ExperienceDescription(markdown: story.articleMd),
-                ]
-                    .animate(interval: 50.ms)
-                    .fadeIn(duration: 300.ms)
-                    .slideY(begin: 0.04, end: 0, duration: 300.ms),
+                  ]
+                      .animate(interval: 50.ms)
+                      .fadeIn(duration: 300.ms)
+                      .slideY(begin: 0.04, end: 0, duration: 300.ms),
+                  if (_more.isNotEmpty) _buildMore(),
+                ],
               ),
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// The end of the read: more TravelBytes, then the way to all of them.
+  Widget _buildMore() {
+    return Padding(
+      padding: const EdgeInsets.only(top: 32),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Divider(height: 1, color: AppColors.border),
+          const SizedBox(height: 22),
+          Text(
+            'More from ${widget.story.userName}',
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.2,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 12),
+          for (final other in _more) _moreRow(other),
+          const SizedBox(height: 12),
+          ReadExperienceTab(label: 'See all in Exclusive', onTap: _seeAll),
+        ],
+      ),
+    ).animate().fadeIn(duration: 300.ms);
+  }
+
+  Widget _moreRow(TravelStory other) {
+    final cover = other.imageUrls.isNotEmpty ? other.imageUrls.first : other.imageUrl;
+    final title = (other.title ?? '').trim().isNotEmpty ? other.title!.trim() : other.locationName;
+    return InkWell(
+      onTap: () => _openOther(other),
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: SizedBox(
+                width: 64,
+                height: 64,
+                child: CachedNetworkImage(
+                  imageUrl: storyPhotoUrl(cover),
+                  fit: BoxFit.cover,
+                  memCacheWidth: 200,
+                  placeholder: (_, __) => const ColoredBox(color: AppColors.surface),
+                  errorWidget: (_, __, ___) => const ColoredBox(color: AppColors.surfaceVariant),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    other.category,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.brandGreen,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      height: 1.3,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right_rounded, color: AppColors.textTertiary),
+          ],
+        ),
       ),
     );
   }

@@ -68,6 +68,12 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
   Timer? _storyTimer;
   bool _isPaused = false;
 
+  /// The "See more" page, shown once when the TravelBytes have finished
+  /// playing: the way to every TravelByte in Exclusive, before travellers'
+  /// stories start.
+  bool _showTravelByteEnd = false;
+  bool _travelByteEndShown = false;
+
   @override
   void initState() {
     super.initState();
@@ -119,15 +125,110 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
         _currentImageIndex++;
       });
       _startStoryTimer(); // Restart timer for the new image
-    } else if (_currentIndex < widget.stories.length - 1) {
+    } else if (!_travelByteEndShown && _isLastTravelByte(_currentIndex)) {
+      _pauseTimer();
+      setState(() {
+        _travelByteEndShown = true;
+        _showTravelByteEnd = true;
+      });
+    } else {
+      _advanceStory();
+    }
+  }
+
+  /// On to the next story, or out at the end of them all.
+  void _advanceStory() {
+    if (_currentIndex < widget.stories.length - 1) {
       _pageController.nextPage(
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeInOut,
       );
     } else {
-      // Reached the end of all stories, maybe pop?
       Navigator.pop(context);
     }
+  }
+
+  /// A TravelByte with no TravelByte after it: the TravelBytes end here.
+  bool _isLastTravelByte(int index) {
+    final stories = widget.stories;
+    return stories[index].isOfficial &&
+        (index == stories.length - 1 || !stories[index + 1].isOfficial);
+  }
+
+  void _continueAfterTravelBytes() {
+    setState(() => _showTravelByteEnd = false);
+    _resumeTimer();
+    _advanceStory();
+  }
+
+  Widget _buildTravelByteEnd() {
+    final count = widget.stories.where((s) => s.isOfficial).length;
+    final hasNext = _currentIndex < widget.stories.length - 1;
+    // The feed carries at most 10 TravelBytes; Exclusive has them all.
+    final guides = count == 1
+        ? '1 travel guide in Exclusive'
+        : count < 10
+            ? '$count travel guides in Exclusive'
+            : 'More travel guides in Exclusive';
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: _continueAfterTravelBytes,
+      child: ColoredBox(
+        color: Colors.black.withValues(alpha: 0.9),
+        child: SafeArea(
+          child: Stack(
+            children: [
+              Positioned(
+                top: 4,
+                right: 4,
+                child: IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close_rounded, color: Colors.white, size: 28),
+                ),
+              ),
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 32),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const OfficialAvatar(radius: 34),
+                      const SizedBox(height: 18),
+                      Text(
+                        "That's all from ${widget.stories[_currentIndex].userName} for now",
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        guides,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: Colors.white70, fontSize: 14),
+                      ),
+                      const SizedBox(height: 22),
+                      ReadExperienceTab(
+                        label: 'See more',
+                        onTap: () => openExclusive(context),
+                      ),
+                      const SizedBox(height: 28),
+                      Text(
+                        hasNext ? "Tap anywhere for travellers' stories" : 'Tap anywhere to close',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: Colors.white54, fontSize: 12.5),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   void _goToPrevious() {
@@ -980,6 +1081,9 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
               ],
             ),
           ),
+
+          // 3. "See more", once the TravelBytes have finished playing.
+          if (_showTravelByteEnd) Positioned.fill(child: _buildTravelByteEnd()),
         ],
       ),
     );

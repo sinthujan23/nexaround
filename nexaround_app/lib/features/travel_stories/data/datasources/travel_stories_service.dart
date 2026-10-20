@@ -5,6 +5,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/constants/api_constants.dart';
+import '../../../../core/services/cache_service.dart';
 import '../models/travel_story.dart';
 
 class TravelStoriesService {
@@ -68,6 +69,36 @@ class TravelStoriesService {
     }
     return allStories;
   }
+
+  /// Every TravelByte, for the Exclusive page, in the order the TravelByte
+  /// card shows them: the server puts the ones about the traveller's own
+  /// country first, then the newest. Offline, the ones in the saved feed.
+  Future<List<TravelStory>> getTravelBytes() async {
+    final lat = CacheService.getLastFetchLat();
+    final lng = CacheService.getLastFetchLng();
+    final located = lat != null && lng != null;
+    try {
+      final response = await _dio.get(
+        '${ApiConstants.travelStories}/travelbytes',
+        queryParameters: {
+          if (located) 'lat': lat,
+          if (located) 'lng': lng,
+        },
+      );
+      if (response.statusCode == 200 && response.data != null) {
+        final List<dynamic> data = response.data;
+        return data.map((json) => TravelStory.fromJson(json)).toList();
+      }
+    } catch (e) {
+      print('⚠️ TravelStoriesService: Failed to fetch TravelBytes from backend ($e). Using Hive fallback.');
+    }
+    return cachedTravelBytes();
+  }
+
+  /// The TravelBytes in the saved feed, newest first: what Exclusive shows at
+  /// once, before the server answers.
+  List<TravelStory> cachedTravelBytes() =>
+      _getStoriesFromHive(isJournal: false).where((s) => s.isOfficial).toList();
 
   // The server's "Near you" bands (NEARBY_BANDS_M in
   // nexaround_backend/app/api/v1/travel_stories.py), for the offline fallback.

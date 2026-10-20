@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../../../app/theme/app_colors.dart';
+import '../../../../core/constants/api_constants.dart';
 import '../../data/models/travel_story.dart';
+import '../pages/exclusive_page.dart';
 import '../pages/story_experience_page.dart';
 
 /// The pieces that mark a story the team posted as TravelByte: the logo in
@@ -52,22 +54,53 @@ class OfficialName extends StatelessWidget {
 }
 
 /// Opens the long read of an official story; completes when it is closed.
-Future<void> openStoryExperience(BuildContext context, TravelStory story) {
+/// [fromExclusive] when opened from the Exclusive page, so the read's own
+/// way back there returns to it rather than opening another.
+Future<void> openStoryExperience(
+  BuildContext context,
+  TravelStory story, {
+  bool fromExclusive = false,
+}) {
   return Navigator.push<void>(
     context,
-    MaterialPageRoute(builder: (_) => StoryExperiencePage(story: story)),
+    MaterialPageRoute(
+      builder: (_) => StoryExperiencePage(story: story, fromExclusive: fromExclusive),
+    ),
   );
 }
 
-/// The pill on an official story that opens its long read. A light sweep
-/// runs across it every few seconds so it reads as something to tap.
+/// Opens Exclusive, every TravelByte in one place; completes when it is closed.
+Future<void> openExclusive(BuildContext context) {
+  return Navigator.push<void>(
+    context,
+    MaterialPageRoute(builder: (_) => const ExclusivePage()),
+  );
+}
+
+/// A story photo's address: TravelByte photos are server uploads, stored as
+/// /static/... paths.
+String storyPhotoUrl(String url) =>
+    url.startsWith('http') ? url : '${ApiConstants.baseUrl}$url';
+
+/// The pill on an official story that opens its long read, or Exclusive. A
+/// light sweep runs across it every few seconds so it reads as something to
+/// tap.
 class ReadExperienceTab extends StatelessWidget {
   final VoidCallback onTap;
 
   /// Smaller, for the story card.
   final bool compact;
 
-  const ReadExperienceTab({super.key, required this.onTap, this.compact = false});
+  /// "See more" on the home card and the end of a run of TravelBytes, which
+  /// open Exclusive.
+  final String label;
+
+  const ReadExperienceTab({
+    super.key,
+    required this.onTap,
+    this.compact = false,
+    this.label = 'Read the experience',
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -99,7 +132,7 @@ class ReadExperienceTab extends StatelessWidget {
             Icon(Icons.auto_stories_rounded, size: fontSize + 3, color: Colors.white),
             const SizedBox(width: 6),
             Text(
-              'Read the experience',
+              label,
               style: TextStyle(
                 color: Colors.white,
                 fontSize: fontSize,

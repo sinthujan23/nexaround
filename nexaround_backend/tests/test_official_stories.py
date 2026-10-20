@@ -44,7 +44,8 @@ def story(name, lat, lng, days_old, official=False, country=None):
 def feed(stories, first_country=None, here=TRINCOMALEE, stack=True):
     """The feed's order: TravelBytes first, then travellers' stories near-you style."""
     pairs = [(s, _distance_m(s, *here)) for s in stories]
-    official = _order_official([p for p in pairs if p[0].is_official], first_country, stack)
+    limit = OFFICIAL_IN_STACK if stack else OFFICIAL_IN_OLD_FEED
+    official = _order_official([p for p in pairs if p[0].is_official], first_country, limit)
     others = _order_nearby([p for p in pairs if not p[0].is_official])
     return [s.name for s, _ in official + others]
 
@@ -95,9 +96,16 @@ def test_older_app_builds_get_one_travelbyte():
     assert feed(many, stack=True) == [f"tb{i}" for i in range(OFFICIAL_IN_STACK)]
 
 
+def test_the_exclusive_page_gets_every_travelbyte_in_card_order():
+    many = [story(f"tb{i}", None, None, i, official=True, country="Japan") for i in range(15)]
+    pairs = [(s, None) for s in many] + [(furong(20), None)]
+    names = [s.name for s, _ in _order_official(pairs, "CN", None)]
+    assert names == ["furong"] + [f"tb{i}" for i in range(15)]
+
+
 def test_without_travelbytes_the_row_is_the_near_you_order():
     pairs = [(story(n, None, None, d), None) for n, d in (("a", 0), ("b", 5), ("c", 1))]
-    assert _order_official([], "LK", True) == []
+    assert _order_official([], "LK", OFFICIAL_IN_STACK) == []
     assert [s.name for s, _ in _order_nearby(pairs)] == ["a", "c", "b"]
 
 

@@ -435,7 +435,7 @@ class _TravelStoryCardState extends State<TravelStoryCard> {
                                   ),
                                   if (widget.story.distanceM != null)
                                     Text(
-                                      '  ·  ${_distanceLabel(widget.story.distanceM!)}',
+                                      '  ·  ${storyDistanceLabel(widget.story.distanceM!)}',
                                       style: const TextStyle(
                                         fontSize: 9.5,
                                         fontWeight: FontWeight.w600,
@@ -605,9 +605,13 @@ class _TravelStoryCardState extends State<TravelStoryCard> {
                     ),
                     if (widget.story.hasArticle) ...[
                       const Spacer(),
+                      // On the home row the TravelByte card leads to all of
+                      // them in Exclusive; its long read is opened from the
+                      // full-screen view.
                       ReadExperienceTab(
                         compact: true,
-                        onTap: () => openStoryExperience(context, widget.story),
+                        label: 'See more',
+                        onTap: () => openExclusive(context),
                       ),
                     ],
                   ],
@@ -681,15 +685,15 @@ class _TravelStoryCardState extends State<TravelStoryCard> {
       return 'just now';
     }
   }
+}
 
-  /// "800 m away", "3.2 km away", "250 km away".
-  String _distanceLabel(double metres) {
-    if (metres < 100) return 'under 100 m away';
-    if (metres < 1000) {
-      return '${(metres / 50).round() * 50} m away';
-    }
-    final km = metres / 1000;
-    if (km < 10) return '${km.toStringAsFixed(1)} km away';
-    return '${km.round()} km away';
+/// "800 m away", "3.2 km away", "250 km away".
+String storyDistanceLabel(double metres) {
+  if (metres < 100) return 'under 100 m away';
+  if (metres < 1000) {
+    return '${(metres / 50).round() * 50} m away';
   }
+  final km = metres / 1000;
+  if (km < 10) return '${km.toStringAsFixed(1)} km away';
+  return '${km.round()} km away';
 }
