@@ -19,7 +19,7 @@ class ExclusivePage extends StatefulWidget {
 }
 
 class _ExclusivePageState extends State<ExclusivePage> {
-  static const double _headerHeight = 150;
+  static const double _headerHeight = 124;
 
   final ScrollController _scroll = ScrollController();
   late List<TravelStory> _stories;
@@ -119,7 +119,7 @@ class _ExclusivePageState extends State<ExclusivePage> {
     final name = _stories.isEmpty ? 'TravelByte' : _stories.first.userName;
     const titleStyle = TextStyle(
       color: Colors.white,
-      fontSize: 19,
+      fontSize: 18,
       fontWeight: FontWeight.w800,
       letterSpacing: -0.2,
     );
@@ -143,7 +143,7 @@ class _ExclusivePageState extends State<ExclusivePage> {
       flexibleSpace: FlexibleSpaceBar(
         background: Container(
           decoration: const BoxDecoration(gradient: AppColors.brandGradient),
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
           alignment: Alignment.bottomLeft,
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -158,7 +158,7 @@ class _ExclusivePageState extends State<ExclusivePage> {
                   letterSpacing: 2.5,
                 ),
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 4),
               Row(
                 children: [
                   const Text('Travel guides by ', style: titleStyle),
@@ -166,7 +166,7 @@ class _ExclusivePageState extends State<ExclusivePage> {
                 ],
               ),
               if (count > 0) ...[
-                const SizedBox(height: 4),
+                const SizedBox(height: 2),
                 Text(
                   count == 1 ? '1 guide' : '$count guides',
                   style: const TextStyle(color: Colors.white70, fontSize: 13),

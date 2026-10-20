@@ -20,7 +20,7 @@ class TravelStoryCard extends StatefulWidget {
 
   /// How many TravelBytes this card stands for. All of them share the first
   /// card of the row, which shows the first; above one, it says how many and
-  /// a deck of card edges shows behind it.
+  /// the edge of a second card shows behind it.
   final int travelByteCount;
 
   const TravelStoryCard({
@@ -242,13 +242,7 @@ class _TravelStoryCardState extends State<TravelStoryCard> {
       onTap: widget.onTap,
       child: _withStackEdge(Container(
         width: 280,
-        // Wider gap after a deeper stack, so its last edge stays clear of
-        // the next card.
-        margin: EdgeInsets.only(
-          right: 18 + _stackEdgeStep * (_stackEdges > 1 ? _stackEdges - 1 : 0),
-          bottom: 8,
-          top: 4,
-        ),
+        margin: const EdgeInsets.only(right: 18, bottom: 8, top: 4),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(24),
@@ -630,55 +624,37 @@ class _TravelStoryCardState extends State<TravelStoryCard> {
     );
   }
 
-  /// Card edges behind a TravelByte card that holds more than one: always a
-  /// full deck (four layers with the card), however many it holds, so it
-  /// reads as a stack from the second TravelByte on. "· N TravelBytes" under
-  /// the name gives the count.
-  static const int _deckEdges = 3;
-
-  /// How much further each edge pokes out than the one in front of it.
-  static const double _stackEdgeStep = 7;
-
-  int get _stackEdges => widget.travelByteCount > 1 ? _deckEdges : 0;
-
-  /// Puts a deck of [_deckEdges] card edges behind [card] when it holds more
-  /// than one TravelByte. They poke out on the right, into the gap before the
-  /// next card, each a step further, shorter and fainter than the one in
-  /// front of it.
+  /// Puts the edge of a second card behind [card] when it holds more than one
+  /// TravelByte. The edge pokes out on the right, into the gap before the
+  /// next card, so the row keeps its spacing.
   Widget _withStackEdge(Widget card) {
-    final edges = _stackEdges;
-    if (edges == 0) return card;
+    if (widget.travelByteCount <= 1) return card;
     return Stack(
       // The card's own shadow reaches past the Stack's box; clipping it would
       // make this one card look different from the rest of the row.
       clipBehavior: Clip.none,
       children: [
-        // The farthest edge first, so each nearer one paints over it.
-        for (var depth = edges; depth >= 1; depth--)
-          Positioned(
-            top: 18.0 + 10 * (depth - 1),
-            bottom: 22.0 + 10 * (depth - 1),
-            right: 8 + _stackEdgeStep * (edges - depth),
-            width: 60,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(22),
-                // Green like the TravelByte card in front of it.
-                border: Border.all(
-                  color: AppColors.brandGreen.withOpacity(0.55 - 0.13 * (depth - 1)),
-                  width: 1.5,
+        Positioned(
+          top: 18,
+          bottom: 22,
+          right: 8,
+          width: 60,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(22),
+              // Green like the TravelByte card in front of it.
+              border: Border.all(color: AppColors.brandGreen.withOpacity(0.55), width: 1.5),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.04),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
                 ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.04),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
+              ],
             ),
           ),
+        ),
         card,
       ],
     );

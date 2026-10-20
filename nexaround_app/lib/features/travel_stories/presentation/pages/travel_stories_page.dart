@@ -24,12 +24,17 @@ class TravelStoriesPage extends StatefulWidget {
   final int initialImageIndex;
   final Function(String storyId)? onStoryDeleted;
 
+  /// How many TravelBytes the feed has, for the "See more" page: the viewer
+  /// is given only the first of them. Null counts the ones in [stories].
+  final int? travelByteCount;
+
   const TravelStoriesPage({
     super.key,
     required this.stories,
     required this.initialIndex,
     this.initialImageIndex = 0,
     this.onStoryDeleted,
+    this.travelByteCount,
   });
 
   @override
@@ -162,7 +167,7 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
   }
 
   Widget _buildTravelByteEnd() {
-    final count = widget.stories.where((s) => s.isOfficial).length;
+    final count = widget.travelByteCount ?? widget.stories.where((s) => s.isOfficial).length;
     final hasNext = _currentIndex < widget.stories.length - 1;
     // The feed carries at most 10 TravelBytes; Exclusive has them all.
     final guides = count == 1

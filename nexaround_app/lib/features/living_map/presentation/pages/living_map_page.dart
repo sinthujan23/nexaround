@@ -3068,14 +3068,26 @@ class _LivingMapPageState extends State<LivingMapPage>
   /// one card at the front of the row: this many stories sit behind it.
   int get _travelByteCount => _travelStories.takeWhile((s) => s.isOfficial).length;
 
+  /// [startIndex] is the story's place in [_travelStories].
   void _navigateToTravelStories(int startIndex, {int initialImageIndex = 0}) async {
+    // The viewer plays one TravelByte - the first, the one for the
+    // traveller's country or else the newest - then its "See more" page; the
+    // rest are in Exclusive. So it is given that one and travellers' stories.
+    final travelBytes = _travelByteCount;
+    final stories = travelBytes > 1
+        ? [_travelStories.first, ..._travelStories.skip(travelBytes)]
+        : _travelStories;
+    final index = travelBytes > 1 && startIndex > 0
+        ? startIndex - (travelBytes - 1)
+        : startIndex;
     await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => TravelStoriesPage(
-          stories: _travelStories,
-          initialIndex: startIndex,
+          stories: stories,
+          initialIndex: index,
           initialImageIndex: initialImageIndex,
+          travelByteCount: travelBytes,
           onStoryDeleted: (storyId) {
             setState(() {
               _travelStories.removeWhere((s) => s.id == storyId);
