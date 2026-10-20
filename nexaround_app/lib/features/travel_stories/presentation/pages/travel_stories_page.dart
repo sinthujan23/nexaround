@@ -175,6 +175,14 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
     }
   }
 
+  /// A TravelByte's frame takes the shape of its photo, so the whole photo
+  /// fills it: nothing cut off and no empty bands around it. Travellers'
+  /// photos keep the fixed frame and fill it.
+  Widget _photoShaped(TravelStory story, Widget frame) {
+    if (!story.isOfficial) return frame;
+    return _PhotoShaped(provider: _getImageProvider(_imageUrlOf(story)), child: frame);
+  }
+
   /// [fit] is contain for a TravelByte, whose photo is shown whole.
   Widget _buildMainImage(String url, {BoxFit fit = BoxFit.cover}) {
     if (url.startsWith('http://') || url.startsWith('https://')) {
@@ -636,7 +644,7 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
                           children: [
                             // Main image container
                             Expanded(
-                              child: Container(
+                              child: _photoShaped(story, Container(
                                 decoration: BoxDecoration(
                                   borderRadius: BorderRadius.circular(20),
                                   boxShadow: [
@@ -654,18 +662,13 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
                                     children: [
                                       // A TravelByte photo is shown whole, as it
                                       // was uploaded: one can carry a caption
-                                      // printed near its edge, which filling
-                                      // the frame would cut off. Plain black
-                                      // around it, not the blurred backdrop.
-                                      story.isOfficial
-                                          ? ColoredBox(
-                                              color: Colors.black,
-                                              child: _buildMainImage(
-                                                _imageUrlOf(story),
-                                                fit: BoxFit.contain,
-                                              ),
-                                            )
-                                          : _buildMainImage(_imageUrlOf(story)),
+                                      // printed near its edge. Its frame has
+                                      // the photo's shape (_photoShaped), so
+                                      // there are no empty bands either.
+                                      _buildMainImage(
+                                        _imageUrlOf(story),
+                                        fit: story.isOfficial ? BoxFit.contain : BoxFit.cover,
+                                      ),
                                       // Left tap area to go to previous story
                                       Positioned(
                                         left: 0,
@@ -699,7 +702,7 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
                                     ],
                                   ),
                                 ),
-                              ),
+                              )),
                             ),
                             const SizedBox(height: 16),
                             // Description & Interaction section
@@ -980,5 +983,83 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
         ],
       ),
     );
+  }
+}
+
+/// Lays [child] out in the shape of the photo at [provider], centred in the
+/// space it is given. Until the photo's size is known, [child] keeps that
+/// whole space.
+class _PhotoShaped extends StatefulWidget {
+  final ImageProvider provider;
+  final Widget child;
+
+  const _PhotoShaped({required this.provider, required this.child});
+
+  @override
+  State<_PhotoShaped> createState() => _PhotoShapedState();
+}
+
+class _PhotoShapedState extends State<_PhotoShaped> {
+  double? _aspect;
+  ImageStream? _stream;
+  ImageStreamListener? _listener;
+
+  // A photo already in the cache answers while the listener is being added,
+  // inside didChangeDependencies; the build that follows picks it up.
+  bool _resolving = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _resolve();
+  }
+
+  @override
+  void didUpdateWidget(covariant _PhotoShaped oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.provider != widget.provider) _resolve();
+  }
+
+  void _resolve() {
+    final stream = widget.provider.resolve(createLocalImageConfiguration(context));
+    if (stream.key != null && stream.key == _stream?.key) return;
+    _stopListening();
+    final listener = ImageStreamListener(
+      (info, _) {
+        final aspect = info.image.width / info.image.height;
+        info.dispose();
+        if (!mounted || aspect == _aspect) return;
+        if (_resolving) {
+          _aspect = aspect;
+        } else {
+          setState(() => _aspect = aspect);
+        }
+      },
+      onError: (_, __) {},
+    );
+    _stream = stream;
+    _listener = listener;
+    _resolving = true;
+    stream.addListener(listener);
+    _resolving = false;
+  }
+
+  void _stopListening() {
+    final listener = _listener;
+    if (listener != null) _stream?.removeListener(listener);
+    _listener = null;
+  }
+
+  @override
+  void dispose() {
+    _stopListening();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final aspect = _aspect;
+    if (aspect == null) return widget.child;
+    return Center(child: AspectRatio(aspectRatio: aspect, child: widget.child));
   }
 }

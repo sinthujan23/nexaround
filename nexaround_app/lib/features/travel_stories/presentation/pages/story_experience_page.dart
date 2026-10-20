@@ -119,11 +119,11 @@ class _StoryExperiencePageState extends State<StoryExperiencePage> {
                   : Stack(
                       fit: StackFit.expand,
                       children: [
-                        // Each photo whole, as it was uploaded, on plain
-                        // black: a TravelByte photo can carry a caption
-                        // printed near its edge, which filling the frame
-                        // would cut off.
-                        const ColoredBox(color: Colors.black),
+                        // Each photo whole, as it was uploaded: a TravelByte
+                        // photo can carry a caption printed near its edge,
+                        // which filling the frame would cut off. Any space it
+                        // leaves is the page's own white.
+                        const ColoredBox(color: Colors.white),
                         PageView.builder(
                           itemCount: photos.length,
                           onPageChanged: (i) => setState(() => _photo = i),
@@ -139,22 +139,33 @@ class _StoryExperiencePageState extends State<StoryExperiencePage> {
                           Positioned(
                             left: 0,
                             right: 0,
-                            bottom: 14,
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: List.generate(photos.length, (i) {
-                                final active = i == _photo;
-                                return AnimatedContainer(
-                                  duration: const Duration(milliseconds: 250),
-                                  margin: const EdgeInsets.symmetric(horizontal: 3),
-                                  width: active ? 18 : 6,
-                                  height: 6,
-                                  decoration: BoxDecoration(
-                                    color: active ? Colors.white : Colors.white.withValues(alpha: 0.55),
-                                    borderRadius: BorderRadius.circular(3),
-                                  ),
-                                );
-                              }),
+                            bottom: 10,
+                            // Dark dots on a white pill: readable on the white
+                            // space round a photo and on the photo itself.
+                            child: Center(
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.85),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: List.generate(photos.length, (i) {
+                                    final active = i == _photo;
+                                    return AnimatedContainer(
+                                      duration: const Duration(milliseconds: 250),
+                                      margin: const EdgeInsets.symmetric(horizontal: 3),
+                                      width: active ? 18 : 6,
+                                      height: 6,
+                                      decoration: BoxDecoration(
+                                        color: active ? AppColors.textPrimary : AppColors.textMuted,
+                                        borderRadius: BorderRadius.circular(3),
+                                      ),
+                                    );
+                                  }),
+                                ),
+                              ),
                             ),
                           ),
                       ],
