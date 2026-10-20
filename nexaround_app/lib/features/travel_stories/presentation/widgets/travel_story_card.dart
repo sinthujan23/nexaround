@@ -246,10 +246,14 @@ class _TravelStoryCardState extends State<TravelStoryCard> {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(
-            color: AppColors.border.withOpacity(0.8),
-            width: 1.0,
-          ),
+          // A TravelByte stands apart from travellers' stories by its
+          // border in the app's green.
+          border: widget.story.isOfficial
+              ? Border.all(color: AppColors.brandGreen, width: 2.0)
+              : Border.all(
+                  color: AppColors.border.withOpacity(0.8),
+                  width: 1.0,
+                ),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.04),
@@ -635,7 +639,8 @@ class _TravelStoryCardState extends State<TravelStoryCard> {
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: AppColors.border.withOpacity(0.8)),
+              // Green like the TravelByte card in front of it.
+              border: Border.all(color: AppColors.brandGreen.withOpacity(0.55), width: 1.5),
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withOpacity(0.04),
