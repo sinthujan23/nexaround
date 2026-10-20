@@ -49,7 +49,12 @@ class _ExperiencePackageDetailPageState
     extends State<ExperiencePackageDetailPage> {
   late ExperiencePackageEntity _package;
   final PageController _photoController = PageController();
+  final ScrollController _scroll = ScrollController();
   int _photoIndex = 0;
+
+  /// The photos have scrolled away and the white bar is pinned on its own:
+  /// it then shows the package title, so the reader keeps their bearings.
+  bool _collapsed = false;
   bool _loading = true;
   bool _isNavigatingToMap = false;
 
@@ -164,14 +169,33 @@ class _ExperiencePackageDetailPageState
     );
     _package = saved ?? widget.package;
     _loading = saved == null;
+    _scroll.addListener(_onScroll);
     _loadDetail();
   }
 
   @override
   void dispose() {
     _photoController.dispose();
+    _scroll.dispose();
     super.dispose();
   }
+
+  void _onScroll() {
+    // A pinned SliverAppBar finishes collapsing after scrolling its expanded
+    // height less the toolbar that stays; the title comes in just before.
+    final collapseAt =
+        _headerHeight(MediaQuery.of(context)) - kToolbarHeight - 24;
+    final collapsed = _scroll.offset > collapseAt;
+    if (collapsed != _collapsed) setState(() => _collapsed = collapsed);
+  }
+
+  // One 4:3 frame from the very top of the screen, the status bar included,
+  // so a 4:3 photo fills it exactly with no bars. SliverAppBar adds the
+  // status bar height to expandedHeight itself, hence the subtraction.
+  static double _headerHeight(MediaQueryData media) => math.max(
+        media.size.width * 3 / 4 - media.padding.top,
+        kToolbarHeight,
+      );
 
   Future<void> _loadDetail() async {
     final full = await ExperiencesService.fetchPackage(
@@ -193,6 +217,7 @@ class _ExperiencePackageDetailPageState
     return Scaffold(
       backgroundColor: Colors.white,
       body: CustomScrollView(
+        controller: _scroll,
         slivers: [
           _buildGalleryAppBar(_package.videoUrls, photos),
           SliverToBoxAdapter(child: _buildBody()),
@@ -230,20 +255,30 @@ class _ExperiencePackageDetailPageState
   Widget _buildGalleryAppBar(List<String> videos, List<String> photos) {
     final isIOS = Theme.of(context).platform == TargetPlatform.iOS;
     final slideCount = videos.length + photos.length;
-    final media = MediaQuery.of(context);
-    // One 4:3 frame from the very top of the screen, the status bar included,
-    // so a 4:3 photo fills it exactly with no bars. SliverAppBar adds the
-    // status bar height to expandedHeight itself, hence the subtraction.
-    final headerHeight = math.max(
-      media.size.width * 3 / 4 - media.padding.top,
-      kToolbarHeight,
-    );
+    final headerHeight = _headerHeight(MediaQuery.of(context));
 
     return SliverAppBar(
       expandedHeight: headerHeight,
       pinned: true,
       backgroundColor: Colors.white,
       foregroundColor: AppColors.textPrimary,
+      centerTitle: false,
+      titleSpacing: 4,
+      title: AnimatedOpacity(
+        opacity: _collapsed ? 1 : 0,
+        duration: const Duration(milliseconds: 200),
+        child: Text(
+          _package.title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.2,
+            color: AppColors.textPrimary,
+          ),
+        ),
+      ),
       // White circles rather than bare icons: over the photo a plain dark
       // icon sits on the dark top gradient and all but disappears.
       leading: _headerButton(
