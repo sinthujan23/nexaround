@@ -20,7 +20,7 @@ class TravelStoryCard extends StatefulWidget {
 
   /// How many TravelBytes this card stands for. All of them share the first
   /// card of the row, which shows the first; above one, it says how many and
-  /// the edges of more cards show behind it, one per further TravelByte.
+  /// a deck of card edges shows behind it.
   final int travelByteCount;
 
   const TravelStoryCard({
@@ -630,23 +630,21 @@ class _TravelStoryCardState extends State<TravelStoryCard> {
     );
   }
 
-  /// At most this many card edges behind a TravelByte card (four layers with
-  /// the card); "· N TravelBytes" under the name gives the exact count.
-  static const int _maxStackEdges = 3;
+  /// Card edges behind a TravelByte card that holds more than one: always a
+  /// full deck (four layers with the card), however many it holds, so it
+  /// reads as a stack from the second TravelByte on. "· N TravelBytes" under
+  /// the name gives the count.
+  static const int _deckEdges = 3;
 
   /// How much further each edge pokes out than the one in front of it.
   static const double _stackEdgeStep = 7;
 
-  int get _stackEdges {
-    final further = widget.travelByteCount - 1;
-    if (further <= 0) return 0;
-    return further < _maxStackEdges ? further : _maxStackEdges;
-  }
+  int get _stackEdges => widget.travelByteCount > 1 ? _deckEdges : 0;
 
-  /// Puts the edges of more cards behind [card] when it holds more than one
-  /// TravelByte: one per further TravelByte, up to [_maxStackEdges]. They
-  /// poke out on the right, into the gap before the next card, each a step
-  /// further, shorter and fainter than the one in front of it.
+  /// Puts a deck of [_deckEdges] card edges behind [card] when it holds more
+  /// than one TravelByte. They poke out on the right, into the gap before the
+  /// next card, each a step further, shorter and fainter than the one in
+  /// front of it.
   Widget _withStackEdge(Widget card) {
     final edges = _stackEdges;
     if (edges == 0) return card;
