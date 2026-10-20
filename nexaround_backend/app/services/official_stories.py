@@ -27,6 +27,17 @@ OFFICIAL_NAME = "TravelByte"
 OFFICIAL_AVATAR_PATH = "/static/brand/nexaround_mark.png"
 
 
+def place_label(country: str, region: str | None) -> str:
+    """What an official story shows where a traveller's story shows its
+    category: country then town or region, "CHINA · FURONG TOWN".
+
+    It is stored and sent as the story's `category`, so every app build
+    already installed shows it without an update.
+    """
+    parts = [p.strip() for p in (country, region or "") if p and p.strip()]
+    return " · ".join(parts).upper()[:100]
+
+
 async def ensure_official_user(db: AsyncSession) -> uuid.UUID:
     """Create the account the first time an official story is posted."""
     await db.execute(

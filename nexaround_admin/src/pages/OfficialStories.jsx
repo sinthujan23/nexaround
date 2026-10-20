@@ -8,14 +8,10 @@ import DescriptionEditor from '../components/DescriptionEditor';
 import { COUNTRIES, getCountryByCode } from '../constants/countries';
 import { useToast } from '../hooks';
 
-// The categories a traveller can pick when posting a story in the app.
-const CATEGORIES = [
-  '💎 Hidden Gem',
-  '🧭 Offbeat Place',
-  '🤫 Local Secret',
-  '🌅 Scenic Viewpoint',
-  '🍔 Food Spot',
-];
+// The label the app shows where a traveller's story shows its category.
+// Made the same way as place_label on the server: "CHINA · FURONG TOWN".
+const placeLabel = (country, region) =>
+  [country, region].map((p) => (p || '').trim()).filter(Boolean).join(' · ').toUpperCase();
 
 const EMPTY = {
   title: '',
@@ -25,7 +21,7 @@ const EMPTY = {
   country: '',
   latitude: '',
   longitude: '',
-  category: '🌅 Scenic Viewpoint',
+  region_label: '',
   image_urls: [],
   is_public: true,
 };
@@ -255,28 +251,28 @@ export default function OfficialStories() {
                       </datalist>
                     </div>
                   </div>
+                  <div className="form-group">
+                    <label className="form-label">Town / region</label>
+                    <input
+                      type="text" className="form-input" value={form.region_label} maxLength={120}
+                      placeholder="e.g. Furong Town"
+                      onChange={(e) => patchForm({ region_label: e.target.value })}
+                    />
+                    <div className="xp-section-hint" style={{ margin: '6px 0 0' }}>
+                      Label in the app: <strong>{placeLabel(form.country, form.region_label) || '—'}</strong>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="xp-section">
                   <div className="xp-section-title">On the story card</div>
-                  <div className="form-grid-2">
-                    <div className="form-group">
-                      <label className="form-label">Title *</label>
-                      <input
-                        type="text" className="form-input" value={form.title} maxLength={200}
-                        placeholder="A Magical Waterfall Village Straight Out of a Fairytale"
-                        onChange={(e) => patchForm({ title: e.target.value })}
-                      />
-                    </div>
-                    <div className="form-group">
-                      <label className="form-label">Category</label>
-                      <select
-                        className="form-input" value={form.category}
-                        onChange={(e) => patchForm({ category: e.target.value })}
-                      >
-                        {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                      </select>
-                    </div>
+                  <div className="form-group">
+                    <label className="form-label">Title *</label>
+                    <input
+                      type="text" className="form-input" value={form.title} maxLength={200}
+                      placeholder="A Magical Waterfall Village Straight Out of a Fairytale"
+                      onChange={(e) => patchForm({ title: e.target.value })}
+                    />
                   </div>
                   <div className="form-group">
                     <label className="form-label">Short intro * <span className="muted">({form.description.length}/1000)</span></label>

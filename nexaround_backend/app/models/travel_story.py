@@ -41,6 +41,9 @@ class TravelStory(Base):
     is_official: Mapped[bool] = mapped_column(default=False, server_default=false())
     title: Mapped[str] = mapped_column(String(200), nullable=True)
     article_md: Mapped[str] = mapped_column(Text, nullable=True)
+    # Town or region of an official story, as the admin typed it. With the
+    # country it makes the story's label (official_stories.place_label).
+    region_label: Mapped[str] = mapped_column(String(120), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

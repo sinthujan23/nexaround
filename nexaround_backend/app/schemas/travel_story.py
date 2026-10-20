@@ -80,7 +80,8 @@ class OfficialStoryIn(BaseModel):
     country: str = Field(..., min_length=1, max_length=100)
     latitude: float = Field(..., ge=-90, le=90)
     longitude: float = Field(..., ge=-180, le=180)
-    category: str = Field(..., min_length=1, max_length=100)
+    # Town or region; with the country it makes the label the app shows.
+    region_label: str = Field("", max_length=120)
     # The first photo is the cover.
     image_urls: List[str] = Field(..., min_length=1, max_length=20)
     is_public: bool = True
@@ -88,6 +89,8 @@ class OfficialStoryIn(BaseModel):
 
 class OfficialStoryAdminOut(OfficialStoryIn):
     id: UUID
+    # The label as the app shows it, made from country and region.
+    category: str
     likes_count: int
     comments_count: int
     created_at: datetime

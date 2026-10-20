@@ -18,7 +18,7 @@ from app.api.v1.admin import verify_admin_token
 from app.core.database import get_db
 from app.models.travel_story import TravelStory
 from app.schemas.travel_story import OfficialStoryAdminOut, OfficialStoryIn
-from app.services.official_stories import ensure_official_user
+from app.services.official_stories import ensure_official_user, place_label
 
 router = APIRouter(prefix="/admin/travel-stories", tags=["Admin Travel Stories"])
 
@@ -34,6 +34,7 @@ def _out(story: TravelStory) -> OfficialStoryAdminOut:
         latitude=story.latitude,
         longitude=story.longitude,
         category=story.category,
+        region_label=story.region_label or "",
         image_urls=story.image_urls or [story.image_url],
         is_public=story.is_public,
         likes_count=len(story.likes),
@@ -55,7 +56,8 @@ def _apply(story: TravelStory, data: OfficialStoryIn) -> None:
     story.country = data.country.strip()
     story.latitude = data.latitude
     story.longitude = data.longitude
-    story.category = data.category.strip()
+    story.region_label = data.region_label.strip() or None
+    story.category = place_label(story.country, story.region_label)
     story.image_urls = urls
     story.image_url = urls[0]
     story.is_public = data.is_public

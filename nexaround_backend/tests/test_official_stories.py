@@ -14,6 +14,7 @@ from pydantic import ValidationError
 from app.api.v1.travel_stories import _distance_m, _order_nearby, _pin_official
 from app.api.v1.travel_stories_admin import _apply
 from app.schemas.travel_story import OfficialStoryIn, TravelStoryResponse
+from app.services.official_stories import place_label
 
 TRINCOMALEE = (8.5874, 81.2152)
 NOW = datetime(2026, 10, 19, tzinfo=timezone.utc)
@@ -67,7 +68,7 @@ def _form(**over):
         country="China",
         latitude=28.853,
         longitude=109.987,
-        category="🌅 Scenic Viewpoint",
+        region_label="Furong Town",
         image_urls=["/static/uploads/experiences/a.jpg", "/static/uploads/experiences/b.jpg"],
     )
     fields.update(over)
@@ -81,6 +82,24 @@ def test_first_photo_is_the_cover_and_text_is_trimmed():
     assert row.image_urls == ["/static/uploads/experiences/a.jpg", "/static/uploads/experiences/b.jpg"]
     assert row.title == "A Magical Waterfall Village"
     assert row.is_public is True
+
+
+def test_label_is_country_then_town_in_capitals():
+    row = SimpleNamespace()
+    _apply(row, _form())
+    assert row.category == "CHINA · FURONG TOWN"
+    assert row.region_label == "Furong Town"
+
+
+def test_label_without_a_town_is_the_country():
+    row = SimpleNamespace()
+    _apply(row, _form(region_label="  "))
+    assert row.category == "CHINA"
+    assert row.region_label is None
+
+
+def test_label_fits_the_category_column():
+    assert len(place_label("C" * 100, "R" * 120)) == 100
 
 
 def test_an_empty_article_is_stored_as_none():
