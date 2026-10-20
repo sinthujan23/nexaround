@@ -2,6 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:http/http.dart' as http;
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/utils/place_image_helper.dart';
@@ -129,6 +130,7 @@ class _ExperienceShareSheetState extends State<_ExperienceShareSheet> {
               builder: (buttonContext) => _outlinedAction(
                 icon: Icons.ios_share_rounded,
                 label: 'More',
+                busy: _busy == 'More',
                 onPressed: _busy != null
                     ? null
                     : () => _run('More', buttonContext, _shareMore),
@@ -140,16 +142,25 @@ class _ExperienceShareSheetState extends State<_ExperienceShareSheet> {
     ];
   }
 
+  /// [busy] shows a spinner in place of the icon, as the app buttons above
+  /// do, so a share that takes a moment to open doesn't look like a dead tap.
   Widget _outlinedAction({
     required IconData icon,
     required String label,
     required VoidCallback? onPressed,
+    bool busy = false,
   }) {
     return SizedBox(
       height: 48,
       child: OutlinedButton.icon(
         onPressed: onPressed,
-        icon: Icon(icon, size: 18),
+        icon: busy
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : Icon(icon, size: 18),
         label: Text(
           label,
           style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
@@ -447,13 +458,27 @@ class _ExperienceShareSheetState extends State<_ExperienceShareSheet> {
 
   /// The package's cover photo, or null when there is none or it can't be
   /// fetched in time, in which case only text is shared.
+  ///
+  /// The page and the preview above have already shown it, so it is normally
+  /// in the image cache on the phone. Downloading it again first held the
+  /// share menu back by as long as the connection took, up to 10 seconds on a
+  /// weak one, with nothing on screen moving.
   Future<_CoverImage?> _coverImage() async {
     final url = PlaceImageHelper.resolveUrl(package.coverPhotoUrl);
     if (url == null) return null;
     try {
+      final cached = await DefaultCacheManager().getFileFromCache(url);
+      if (cached != null) {
+        final bytes = await cached.file.readAsBytes();
+        if (bytes.isNotEmpty) return _CoverImage(bytes);
+      }
+    } catch (e) {
+      debugPrint('Share image cache read failed: $e');
+    }
+    try {
       final response = await http
           .get(Uri.parse(url), headers: PlaceImageHelper.headersFor(url))
-          .timeout(const Duration(seconds: 10));
+          .timeout(const Duration(seconds: 4));
       if (response.statusCode != 200 || response.bodyBytes.isEmpty) return null;
       return _CoverImage(response.bodyBytes);
     } catch (e) {
