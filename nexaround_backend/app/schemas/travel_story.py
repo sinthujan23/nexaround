@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import Dict, List, Optional
 from uuid import UUID
 from datetime import datetime
 
@@ -65,6 +65,9 @@ class TravelStoryResponse(TravelStoryBase):
     is_official: bool = False
     title: Optional[str] = None
     article_md: Optional[str] = None
+    # Photo URL -> tiny base64 WebP the app shows blurred while that photo
+    # loads (app/services/image_preview.py). Photos without one are left out.
+    image_previews: Dict[str, str] = {}
 
     class Config:
         from_attributes = True

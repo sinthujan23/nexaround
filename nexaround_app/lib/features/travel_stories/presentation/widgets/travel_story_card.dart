@@ -1,5 +1,7 @@
 import 'dart:io';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../../../app/theme/app_colors.dart';
@@ -9,6 +11,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
 import 'official_story_widgets.dart';
+import 'story_photo_preview.dart';
 
 class TravelStoryCard extends StatefulWidget {
   final TravelStory story;
@@ -23,6 +26,11 @@ class TravelStoryCard extends StatefulWidget {
   /// the edge of a second card shows behind it.
   final int travelByteCount;
 
+  /// Puts another TravelByte on this card, at random. Set by the home row on
+  /// its TravelByte card when it holds two or more; shows the round green
+  /// button on the photo's bottom edge.
+  final VoidCallback? onShuffle;
+
   const TravelStoryCard({
     super.key,
     required this.story,
@@ -32,15 +40,26 @@ class TravelStoryCard extends StatefulWidget {
     this.onTap,
     this.onImageTap,
     this.travelByteCount = 1,
+    this.onShuffle,
   });
 
   @override
   State<TravelStoryCard> createState() => _TravelStoryCardState();
 }
 
-class _TravelStoryCardState extends State<TravelStoryCard> {
+class _TravelStoryCardState extends State<TravelStoryCard>
+    with SingleTickerProviderStateMixin {
   bool _localLiked = false;
   int _localLikesCount = 0;
+
+  // Runs when the shuffle button has put another TravelByte on the card: it
+  // comes forward from the card edge behind, and the button's arrows turn
+  // once. At rest (1) nothing is moved.
+  late final AnimationController _deal = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 450),
+    value: 1,
+  );
 
   @override
   void initState() {
@@ -52,13 +71,24 @@ class _TravelStoryCardState extends State<TravelStoryCard> {
   @override
   void didUpdateWidget(covariant TravelStoryCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.story.isLiked != widget.story.isLiked ||
+    // A shuffle keeps this card and swaps its story, so the like state has to
+    // follow the story even when both happen to have the same count.
+    final otherStory = oldWidget.story.id != widget.story.id;
+    if (otherStory ||
+        oldWidget.story.isLiked != widget.story.isLiked ||
         oldWidget.story.likesCount != widget.story.likesCount) {
       setState(() {
         _localLiked = widget.story.isLiked;
         _localLikesCount = widget.story.likesCount;
       });
     }
+    if (otherStory && widget.onShuffle != null) _deal.forward(from: 0);
+  }
+
+  @override
+  void dispose() {
+    _deal.dispose();
+    super.dispose();
   }
 
   Color _getCategoryColor(String category) {
@@ -82,6 +112,26 @@ class _TravelStoryCardState extends State<TravelStoryCard> {
     );
   }
 
+  /// While a photo loads: its blurred preview when the server sent one
+  /// (older cached stories have none), otherwise a spinner.
+  Widget _loadingPhoto(String url) {
+    final preview = widget.story.imagePreviews[url];
+    if (preview != null) return StoryPhotoPreview(preview: preview);
+    return Container(
+      color: AppColors.surface,
+      child: const Center(
+        child: SizedBox(
+          width: 20,
+          height: 20,
+          child: CircularProgressIndicator(
+            strokeWidth: 1.5,
+            color: AppColors.brandGreen,
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildImageContent(String url) {
     if (url.startsWith('http://') || url.startsWith('https://')) {
       return CachedNetworkImage(
@@ -92,19 +142,7 @@ class _TravelStoryCardState extends State<TravelStoryCard> {
         // larger than the card (~360dp at 3x DPR), and tapping through opens
         // the full-screen viewer, which loads the original untouched.
         memCacheWidth: 1080,
-        placeholder: (_, __) => Container(
-          color: AppColors.surface,
-          child: const Center(
-            child: SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(
-                strokeWidth: 1.5,
-                color: AppColors.brandGreen,
-              ),
-            ),
-          ),
-        ),
+        placeholder: (_, __) => _loadingPhoto(url),
         errorWidget: (_, __, ___) => Container(color: AppColors.surfaceVariant),
       );
     } else if (url.startsWith('/static/')) {
@@ -113,19 +151,7 @@ class _TravelStoryCardState extends State<TravelStoryCard> {
         imageUrl: fullUrl,
         fit: BoxFit.cover,
         memCacheWidth: 1080, // card is ~360dp wide at 3x DPR
-        placeholder: (_, __) => Container(
-          color: AppColors.surface,
-          child: const Center(
-            child: SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(
-                strokeWidth: 1.5,
-                color: AppColors.brandGreen,
-              ),
-            ),
-          ),
-        ),
+        placeholder: (_, __) => _loadingPhoto(url),
         errorWidget: (_, __, ___) => Container(color: AppColors.surfaceVariant),
       );
     } else {
@@ -145,19 +171,7 @@ class _TravelStoryCardState extends State<TravelStoryCard> {
           imageUrl: fullUrl,
           fit: BoxFit.cover,
           memCacheWidth: 1080, // card is ~360dp wide at 3x DPR
-          placeholder: (_, __) => Container(
-            color: AppColors.surface,
-            child: const Center(
-              child: SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 1.5,
-                  color: AppColors.brandGreen,
-                ),
-              ),
-            ),
-          ),
+          placeholder: (_, __) => _loadingPhoto(url),
           errorWidget: (_, __, ___) =>
               Container(color: AppColors.surfaceVariant),
         );
@@ -240,7 +254,7 @@ class _TravelStoryCardState extends State<TravelStoryCard> {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: widget.onTap,
-      child: _withStackEdge(Container(
+      child: _withStackEdge(_dealing(Container(
         width: 280,
         margin: const EdgeInsets.only(right: 18, bottom: 8, top: 4),
         decoration: BoxDecoration(
@@ -385,140 +399,157 @@ class _TravelStoryCardState extends State<TravelStoryCard> {
                 ),
               ),
 
-              // Post image
-              SizedBox(
-                height: 240,
-                width: double.infinity,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    _buildImageGrid(allUrls),
-                    // Location Overlay Tag. Bounded to the photo's width so a
-                    // long place name ellipsizes instead of pushing the
-                    // distance off the card.
-                    Positioned(
-                      bottom: 8,
-                      left: 8,
-                      right: 8,
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: GestureDetector(
-                          onTap: widget.onLocationTap,
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(10),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 4,
-                              ),
-                              color: Colors.black.withOpacity(0.6),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(
-                                    Icons.location_on,
-                                    size: 10,
-                                    color: Colors.white,
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Flexible(
-                                    child: Text(
-                                      widget.story.locationName,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        fontSize: 9.5,
-                                        fontWeight: FontWeight.w700,
-                                        color: Colors.white,
+              // Photo and text. The shuffle button sits across the photo's
+              // bottom edge: it is laid over both, so all of it takes taps.
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Post image
+                      SizedBox(
+                        height: 240,
+                        width: double.infinity,
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            _buildImageGrid(allUrls),
+                            // Location Overlay Tag. Bounded to the photo's width so a
+                            // long place name ellipsizes instead of pushing the
+                            // distance off the card.
+                            Positioned(
+                              bottom: 8,
+                              left: 8,
+                              right: widget.onShuffle != null ? 56 : 8,
+                              child: Align(
+                                alignment: Alignment.centerLeft,
+                                child: GestureDetector(
+                                  onTap: widget.onLocationTap,
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(10),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 4,
+                                      ),
+                                      color: Colors.black.withOpacity(0.6),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          const Icon(
+                                            Icons.location_on,
+                                            size: 10,
+                                            color: Colors.white,
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Flexible(
+                                            child: Text(
+                                              widget.story.locationName,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: const TextStyle(
+                                                fontSize: 9.5,
+                                                fontWeight: FontWeight.w700,
+                                                color: Colors.white,
+                                              ),
+                                            ),
+                                          ),
+                                          if (widget.story.distanceM != null)
+                                            Text(
+                                              '  ·  ${storyDistanceLabel(widget.story.distanceM!)}',
+                                              style: const TextStyle(
+                                                fontSize: 9.5,
+                                                fontWeight: FontWeight.w600,
+                                                color: Colors.white70,
+                                              ),
+                                            ),
+                                        ],
                                       ),
                                     ),
                                   ),
-                                  if (widget.story.distanceM != null)
-                                    Text(
-                                      '  ·  ${storyDistanceLabel(widget.story.distanceM!)}',
-                                      style: const TextStyle(
-                                        fontSize: 9.5,
-                                        fontWeight: FontWeight.w600,
-                                        color: Colors.white70,
-                                      ),
-                                    ),
-                                ],
+                                ),
                               ),
                             ),
-                          ),
+                            if (widget.story.imageUrls.length > 1)
+                              Positioned(
+                                top: 8,
+                                right: 8,
+                                child: Container(
+                                  padding: const EdgeInsets.all(4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withOpacity(0.6),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(
+                                    Icons.layers_rounded,
+                                    color: Colors.white,
+                                    size: 14,
+                                  ),
+                                ),
+                              ),
+                          ],
                         ),
                       ),
-                    ),
-                    if (widget.story.imageUrls.length > 1)
-                      Positioned(
-                        top: 8,
-                        right: 8,
-                        child: Container(
-                          padding: const EdgeInsets.all(4),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.6),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.layers_rounded,
-                            color: Colors.white,
-                            size: 14,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
 
-              // Story description. An official story's intro stops at two
-              // lines: its footer carries the "Read the experience" tab.
-              if (widget.story.hasArticle)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
-                  child: Text(
-                    widget.story.description,
-                    style: const TextStyle(
-                      fontSize: 11.5,
-                      height: 1.4,
-                      fontWeight: FontWeight.w400,
-                      color: AppColors.textSecondary,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                )
-              else
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
-                child: Text.rich(
-                  TextSpan(
-                    children: [
-                      TextSpan(
-                        text: widget.story.description.length > 95
-                            ? '${widget.story.description.substring(0, 92)}...'
-                            : widget.story.description,
-                        style: const TextStyle(
-                          fontSize: 11.5,
-                          height: 1.4,
-                          fontWeight: FontWeight.w400,
-                          color: AppColors.textSecondary,
+                      // Story description. An official story's intro stops at two
+                      // lines: its footer carries the "Read the experience" tab.
+                      if (widget.story.hasArticle)
+                        Padding(
+                          padding: EdgeInsets.fromLTRB(
+                            12, 10, widget.onShuffle != null ? 54 : 12, 6,
+                          ),
+                          child: Text(
+                            widget.story.description,
+                            style: const TextStyle(
+                              fontSize: 11.5,
+                              height: 1.4,
+                              fontWeight: FontWeight.w400,
+                              color: AppColors.textSecondary,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        )
+                      else
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+                        child: Text.rich(
+                          TextSpan(
+                            children: [
+                              TextSpan(
+                                text: widget.story.description.length > 95
+                                    ? '${widget.story.description.substring(0, 92)}...'
+                                    : widget.story.description,
+                                style: const TextStyle(
+                                  fontSize: 11.5,
+                                  height: 1.4,
+                                  fontWeight: FontWeight.w400,
+                                  color: AppColors.textSecondary,
+                                ),
+                              ),
+                              if (widget.story.description.length > 95)
+                                const TextSpan(
+                                  text: ' see more',
+                                  style: TextStyle(
+                                    fontSize: 11.5,
+                                    height: 1.4,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppColors.brandGreen,
+                                  ),
+                                ),
+                            ],
+                          ),
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                      if (widget.story.description.length > 95)
-                        const TextSpan(
-                          text: ' see more',
-                          style: TextStyle(
-                            fontSize: 11.5,
-                            height: 1.4,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.brandGreen,
-                          ),
-                        ),
                     ],
                   ),
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                ),
+                  if (widget.onShuffle != null)
+                    Positioned(top: 240 - 22, right: 10, child: _shuffleButton()),
+                ],
               ),
 
               const Spacer(),
@@ -544,6 +575,10 @@ class _TravelStoryCardState extends State<TravelStoryCard> {
                             _localLiked = true;
                             _localLikesCount++;
                           }
+                          // Kept on the story too, as the viewer does, so a
+                          // TravelByte shuffled away and back shows the like.
+                          widget.story.isLiked = _localLiked;
+                          widget.story.likesCount = _localLikesCount;
                         });
                         widget.onLikeTap();
                       },
@@ -620,7 +655,79 @@ class _TravelStoryCardState extends State<TravelStoryCard> {
             ],
           ),
         ),
-      )),
+      ))),
+    );
+  }
+
+  /// [card] coming forward from the edge behind it while [_deal] runs.
+  Widget _dealing(Widget card) {
+    return AnimatedBuilder(
+      animation: _deal,
+      child: card,
+      builder: (context, child) {
+        if (_deal.value == 1) return child!;
+        final t = Curves.easeOutCubic.transform(_deal.value);
+        return Opacity(
+          opacity: 0.2 + 0.8 * t,
+          child: Transform.translate(
+            offset: Offset(48 * (1 - t), 0),
+            child: Transform.rotate(
+              angle: 0.07 * (1 - t),
+              child: Transform.scale(scale: 0.92 + 0.08 * t, child: child),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  /// The round green button that puts another TravelByte on the card. 36 px
+  /// across in a 44 px tap area; its arrows turn once as the next one comes.
+  Widget _shuffleButton() {
+    return Semantics(
+      button: true,
+      label: 'Show another TravelByte',
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          HapticFeedback.lightImpact();
+          widget.onShuffle!();
+        },
+        child: SizedBox(
+          width: 44,
+          height: 44,
+          child: Center(
+            child: Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: AppColors.brandGreen,
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 2.5),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.brandGreenDark.withOpacity(0.35),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: AnimatedBuilder(
+                animation: _deal,
+                builder: (context, child) => Transform.rotate(
+                  angle: Curves.easeOutCubic.transform(_deal.value) * 2 * math.pi,
+                  child: child,
+                ),
+                child: const Icon(
+                  Icons.shuffle_rounded,
+                  size: 17,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 

@@ -110,6 +110,11 @@ class TravelStory {
 
   bool get hasArticle => isOfficial && (articleMd ?? '').trim().isNotEmpty;
 
+  /// Photo URL -> tiny base64 WebP from the server, shown blurred while that
+  /// photo loads (StoryPhotoPreview). Not written to the Hive cache or sent
+  /// when posting: offline, the photos come from the image cache anyway.
+  final Map<String, String> imagePreviews;
+
   TravelStory({
     required this.id,
     required this.userId,
@@ -140,6 +145,7 @@ class TravelStory {
     this.isOfficial = false,
     this.title,
     this.articleMd,
+    this.imagePreviews = const {},
   });
 
   TravelStory copyWith({
@@ -172,6 +178,7 @@ class TravelStory {
     bool? isOfficial,
     String? title,
     String? articleMd,
+    Map<String, String>? imagePreviews,
   }) {
     return TravelStory(
       id: id ?? this.id,
@@ -203,6 +210,7 @@ class TravelStory {
       isOfficial: isOfficial ?? this.isOfficial,
       title: title ?? this.title,
       articleMd: articleMd ?? this.articleMd,
+      imagePreviews: imagePreviews ?? this.imagePreviews,
     );
   }
 
@@ -255,6 +263,10 @@ class TravelStory {
       isOfficial: json['is_official'] as bool? ?? false,
       title: json['title'] as String?,
       articleMd: json['article_md'] as String?,
+      imagePreviews: (json['image_previews'] as Map?)?.map(
+            (url, preview) => MapEntry(url.toString(), preview.toString()),
+          ) ??
+          const {},
     );
   }
 

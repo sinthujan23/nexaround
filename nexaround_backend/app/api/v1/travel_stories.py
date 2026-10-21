@@ -20,7 +20,7 @@ from app.schemas.travel_story import (
     TravelStoryCommentResponse
 )
 from app.utils.place_match import haversine_m
-from app.services import story_location, user_country
+from app.services import image_preview, story_location, user_country
 from app.services.trip_cost_floor import country_for
 
 router = APIRouter(prefix="/travel-stories", tags=["travel-stories"])
@@ -95,7 +95,21 @@ def _order_official(pairs: list, first_country: Optional[str], limit: Optional[i
     return (first + rest)[:limit]
 
 
-def _feed_response(s, viewer_id, distance: Optional[float]) -> TravelStoryResponse:
+def _photo_urls(story) -> list[str]:
+    """The story's photos as the app shows them: `image_urls`, else the one."""
+    return story.image_urls or ([story.image_url] if story.image_url else [])
+
+
+async def _previews(stories) -> dict[str, str]:
+    """Blur previews for every photo of `stories` (see image_preview)."""
+    return await image_preview.previews_for(u for s in stories for u in _photo_urls(s))
+
+
+def _own_previews(story, previews: dict[str, str]) -> dict[str, str]:
+    return {u: previews[u] for u in _photo_urls(story) if u in previews}
+
+
+def _feed_response(s, viewer_id, distance: Optional[float], previews: dict[str, str]) -> TravelStoryResponse:
     """One story as the feed sends it, `is_liked` from `viewer_id`'s side."""
     comments_list = [
         TravelStoryCommentResponse(
@@ -119,6 +133,7 @@ def _feed_response(s, viewer_id, distance: Optional[float]) -> TravelStoryRespon
         created_at=s.created_at, comments=comments_list,
         distance_m=round(distance) if distance is not None else None,
         is_official=s.is_official, title=s.title, article_md=s.article_md,
+        image_previews=_own_previews(s, previews),
     )
 
 
@@ -168,7 +183,8 @@ async def get_travel_stories(
         limit = OFFICIAL_IN_STACK if official_stack else OFFICIAL_IN_OLD_FEED
         pairs = _order_official(official, first_country, limit) + pairs
 
-    return [_feed_response(s, current_user.id, distance) for s, distance in pairs]
+    previews = await _previews(s for s, _ in pairs)
+    return [_feed_response(s, current_user.id, distance, previews) for s, distance in pairs]
 
 
 @router.get("/travelbytes", response_model=List[TravelStoryResponse])
@@ -194,10 +210,9 @@ async def get_travelbytes(
     near = lat is not None and lng is not None
     pairs = [(s, _distance_m(s, lat, lng) if near else None) for s in stories]
     first_country = await user_country.country_at(db, lat, lng) if near and pairs else None
-    return [
-        _feed_response(s, current_user.id, distance)
-        for s, distance in _order_official(pairs, first_country, None)
-    ]
+    pairs = _order_official(pairs, first_country, None)
+    previews = await _previews(s for s, _ in pairs)
+    return [_feed_response(s, current_user.id, distance, previews) for s, distance in pairs]
 
 @router.get("/journal", response_model=List[TravelStoryResponse])
 async def get_travel_journal(
@@ -308,7 +323,8 @@ async def create_travel_story(
         likes_count=0,
         is_liked=False,
         created_at=refreshed_story.created_at,
-        comments=[]
+        comments=[],
+        image_previews=await _previews([refreshed_story]),
     )
 
 
@@ -621,5 +637,6 @@ async def update_travel_story(
         likes_count=len(story.likes),
         is_liked=is_liked,
         created_at=story.created_at,
-        comments=comments_list
+        comments=comments_list,
+        image_previews=await _previews([story]),
     )

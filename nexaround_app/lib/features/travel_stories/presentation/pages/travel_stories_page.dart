@@ -14,6 +14,7 @@ import '../../data/datasources/travel_stories_service.dart';
 import '../widgets/stories_comments_dialog.dart';
 import '../widgets/post_story_sheet.dart';
 import '../widgets/official_story_widgets.dart';
+import '../widgets/story_photo_preview.dart';
 import '../../../../features/living_map/presentation/pages/smart_tourism_map_page.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/core/error/user_message.dart';
@@ -289,8 +290,25 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
     return _PhotoShaped(provider: _getImageProvider(_imageUrlOf(story)), child: frame);
   }
 
+  /// While the photo loads: its blurred preview from [previews] (the story's
+  /// imagePreviews) when there is one, otherwise a spinner.
+  Widget _loadingPhoto(String url, Map<String, String> previews, BoxFit fit) {
+    final preview = previews[url];
+    if (preview != null) return StoryPhotoPreview(preview: preview, fit: fit);
+    return Container(
+      color: Colors.white10,
+      child: const Center(
+        child: CircularProgressIndicator(color: Colors.white),
+      ),
+    );
+  }
+
   /// [fit] is contain for a TravelByte, whose photo is shown whole.
-  Widget _buildMainImage(String url, {BoxFit fit = BoxFit.cover}) {
+  Widget _buildMainImage(
+    String url, {
+    BoxFit fit = BoxFit.cover,
+    Map<String, String> previews = const {},
+  }) {
     if (url.startsWith('http://') || url.startsWith('https://')) {
       return CachedNetworkImage(
         imageUrl: url,
@@ -298,12 +316,7 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
         // Full-bleed story image: 1440px covers a 1080p screen at 3x DPR with
         // headroom, while still capping multi-megapixel camera uploads.
         memCacheWidth: 1440,
-        placeholder: (context, val) => Container(
-          color: Colors.white10,
-          child: const Center(
-            child: CircularProgressIndicator(color: Colors.white),
-          ),
-        ),
+        placeholder: (context, val) => _loadingPhoto(url, previews, fit),
         errorWidget: (context, val, error) => Container(color: Colors.white10),
       );
     } else if (url.startsWith('/static/')) {
@@ -312,12 +325,7 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
         imageUrl: fullUrl,
         fit: fit,
         memCacheWidth: 1440, // full-bleed story image
-        placeholder: (context, val) => Container(
-          color: Colors.white10,
-          child: const Center(
-            child: CircularProgressIndicator(color: Colors.white),
-          ),
-        ),
+        placeholder: (context, val) => _loadingPhoto(url, previews, fit),
         errorWidget: (context, val, error) => Container(color: Colors.white10),
       );
     } else {
@@ -334,12 +342,7 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
           imageUrl: fullUrl,
           fit: fit,
           memCacheWidth: 1440, // full-bleed story image
-          placeholder: (context, val) => Container(
-            color: Colors.white10,
-            child: const Center(
-              child: CircularProgressIndicator(color: Colors.white),
-            ),
-          ),
+          placeholder: (context, val) => _loadingPhoto(url, previews, fit),
           errorWidget: (context, val, error) => Container(color: Colors.white10),
         );
       }
@@ -774,6 +777,7 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
                                       _buildMainImage(
                                         _imageUrlOf(story),
                                         fit: story.isOfficial ? BoxFit.contain : BoxFit.cover,
+                                        previews: story.imagePreviews,
                                       ),
                                       // Left tap area to go to previous story
                                       Positioned(

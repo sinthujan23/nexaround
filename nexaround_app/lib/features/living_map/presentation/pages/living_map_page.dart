@@ -97,6 +97,11 @@ class _LivingMapPageState extends State<LivingMapPage>
   List<AttractionEntity> _geminiTrendingPlaces = [];
   bool _loadingGeminiTrending = false;
   List<TravelStory> _travelStories = [];
+  // The TravelByte the shuffle button put on the front card (see
+  // _shownTravelByte), and the ones it has still to show this round.
+  String? _shownTravelByteId;
+  List<String> _travelBytesToShuffle = [];
+  final _shuffleRandom = Random();
   bool _isFetchingRouteDistances = false;
   Set<String> _routeDistanceFetchedIds = {};
 
@@ -2956,6 +2961,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                           onTap: () {
                             setState(() {
                               _selectedCountryFilter = 'Global';
+                              _shownTravelByteId = null;
                             });
                             _loadTravelStories();
                             Navigator.pop(context);
@@ -2974,6 +2980,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                             onTap: () {
                               setState(() {
                                 _selectedCountryFilter = country;
+                                _shownTravelByteId = null;
                               });
                               _loadTravelStories();
                               Navigator.pop(context);
@@ -3068,14 +3075,40 @@ class _LivingMapPageState extends State<LivingMapPage>
   /// one card at the front of the row: this many stories sit behind it.
   int get _travelByteCount => _travelStories.takeWhile((s) => s.isOfficial).length;
 
+  /// The TravelByte on the front card: the first (for the traveller's or the
+  /// picked country, else the newest) until the shuffle button shows another.
+  /// Kept by id, so it stays through reloads; a new country pick or the next
+  /// app start begins again at the first. Only when there are TravelBytes.
+  TravelStory get _shownTravelByte {
+    for (final s in _travelStories.take(_travelByteCount)) {
+      if (s.id == _shownTravelByteId) return s;
+    }
+    return _travelStories.first;
+  }
+
+  /// Puts another TravelByte on the front card, Spotify style: each of the
+  /// others once, in random order, before any comes round again, and never
+  /// the one already showing.
+  void _shuffleTravelByte() {
+    final ids = _travelStories.take(_travelByteCount).map((s) => s.id).toList();
+    final current = _shownTravelByte.id;
+    _travelBytesToShuffle.removeWhere((id) => id == current || !ids.contains(id));
+    if (_travelBytesToShuffle.isEmpty) {
+      _travelBytesToShuffle = ids.where((id) => id != current).toList()
+        ..shuffle(_shuffleRandom);
+    }
+    if (_travelBytesToShuffle.isEmpty) return;
+    setState(() => _shownTravelByteId = _travelBytesToShuffle.removeAt(0));
+  }
+
   /// [startIndex] is the story's place in [_travelStories].
   void _navigateToTravelStories(int startIndex, {int initialImageIndex = 0}) async {
-    // The viewer plays one TravelByte - the first, the one for the
-    // traveller's country or else the newest - then its "See more" page; the
-    // rest are in Exclusive. So it is given that one and travellers' stories.
+    // The viewer plays one TravelByte - the one on the front card - then its
+    // "See more" page; the rest are in Exclusive. So it is given that one and
+    // travellers' stories.
     final travelBytes = _travelByteCount;
     final stories = travelBytes > 1
-        ? [_travelStories.first, ..._travelStories.skip(travelBytes)]
+        ? [_shownTravelByte, ..._travelStories.skip(travelBytes)]
         : _travelStories;
     final index = travelBytes > 1 && startIndex > 0
         ? startIndex - (travelBytes - 1)
@@ -3209,17 +3242,20 @@ class _LivingMapPageState extends State<LivingMapPage>
       child: ListView.builder(
         padding: const EdgeInsets.fromLTRB(24, 12, 6, 0),
         scrollDirection: Axis.horizontal,
-        // All TravelBytes share the first card; it opens the viewer on the
-        // first of them, and the viewer goes on through the rest.
+        // All TravelBytes share the first card. It shows one at a time
+        // (_shownTravelByte; its shuffle button picks another) and opens the
+        // viewer on that one.
         itemCount: _travelStories.length -
             (_travelByteCount > 1 ? _travelByteCount - 1 : 0),
         itemBuilder: (context, row) {
           final travelBytes = _travelByteCount;
           final index = travelBytes > 1 && row > 0 ? row + travelBytes - 1 : row;
-          final story = _travelStories[index];
+          final stack = index == 0 && travelBytes > 1;
+          final story = stack ? _shownTravelByte : _travelStories[index];
           return TravelStoryCard(
             story: story,
-            travelByteCount: index == 0 && travelBytes > 1 ? travelBytes : 1,
+            travelByteCount: stack ? travelBytes : 1,
+            onShuffle: stack ? _shuffleTravelByte : null,
             onLikeTap: () {
               TravelStoriesService().toggleLike(story.id);
             },
