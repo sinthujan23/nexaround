@@ -7,15 +7,15 @@ import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
 import 'package:nexaround_app/features/experiences/domain/entities/experience.dart';
 
-/// Builds a package's price in the traveller's own currency.
+/// Builds a package's price with the US dollar amount in brackets.
 ///
-/// The provider sets the price in their currency (QAR 499 / person); this
-/// passes [builder] the price in the traveller's currency, converted with
-/// today's rates, always in one form: the currency code, then the amount
-/// ("INR 13,037 / person", "INR 7,500 / group", "From USD 40"). Every price on
-/// a screen reads the same way, whether it was converted or not. "Price on
-/// request", and a price whose currency has no rate yet, use the server's own
-/// label (which is written in the same form).
+/// The price is in the currency the traveller picked in their Profile, or,
+/// when they haven't picked one, in the experience's own currency (what the
+/// provider set): "LKR 45,395 ($137) / group (max 4)", "QAR 499 ($137) /
+/// group (max 4)". Shown in dollars already, there is no bracket ("USD 40 /
+/// person"). Conversions use today's rates. "Price on request", and a price
+/// whose currency has no rate yet, use the server's own label - the
+/// provider's price, which is better than a wrong one.
 class ExperiencePriceBuilder extends StatelessWidget {
   final ExperiencePackageEntity package;
   final Widget Function(BuildContext context, String label) builder;
@@ -36,42 +36,40 @@ class ExperiencePriceBuilder extends StatelessWidget {
 
     return BlocBuilder<AuthBloc, AuthState>(
       builder: (context, authState) {
-        final target = preferredCurrency(authState);
-        if (target == from) {
-          return builder(
-            context,
-            convertedPriceLabel(
-              amount,
-              from,
-              package.priceBasis,
-              maxPeople: package.maxParticipants,
-            ),
-          );
-        }
+        final shown = chosenCurrency(authState) ?? from;
 
-        String label(Map<String, double>? rates) {
-          // Without a rate for the provider's currency, the real price is
-          // better than a wrong one.
-          if (rates == null || (rates[from] ?? 0) <= 0) return package.priceLabel;
-          final converted = CurrencyService.convert(
-            amount: amount,
-            fromCurrency: from,
-            toCurrency: target,
-            ratesOfToCurrency: rates,
-          );
+        // [perUsd]: units of each currency per one US dollar.
+        String label(Map<String, double>? perUsd) {
+          final fromRate = from == 'USD' ? 1.0 : perUsd?[from];
+          if (fromRate == null || fromRate <= 0) return package.priceLabel;
+          final usd = amount / fromRate;
+
+          final shownRate = shown == 'USD' ? 1.0 : perUsd?[shown];
+          final String currency;
+          final double value;
+          if (shown != from && shownRate != null && shownRate > 0) {
+            currency = shown;
+            value = usd * shownRate;
+          } else {
+            // The experience's own price: no Profile choice, the same
+            // currency, or no rate for the traveller's currency.
+            currency = from;
+            value = amount;
+          }
           return convertedPriceLabel(
-            converted,
-            target,
+            value,
+            currency,
             package.priceBasis,
             maxPeople: package.maxParticipants,
+            usd: currency == 'USD' ? null : usd,
           );
         }
 
         // Saved rates paint at once; only a first run waits for the network.
-        final saved = CurrencyService.cachedExchangeRates(target);
+        final saved = CurrencyService.cachedExchangeRates('USD');
         if (saved != null) return builder(context, label(saved));
         return FutureBuilder<Map<String, double>>(
-          future: CurrencyService.getExchangeRates(target),
+          future: CurrencyService.getExchangeRates('USD'),
           builder: (context, snapshot) => builder(context, label(snapshot.data)),
         );
       },
@@ -79,17 +77,24 @@ class ExperiencePriceBuilder extends StatelessWidget {
   }
 }
 
-/// "INR 47,500 / person", "INR 7,500 / group (max 6)", "From USD 40",
-/// "USD 12.50". A group price carries the group size, like the server's label.
+/// "INR 47,500 ($570) / person", "INR 7,500 ($90) / group (max 6)",
+/// "From USD 40", "USD 12.50". A group price carries the group size, like
+/// the server's label; [usd], when given, is the dollar amount in brackets.
 String convertedPriceLabel(
   double amount,
   String currency,
   String basis, {
   int? maxPeople,
+  double? usd,
 }) {
   // Cents only where they matter: a small amount in a strong currency.
-  final decimals = amount < 20 && amount != amount.roundToDouble() ? 2 : 0;
-  final price = '$currency ${formatAmount(amount, decimals: decimals)}';
+  String money(double value) => formatAmount(
+        value,
+        decimals: value < 20 && value != value.roundToDouble() ? 2 : 0,
+      );
+  final price = usd == null
+      ? '$currency ${money(amount)}'
+      : '$currency ${money(amount)} (\$${money(usd)})';
   switch (basis) {
     case 'per_person':
       return '$price / person';

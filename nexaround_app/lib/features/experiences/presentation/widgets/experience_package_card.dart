@@ -280,8 +280,15 @@ class ExperiencePackageCard extends StatelessWidget {
                     ],
                   ),
                 ),
-              const Spacer(),
-              _buildPrice(),
+              const SizedBox(width: 8),
+              // The price takes what the duration leaves, and its lines end
+              // in "…" rather than ever widening the card.
+              Expanded(
+                child: Align(
+                  alignment: Alignment.bottomRight,
+                  child: _buildPrice(),
+                ),
+              ),
             ],
           ),
         ],
@@ -383,7 +390,8 @@ class ExperiencePackageCard extends StatelessWidget {
     );
   }
 
-  /// Price display: amount and per-unit text, in the traveller's currency.
+  /// Price display: amount, then a small line with the dollar amount and the
+  /// per-unit text ("($137) per group (max 4)").
   Widget _buildPrice() {
     return ExperiencePriceBuilder(
       package: package,
@@ -395,11 +403,18 @@ class ExperiencePackageCard extends StatelessWidget {
     if (label.isEmpty) return const SizedBox.shrink();
 
     final parts = label.split(' / ');
-    final amount = parts.first;
+    // "LKR 45,395 ($137)": the dollars go on the small line, so the big line
+    // reads as it always has.
+    final dollars = RegExp(r'^(.*) \((\$[^)]*)\)$').firstMatch(parts.first);
+    final amount = dollars?.group(1) ?? parts.first;
     final rawUnit = parts.length > 1 ? parts.sublist(1).join(' / ').trim() : null;
     final unit = rawUnit != null
         ? (rawUnit.toLowerCase().startsWith('per ') ? rawUnit : 'per $rawUnit')
         : null;
+    final small = [
+      if (dollars != null) '(${dollars.group(2)})',
+      if (unit != null) unit,
+    ].join(' ');
     final onRequest =
         package.priceAmount == null || package.priceBasis == 'on_request';
 
@@ -409,6 +424,8 @@ class ExperiencePackageCard extends StatelessWidget {
       children: [
         Text(
           amount,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: TextStyle(
             fontSize: onRequest ? 11.5 : 14.5,
             fontWeight: FontWeight.w800,
@@ -416,9 +433,11 @@ class ExperiencePackageCard extends StatelessWidget {
             color: onRequest ? AppColors.textSecondary : AppColors.textPrimary,
           ),
         ),
-        if (unit != null)
+        if (small.isNotEmpty)
           Text(
-            unit,
+            small,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: const TextStyle(
               fontSize: 9.5,
               fontWeight: FontWeight.w500,
