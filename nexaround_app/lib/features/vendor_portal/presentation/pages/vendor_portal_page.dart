@@ -50,8 +50,10 @@ Future<void> openVendorPortal(
               children: [
                 const Padding(
                   padding: EdgeInsets.fromLTRB(20, 0, 20, 8),
-                  child: Text('Which business?',
-                      style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+                  child: Text(
+                    'Which business?',
+                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+                  ),
                 ),
                 for (final a in list!)
                   ListTile(
@@ -94,6 +96,8 @@ class _VendorPortalPageState extends State<VendorPortalPage> {
   PartnerAgreement? _agreement;
   Object? _error;
   bool _accepting = false;
+  // "I am authorised to accept for <business>", as on the web portal.
+  bool _authorised = false;
 
   @override
   void initState() {
@@ -183,7 +187,10 @@ class _VendorPortalPageState extends State<VendorPortalPage> {
       backgroundColor: AppColors.background,
       appBar: AppBar(
         backgroundColor: AppColors.background,
-        title: Text(agreement.title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+        title: Text(
+          agreement.title,
+          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+        ),
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
@@ -200,14 +207,41 @@ class _VendorPortalPageState extends State<VendorPortalPage> {
       ),
       bottomNavigationBar: SafeArea(
         minimum: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-        child: FilledButton(
-          onPressed: _accepting ? null : _accept,
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.brandGreen,
-            minimumSize: const Size.fromHeight(50),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-          ),
-          child: Text(_accepting ? 'Saving…' : 'I accept the Provider Agreement'),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            CheckboxListTile(
+              value: _authorised,
+              onChanged: (v) => setState(() => _authorised = v ?? false),
+              controlAffinity: ListTileControlAffinity.leading,
+              contentPadding: EdgeInsets.zero,
+              activeColor: AppColors.brandGreen,
+              title: Text.rich(
+                TextSpan(
+                  children: [
+                    TextSpan(text: 'I have read and accept the ${agreement.title} on behalf of '),
+                    TextSpan(
+                      text: _api.me?.vendorName ?? widget.access.vendorName,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    const TextSpan(text: ', and I confirm that I am authorised to do so.'),
+                  ],
+                ),
+                style: const TextStyle(fontSize: 13, height: 1.4),
+              ),
+            ),
+            const SizedBox(height: 8),
+            FilledButton(
+              onPressed: _accepting || !_authorised ? null : _accept,
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.brandGreen,
+                minimumSize: const Size.fromHeight(50),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              ),
+              child: Text(_accepting ? 'Saving…' : 'I accept the Provider Agreement'),
+            ),
+          ],
         ),
       ),
     );
@@ -283,10 +317,7 @@ class _VendorShellState extends State<VendorShell> {
       ),
       VendorPackagesTab(api: widget.api, changed: _packagesChanged),
       VendorReviewsTab(api: widget.api),
-      VendorProfileTab(
-        api: widget.api,
-        onRenamed: (name) => setState(() => _vendorName = name),
-      ),
+      VendorProfileTab(api: widget.api, onRenamed: (name) => setState(() => _vendorName = name)),
     ];
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -297,15 +328,20 @@ class _VendorShellState extends State<VendorShell> {
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('VENDOR PORTAL',
-                style: TextStyle(
-                    fontSize: 10,
-                    letterSpacing: 1.6,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.brandGreen)),
-            Text(_vendorName,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+            const Text(
+              'VENDOR PORTAL',
+              style: TextStyle(
+                fontSize: 10,
+                letterSpacing: 1.6,
+                fontWeight: FontWeight.w800,
+                color: AppColors.brandGreen,
+              ),
+            ),
+            Text(
+              _vendorName,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+            ),
           ],
         ),
         actions: [
@@ -329,10 +365,26 @@ class _VendorShellState extends State<VendorShell> {
         backgroundColor: Colors.white,
         indicatorColor: AppColors.brandGreen.withValues(alpha: 0.14),
         destinations: const [
-          NavigationDestination(icon: Icon(Icons.dashboard_outlined), selectedIcon: Icon(Icons.dashboard_rounded), label: 'Home'),
-          NavigationDestination(icon: Icon(Icons.confirmation_number_outlined), selectedIcon: Icon(Icons.confirmation_number_rounded), label: 'Packages'),
-          NavigationDestination(icon: Icon(Icons.star_outline_rounded), selectedIcon: Icon(Icons.star_rounded), label: 'Reviews'),
-          NavigationDestination(icon: Icon(Icons.storefront_outlined), selectedIcon: Icon(Icons.storefront_rounded), label: 'Profile'),
+          NavigationDestination(
+            icon: Icon(Icons.dashboard_outlined),
+            selectedIcon: Icon(Icons.dashboard_rounded),
+            label: 'Home',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.confirmation_number_outlined),
+            selectedIcon: Icon(Icons.confirmation_number_rounded),
+            label: 'Packages',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.star_outline_rounded),
+            selectedIcon: Icon(Icons.star_rounded),
+            label: 'Reviews',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.storefront_outlined),
+            selectedIcon: Icon(Icons.storefront_rounded),
+            label: 'Profile',
+          ),
         ],
       ),
     );

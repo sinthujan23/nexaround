@@ -187,12 +187,19 @@ void main() {
       expect(find.text('I accept the Provider Agreement'), findsOneWidget);
       expect(find.text('Packages'), findsNothing);
 
+      // Not before the "I am authorised" box is ticked: the server refuses it.
+      await tester.tap(find.text('I accept the Provider Agreement'));
+      await tester.pump();
+      expect(server.requests.where((r) => r.path == '/agreement/accept'), isEmpty);
+
+      await tester.tap(find.byType(Checkbox));
+      await tester.pump();
       await tester.tap(find.text('I accept the Provider Agreement'));
       for (var i = 0; i < 10; i++) {
         await tester.pump(const Duration(milliseconds: 50));
       }
       final accept = server.requests.singleWhere((r) => r.path == '/agreement/accept');
-      expect(accept.body, {'version': 2});
+      expect(accept.body, {'version': 2, 'authorised': true});
       expect(find.text('Packages'), findsOneWidget);
       await closePortal(tester);
     });

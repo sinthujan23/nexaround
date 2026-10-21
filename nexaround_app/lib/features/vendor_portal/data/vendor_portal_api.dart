@@ -130,8 +130,10 @@ class VendorPortalApi {
   Future<PartnerAgreement> agreement() async =>
       PartnerAgreement.fromJson(await _get('/agreement'));
 
-  Future<PartnerAgreement> acceptAgreement(int version) async =>
-      PartnerAgreement.fromJson(await _post('/agreement/accept', {'version': version}));
+  /// [version] is the text the person read; the server also takes their word
+  /// that they may accept for the business (the box they ticked).
+  Future<PartnerAgreement> acceptAgreement(int version) async => PartnerAgreement.fromJson(
+      await _post('/agreement/accept', {'version': version, 'authorised': true}));
 
   // ── Dashboard and packages ────────────────────────────────────────────────
 
