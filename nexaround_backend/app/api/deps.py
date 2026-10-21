@@ -183,7 +183,7 @@ async def get_current_vendor(
     if request is not None:
         audit.set_actor(
             request, actor_type="vendor", actor_id=str(login.id),
-            actor_label=login.email, session_id=payload["sid"],
+            actor_label=login.label, session_id=payload["sid"],
             vendor_id=vendor.id,
         )
 

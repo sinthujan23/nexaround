@@ -1,0 +1,311 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:dio/dio.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:nexaround_app/core/network/api_client.dart';
+import 'package:nexaround_app/core/services/cache_service.dart';
+import 'package:nexaround_app/features/vendor_portal/data/vendor_portal_api.dart';
+import 'package:nexaround_app/features/vendor_portal/data/vendor_portal_models.dart';
+import 'package:nexaround_app/features/vendor_portal/presentation/pages/package_editor_page.dart';
+import 'package:nexaround_app/features/vendor_portal/presentation/pages/vendor_notifications_page.dart';
+import 'package:nexaround_app/features/vendor_portal/presentation/pages/vendor_portal_page.dart';
+import 'package:nexaround_app/features/vendor_portal/presentation/vendor_ui.dart';
+import 'package:nexaround_app/features/vendor_portal/presentation/widgets/availability_calendar.dart';
+import 'package:nexaround_app/features/vendor_portal/presentation/widgets/description_editor.dart';
+import 'package:nexaround_app/features/vendor_portal/presentation/widgets/vendor_portal_banner.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+const _traveller = 'Bearer traveller-token';
+
+/// The partner API and the one traveller endpoint that trades for it.
+/// Records which token every request carried.
+class _Server implements HttpClientAdapter {
+  final requests = <({String method, String path, String? auth, Object? body})>[];
+  List<Map<String, dynamic>> access = [
+    {'vendor_id': 'v1', 'vendor_name': 'Desert Track Tourism', 'logo_url': null},
+  ];
+  int sessionStatus = 200;
+  bool agreementRequired = false;
+  int trades = 0;
+
+  /// Partner tokens the server no longer accepts (expired).
+  final Set<String> expired = {};
+
+  Map<String, dynamic> get _me => {
+        'login_id': 'l1',
+        'email': null,
+        'display_name': 'Ilham',
+        'vendor_id': 'v1',
+        'vendor_name': 'Desert Track Tourism',
+        'vendor_is_active': true,
+      };
+
+  Map<String, dynamic> _agreement() => {
+        'document': {
+          'kind': 'provider_agreement',
+          'version': 2,
+          'title': 'Provider Agreement',
+          'body': '## Bookings\n\nNexAround arranges every booking.',
+          'highlights': <String>[],
+          'published_at': '2026-10-16T09:00:00Z',
+          'updated_at': '2026-10-16T09:00:00Z',
+        },
+        'accepted_version': agreementRequired ? null : 2,
+        'required': agreementRequired,
+        'grace_ends_at': '2026-11-16T09:00:00Z',
+        'listed': true,
+      };
+
+  @override
+  Future<ResponseBody> fetch(RequestOptions options, Stream<Uint8List>? requestStream,
+      Future<void>? cancelFuture) async {
+    final path = options.path.replaceFirst('/api/v1/partner', '');
+    final auth = options.headers['Authorization'] as String?;
+    requests.add((method: options.method, path: path, auth: auth, body: options.data));
+    var status = 200;
+    Object body = {};
+
+    if (path == '/app/access') {
+      body = {'vendors': access};
+    } else if (path == '/app/session') {
+      status = sessionStatus;
+      trades++;
+      body = status == 200
+          ? {'access_token': 'partner-$trades', 'refresh_token': null, 'token_type': 'bearer', 'me': _me}
+          : {'detail': "You don't manage this business."};
+    } else if (auth != null && expired.contains(auth.replaceFirst('Bearer ', ''))) {
+      status = 401;
+      body = {'detail': 'Could not validate credentials'};
+    } else if (path == '/agreement') {
+      body = _agreement();
+    } else if (path == '/agreement/accept') {
+      agreementRequired = false;
+      body = _agreement();
+    } else if (path == '/stats') {
+      body = {'packages_total': 2, 'packages_published': 1};
+    } else if (path == '/packages' && options.method == 'GET') {
+      body = {
+        'packages': [
+          {'id': 'p1', 'vendor_id': 'v1', 'title': 'Desert Safari', 'price_amount': 499,
+           'price_currency': 'QAR', 'is_active': true, 'is_published': true, 'category': 'adventure'},
+        ],
+      };
+    } else if (path == '/packages' && options.method == 'POST') {
+      body = {...Map<String, dynamic>.from(options.data as Map), 'id': 'p2', 'vendor_id': 'v1'};
+    } else if (path == '/reviews') {
+      body = {'reviews': [], 'total': 0, 'review_count': 0, 'unanswered': 0};
+    } else if (path == '/profile') {
+      body = {'id': 'v1', 'name': 'Desert Track Tourism', 'country_code': 'QA', 'is_active': true,
+              'photo_urls': []};
+    } else if (path == '/activity/unread') {
+      body = {'unread': 1, 'seen_at': null};
+    } else if (path == '/activity') {
+      body = {
+        'items': [
+          {'id': 'a1', 'kind': 'request.received', 'title': 'New request: Desert Safari',
+           'body': 'Sun 25 Oct · 4 guests. NexAround will contact you to arrange it.',
+           'actor': 'traveller', 'created_at': '2026-10-21T10:00:00Z'},
+        ],
+        'has_more': false, 'unread': 1, 'seen_at': '2026-10-20T10:00:00Z',
+      };
+    } else if (path == '/activity/seen') {
+      body = {'unread': 0, 'seen_at': '2026-10-21T11:00:00Z'};
+    } else if (path == '/auth/logout') {
+      body = {'status': 'ok', 'message': 'Signed out.'};
+    } else {
+      status = 404;
+      body = {'detail': 'Not Found'};
+    }
+    return ResponseBody.fromString(json.encode(body), status, headers: {
+      Headers.contentTypeHeader: [Headers.jsonContentType],
+    });
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+
+const _access = VendorAccess(vendorId: 'v1', vendorName: 'Desert Track Tourism');
+
+void main() {
+  late _Server server;
+
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({'access_token': 'traveller-token', 'is_logged_in': true});
+    await CacheService.init();
+    ApiClient.reset();
+    server = _Server();
+    ApiClient.instance.httpClientAdapter = server;
+    VendorPortalApi.testAdapter = server;
+  });
+
+  tearDown(() => VendorPortalApi.testAdapter = null);
+
+  /// Closing the portal signs the vendor session out; let that finish.
+  Future<void> closePortal(WidgetTester tester) async {
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(milliseconds: 100));
+  }
+
+  Future<void> pumpPortal(WidgetTester tester) async {
+    await tester.pumpWidget(const MaterialApp(home: VendorPortalPage(access: _access)));
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+  }
+
+  group('signing in', () {
+    testWidgets('the traveller token is used only to trade for the vendor session', (tester) async {
+      await pumpPortal(tester);
+      expect(find.text('Desert Track Tourism'), findsWidgets);
+
+      final partnerCalls = server.requests.where((r) => r.path != '/app/session').toList();
+      expect(partnerCalls, isNotEmpty);
+      expect(partnerCalls.every((r) => r.auth == 'Bearer partner-1'), isTrue,
+          reason: partnerCalls.map((r) => '${r.path} ${r.auth}').join('\n'));
+      final trade = server.requests.singleWhere((r) => r.path == '/app/session');
+      expect(trade.auth, _traveller);
+      expect(trade.body, {'vendor_id': 'v1'});
+
+      await closePortal(tester);
+      expect(server.requests.last.path, '/auth/logout');
+      expect(server.requests.last.auth, 'Bearer partner-1');
+    });
+
+    testWidgets('an access that was taken away says so', (tester) async {
+      server.sessionStatus = 404;
+      await pumpPortal(tester);
+      expect(find.textContaining('no longer have access'), findsOneWidget);
+      await closePortal(tester);
+    });
+
+    testWidgets('the Provider Agreement comes first until it is accepted', (tester) async {
+      server.agreementRequired = true;
+      await pumpPortal(tester);
+      expect(find.text('I accept the Provider Agreement'), findsOneWidget);
+      expect(find.text('Packages'), findsNothing);
+
+      await tester.tap(find.text('I accept the Provider Agreement'));
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      final accept = server.requests.singleWhere((r) => r.path == '/agreement/accept');
+      expect(accept.body, {'version': 2});
+      expect(find.text('Packages'), findsOneWidget);
+      await closePortal(tester);
+    });
+
+    test('an expired vendor session is traded again once, then the call retried', () async {
+      final api = VendorPortalApi('v1');
+      await api.signIn();
+      server.expired.add('partner-1');
+      final stats = await api.stats();
+      expect(stats.packagesPublished, 1);
+      expect(server.trades, 2);
+      expect(server.requests.where((r) => r.path == '/stats').map((r) => r.auth),
+          ['Bearer partner-1', 'Bearer partner-2']);
+    });
+  });
+
+  group('the button in Experiences', () {
+    testWidgets('shows for a traveller who manages a business', (tester) async {
+      await tester.pumpWidget(const MaterialApp(home: Scaffold(body: VendorPortalBanner())));
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(find.text('Vendor portal'), findsOneWidget);
+      expect(find.text('Manage Desert Track Tourism'), findsOneWidget);
+    });
+
+    testWidgets('takes no room for everyone else', (tester) async {
+      server.access = [];
+      await tester.pumpWidget(const MaterialApp(home: Scaffold(body: VendorPortalBanner())));
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(find.text('Vendor portal'), findsNothing);
+    });
+  });
+
+  testWidgets('a request shows as package, date and guests, and the feed is marked seen',
+      (tester) async {
+    final api = VendorPortalApi('v1');
+    await tester.pumpWidget(MaterialApp(home: VendorNotificationsPage(api: api)));
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    expect(find.text('New request: Desert Safari'), findsOneWidget);
+    expect(find.text('Sun 25 Oct · 4 guests. NexAround will contact you to arrange it.'), findsOneWidget);
+    expect(server.requests.where((r) => r.path == '/activity/seen'), hasLength(1));
+  });
+
+  testWidgets('a new package is sent as the web portal sends it', (tester) async {
+    final api = VendorPortalApi('v1');
+    await tester.pumpWidget(MaterialApp(home: PackageEditorPage(api: api)));
+    await tester.pump();
+    await tester.enterText(find.widgetWithText(TextFormField, 'Title *'), 'Dune bashing at sunset');
+    await tester.tap(find.text('Create package'));
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    final create = server.requests.singleWhere((r) => r.path == '/packages' && r.method == 'POST');
+    final body = Map<String, dynamic>.from(create.body as Map);
+    expect(body['title'], 'Dune bashing at sunset');
+    expect(body['is_active'], isTrue);
+    expect(body['uses_vendor_location'], isTrue);
+    expect(body['latitude'], isNull);
+    expect(body['price_amount'], isNull);
+    expect(create.auth, 'Bearer partner-1');
+  });
+
+  group('the forms', () {
+    test('blocked days join into ranges and split back', () {
+      final days = {
+        DateTime(2026, 10, 25), DateTime(2026, 10, 26), DateTime(2026, 10, 27),
+        DateTime(2026, 11, 2),
+      };
+      final ranges = rangesOf(days);
+      expect(ranges, [
+        BlockedRange(DateTime(2026, 10, 25), DateTime(2026, 10, 27)),
+        BlockedRange(DateTime(2026, 11, 2), DateTime(2026, 11, 2)),
+      ]);
+      expect(blockedDays(ranges), days);
+      expect(ranges.first.toJson(), {'start': '2026-10-25', 'end': '2026-10-27'});
+      // Across a month end.
+      expect(rangesOf({DateTime(2026, 10, 31), DateTime(2026, 11, 1)}),
+          [BlockedRange(DateTime(2026, 10, 31), DateTime(2026, 11, 1))]);
+    });
+
+    test('a package at the business sends no point of its own', () {
+      const atBusiness = VendorPackage(title: 'Boat', latitude: 25.1, longitude: 51.5);
+      expect(atBusiness.toJson()['latitude'], isNull);
+      const elsewhere = VendorPackage(title: 'Boat', usesVendorLocation: false, latitude: 25.1, longitude: 51.5);
+      expect(elsewhere.toJson()['latitude'], 25.1);
+      final pkg = VendorPackage.fromJson({
+        'id': 'p1', 'title': 'Boat', 'unavailable_ranges': [{'start': '2026-10-25', 'end': '2026-10-26'}],
+        'price_amount': 7500, 'price_currency': 'LKR', 'is_published': true, 'is_active': true,
+      });
+      expect(pkg.visibility, 'Live');
+      expect(pkg.copyWith(isActive: false).visibility, 'Hidden');
+      expect(pkg.toJson()['unavailable_ranges'], [{'start': '2026-10-25', 'end': '2026-10-26'}]);
+    });
+
+    test('the description buttons write the Markdown the web editor writes', () {
+      var edit = MarkdownEdit.bold('Bring water', const TextSelection(baseOffset: 6, extentOffset: 11));
+      expect(edit.text, 'Bring **water**');
+      edit = MarkdownEdit.prefixLines('Day one\nDay two', const TextSelection(baseOffset: 0, extentOffset: 15), '- ');
+      expect(edit.text, '- Day one\n- Day two');
+      edit = MarkdownEdit.prefixLines(edit.text, TextSelection(baseOffset: 0, extentOffset: edit.text.length), '- ');
+      expect(edit.text, 'Day one\nDay two');
+      edit = MarkdownEdit.prefixLines('Itinerary', const TextSelection.collapsed(offset: 3), '## ');
+      expect(edit.text, '## Itinerary');
+    });
+
+    test('prices and currencies match the web portal', () {
+      expect(formatPrice(7500, 'LKR'), 'LKR 7,500');
+      expect(formatPrice(null, 'LKR'), 'On request');
+      expect(packageCurrencies.map((c) => c['code']), isNot(contains('KPW')));
+      expect(packageCurrencies.map((c) => c['code']), contains('QAR'));
+      expect(vendorCategories.map((c) => c.value), contains('other'));
+      expect(categoryLabel('other'), 'Other');
+    });
+  });
+}

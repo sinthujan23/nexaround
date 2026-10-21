@@ -13,12 +13,12 @@ internal note would both be noise and leak that one was written.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Iterable, Optional
 
 from app.models.experience import VendorActivity
-from app.services import partner_events
+from app.services import enquiry_lifecycle, partner_events
 
 ACTIVITY_CREATED = "activity.created"
 
@@ -106,7 +106,7 @@ def record(
         body=body[:500] if body else None,
         actor=actor,
         actor_login_id=login.id if login is not None else None,
-        actor_name=(login.display_name or login.email) if login is not None else None,
+        actor_name=(login.display_name or login.email or login.label) if login is not None else None,
         enquiry_id=enquiry_id,
         package_id=package_id,
         created_at=datetime.now(timezone.utc),
@@ -128,8 +128,92 @@ async def announce(*payloads: Optional[dict]) -> None:
 
 
 # ── The lines themselves ─────────────────────────────────────────────────────
-# One helper per kind keeps the wording in one place. Vendors get no enquiry
-# lines: requests go only to Nexaround (the old ones are filtered out on read).
+# One helper per kind keeps the wording in one place. Vendors learn THAT a
+# request came in ("request.received"), never who sent it: Nexaround contacts
+# the traveller and arranges the booking, so the commission is not bypassed.
+# The old "enquiry.*" lines named the traveller and are filtered out on read.
+
+def _facts(enquiry, when: Optional[date], today: Optional[date]) -> str:
+    """"Sun 25 Oct · 4 guests": the only request details a vendor is told."""
+    today = today or datetime.now(timezone.utc).date()
+    if when is None:
+        day = "Flexible date"
+    else:
+        day = f"{when:%a} {when.day} {when:%b}"
+        if when.year != today.year:
+            day += f" {when.year}"
+    parts = [day]
+    if enquiry.party_size:
+        parts.append(f"{enquiry.party_size} {'guest' if enquiry.party_size == 1 else 'guests'}")
+    return " · ".join(parts)
+
+
+def _package(enquiry) -> str:
+    return enquiry.package_title_snapshot or "your experience"
+
+
+def request_text(enquiry, today: Optional[date] = None) -> tuple[str, str]:
+    """Title and body for a new request, as the feed and the push show it.
+
+    Reads only the package title, the date and the number of guests. Never
+    the traveller's name, phone, email, pickup place or message: the message
+    is free text and often carries a phone number.
+    """
+    return (
+        f"New request: {_package(enquiry)}",
+        f"{_facts(enquiry, enquiry.preferred_date, today)}. "
+        "NexAround will contact you to arrange it.",
+    )
+
+
+# The admin's status changes a vendor hears about, by the feed kind they get.
+UPDATE_KINDS = {
+    enquiry_lifecycle.CONFIRMED: "request.confirmed",
+    enquiry_lifecycle.PROVIDER_CANCELLED: "request.cancelled",
+    enquiry_lifecycle.CUSTOMER_CANCELLED: "request.cancelled",
+}
+
+
+def update_text(enquiry, event: str, today: Optional[date] = None) -> tuple[str, str]:
+    """Title and body when NexAround confirms or cancels a request. The same
+    three facts as request_text, the confirmed day in place of the asked one."""
+    if event == enquiry_lifecycle.CONFIRMED:
+        return (
+            f"Booking confirmed: {_package(enquiry)}",
+            f"{_facts(enquiry, enquiry.confirmed_date or enquiry.preferred_date, today)}. "
+            "NexAround will be in touch with the details.",
+        )
+    what = "Booking" if enquiry.confirmed_at else "Request"
+    return (
+        f"{what} cancelled: {_package(enquiry)}",
+        f"{_facts(enquiry, enquiry.confirmed_date or enquiry.preferred_date, today)}. "
+        "Nothing to do on your side.",
+    )
+
+
+def request_received(db, enquiry) -> dict:
+    """A traveller asked for one of the vendor's packages."""
+    title, body = request_text(enquiry)
+    return record(
+        db, enquiry.vendor_id, "request.received", title,
+        body=body, actor=TRAVELLER,
+        enquiry_id=enquiry.id, package_id=enquiry.package_id,
+    )
+
+
+def request_updated(db, enquiry, event: str) -> Optional[dict]:
+    """NexAround confirmed or cancelled one of the vendor's requests; None for
+    a status change the vendor is not told about."""
+    kind = UPDATE_KINDS.get(event)
+    if kind is None:
+        return None
+    title, body = update_text(enquiry, event)
+    return record(
+        db, enquiry.vendor_id, kind, title,
+        body=body, actor=ADMIN,
+        enquiry_id=enquiry.id, package_id=enquiry.package_id,
+    )
+
 
 def review_received(db, review, package) -> dict:
     """A traveller rated one of the vendor's packages: the nudge to answer it."""

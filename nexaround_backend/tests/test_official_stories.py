@@ -18,6 +18,7 @@ from app.api.v1.travel_stories import (
     OFFICIAL_IN_OLD_FEED,
     OFFICIAL_IN_STACK,
     _distance_m,
+    _is_about,
     _order_nearby,
     _order_official,
 )
@@ -65,6 +66,16 @@ def test_travelbytes_lead_the_row_even_far_away():
         story("colombo", 6.927, 79.861, 0),
     ]
     assert feed(stories) == ["furong", "nilaveli", "colombo"]
+
+
+def test_a_picked_country_keeps_only_its_own_travelbytes():
+    # The feed's country filter (get_travel_stories) drops the rest.
+    assert _is_about(vietnam(), "Vietnam")
+    assert _is_about(story("dubai", None, None, 0, official=True, country="UAE"),
+                     "United Arab Emirates")
+    assert not _is_about(vietnam(), "Afghanistan")
+    assert not _is_about(furong(), "India")
+    assert _is_about(story("x", None, None, 0, official=True, country="Atlantis"), "atlantis")
 
 
 def test_the_travelbyte_about_your_country_comes_first():

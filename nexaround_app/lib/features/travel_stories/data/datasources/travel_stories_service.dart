@@ -58,10 +58,12 @@ class TravelStoriesService {
     // Hive fallback: retrieve all and filter locally
     final allStories = _getStoriesFromHive(isJournal: false);
     if (byCountry) {
-      // TravelBytes stay first under every country, as the server does it.
+      // Only that country's stories, its TravelBytes first, as the server
+      // does it.
+      final ofCountry = allStories.where((s) => s.country == country);
       return [
-        ...allStories.where((s) => s.isOfficial),
-        ...allStories.where((s) => !s.isOfficial && s.country == country),
+        ...ofCountry.where((s) => s.isOfficial),
+        ...ofCountry.where((s) => !s.isOfficial),
       ];
     }
     if (nearby) {

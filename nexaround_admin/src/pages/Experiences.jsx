@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react';
 import { useApi, apiGet, apiPost, apiPut, apiPatch, apiDelete, mediaUrl } from '../api';
 import {
   CompassIcon, UsersIcon, PlusIcon, EditIcon, TrashIcon,
-  TicketIcon, PhoneIcon, MailIcon, GlobeIcon, StarIcon, WhatsAppIcon,
+  TicketIcon, PhoneIcon, MailIcon, GlobeIcon, StarIcon, WhatsAppIcon, SmartphoneIcon,
 } from '../components/Icons';
-import { Drawer, Switch, SearchBar, Toast } from '../components/Kit';
+import { Badge, Drawer, Switch, SearchBar, Toast } from '../components/Kit';
 import { useToast } from '../hooks';
 import LocationPicker from '../components/LocationPicker';
 import ImageUploader from '../components/ImageUploader';
@@ -196,6 +196,11 @@ export default function Experiences() {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [loginForm, setLoginForm] = useState({ email: '', display_name: '' });
   const [loginBusy, setLoginBusy] = useState(false);
+  // "Give app access": a traveller account that will manage this vendor from
+  // the NexAround app, picked by searching app users.
+  const [appOpen, setAppOpen] = useState(false);
+  const [appQuery, setAppQuery] = useState('');
+  const [appResults, setAppResults] = useState([]);
 
   // Drawers: 'new-vendor' | 'package' | null
   const [drawer, setDrawer] = useState(null);
@@ -500,6 +505,40 @@ export default function Experiences() {
 
   // --- Partner logins -------------------------------------------------------
 
+  useEffect(() => {
+    if (!appOpen || appQuery.trim().length < 2) {
+      setAppResults([]);
+      return undefined;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const res = await apiGet(`/admin/users?search=${encodeURIComponent(appQuery.trim())}&page_size=8&status=active`);
+        setAppResults(res.users || []);
+      } catch {
+        setAppResults([]);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [appOpen, appQuery]);
+
+  const giveAppAccess = async (user) => {
+    setLoginBusy(true);
+    try {
+      await apiPost(`/admin/experiences/vendors/${selected.id}/app-access`, { user_id: user.id });
+      setAppOpen(false);
+      setAppQuery('');
+      loadLogins(selected.id);
+      notify(`${user.display_name || user.email} can now manage ${selected.name} in the app`);
+    } catch (err) {
+      notify(`Could not give app access: ${err.message}`, 'error');
+    } finally {
+      setLoginBusy(false);
+    }
+  };
+
+  // The name an admin knows a login by: an app login has no email of its own.
+  const loginName = (login) => login.display_name || login.email || login.app_user_email || 'App user';
+
   const createLogin = async (e) => {
     e.preventDefault();
     setLoginBusy(true);
@@ -540,7 +579,7 @@ export default function Experiences() {
   };
 
   const deleteLogin = async (login) => {
-    if (!confirm(`Remove the login for ${login.email}? They lose access immediately.`)) return;
+    if (!confirm(`Remove the login for ${loginName(login)}? They lose access immediately.`)) return;
     try {
       await apiDelete(`/admin/experiences/logins/${login.id}`);
       loadLogins(selected.id);
@@ -946,14 +985,59 @@ export default function Experiences() {
                     <div>
                       <div className="xp-section-head">
                         <div className="xp-section-hint">
-                          People who can sign in at partner.nexaround.com to edit this vendor's packages. Enquiries are not shown there.
+                          People who manage this vendor's packages, at partner.nexaround.com or in the NexAround app. They are told a request came in (package, date, guests), never who sent it.
                         </div>
-                        {!inviteOpen && (
-                          <button className="btn btn-primary btn-sm" onClick={() => setInviteOpen(true)}>
-                            <PlusIcon size={14} /> Invite
-                          </button>
+                        {!inviteOpen && !appOpen && (
+                          <div style={{ display: 'flex', gap: 8 }}>
+                            <button className="btn btn-ghost btn-sm" onClick={() => setAppOpen(true)}>
+                              <SmartphoneIcon size={14} /> Give app access
+                            </button>
+                            <button className="btn btn-primary btn-sm" onClick={() => setInviteOpen(true)}>
+                              <PlusIcon size={14} /> Invite
+                            </button>
+                          </div>
                         )}
                       </div>
+
+                      {appOpen && (
+                        <div className="inline-form">
+                          <div className="form-group">
+                            <label className="form-label">App user</label>
+                            <SearchBar
+                              value={appQuery}
+                              onChange={setAppQuery}
+                              placeholder="Search by name or email"
+                            />
+                          </div>
+                          {appQuery.trim().length >= 2 && appResults.length === 0 && (
+                            <div className="pkg-row-meta" style={{ padding: '8px 2px' }}>No app users match.</div>
+                          )}
+                          {appResults.map((user) => {
+                            const already = logins.some((l) => l.app_user_id === user.id);
+                            return (
+                              <div key={user.id} className="login-row">
+                                <div className="xp-avatar">{(user.display_name || user.email).charAt(0).toUpperCase()}</div>
+                                <div className="pkg-row-main">
+                                  <div className="pkg-row-title">{user.display_name || user.email}</div>
+                                  <div className="pkg-row-meta"><span>{user.email}</span></div>
+                                </div>
+                                <button
+                                  className="btn btn-primary btn-sm"
+                                  disabled={loginBusy || already}
+                                  onClick={() => giveAppAccess(user)}
+                                >
+                                  {already ? 'Has access' : 'Give access'}
+                                </button>
+                              </div>
+                            );
+                          })}
+                          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
+                            <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setAppOpen(false); setAppQuery(''); }}>
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      )}
 
                       {inviteOpen && (
                         <form className="inline-form" onSubmit={createLogin}>
@@ -984,27 +1068,34 @@ export default function Experiences() {
                         </form>
                       )}
 
-                      {logins.length === 0 && !inviteOpen && (
+                      {logins.length === 0 && !inviteOpen && !appOpen && (
                         <div className="xp-placeholder">
                           <UsersIcon size={28} />
                           <strong>No partner logins</strong>
-                          Invite the business owner so they can manage their own listings.
+                          Invite the business owner, or give their NexAround app account access, so they can manage their own listings.
                         </div>
                       )}
 
                       {logins.map((login) => (
                         <div key={login.id} className="login-row">
-                          <div className="xp-avatar">{(login.display_name || login.email).charAt(0).toUpperCase()}</div>
+                          <div className="xp-avatar">{loginName(login).charAt(0).toUpperCase()}</div>
                           <div className="pkg-row-main">
-                            <div className="pkg-row-title">{login.display_name || login.email}</div>
+                            <div className="pkg-row-title">
+                              {loginName(login)}
+                              {login.kind === 'app' && <Badge tone="green" style={{ marginLeft: 8 }}>App</Badge>}
+                            </div>
                             <div className="pkg-row-meta">
-                              {login.display_name && <span>{login.email}</span>}
+                              {login.kind === 'app'
+                                ? <span>{login.app_user_email}</span>
+                                : login.display_name && <span>{login.email}</span>}
                               {login.invited_at && <span>Invited {new Date(login.invited_at).toLocaleDateString('en-GB')}</span>}
                             </div>
                           </div>
-                          <button className="btn btn-ghost btn-sm" onClick={() => resendInvite(login)}>
-                            New link
-                          </button>
+                          {login.kind !== 'app' && (
+                            <button className="btn btn-ghost btn-sm" onClick={() => resendInvite(login)}>
+                              New link
+                            </button>
+                          )}
                           <Switch
                             checked={login.is_active}
                             onChange={() => toggleLogin(login)}

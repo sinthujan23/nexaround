@@ -22,7 +22,7 @@ from fastapi import (
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import VendorPrincipal, get_current_vendor, oauth2_scheme
+from app.api.deps import VendorPrincipal, get_current_user, get_current_vendor, oauth2_scheme
 from app.core.config import settings
 from app.core.database import async_session, get_db
 from app.core.rate_limiter import auth_rate_limiter, check_account_rate_limit
@@ -30,7 +30,8 @@ from app.core.security import (
     blacklist_token, create_access_token, create_refresh_token,
     get_password_hash, verify_password,
 )
-from app.models.experience import VendorUser
+from app.models.experience import ExperienceVendor, VendorUser
+from app.models.user import User
 from app.repositories.experience_repository import ExperienceRepository
 from app.schemas.audit import (
     PartnerAuditEventOut, PartnerAuditListResponse, PartnerSessionListResponse,
@@ -38,6 +39,7 @@ from app.schemas.audit import (
 )
 from app.schemas.partner import (
     PartnerActivity, PartnerActivityListResponse, PartnerActivityUnreadResponse,
+    PartnerAppAccessResponse, PartnerAppSessionRequest, PartnerAppVendor,
     PartnerForgotPasswordRequest, PartnerLoginRequest, PartnerMe,
     PartnerMessageResponse, PartnerPackageCreate, PartnerPackageListResponse,
     PartnerPackageResponse, PartnerPackageUpdate, PartnerReviewListResponse,
@@ -172,12 +174,12 @@ async def partner_login(
     await db.refresh(login)
 
     sid = await audit.start_session(
-        actor_type="vendor", actor_id=str(login.id), actor_label=login.email,
+        actor_type="vendor", actor_id=str(login.id), actor_label=login.label,
         vendor_id=login.vendor_id, request=request, ttl=_ACCESS_TTL,
     )
     meta = audit.client_meta(request)
     await audit.record(
-        actor_type="vendor", actor_id=str(login.id), actor_label=login.email,
+        actor_type="vendor", actor_id=str(login.id), actor_label=login.label,
         vendor_id=login.vendor_id, session_id=sid,
         category="auth", action="auth.login",
         summary=f"Signed in from {audit.describe_device(meta['browser'], meta['os'])}",
@@ -228,7 +230,7 @@ async def partner_forgot_password(
             )
             await audit.record(
                 actor_type="anonymous", actor_id=str(login.id),
-                actor_label=login.email, vendor_id=login.vendor_id,
+                actor_label=login.label, vendor_id=login.vendor_id,
                 category="auth", action="auth.password_reset_requested",
                 summary="Password reset link requested",
                 method="POST", route="/api/v1/partner/auth/forgot-password",
@@ -304,10 +306,10 @@ async def partner_set_password(
     # The same cut-off, made visible: the devices list shows them as signed out.
     await audit.revoke_sessions_for(
         actor_type="vendor", actor_id=str(login.id), reason="password",
-        by=login.email,
+        by=login.label,
     )
     await audit.record(
-        actor_type="vendor", actor_id=str(login.id), actor_label=login.email,
+        actor_type="vendor", actor_id=str(login.id), actor_label=login.label,
         vendor_id=login.vendor_id, category="auth",
         action="auth.password_set" if first_password else "auth.password_reset",
         summary=(
@@ -392,13 +394,13 @@ async def partner_logout(
     # Revoking the session (not just blacklisting this one access token) is
     # what also kills the refresh token that came with it.
     row = await audit.revoke_session(
-        sid, reason="user", by=principal.login.email,
+        sid, reason="user", by=principal.login.label,
         actor_type="vendor", actor_id=str(principal.login.id),
     )
     if row is not None:
         await audit.record(
             actor_type="vendor", actor_id=str(principal.login.id),
-            actor_label=principal.login.email, vendor_id=principal.vendor.id,
+            actor_label=principal.login.label, vendor_id=principal.vendor.id,
             session_id=row.id, category="auth", action="auth.logout",
             summary="Signed out", method="POST",
             route="/api/v1/partner/auth/logout", status_code=200,
@@ -412,6 +414,97 @@ async def partner_me(
     principal: VendorPrincipal = Depends(get_current_vendor),
 ):
     return _me(principal)
+
+
+# ── The app's way in ─────────────────────────────────────────────────────────
+# A traveller an admin gave a vendor to (VendorUser.app_user_id) manages it
+# from the app. These two endpoints are the only ones here that take the
+# TRAVELLER's token. The second trades it for a partner token naming the app
+# login, so everything after it is the same partner API as the web portal's,
+# with the same scoping, audit trail and suspension checks.
+
+async def _app_logins(db: AsyncSession, user_id, vendor_id=None) -> list[VendorUser]:
+    from sqlalchemy import select
+
+    query = select(VendorUser).where(
+        VendorUser.app_user_id == user_id, VendorUser.is_active.is_(True),
+    )
+    if vendor_id is not None:
+        query = query.where(VendorUser.vendor_id == vendor_id)
+    return list((await db.execute(query)).scalars().all())
+
+
+@router.get("/app/access", response_model=PartnerAppAccessResponse)
+async def partner_app_access(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """The vendors this traveller may manage: what shows the app's button."""
+    vendors = []
+    for login in await _app_logins(db, user.id):
+        vendor = await db.get(ExperienceVendor, login.vendor_id)
+        if vendor is not None and vendor.is_active:
+            vendors.append(PartnerAppVendor(
+                vendor_id=vendor.id, vendor_name=vendor.name, logo_url=vendor.logo_url,
+            ))
+    vendors.sort(key=lambda v: v.vendor_name.lower())
+    return PartnerAppAccessResponse(vendors=vendors)
+
+
+@router.post("/app/session", response_model=PartnerTokenResponse)
+async def partner_app_session(
+    data: PartnerAppSessionRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """A partner token for one of the traveller's vendors.
+
+    No refresh token: the app asks again with the traveller's token when this
+    one expires. Rate-limited per account, not per IP, because mobile
+    networks put many phones behind one address.
+    """
+    await check_account_rate_limit(
+        str(user.id), action="partner_app_session", max_attempts=30, window_seconds=600,
+    )
+    logins = await _app_logins(db, user.id, data.vendor_id)
+    # 404, as everywhere in this API: a 403 would confirm the vendor exists.
+    if not logins:
+        raise HTTPException(status_code=404, detail="You don't manage this business.")
+    login = logins[0]
+    vendor = await db.get(ExperienceVendor, login.vendor_id)
+    if vendor is None:
+        raise HTTPException(status_code=404, detail="You don't manage this business.")
+    if not vendor.is_active:
+        raise HTTPException(
+            status_code=403,
+            detail="Your listing is currently suspended. Contact NexAround.",
+        )
+
+    # Keeps the devices list and the audit trail naming the person.
+    name = (user.display_name or "").strip() or (user.email or "").split("@")[0] or None
+    if name:
+        login.display_name = name[:120]
+    login.last_login_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(login)
+
+    sid = await audit.start_session(
+        actor_type="vendor", actor_id=str(login.id), actor_label=login.label,
+        vendor_id=login.vendor_id, request=request, ttl=_ACCESS_TTL,
+    )
+    await audit.record(
+        actor_type="vendor", actor_id=str(login.id), actor_label=login.label,
+        vendor_id=login.vendor_id, session_id=sid,
+        category="auth", action="auth.login",
+        summary="Signed in from the NexAround app",
+        method="POST", route="/api/v1/partner/app/session", status_code=200,
+        meta=audit.client_meta(request),
+    )
+    return PartnerTokenResponse(
+        access_token=create_access_token(_claims(login, sid)),
+        me=_me(VendorPrincipal(login=login, vendor=vendor)),
+    )
 
 
 @router.get("/events")
@@ -1057,7 +1150,7 @@ async def list_partner_sessions(
 async def _record_revocation(request, principal, row) -> None:
     await audit.record(
         actor_type="vendor", actor_id=str(principal.login.id),
-        actor_label=principal.login.email, vendor_id=principal.vendor.id,
+        actor_label=principal.login.label, vendor_id=principal.vendor.id,
         category="auth", action="auth.session_revoked",
         summary=(
             f"Signed out {audit.describe_device(row.browser, row.os)} "
@@ -1078,12 +1171,12 @@ async def revoke_other_partner_sessions(
     """Sign out every device except the one making this request."""
     count = await audit.revoke_sessions_for(
         actor_type="vendor", actor_id=str(principal.login.id), reason="user",
-        by=principal.login.email, except_sid=_current_sid(authorization),
+        by=principal.login.label, except_sid=_current_sid(authorization),
     )
     if count:
         await audit.record(
             actor_type="vendor", actor_id=str(principal.login.id),
-            actor_label=principal.login.email, vendor_id=principal.vendor.id,
+            actor_label=principal.login.label, vendor_id=principal.vendor.id,
             category="auth", action="auth.sessions_revoked",
             summary=f"Signed out {count} other device{'s' if count != 1 else ''}",
             method="POST", route="/api/v1/partner/sessions/revoke-others",
@@ -1109,7 +1202,7 @@ async def revoke_partner_session(
     # Scoped to this login in the lookup: someone else's session id is a 404,
     # the same as one that does not exist.
     row = await audit.revoke_session(
-        session_id, reason="user", by=principal.login.email,
+        session_id, reason="user", by=principal.login.label,
         actor_type="vendor", actor_id=str(principal.login.id),
     )
     if row is None:

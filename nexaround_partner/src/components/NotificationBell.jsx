@@ -5,7 +5,7 @@ import { RESYNC, useLiveEvent } from '../live';
 import { formatAge, formatDateTime } from '../format';
 import {
   BellIcon, CrossIcon, CheckIcon, PlusIcon, EditIcon, EyeOffIcon, TrashIcon, MapPinIcon,
-  StarIcon,
+  StarIcon, TicketIcon,
 } from './Icons';
 
 /**
@@ -23,6 +23,10 @@ const PAGE = 20;
 
 // Icon and .tone-* colour per kind.
 const KINDS = {
+  // A traveller asked for a package; NexAround arranges it with them.
+  'request.received': [TicketIcon, 'green'],
+  'request.confirmed': [CheckIcon, 'green'],
+  'request.cancelled': [CrossIcon, 'rose'],
   'review.created': [StarIcon, 'amber'],
   'package.created': [PlusIcon, 'cyan'],
   'package.updated': [EditIcon, 'cyan'],

@@ -685,10 +685,11 @@ class _TravelStoryCardState extends State<TravelStoryCard>
                       ),
                     ),
                     if (widget.story.hasArticle)
-                      // On the home row the TravelByte card leads to all of
-                      // them in Exclusive; its long read is opened from the
-                      // full-screen view. Shrunk only if a large text size
-                      // leaves it too little room.
+                      // Opens the long read of the TravelByte on the card
+                      // (the shuffle can put any of them here); that page
+                      // ends with the way to all of them in Exclusive.
+                      // Shrunk only if a large text size leaves it too
+                      // little room.
                       Expanded(
                         child: Align(
                           alignment: Alignment.centerRight,
@@ -697,7 +698,7 @@ class _TravelStoryCardState extends State<TravelStoryCard>
                             child: ReadExperienceTab(
                               compact: true,
                               label: 'See more',
-                              onTap: () => openExclusive(context),
+                              onTap: () => openStoryExperience(context, widget.story),
                             ),
                           ),
                         ),

@@ -26,6 +26,12 @@ class VendorLoginCreate(BaseModel):
     display_name: Optional[str] = Field(None, max_length=120)
 
 
+class VendorAppAccessCreate(BaseModel):
+    """Give the vendor to a traveller account, to manage from the app."""
+
+    user_id: uuid.UUID
+
+
 class VendorLoginUpdate(BaseModel):
     is_active: bool
 
@@ -39,8 +45,15 @@ class VendorLoginAdminResponse(BaseModel):
 
     id: uuid.UUID
     vendor_id: uuid.UUID
-    email: str
+    # "portal" (email and password, partner.nexaround.com) or "app" (a
+    # traveller account given the vendor; no email of its own).
+    kind: str = "portal"
+    email: Optional[str] = None
     display_name: Optional[str] = None
+    # The traveller account behind an app login, as the admin searched it.
+    app_user_id: Optional[uuid.UUID] = None
+    app_user_email: Optional[str] = None
+    app_user_name: Optional[str] = None
     is_active: bool
     has_password: bool
     last_login_at: Optional[datetime] = None
@@ -71,7 +84,8 @@ class PartnerMe(BaseModel):
     """The signed-in identity, for the sidebar and the suspension banner."""
 
     login_id: uuid.UUID
-    email: str
+    # None for an app login (VendorUser.app_user_id), which has no email.
+    email: Optional[str] = None
     display_name: Optional[str] = None
     vendor_id: uuid.UUID
     vendor_name: str
@@ -80,9 +94,29 @@ class PartnerMe(BaseModel):
 
 class PartnerTokenResponse(BaseModel):
     access_token: str
-    refresh_token: str
+    # None for an app session: the app trades the traveller's own token for a
+    # new one instead (POST /partner/app/session).
+    refresh_token: Optional[str] = None
     token_type: str = "bearer"
     me: PartnerMe
+
+
+# --- The app's way in -------------------------------------------------------
+
+class PartnerAppVendor(BaseModel):
+    """A vendor the signed-in traveller has been given to manage."""
+
+    vendor_id: uuid.UUID
+    vendor_name: str
+    logo_url: Optional[str] = None
+
+
+class PartnerAppAccessResponse(BaseModel):
+    vendors: list[PartnerAppVendor]
+
+
+class PartnerAppSessionRequest(BaseModel):
+    vendor_id: uuid.UUID
 
 
 class PartnerMessageResponse(BaseModel):

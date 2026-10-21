@@ -363,9 +363,23 @@ class VendorUser(Base):
 
     Not a column on the vendor, because an agency will eventually want an owner
     plus a manager login; `vendor_id` here gives many-to-one for free.
+
+    Two kinds of login share the table. A portal login has an `email` and a
+    password and signs in at partner.nexaround.com. An app login has neither:
+    it is an admin's grant of this vendor to a traveller account
+    (`app_user_id`), which the app trades the traveller's own token for a
+    partner token with (POST /partner/app/session). The traveller row stays a
+    traveller; partner tokens still name this row, never a `users` id.
     """
 
     __tablename__ = "vendor_users"
+    __table_args__ = (
+        UniqueConstraint("vendor_id", "app_user_id", name="uq_vendor_users_vendor_app_user"),
+        CheckConstraint(
+            "email IS NOT NULL OR app_user_id IS NOT NULL",
+            name="ck_vendor_users_email_or_app_user",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
@@ -377,8 +391,18 @@ class VendorUser(Base):
         index=True,
     )
 
+    # Null on an app login: no email means no password sign-in, no invite
+    # and no reset link can ever reach it.
     email: Mapped[str] = mapped_column(
-        String(255), unique=True, index=True, nullable=False
+        String(255), unique=True, index=True, nullable=True
+    )
+    # The traveller account an admin gave this vendor to; null on a portal
+    # login. Deleting the account deletes the grant.
+    app_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
     )
     # Null until the invite is accepted. `verify_password` already returns
     # False for a null hash, so an unaccepted invite simply cannot log in.
@@ -410,8 +434,15 @@ class VendorUser(Base):
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
     )
 
+    @property
+    def label(self) -> str:
+        """Who this login is, for the audit trail and the devices list."""
+        if self.email:
+            return self.email
+        return f"{self.display_name or 'App user'} (app)"
+
     def __repr__(self) -> str:
-        return f"<VendorUser {self.email}>"
+        return f"<VendorUser {self.label}>"
 
 
 class VendorActivity(Base):

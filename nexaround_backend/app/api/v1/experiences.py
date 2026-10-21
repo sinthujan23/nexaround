@@ -404,11 +404,17 @@ async def create_experience_enquiry(
             enquiry_id=enquiry.id,
             party_label=enquiry.contact_name,
         )
+    # The vendor's bell (web portal and app) says a request came in, never
+    # who sent it: see partner_activity.request_text.
+    activity = partner_activity.request_received(db, enquiry)
     await db.commit()
     await db.refresh(enquiry)
 
-    # Nexaround only: the vendor is not told (no email, no portal line).
+    # The details go to Nexaround only (email to the inbox); the vendor gets
+    # the feed line and, on the app, a push with the same three facts.
     background_tasks.add_task(_dispatch_enquiry_email, enquiry.id)
+    background_tasks.add_task(partner_activity.announce, activity)
+    background_tasks.add_task(enquiry_notifications.vendor_request_alert, enquiry.id)
     # The traveller's copy: what they asked for and the terms they accepted.
     background_tasks.add_task(enquiry_notifications.request_received, enquiry.id)
 

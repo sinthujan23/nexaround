@@ -2,8 +2,11 @@
 
 * The traveller hears when their request is received (email), and when it
   is confirmed or cancelled (push and email).
-* The platform inbox hears when the traveller cancels (email). Vendors hear
-  nothing about requests: Nexaround contacts both sides itself.
+* The platform inbox hears when the traveller cancels (email).
+* The vendor's app logins hear that a request came in, and when Nexaround
+  confirms or cancels it (push): the package, the date and the number of
+  guests, never who asked or where to pick them up. Nexaround contacts both
+  sides itself.
 
 Each function runs after the response as a background task, in its own
 session, and never raises: a failed email or push must not undo a booking.
@@ -14,9 +17,11 @@ from datetime import date
 from typing import Optional
 
 from app.core.database import async_session
-from app.models.experience import ExperienceEnquiry
+from sqlalchemy import select
+
+from app.models.experience import ExperienceEnquiry, ExperienceVendor, VendorUser
 from app.models.user import User
-from app.services import email_service, legal_service
+from app.services import email_service, legal_service, partner_activity
 from app.services import enquiry_lifecycle as lifecycle
 from app.services.settings_service import SettingsService
 
@@ -25,6 +30,8 @@ logger = logging.getLogger(__name__)
 TERMS_URL = "https://nexaround.com/experience-terms"
 # The app routes a tap on this push to My requests.
 PUSH_TYPE = "experience_request"
+# ...and a tap on this one to the vendor portal's notifications.
+VENDOR_PUSH_TYPE = "vendor_request"
 
 
 def day(value: Optional[date]) -> str:
@@ -50,10 +57,17 @@ def _free_cancellation_note(enquiry: ExperienceEnquiry) -> str:
 
 async def _push(db, user_id, title: str, body: str, enquiry_id) -> None:
     """To every device the traveller is signed in on, pruning dead tokens."""
+    await _push_data(
+        db, user_id, title, body, {"type": PUSH_TYPE, "enquiry_id": str(enquiry_id)},
+    )
+
+
+async def _push_data(db, user_id, title: str, body: str, data: dict) -> None:
+    """To every device the account is signed in on, pruning dead tokens."""
     from app.services import fcm_service
 
     user = await db.get(User, user_id)
-    if not user:
+    if not user or not user.is_active:
         return
     prefs = user.preferences or {}
     tokens = list(prefs.get("fcm_tokens") or [])
@@ -62,15 +76,56 @@ async def _push(db, user_id, title: str, body: str, enquiry_id) -> None:
         tokens.append(legacy)
     if not tokens:
         return
-    invalid = await fcm_service.send_to_tokens(
-        db, tokens, title=title, body=body,
-        data={"type": PUSH_TYPE, "enquiry_id": str(enquiry_id)},
-    )
+    invalid = await fcm_service.send_to_tokens(db, tokens, title=title, body=body, data=data)
     if invalid:
         new_prefs = {**prefs, "fcm_tokens": [t for t in tokens if t not in invalid]}
         new_prefs.pop("fcm_token", None)
         user.preferences = new_prefs
         await db.commit()
+
+
+async def _push_vendor(db, enquiry, title: str, body: str) -> None:
+    """To every device of the vendor's active app logins."""
+    vendor = await db.get(ExperienceVendor, enquiry.vendor_id)
+    if not vendor or not vendor.is_active:
+        return
+    logins = (await db.execute(
+        select(VendorUser).where(
+            VendorUser.vendor_id == enquiry.vendor_id,
+            VendorUser.app_user_id.is_not(None),
+            VendorUser.is_active.is_(True),
+        )
+    )).scalars().all()
+    data = {"type": VENDOR_PUSH_TYPE, "vendor_id": str(enquiry.vendor_id)}
+    for login in logins:
+        await _push_data(db, login.app_user_id, title, body, data)
+
+
+async def vendor_request_alert(enquiry_id: uuid.UUID) -> None:
+    """Tell the vendor's app logins a request came in.
+
+    Only what partner_activity.request_text reads - package, date, guests -
+    so the vendor cannot reach the traveller around Nexaround.
+    """
+    try:
+        async with async_session() as db:
+            enquiry = await db.get(ExperienceEnquiry, enquiry_id)
+            if enquiry:
+                await _push_vendor(db, enquiry, *partner_activity.request_text(enquiry))
+    except Exception:
+        logger.exception("vendor request push failed for enquiry %s", enquiry_id)
+
+
+async def vendor_update_alert(enquiry_id: uuid.UUID, event: str) -> None:
+    """Tell the vendor's app logins NexAround confirmed or cancelled a
+    request: the same three facts (partner_activity.update_text)."""
+    try:
+        async with async_session() as db:
+            enquiry = await db.get(ExperienceEnquiry, enquiry_id)
+            if enquiry and event in partner_activity.UPDATE_KINDS:
+                await _push_vendor(db, enquiry, *partner_activity.update_text(enquiry, event))
+    except Exception:
+        logger.exception("vendor update push failed for enquiry %s", enquiry_id)
 
 
 async def request_received(enquiry_id: uuid.UUID) -> None:

@@ -106,11 +106,12 @@ async def accept_partner_agreement(
         db,
         kind=legal_service.PROVIDER,
         version=document.version,
-        method="portal",
+        # Where it was read and accepted: the web portal or the app.
+        method="app" if principal.login.app_user_id else "portal",
         meta=audit.client_meta(request),
         vendor_id=principal.vendor.id,
         vendor_user_id=principal.login.id,
-        party_label=f"{principal.vendor.name} ({principal.login.email})",
+        party_label=f"{principal.vendor.name} ({principal.login.label})",
     )
     await db.commit()
     return await _agreement_status(db, principal)

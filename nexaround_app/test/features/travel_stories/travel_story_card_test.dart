@@ -1,11 +1,17 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
 import 'package:nexaround_app/features/travel_stories/data/models/travel_story.dart';
+import 'package:nexaround_app/features/travel_stories/presentation/pages/story_experience_page.dart';
 import 'package:nexaround_app/features/travel_stories/presentation/widgets/story_photo_preview.dart';
 import 'package:nexaround_app/features/travel_stories/presentation/widgets/travel_story_card.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Only what the card reads: who is signed in, for a traveller's own name.
 class _SignedOut extends Cubit<AuthState> implements AuthBloc {
@@ -28,6 +34,7 @@ const _photos = [
 ];
 
 TravelStory _travelByte({
+  String id = 'tb-furong',
   String category = 'CHINA · FURONG TOWN',
   String description =
       'Imagine walking through a centuries-old Chinese village as the sound '
@@ -35,7 +42,7 @@ TravelStory _travelByte({
   Map<String, String>? previews,
 }) =>
     TravelStory(
-      id: 'tb-furong',
+      id: id,
       userId: 'official',
       userName: 'TravelByte',
       userAvatar: '',
@@ -116,6 +123,14 @@ Future<void> _pumpRow(
 }
 
 void main() {
+  // The long read (opened by "See more") looks up the other TravelBytes.
+  setUpAll(() async {
+    SharedPreferences.setMockInitialValues({});
+    await CacheService.init();
+    Hive.init(Directory.systemTemp.createTempSync('stories').path);
+    await Hive.openBox('travel_stories_box');
+  });
+
   testWidgets('a photo that is still loading shows its blurred preview, not a spinner',
       (tester) async {
     await _pumpRow(tester, _travelByte(), travelByteCount: 4, onShuffle: () {});
@@ -164,6 +179,18 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+
+  testWidgets('"See more" opens the long read of the TravelByte on the card',
+      (tester) async {
+    await _pumpRow(tester, _travelByte(id: 'tb-shown'),
+        travelByteCount: 4, onShuffle: () {});
+    await tester.tap(find.text('See more'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    final page = tester.widget<StoryExperiencePage>(find.byType(StoryExperiencePage));
+    expect(page.story.id, 'tb-shown');
+  });
 
   testWidgets('the shuffle button shows only when the row gives it a job, and does it',
       (tester) async {

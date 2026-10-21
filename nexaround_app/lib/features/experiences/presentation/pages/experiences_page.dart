@@ -4,6 +4,7 @@ import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/features/experiences/presentation/pages/my_experience_requests_page.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experiences_tab.dart';
+import 'package:nexaround_app/features/vendor_portal/presentation/widgets/vendor_portal_banner.dart';
 
 /// Dedicated page for browsing and booking local experiences and tours.
 class ExperiencesPage extends StatefulWidget {
@@ -104,9 +105,17 @@ class _ExperiencesPageState extends State<ExperiencesPage> {
       ),
       body: ExperiencesPage.isComingSoon
           ? _buildComingSoonBody(context)
-          : ExperiencesTab(
-              latitude: _lat,
-              longitude: _lng,
+          : Column(
+              children: [
+                // Only for travellers an admin gave a business to manage.
+                const VendorPortalBanner(),
+                Expanded(
+                  child: ExperiencesTab(
+                    latitude: _lat,
+                    longitude: _lng,
+                  ),
+                ),
+              ],
             ),
     );
   }

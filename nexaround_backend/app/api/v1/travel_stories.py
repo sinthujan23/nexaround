@@ -77,6 +77,15 @@ def _created_ts(story) -> float:
     return story.created_at.timestamp() if story.created_at else 0
 
 
+def _is_about(story, country: str) -> bool:
+    """Whether `story` is about the picked `country`: the same country code,
+    or the same name when either name has no code."""
+    mine, picked = country_for(story.country or ""), country_for(country)
+    if mine and picked:
+        return mine == picked
+    return (story.country or "").strip().lower() == country.strip().lower()
+
+
 def _order_official(pairs: list, first_country: Optional[str], limit: Optional[int]) -> list:
     """TravelBytes in the order the app shows them, at most `limit` (None: all).
 
@@ -153,9 +162,10 @@ async def get_travel_stories(
     (see `_order_nearby`). Without them the response is unchanged, so app
     builds that don't send a location keep their newest-first feed.
 
-    TravelBytes lead the list under every filter (see `_order_official`):
-    up to OFFICIAL_IN_STACK for app builds that send `official_stack`,
-    otherwise one.
+    TravelBytes lead the list (see `_order_official`): up to
+    OFFICIAL_IN_STACK for app builds that send `official_stack`, otherwise
+    one. Under a picked `country` only the ones about that country, like the
+    travellers' stories; in the default feed always.
     """
     stmt = select(TravelStory).where(
         TravelStory.is_journal == False,
@@ -170,6 +180,10 @@ async def get_travel_stories(
     near = lat is not None and lng is not None
     pairs = [(s, _distance_m(s, lat, lng) if near else None) for s in stories]
     official = [p for p in pairs if p[0].is_official]
+    if country:
+        # The query keeps every TravelByte so a name written differently
+        # from the dropdown's ("UAE") still matches here, by country code.
+        official = [p for p in official if _is_about(p[0], country)]
     pairs = [p for p in pairs if not p[0].is_official]
     if near and not country:
         pairs = _order_nearby(pairs)

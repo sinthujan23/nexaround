@@ -22,9 +22,10 @@ from app.api.v1.admin import verify_admin_token
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.experience import ExperiencePackage, ExperienceVendor, VendorUser
+from app.models.user import User
 from app.schemas.partner import (
-    VendorLoginAdminResponse, VendorLoginCreate, VendorLoginListResponse,
-    VendorLoginUpdate,
+    VendorAppAccessCreate, VendorLoginAdminResponse, VendorLoginCreate,
+    VendorLoginListResponse, VendorLoginUpdate,
 )
 from app.api.v1.partner import (
     _ADMIN_ONLY_VENDOR_CONTACTS, _PARTNER_PACKAGE_SCALARS, _PARTNER_VENDOR_SCALARS,
@@ -427,7 +428,7 @@ async def update_enquiry(
         raise HTTPException(status_code=404, detail="Enquiry not found")
     event = None
     # An admin may set any status, including reopening a cancelled request; a
-    # confirmation still needs a date. Vendors never see requests.
+    # confirmation still needs a date. Vendors never see who asked.
     if data.status is not None and data.status not in (*enquiry_lifecycle.ALL_STATUSES, "spam"):
         raise HTTPException(status_code=400, detail="Unknown status.")
     booked = enquiry_lifecycle.booked_date(enquiry, data.confirmed_date)
@@ -444,12 +445,18 @@ async def update_enquiry(
         )
     if data.admin_notes is not None:
         enquiry.admin_notes = data.admin_notes
+    # A confirmation or cancellation reaches the vendor's bell (web and app):
+    # package, date and guests only, never who the traveller is.
+    activity = partner_activity.request_updated(db, enquiry, event) if event else None
     await db.commit()
     await db.refresh(enquiry)
     if event in (enquiry_lifecycle.CONFIRMED, enquiry_lifecycle.PROVIDER_CANCELLED):
         background_tasks.add_task(enquiry_notifications.booking_update, enquiry.id, event)
     elif event == enquiry_lifecycle.CUSTOMER_CANCELLED:
         background_tasks.add_task(enquiry_notifications.customer_cancelled, enquiry.id)
+    if activity:
+        background_tasks.add_task(partner_activity.announce, activity)
+        background_tasks.add_task(enquiry_notifications.vendor_update_alert, enquiry.id, event)
     return ExperienceEnquiryAdminResponse.model_validate(enquiry)
 
 
@@ -604,12 +611,16 @@ async def admin_place_search(
 # the vendor sets their own password from the link. The admin never sees or
 # chooses the password.
 
-async def _login_response(vu: VendorUser) -> VendorLoginAdminResponse:
+async def _login_response(vu: VendorUser, app_user: Optional[User] = None) -> VendorLoginAdminResponse:
     return VendorLoginAdminResponse(
         id=vu.id,
         vendor_id=vu.vendor_id,
+        kind="app" if vu.app_user_id else "portal",
         email=vu.email,
         display_name=vu.display_name,
+        app_user_id=vu.app_user_id,
+        app_user_email=app_user.email if app_user else None,
+        app_user_name=app_user.display_name if app_user else None,
         is_active=bool(vu.is_active),
         # The question the admin is actually asking of this row.
         has_password=vu.password_hash is not None,
@@ -638,8 +649,52 @@ async def list_vendor_logins(
         )
     ).scalars().all()
     return VendorLoginListResponse(
-        logins=[await _login_response(r) for r in rows]
+        logins=[
+            await _login_response(r, await db.get(User, r.app_user_id) if r.app_user_id else None)
+            for r in rows
+        ]
     )
+
+
+@router.post(
+    "/vendors/{vendor_id}/app-access",
+    response_model=VendorLoginAdminResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def give_vendor_app_access(
+    vendor_id: uuid.UUID,
+    data: VendorAppAccessCreate,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(verify_admin_token),
+):
+    """Let a traveller account manage this vendor from the app.
+
+    An app login: no email, no password, no invite. The app shows its
+    "Vendor portal" button from then on (GET /partner/app/access).
+    """
+    vendor = await ExperienceRepository(db).get_vendor(vendor_id)
+    if not vendor:
+        raise HTTPException(status_code=404, detail="Vendor not found")
+    user = await db.get(User, data.user_id)
+    if not user or not user.is_active:
+        raise HTTPException(status_code=404, detail="App user not found")
+
+    vu = VendorUser(
+        vendor_id=vendor_id,
+        app_user_id=user.id,
+        display_name=((user.display_name or "").strip() or (user.email or "").split("@")[0] or None),
+    )
+    db.add(vu)
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409, detail="That app user already has access to this vendor.",
+        )
+    await db.refresh(vu)
+    await partner_events.publish(vendor_id, partner_events.ACCOUNT_CHANGED)
+    return await _login_response(vu, user)
 
 
 @router.post(
@@ -691,6 +746,10 @@ async def resend_vendor_invite(
     vu = await db.get(VendorUser, login_id)
     if not vu:
         raise HTTPException(status_code=404, detail="Login not found")
+    if not vu.email:
+        raise HTTPException(
+            status_code=400, detail="App access has no email or password to set.",
+        )
     vendor = await ExperienceRepository(db).get_vendor(vu.vendor_id)
     if not vendor:
         raise HTTPException(status_code=404, detail="Vendor not found")
@@ -723,7 +782,7 @@ async def update_vendor_login(
         )
     # A disabled login's open portal tabs are signed out now, not in an hour.
     await partner_events.publish(vu.vendor_id, partner_events.ACCOUNT_CHANGED)
-    return await _login_response(vu)
+    return await _login_response(vu, await db.get(User, vu.app_user_id) if vu.app_user_id else None)
 
 
 @router.delete("/logins/{login_id}")
