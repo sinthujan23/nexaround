@@ -58,7 +58,7 @@ export function LegalBody({ body }) {
  *
  * A failure to load fails open: the gate is there to collect acceptance, not
  * to guard data (the server already scopes every request), and a network blip
- * must not lock a vendor out of their enquiries. It asks again on the next
+ * must not lock a vendor out of their portal. It asks again on the next
  * sign-in or reload.
  */
 export function AgreementGate({ children }) {

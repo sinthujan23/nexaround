@@ -144,13 +144,12 @@ def test_an_admin_reopening_a_cancellation_clears_it():
 
 def test_every_view_of_an_enquiry_carries_the_booking():
     from app.schemas.experience import ExperienceEnquiryAdminResponse, MyEnquiryOut
-    from app.schemas.partner import PartnerEnquiryResponse
 
     fields = {
         "confirmed_date", "cancelled_at", "cancellation_reason",
         "late_cancellation", "free_cancellation_last_day",
     }
-    for schema in (ExperienceEnquiryAdminResponse, PartnerEnquiryResponse, MyEnquiryOut):
+    for schema in (ExperienceEnquiryAdminResponse, MyEnquiryOut):
         assert fields <= set(schema.model_fields), schema.__name__
 
 

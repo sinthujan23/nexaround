@@ -9,14 +9,13 @@ every save. These are declared from scratch, and a test asserts the forbidden
 names appear in none of them.
 """
 import uuid
-from datetime import date, datetime
+from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from app.schemas.experience import DateRange
 from app.services.currencies import check_price_currency
-from app.services.enquiry_lifecycle import VENDOR_STATUSES
 from app.services.experience_format import MAX_BOOKING_WINDOW_DAYS, MAX_UNAVAILABLE_RANGES
 
 
@@ -96,9 +95,10 @@ class PartnerMessageResponse(BaseModel):
 class PartnerVendorProfileUpdate(BaseModel):
     """Everything a vendor may change about themselves, and nothing else.
 
-    The six forbidden names are simply not declared. Pydantic's default
-    `extra="ignore"` means a client that sends `is_active` has it dropped before
-    it can reach the setattr loop.
+    The six forbidden names are simply not declared, and neither are the
+    traveller-facing contacts (phone, WhatsApp, Instagram, Facebook, X), which
+    only an admin sets. Pydantic's default `extra="ignore"` means a client that
+    sends `is_active` has it dropped before it can reach the setattr loop.
     """
 
     name: str = Field(..., max_length=255)
@@ -108,11 +108,6 @@ class PartnerVendorProfileUpdate(BaseModel):
     address: Optional[str] = Field(None, max_length=500)
     city: Optional[str] = Field(None, max_length=120)
     country_code: Optional[str] = Field(None, max_length=2)
-    contact_phone: Optional[str] = Field(None, max_length=32)
-    contact_whatsapp: Optional[str] = Field(None, max_length=32)
-    contact_instagram: Optional[str] = Field(None, max_length=255)
-    contact_facebook: Optional[str] = Field(None, max_length=500)
-    contact_x: Optional[str] = Field(None, max_length=255)
     contact_email: Optional[str] = Field(None, max_length=255)
     website: Optional[str] = Field(None, max_length=500)
     logo_url: Optional[str] = Field(None, max_length=500)
@@ -129,6 +124,12 @@ class PartnerVendorProfileResponse(PartnerVendorProfileUpdate):
 
     id: uuid.UUID
     is_active: bool
+    # Shown read-only: only an admin sets how travellers reach the vendor.
+    contact_phone: Optional[str] = None
+    contact_whatsapp: Optional[str] = None
+    contact_instagram: Optional[str] = None
+    contact_facebook: Optional[str] = None
+    contact_x: Optional[str] = None
     rating: Optional[float] = None
     review_count: int = 0
     package_count: int = 0
@@ -193,64 +194,6 @@ class PartnerPackageListResponse(BaseModel):
     packages: list[PartnerPackageResponse]
 
 
-# --- Partner-side: enquiries ------------------------------------------------
-
-# What a vendor may set; see enquiry_lifecycle for the transitions.
-ENQUIRY_STATUSES = VENDOR_STATUSES
-
-
-class PartnerEnquiryResponse(BaseModel):
-    """The traveller's enquiry as the vendor sees it.
-
-    No `admin_notes` - that is the platform's private commentary. No `user_id` -
-    the vendor has the contact details they need and does not get an identifier
-    that maps into the traveller app.
-    """
-
-    id: uuid.UUID
-    package_id: Optional[uuid.UUID] = None
-    package_title_snapshot: Optional[str] = None
-    contact_name: str
-    contact_phone: str
-    contact_email: Optional[str] = None
-    preferred_date: Optional[date] = None
-    party_size: Optional[int] = None
-    pickup_location: Optional[str] = None
-    message: Optional[str] = None
-    status: str
-    vendor_notes: Optional[str] = None
-    # Which Experience Booking Terms the traveller accepted, so the vendor can
-    # point to the payment and 72-hour cancellation rules.
-    terms_version: Optional[int] = None
-    terms_accepted_at: Optional[datetime] = None
-    # The booking: confirmed by the provider for a day, or cancelled by either
-    # side (the status says whose). `free_cancellation_last_day` is derived.
-    confirmed_date: Optional[date] = None
-    confirmed_at: Optional[datetime] = None
-    cancelled_at: Optional[datetime] = None
-    cancellation_reason: Optional[str] = None
-    late_cancellation: Optional[bool] = None
-    free_cancellation_last_day: Optional[date] = None
-    created_at: Optional[datetime] = None
-
-
-class PartnerEnquiryListResponse(BaseModel):
-    enquiries: list[PartnerEnquiryResponse]
-    total: int
-    page: int = 1
-    page_size: int = 25
-
-
-class PartnerEnquiryUpdate(BaseModel):
-    status: Optional[str] = Field(None, max_length=20)
-    vendor_notes: Optional[str] = None
-    # With status "confirmed": the day agreed with the traveller. Defaults to
-    # their preferred date; required when they asked for a flexible date.
-    confirmed_date: Optional[date] = None
-    # With status "provider_cancelled": why, shown to the traveller.
-    cancellation_reason: Optional[str] = Field(None, max_length=1000)
-
-
 # --- Partner-side: stats ----------------------------------------------------
 
 class PartnerReviewResponse(BaseModel):
@@ -293,9 +236,6 @@ class PartnerReviewReply(BaseModel):
 class PartnerStatsResponse(BaseModel):
     packages_total: int = 0
     packages_published: int = 0
-    enquiries_total: int = 0
-    enquiries_new: int = 0
-    enquiries_last_30d: int = 0
 
 
 # --- Activity feed (the portal's bell) --------------------------------------

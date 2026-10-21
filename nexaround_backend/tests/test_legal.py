@@ -154,8 +154,8 @@ def test_the_enquiry_carries_the_accepted_terms_version():
     from app.schemas.experience import (
         ExperienceEnquiryAdminResponse, ExperienceEnquiryCreate,
     )
-    from app.schemas.partner import PartnerEnquiryResponse
 
     assert "accepted_terms_version" in ExperienceEnquiryCreate.model_fields
-    for schema in (ExperienceEnquiryAdminResponse, PartnerEnquiryResponse):
-        assert {"terms_version", "terms_accepted_at"} <= set(schema.model_fields)
+    assert {"terms_version", "terms_accepted_at"} <= set(
+        ExperienceEnquiryAdminResponse.model_fields
+    )

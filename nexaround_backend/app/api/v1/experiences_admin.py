@@ -26,7 +26,9 @@ from app.schemas.partner import (
     VendorLoginAdminResponse, VendorLoginCreate, VendorLoginListResponse,
     VendorLoginUpdate,
 )
-from app.api.v1.partner import _PARTNER_PACKAGE_SCALARS, _PARTNER_VENDOR_SCALARS
+from app.api.v1.partner import (
+    _ADMIN_ONLY_VENDOR_CONTACTS, _PARTNER_PACKAGE_SCALARS, _PARTNER_VENDOR_SCALARS,
+)
 from app.services import (
     audit, enquiry_lifecycle, enquiry_notifications, partner_activity,
     partner_events,
@@ -246,7 +248,9 @@ async def update_vendor(
 
     # Judged on what the vendor can see, plus is_active for suspend/restore:
     # an edit to internal_notes or sort_order must not reach their feed.
-    before = partner_activity.snapshot(vendor, _PARTNER_VENDOR_SCALARS + ("is_active",))
+    before = partner_activity.snapshot(
+        vendor, _PARTNER_VENDOR_SCALARS + _ADMIN_ONLY_VENDOR_CONTACTS + ("is_active",)
+    )
     for key in _VENDOR_SCALARS:
         setattr(vendor, key, getattr(data, key))
     vendor.location = point_or_none(data.latitude, data.longitude)
@@ -421,10 +425,9 @@ async def update_enquiry(
     enquiry = await db.get(ExperienceEnquiry, enquiry_id)
     if not enquiry:
         raise HTTPException(status_code=404, detail="Enquiry not found")
-    activity = None
     event = None
-    # Unlike a vendor, an admin may set any status, including reopening a
-    # cancelled request; a confirmation still needs a date.
+    # An admin may set any status, including reopening a cancelled request; a
+    # confirmation still needs a date. Vendors never see requests.
     if data.status is not None and data.status not in (*enquiry_lifecycle.ALL_STATUSES, "spam"):
         raise HTTPException(status_code=400, detail="Unknown status.")
     booked = enquiry_lifecycle.booked_date(enquiry, data.confirmed_date)
@@ -433,28 +436,16 @@ async def update_enquiry(
     if data.status is not None and (
         data.status != enquiry.status or data.confirmed_date is not None
     ):
-        before = enquiry.status
         event = enquiry_lifecycle.apply_status(
             enquiry, data.status,
             now=datetime.now(timezone.utc),
             confirmed_date=data.confirmed_date,
             reason=data.cancellation_reason,
         )
-        if enquiry.vendor_id and enquiry.status != before:
-            activity = partner_activity.enquiry_status(
-                db, enquiry, actor=partner_activity.ADMIN,
-            )
     if data.admin_notes is not None:
         enquiry.admin_notes = data.admin_notes
     await db.commit()
     await db.refresh(enquiry)
-    # Never admin_notes: those are the platform's, not the vendor's.
-    await partner_events.publish(
-        enquiry.vendor_id,
-        partner_events.ENQUIRY_UPDATED,
-        partner_events.enquiry_payload(enquiry),
-    )
-    await partner_activity.announce(activity)
     if event in (enquiry_lifecycle.CONFIRMED, enquiry_lifecycle.PROVIDER_CANCELLED):
         background_tasks.add_task(enquiry_notifications.booking_update, enquiry.id, event)
     elif event == enquiry_lifecycle.CUSTOMER_CANCELLED:

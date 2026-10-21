@@ -13,36 +13,18 @@ internal note would both be noise and leak that one was written.
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Iterable, Optional
 
 from app.models.experience import VendorActivity
-from app.services import enquiry_lifecycle, partner_events
+from app.services import partner_events
 
 ACTIVITY_CREATED = "activity.created"
 
 TRAVELLER = "traveller"
 VENDOR = "vendor"
 ADMIN = "admin"
-
-STATUS_LABELS = enquiry_lifecycle.VENDOR_LABELS
-
-
-def guests(party_size: Optional[int]) -> Optional[str]:
-    if not party_size:
-        return None
-    return "1 guest" if party_size == 1 else f"{party_size} guests"
-
-
-def day(value: Optional[date]) -> Optional[str]:
-    # Matches the backfill's to_char(..., 'FMDD Mon YYYY'): "5 Oct 2026".
-    return f"{value.day} {value.strftime('%b %Y')}" if value else None
-
-
-def _join(*parts: Optional[str]) -> Optional[str]:
-    text = " · ".join(p for p in parts if p)
-    return text[:500] or None
 
 
 def _norm(value):
@@ -146,48 +128,8 @@ async def announce(*payloads: Optional[dict]) -> None:
 
 
 # ── The lines themselves ─────────────────────────────────────────────────────
-# One helper per kind keeps the wording in one place; the backfill in migration
-# d5e6f7a8b9c0 mirrors `enquiry_created`.
-
-def enquiry_created(db, enquiry) -> dict:
-    return record(
-        db, enquiry.vendor_id, "enquiry.created",
-        f"New enquiry from {enquiry.contact_name}",
-        body=_join(
-            enquiry.package_title_snapshot or "General enquiry",
-            guests(enquiry.party_size),
-            day(enquiry.preferred_date),
-        ),
-        actor=TRAVELLER,
-        enquiry_id=enquiry.id,
-        package_id=enquiry.package_id,
-    )
-
-
-def enquiry_status(db, enquiry, *, actor: str, login=None) -> dict:
-    label = STATUS_LABELS.get(enquiry.status, enquiry.status)
-    return record(
-        db, enquiry.vendor_id, "enquiry.status",
-        f"{enquiry.contact_name}'s enquiry marked {label}",
-        body=enquiry.package_title_snapshot or "General enquiry",
-        actor=actor, login=login,
-        enquiry_id=enquiry.id,
-    )
-
-
-def enquiry_cancelled_by_traveller(db, enquiry) -> dict:
-    """The traveller cancelled in the app. Same kind as a status change, so the
-    portal's bell draws it with the others."""
-    late = " · late cancellation (under 72 hours)" if enquiry.late_cancellation else ""
-    return record(
-        db, enquiry.vendor_id, "enquiry.status",
-        f"{enquiry.contact_name} cancelled their "
-        f"{'booking' if enquiry.confirmed_date else 'request'}",
-        body=(enquiry.package_title_snapshot or "General enquiry") + late,
-        actor=TRAVELLER,
-        enquiry_id=enquiry.id,
-    )
-
+# One helper per kind keeps the wording in one place. Vendors get no enquiry
+# lines: requests go only to Nexaround (the old ones are filtered out on read).
 
 def review_received(db, review, package) -> dict:
     """A traveller rated one of the vendor's packages: the nudge to answer it."""

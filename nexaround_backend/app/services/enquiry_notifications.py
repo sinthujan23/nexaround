@@ -1,9 +1,9 @@
 """Telling the other side what happened to an experience request.
 
-* The traveller hears when their request is received (email), and when the
-  provider confirms or cancels it (push and email).
-* The vendor hears when the traveller cancels (email, alongside the portal's
-  live alert and activity line).
+* The traveller hears when their request is received (email), and when it
+  is confirmed or cancelled (push and email).
+* The platform inbox hears when the traveller cancels (email). Vendors hear
+  nothing about requests: Nexaround contacts both sides itself.
 
 Each function runs after the response as a background task, in its own
 session, and never raises: a failed email or push must not undo a booking.
@@ -14,7 +14,7 @@ from datetime import date
 from typing import Optional
 
 from app.core.database import async_session
-from app.models.experience import ExperienceEnquiry, ExperienceVendor
+from app.models.experience import ExperienceEnquiry
 from app.models.user import User
 from app.services import email_service, legal_service
 from app.services import enquiry_lifecycle as lifecycle
@@ -92,8 +92,8 @@ async def request_received(enquiry_id: uuid.UUID) -> None:
                 enquiry.contact_email,
                 subject=f"Request sent: {enquiry.package_title_snapshot or 'your experience'}",
                 heading="We've sent your request",
-                intro=f"{provider} will contact you to confirm it. Your booking is "
-                      "confirmed only when they do.",
+                intro="Nexaround will contact you to confirm it. Your booking is "
+                      "confirmed only when we do.",
                 rows=(
                     ("Experience", enquiry.package_title_snapshot),
                     ("Provider", enquiry.vendor_name_snapshot),
@@ -116,10 +116,6 @@ async def booking_update(enquiry_id: uuid.UUID, event: str) -> None:
             enquiry = await db.get(ExperienceEnquiry, enquiry_id)
             if not enquiry:
                 return
-            vendor = (
-                await db.get(ExperienceVendor, enquiry.vendor_id)
-                if enquiry.vendor_id else None
-            )
             provider = enquiry.vendor_name_snapshot or "The provider"
             experience = enquiry.package_title_snapshot or "your experience"
 
@@ -134,8 +130,8 @@ async def booking_update(enquiry_id: uuid.UUID, event: str) -> None:
                     ("Date", day(enquiry.confirmed_date)),
                     ("Guests", _guests(enquiry.party_size)),
                     ("Pickup", enquiry.pickup_location),
-                    ("Provider phone", vendor.contact_phone if vendor else None),
-                    ("Provider WhatsApp", vendor.contact_whatsapp if vendor else None),
+                    # Nexaround, not the provider: bookings go through the platform.
+                    ("Contact", await SettingsService(db).get_setting("contact_email")),
                 )
                 notes = (
                     _free_cancellation_note(enquiry),
@@ -172,22 +168,14 @@ async def booking_update(enquiry_id: uuid.UUID, event: str) -> None:
 
 
 async def customer_cancelled(enquiry_id: uuid.UUID) -> None:
-    """Email the vendor, and the platform inbox, that the traveller cancelled."""
+    """Email the platform inbox that the traveller cancelled. Not the vendor."""
     try:
         async with async_session() as db:
             enquiry = await db.get(ExperienceEnquiry, enquiry_id)
             if not enquiry:
                 return
-            vendor = (
-                await db.get(ExperienceVendor, enquiry.vendor_id)
-                if enquiry.vendor_id else None
-            )
-            recipients: list[str] = []
-            if vendor and vendor.contact_email:
-                recipients.append(vendor.contact_email)
             platform = await SettingsService(db).get_setting("contact_email")
-            if platform and platform not in recipients:
-                recipients.append(platform)
+            recipients = [platform] if platform else []
 
             experience = enquiry.package_title_snapshot or "an experience"
             booked = enquiry.confirmed_date or enquiry.preferred_date

@@ -37,36 +37,6 @@ export const bookingWindowOptions = (current) =>
     ? BOOKING_WINDOWS
     : [...BOOKING_WINDOWS, { value: Number(current), label: `${current} days ahead` }];
 
-// Every status a request can be in, for the inbox filters. The server's
-// enquiry_lifecycle.py owns the rules; spam is an admin-only status.
-export const ENQUIRY_STATUSES = [
-  'new', 'contacted', 'confirmed', 'closed', 'customer_cancelled', 'provider_cancelled',
-];
-// What a vendor may set. Only the traveller can record their own cancellation.
-export const VENDOR_STATUSES = ['new', 'contacted', 'confirmed', 'closed', 'provider_cancelled'];
-export const CANCELLED_STATUSES = ['customer_cancelled', 'provider_cancelled'];
-export const STATUS_LABELS = {
-  new: 'New',
-  contacted: 'Contacted',
-  confirmed: 'Confirmed',
-  closed: 'Closed',
-  customer_cancelled: 'Cancelled by traveller',
-  provider_cancelled: 'Cancelled by you',
-  spam: 'Spam',
-};
-
-// The last day a confirmed booking can be cancelled for free: 72 hours before
-// the start of the booked day ("2026-10-20" -> "2026-10-17"). The server sends
-// the same as free_cancellation_last_day; this is for the confirm form, before
-// there is one.
-export const freeCancellationLastDay = (isoDate) => {
-  if (!isoDate) return null;
-  const d = new Date(`${isoDate}T00:00:00`);
-  d.setDate(d.getDate() - 3);
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-};
-
 // Colour families (see the .tone-* classes in index.css). One per category,
 // so a boat trip and a food tour read differently at a glance.
 const CATEGORY_TONES = {
@@ -80,18 +50,6 @@ const CATEGORY_TONES = {
 };
 
 export const categoryTone = (value) => CATEGORY_TONES[value] || 'teal';
-
-// New needs action (amber), contacted is in progress (blue), confirmed is a
-// booking (teal), closed is done (green), and either cancellation is rose.
-export const STATUS_TONES = {
-  new: 'amber',
-  contacted: 'blue',
-  confirmed: 'teal',
-  closed: 'green',
-  customer_cancelled: 'rose',
-  provider_cancelled: 'rose',
-  spam: 'rose',
-};
 
 // is_published is the server's word, not the form's: it also needs the whole
 // listing to be live, which only NexAround can switch.
@@ -141,16 +99,3 @@ export const formatAge = (value) => {
   return new Date(value).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: TZ });
 };
 
-// preferred_date is a plain YYYY-MM-DD; parse it as a calendar date, not UTC midnight.
-export const formatDay = (value) => {
-  if (!value) return null;
-  const [y, m, d] = value.split('-').map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString('en-GB', {
-    weekday: 'short', day: 'numeric', month: 'short', year: 'numeric',
-  });
-};
-
-export const guestsLabel = (n) => (n ? `${n} ${n === 1 ? 'guest' : 'guests'}` : null);
-
-// Digits only: wa.me rejects spaces, dashes and a leading +.
-export const digitsOnly = (phone) => (phone || '').replace(/\D/g, '');

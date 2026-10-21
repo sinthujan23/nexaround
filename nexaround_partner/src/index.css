@@ -173,18 +173,6 @@ body {
 
 .nav-item .icon { width: 18px; height: 18px; display: flex; flex-shrink: 0; }
 
-/* New-enquiry count: the one warm colour on the rail. */
-.nav-badge {
-  margin-left: auto;
-  background: #ffb300;
-  color: #3d2a00;
-  font-size: var(--fs-micro);
-  font-weight: 800;
-  padding: 1px 8px;
-  border-radius: 999px;
-  font-variant-numeric: tabular-nums;
-}
-
 .sidebar-footer {
   margin: 12px 14px 16px;
   padding: 10px 10px 10px 12px;
@@ -437,6 +425,7 @@ body {
   gap: 16px;
   align-items: start;
 }
+.dash-cols.single { grid-template-columns: minmax(0, 1fr); }
 
 .panel {
   background: var(--bg-card);
@@ -824,6 +813,8 @@ td { padding: 14px 16px; color: var(--text-primary); vertical-align: middle; }
 
 .form-input:focus, .form-textarea:focus, .form-select:focus { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-glow); }
 .form-textarea { resize: vertical; min-height: 90px; }
+/* Set by NexAround only (the vendor's phone, WhatsApp and social links). */
+.form-input:disabled { background: var(--bg-card-hover); color: var(--text-secondary); box-shadow: none; cursor: not-allowed; }
 
 /* ===== SIGN-IN, SET PASSWORD, FORGOT PASSWORD (Kit.jsx <AuthLayout>) ===== */
 .auth-page {
@@ -1926,99 +1917,6 @@ td { padding: 14px 16px; color: var(--text-primary); vertical-align: middle; }
 
 .xp-toast.error { background: var(--danger); }
 
-/* Live new-enquiry alerts (components/LiveAlerts.jsx). Warm amber, the
-   portal's one colour for "a new enquiry is waiting". */
-.live-alerts {
-  position: fixed;
-  top: 20px;
-  right: 20px;
-  width: 340px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  z-index: 10001;
-}
-
-.live-alert {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 14px 14px 14px 16px;
-  background: var(--bg-card);
-  border: 1px solid #fbe0a0;
-  border-left: 4px solid var(--warning);
-  border-radius: 12px;
-  box-shadow: 0 16px 40px rgba(16, 24, 40, 0.16);
-  animation: liveAlertIn 0.28s ease-out;
-}
-
-@keyframes liveAlertIn {
-  from { opacity: 0; transform: translateX(24px); }
-  to { opacity: 1; transform: none; }
-}
-
-.live-alert-icon {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: #fff8e8;
-  color: #8a5b00;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.live-alert-body { flex: 1; min-width: 0; }
-
-.live-alert-kicker {
-  font-size: var(--fs-micro);
-  font-weight: 800;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: #8a5b00;
-}
-
-.live-alert-title {
-  margin-top: 2px;
-  font-size: var(--fs-title-sm);
-  font-weight: 700;
-  color: var(--text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.live-alert-sub,
-.live-alert-meta {
-  font-size: var(--fs-small);
-  color: var(--text-secondary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.live-alert-meta { font-size: var(--fs-caption); color: var(--text-muted); }
-
-.live-alert-open { margin-top: 10px; }
-
-.live-alert-close {
-  width: 26px;
-  height: 26px;
-  margin: -4px -4px 0 0;
-  border: none;
-  border-radius: 8px;
-  background: none;
-  color: var(--text-muted);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-.live-alert-close:hover { background: var(--border-soft); color: var(--text-primary); }
-
 /* Notification bell (components/NotificationBell.jsx), in the sidebar header.
    The panel floats beside the rail, over the page. */
 .bell-wrap { margin-left: auto; position: relative; }
@@ -2221,39 +2119,6 @@ td { padding: 14px 16px; color: var(--text-primary); vertical-align: middle; }
 
 .notif-empty svg { color: var(--text-muted); }
 .notif-empty strong { font-size: var(--fs-title-sm); color: var(--text-primary); }
-
-/* Sidebar opt-in for desktop notifications; gone once answered. */
-.alerts-optin {
-  margin: 0 14px;
-  padding: 12px;
-  border: 1px dashed rgba(255, 255, 255, 0.22);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.05);
-  color: #ffffff;
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  text-align: left;
-  font: inherit;
-  cursor: pointer;
-}
-
-.alerts-optin:hover { background: rgba(255, 255, 255, 0.1); border-style: solid; }
-
-.alerts-optin-icon {
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  background: rgba(255, 179, 0, 0.18);
-  color: #ffc940;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.alerts-optin strong { display: block; font-size: var(--fs-small); font-weight: 700; }
-.alerts-optin small { display: block; margin-top: 2px; font-size: var(--fs-caption); color: rgba(255, 255, 255, 0.6); line-height: 1.4; }
 
 /* Enquiry detail */
 .contact-card {
@@ -2496,11 +2361,8 @@ a.btn { text-decoration: none; }
   .xp-toolbar .search-bar { flex: 1; width: auto; min-width: 0; }
   .seg { max-width: 100%; overflow-x: auto; }
 
-  /* Phones cannot show page notifications without a service worker. */
-  .alerts-optin { display: none; }
   /* Drops from the bell, over the menu tabs. */
   .notif-panel { top: 58px; left: 12px; right: 12px; width: auto; max-height: calc(100vh - 74px); }
-  .live-alerts { top: 12px; left: 12px; right: 12px; width: auto; }
 }
 
 @media (max-width: 560px) {

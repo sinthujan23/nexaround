@@ -12,7 +12,6 @@ import SetPassword from './pages/SetPassword';
 import Dashboard from './pages/Dashboard';
 import Packages from './pages/Packages';
 import PackageEditor from './pages/PackageEditor';
-import Enquiries from './pages/Enquiries';
 import Reviews from './pages/Reviews';
 import ProfileLayout from './pages/profile/Layout';
 import ProfileDetails from './pages/profile/Details';
@@ -56,9 +55,6 @@ const router = createBrowserRouter(createRoutesFromElements(
       <Route path="/packages" element={<Packages />} />
       <Route path="/packages/new" element={<PackageEditor />} />
       <Route path="/packages/:packageId" element={<PackageEditor />} />
-
-      <Route path="/enquiries" element={<Enquiries />} />
-      <Route path="/enquiries/:enquiryId" element={<Enquiries />} />
 
       <Route path="/reviews" element={<Reviews />} />
 

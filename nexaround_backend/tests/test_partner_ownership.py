@@ -82,7 +82,6 @@ def _status_codes(func) -> set:
 
 @pytest.mark.parametrize("method,args", [
     ("get_package_for_vendor", (ROW, VENDOR)),
-    ("get_enquiry_for_vendor", (ROW, VENDOR)),
 ])
 def test_a_scoped_lookup_filters_on_both_id_and_vendor(method, args):
     """Two predicates, not one.
@@ -114,23 +113,16 @@ def test_stats_are_counted_per_vendor_not_platform_wide():
         sql = _sql(stmt)
         assert "vendor_id" in sql, f"an unscoped aggregate leaks other vendors:\n{sql}"
         assert _in_sql(VENDOR, sql)
-        # Counting, not loading: a long enquiry history should not be pulled
-        # into memory to show a number.
+        # Counting, not loading: rows are not pulled into memory to show a
+        # number.
         assert "count(" in sql.lower()
 
 
-def test_the_enquiries_endpoint_cannot_be_asked_for_another_vendor():
-    """The highest-probability copy-paste bug in this whole feature.
-
-    `experiences_admin.list_enquiries` takes a `vendor_id` query parameter. A
-    straight copy into the partner router would hand vendor A vendor B's entire
-    inbox with one query string, and it would look perfectly normal in review.
-    """
-    params = inspect.signature(P.list_partner_enquiries).parameters
-    assert "vendor_id" not in params, (
-        "the partner enquiries endpoint accepts a vendor_id — "
-        "the scope must come from the token, never the caller"
-    )
+def test_vendors_have_no_enquiry_endpoints():
+    """Requests come only to Nexaround, which contacts both sides itself, so
+    a vendor cannot reach a traveller around the platform's commission."""
+    paths = [r.path for r in P.router.routes]
+    assert not [p for p in paths if "enquir" in p], paths
 
 
 def test_package_creation_cannot_be_filed_under_another_vendor():
@@ -155,15 +147,8 @@ def test_every_single_package_endpoint_uses_the_scoped_lookup(endpoint):
     )
 
 
-@pytest.mark.parametrize("endpoint", [P.update_partner_enquiry, P.get_partner_enquiry])
-def test_the_enquiry_endpoints_use_the_scoped_lookup(endpoint):
-    source = inspect.getsource(endpoint)
-    assert "get_enquiry_for_vendor" in source
-
-
 @pytest.mark.parametrize("endpoint", [
     P.get_partner_package, P.update_partner_package, P.delete_partner_package,
-    P.update_partner_enquiry, P.get_partner_enquiry,
 ])
 def test_a_miss_is_404_and_says_nothing_about_who_owns_it(endpoint):
     """403 would confirm the id exists and belongs to someone else.
@@ -174,9 +159,8 @@ def test_a_miss_is_404_and_says_nothing_about_who_owns_it(endpoint):
     codes = _status_codes(endpoint)
     assert 404 in codes, f"{endpoint.__name__} never 404s on a miss"
     # 403 is the one that must never appear on a lookup: it would confirm the
-    # row exists and belongs to someone else. Other codes are fine - the
-    # enquiry patch also 400s on an invalid status, which says nothing about
-    # ownership.
+    # row exists and belongs to someone else. Other codes are fine: a 400 on
+    # bad input says nothing about ownership.
     assert 403 not in codes, (
         f"{endpoint.__name__} raises 403; a row this vendor cannot see must be "
         f"indistinguishable from one that does not exist"

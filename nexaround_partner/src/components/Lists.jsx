@@ -1,8 +1,7 @@
 import { Link } from 'react-router-dom';
 import { SearchIcon } from './Icons';
-import { STATUS_LABELS, STATUS_TONES } from '../format';
 
-// The list-and-filter pieces the Dashboard, Packages, Enquiries and Security
+// The list-and-filter pieces the Dashboard, Packages, Reviews and Security
 // pages each rebuilt for themselves.
 
 export function Loader() {
@@ -80,16 +79,10 @@ export function StatusPill({ tone = 'gray', children, title }) {
   return <span className={`pill tone-${tone}`} title={title}>{children}</span>;
 }
 
-export function EnquiryStatusPill({ status }) {
-  return (
-    <StatusPill tone={STATUS_TONES[status] || 'gray'}>{STATUS_LABELS[status] || status}</StatusPill>
-  );
-}
-
 /**
  * One row: a lead (avatar, thumbnail or icon), a title, one or more small
  * lines, and something on the right. `variant` picks the stylesheet family -
- * `dash` (dashboard panels), `xp` (the enquiries list) or `sec` (security) -
+ * `dash` (dashboard panels), `xp` (the split lists) or `sec` (security) -
  * so all three share one structure without their looks changing.
  *
  * With `to` it is a real link (middle-click and "open in new tab" work), with

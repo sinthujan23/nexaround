@@ -104,7 +104,7 @@ function ReviewCard({ review, onSaved }) {
 /**
  * Travellers' reviews of this vendor's packages, newest first, with a place to
  * answer each in public. Hidden reviews (taken down by NexAround) are not
- * listed. The tab and page live in the URL, like the enquiries inbox.
+ * listed. The tab and page live in the URL.
  */
 export default function Reviews() {
   const [params, setParams] = useSearchParams();

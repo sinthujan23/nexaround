@@ -31,7 +31,7 @@ from app.schemas.experience import (
     ReviewCreate,
     ReviewListResponse,
 )
-from app.services.email_service import send_vendor_enquiry_email
+from app.services.email_service import send_new_enquiry_email
 from app.services.experience_format import (
     COUNTRY_MODE_KEY, NEARBY_THRESHOLD_M, booking_window_error, is_nearby,
     parse_country_mode, unavailable_error, validate_enquiry_payload,
@@ -46,7 +46,7 @@ from app.services.experience_service import (
 from app.services import experience_reviews
 from app.services import (
     audit, enquiry_lifecycle, enquiry_notifications, legal_service,
-    partner_activity, partner_events,
+    partner_activity,
 )
 from app.services.settings_service import SettingsService
 
@@ -285,7 +285,11 @@ async def get_experience_vendor(
 
 
 async def _dispatch_enquiry_email(enquiry_id: uuid.UUID) -> None:
-    """Send the vendor notification on its own session.
+    """Email the new enquiry to the platform inbox, on its own session.
+
+    Only to Nexaround, never to the vendor: the team contacts the traveller
+    and the vendor itself, so a booking cannot be arranged around the
+    platform's commission.
 
     Runs after the response, so the request's session is already closed — this
     opens its own rather than reusing a dead one.
@@ -295,23 +299,11 @@ async def _dispatch_enquiry_email(enquiry_id: uuid.UUID) -> None:
         if not enquiry:
             return
 
-        recipients: list[str] = []
-        if enquiry.vendor_id:
-            repo = ExperienceRepository(db)
-            vendor = await repo.get_vendor(enquiry.vendor_id)
-            if vendor and vendor.contact_email:
-                recipients.append(vendor.contact_email)
-
-        # Copy the platform inbox so the client sees demand even for a vendor
-        # who has not given an address yet.
         platform_email = await SettingsService(db).get_setting("contact_email")
-        if platform_email and platform_email not in recipients:
-            recipients.append(platform_email)
-
-        for address in recipients:
-            await send_vendor_enquiry_email(
-                address,
-                vendor_name=enquiry.vendor_name_snapshot or "your agency",
+        if platform_email:
+            await send_new_enquiry_email(
+                platform_email,
+                vendor_name=enquiry.vendor_name_snapshot or "a vendor",
                 package_title=enquiry.package_title_snapshot or "an experience",
                 contact_name=enquiry.contact_name,
                 contact_phone=enquiry.contact_phone,
@@ -412,28 +404,10 @@ async def create_experience_enquiry(
             enquiry_id=enquiry.id,
             party_label=enquiry.contact_name,
         )
-    activity = None
-    if enquiry.vendor_id:
-        activity = partner_activity.enquiry_created(db, enquiry)
     await db.commit()
     await db.refresh(enquiry)
 
-    # Queued before the email: tasks run in order, and a slow SMTP handshake
-    # should not hold up the vendor's live portal alert.
-    background_tasks.add_task(
-        partner_events.publish,
-        enquiry.vendor_id,
-        partner_events.ENQUIRY_CREATED,
-        {
-            "id": enquiry.id,
-            "package_title": enquiry.package_title_snapshot,
-            "contact_name": enquiry.contact_name,
-            "party_size": enquiry.party_size,
-            "preferred_date": enquiry.preferred_date,
-            "created_at": enquiry.created_at,
-        },
-    )
-    background_tasks.add_task(partner_activity.announce, activity)
+    # Nexaround only: the vendor is not told (no email, no portal line).
     background_tasks.add_task(_dispatch_enquiry_email, enquiry.id)
     # The traveller's copy: what they asked for and the terms they accepted.
     background_tasks.add_task(enquiry_notifications.request_received, enquiry.id)
@@ -546,7 +520,7 @@ async def cancel_my_enquiry(
     current_user: User = Depends(get_current_user),
 ):
     """The traveller cancels. Stamped with the server's time, which is what the
-    72-hour rule is judged on, and the vendor is told at once."""
+    72-hour rule is judged on, and the platform inbox is told at once."""
     from sqlalchemy import select
 
     # Scoped in the query: another traveller's request is simply not found.
@@ -567,20 +541,9 @@ async def cancel_my_enquiry(
         enquiry, enquiry_lifecycle.CUSTOMER_CANCELLED,
         now=datetime.now(timezone.utc), reason=data.reason,
     )
-    activity = (
-        partner_activity.enquiry_cancelled_by_traveller(db, enquiry)
-        if enquiry.vendor_id else None
-    )
     await db.commit()
     await db.refresh(enquiry)
 
-    background_tasks.add_task(
-        partner_events.publish,
-        enquiry.vendor_id,
-        partner_events.ENQUIRY_UPDATED,
-        partner_events.enquiry_payload(enquiry),
-    )
-    background_tasks.add_task(partner_activity.announce, activity)
     background_tasks.add_task(enquiry_notifications.customer_cancelled, enquiry.id)
 
     return (await _my_enquiries_out(db, [enquiry]))[0]

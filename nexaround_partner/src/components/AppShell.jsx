@@ -1,20 +1,15 @@
-import { useCallback, useEffect, useEffectEvent, useState } from 'react';
-import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { apiGet } from '../api';
+import { useEffect, useEffectEvent } from 'react';
+import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth';
 import { NAV_ITEMS, headerFor } from '../routes';
-import { BellIcon, LogOutIcon } from './Icons';
+import { LogOutIcon } from './Icons';
 import ErrorBoundary from './ErrorBoundary';
-import LiveAlerts from './LiveAlerts';
 import NotificationBell from './NotificationBell';
-import {
-  RESYNC, broadcastLive, connectLiveStream, desktopAlertsPermission, showDesktopAlert,
-} from '../live';
-
-const BASE_TITLE = document.title;
+import { RESYNC, broadcastLive, connectLiveStream } from '../live';
 
 /**
- * The frame around every signed-in page: sidebar, header, alerts.
+ * The frame around every signed-in page: sidebar and header. No enquiry
+ * alerts: travellers' requests go to NexAround, not the vendor.
  *
  * The live-updates stream is opened here, not in a page, so it survives moving
  * between pages: a page that opened it would drop and reconnect on every click.
@@ -22,57 +17,12 @@ const BASE_TITLE = document.title;
 export default function AppShell() {
   const { token, me, refreshMe, logout } = useAuth();
   const location = useLocation();
-  const navigate = useNavigate();
-
-  const [newCount, setNewCount] = useState(0);
-  // Bumped by live events, to re-read the new-enquiry count.
-  const [statsVersion, setStatsVersion] = useState(0);
-  const [alerts, setAlerts] = useState([]);
-  const [alertPermission, setAlertPermission] = useState(desktopAlertsPermission);
 
   const header = headerFor(location.pathname);
-  const badges = { enquiries: newCount };
-
-  // The new-enquiry count on the Enquiries menu item. Re-read on every page
-  // change, so replying to an enquiry clears it by the time you look back,
-  // and on every live enquiry event, so it moves without a click at all.
-  useEffect(() => {
-    apiGet('/partner/stats').then((s) => setNewCount(s.enquiries_new || 0)).catch(() => {});
-  }, [location.pathname, statsVersion]);
-
-  // Visible from other tabs: "(2) nexARound Partner".
-  useEffect(() => {
-    document.title = newCount > 0 ? `(${newCount}) ${BASE_TITLE}` : BASE_TITLE;
-    return () => { document.title = BASE_TITLE; };
-  }, [newCount]);
-
-  const dismissAlert = useCallback((id) => {
-    setAlerts((list) => list.filter((a) => a.id !== id));
-  }, []);
-
-  const openEnquiry = (id) => {
-    dismissAlert(id);
-    navigate(`/enquiries/${id}`);
-  };
 
   const onLiveEvent = useEffectEvent((type, data) => {
     broadcastLive(type, data);
-    if (type === 'ready' || type === RESYNC || type.startsWith('enquiry.')) {
-      setStatsVersion((v) => v + 1);
-    }
     if (type === 'account.changed' || type === RESYNC) refreshMe();
-    if (type === 'enquiry.created') {
-      // Newest on top, at most three: a burst should not bury the page.
-      setAlerts((list) => [data, ...list.filter((a) => a.id !== data.id)].slice(0, 3));
-      if (document.visibilityState !== 'visible') {
-        showDesktopAlert({
-          title: `New enquiry from ${data.contact_name}`,
-          body: data.package_title || 'General enquiry',
-          tag: `enquiry-${data.id}`,
-          onClick: () => openEnquiry(data.id),
-        });
-      }
-    }
   });
 
   // One live-updates stream per signed-in tab. Signing out, or the stream
@@ -86,14 +36,6 @@ export default function AppShell() {
       },
     });
   }, [token]);
-
-  const enableDesktopAlerts = async () => {
-    try {
-      setAlertPermission(await Notification.requestPermission());
-    } catch {
-      setAlertPermission(desktopAlertsPermission());
-    }
-  };
 
   return (
     <div className="admin-layout">
@@ -111,25 +53,14 @@ export default function AppShell() {
 
         <nav className="sidebar-nav">
           <div className="nav-section-label">Main Menu</div>
-          {NAV_ITEMS.map(({ to, label, Icon, badge }) => (
+          {NAV_ITEMS.map(({ to, label, Icon }) => (
             // Not `end`: /packages/new still lights up My Packages.
             <NavLink key={to} to={to} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
               <span className="icon"><Icon size={18} /></span>
               {label}
-              {badge && badges[badge] > 0 && <span className="nav-badge">{badges[badge]}</span>}
             </NavLink>
           ))}
         </nav>
-
-        {alertPermission === 'default' && (
-          <button type="button" className="alerts-optin" onClick={enableDesktopAlerts}>
-            <span className="alerts-optin-icon"><BellIcon size={16} /></span>
-            <span>
-              <strong>Turn on desktop alerts</strong>
-              <small>Hear about new enquiries while you work in other tabs.</small>
-            </span>
-          </button>
-        )}
 
         <div className="sidebar-footer">
           <div className="admin-user">
@@ -169,8 +100,6 @@ export default function AppShell() {
           </ErrorBoundary>
         </div>
       </main>
-
-      <LiveAlerts alerts={alerts} onOpen={openEnquiry} onDismiss={dismissAlert} />
     </div>
   );
 }

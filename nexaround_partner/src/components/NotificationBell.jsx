@@ -4,7 +4,7 @@ import { apiGet, apiPost, useApi } from '../api';
 import { RESYNC, useLiveEvent } from '../live';
 import { formatAge, formatDateTime } from '../format';
 import {
-  BellIcon, CrossIcon, InboxIcon, CheckIcon, PlusIcon, EditIcon, EyeOffIcon, TrashIcon, MapPinIcon,
+  BellIcon, CrossIcon, CheckIcon, PlusIcon, EditIcon, EyeOffIcon, TrashIcon, MapPinIcon,
   StarIcon,
 } from './Icons';
 
@@ -21,10 +21,8 @@ import {
 
 const PAGE = 20;
 
-// Icon and .tone-* colour per kind. Amber stays reserved for new enquiries.
+// Icon and .tone-* colour per kind.
 const KINDS = {
-  'enquiry.created': [InboxIcon, 'amber'],
-  'enquiry.status': [CheckIcon, 'blue'],
   'review.created': [StarIcon, 'amber'],
   'package.created': [PlusIcon, 'cyan'],
   'package.updated': [EditIcon, 'cyan'],
@@ -92,7 +90,6 @@ export default function NotificationBell({ loginId }) {
   const pick = (item) => {
     setOpen(false);
     if (item.kind === 'review.created') navigate('/reviews');
-    else if (item.enquiry_id) navigate(`/enquiries/${item.enquiry_id}`);
     else if (item.package_id) navigate(`/packages/${item.package_id}`);
     else if (item.kind.startsWith('package.')) navigate('/packages');
     else navigate('/profile');
@@ -216,7 +213,7 @@ function FeedList({ scope, loginId, seenAt, onPick }) {
         <BellIcon size={28} />
         <strong>{scope === 'notifications' ? 'You’re all caught up' : 'No activity yet'}</strong>
         {scope === 'notifications'
-          ? 'New enquiries and changes made by your team or NexAround appear here.'
+          ? 'New reviews and changes made by your team or NexAround appear here.'
           : 'Everything that happens to your listing is logged here.'}
       </div>
     );

@@ -2,13 +2,9 @@ import { Link } from 'react-router-dom';
 import { useApi, mediaUrl } from '../api';
 import { useAuth } from '../auth';
 import { RESYNC, useLiveEvent } from '../live';
-import { TicketIcon, InboxIcon, ClockIcon, CheckIcon, PlusIcon, EditIcon } from '../components/Icons';
-import { Avatar } from '../components/Kit';
-import { EmptyState, EnquiryStatusPill, ListRow, Loader, StatusPill } from '../components/Lists';
-import {
-  formatAge, formatDateTime, formatDay, guestsLabel,
-  formatPrice, basisLabel, visibility, visibilityTone,
-} from '../format';
+import { TicketIcon, CheckIcon, PlusIcon, EditIcon } from '../components/Icons';
+import { EmptyState, ListRow, Loader, StatusPill } from '../components/Lists';
+import { formatPrice, basisLabel, visibility, visibilityTone } from '../format';
 
 // The dashboard shows the first few; the rest are one click away.
 const PACKAGE_PREVIEW = 5;
@@ -16,29 +12,18 @@ const PACKAGE_PREVIEW = 5;
 export default function Dashboard() {
   const { me } = useAuth();
   const { data: stats, refetch: refetchStats } = useApi('/partner/stats');
-  const { data: recent, refetch: refetchRecent } = useApi('/partner/enquiries?page=1&page_size=5');
   const { data: packageData, refetch: refetchPackages } = useApi('/partner/packages');
 
-  useLiveEvent(
-    ['enquiry.created', 'enquiry.updated', 'packages.changed', 'account.changed', RESYNC],
-    ({ type }) => {
-      refetchStats();
-      if (type !== 'packages.changed' && type !== 'account.changed') refetchRecent();
-      if (!type.startsWith('enquiry.')) refetchPackages();
-    },
-  );
+  // No enquiries here: travellers' requests go to NexAround, not the vendor.
+  useLiveEvent(['packages.changed', 'account.changed', RESYNC], () => {
+    refetchStats();
+    refetchPackages();
+  });
   const packages = packageData?.packages || [];
-  const newCount = stats?.enquiries_new ?? 0;
 
   const tiles = [
     { label: 'Packages live', value: stats?.packages_published, Icon: CheckIcon,
       sub: `${stats?.packages_total ?? 0} in total`, to: '/packages' },
-    { label: 'New enquiries', value: stats?.enquiries_new, Icon: InboxIcon,
-      sub: newCount > 0 ? 'waiting for a reply →' : 'waiting for a reply', to: '/enquiries?status=new', warm: newCount > 0 },
-    { label: 'Last 30 days', value: stats?.enquiries_last_30d, Icon: ClockIcon,
-      sub: 'enquiries received', to: '/enquiries' },
-    { label: 'All enquiries', value: stats?.enquiries_total, Icon: TicketIcon,
-      sub: 'since you joined', to: '/enquiries' },
   ];
 
   const vendorName = me?.vendor_name || 'Partner';
@@ -73,40 +58,7 @@ export default function Dashboard() {
         ))}
       </div>
 
-      <div className="dash-cols">
-        <section className="panel">
-          <div className="panel-head">
-            <span className="panel-title">Latest enquiries</span>
-            <Link className="link-btn" to="/enquiries">See all</Link>
-          </div>
-
-          {!recent && <div className="panel-pad"><Loader /></div>}
-
-          {recent?.enquiries.length === 0 && (
-            <EmptyState icon={InboxIcon} title="No enquiries yet" pad={40}>
-              They arrive here when a traveller asks about one of your packages.
-            </EmptyState>
-          )}
-
-          {recent?.enquiries.map((e) => (
-            <ListRow
-              key={e.id}
-              to={`/enquiries/${e.id}`}
-              lead={<Avatar name={e.contact_name} />}
-              title={e.contact_name}
-              strong={e.status === 'new'}
-              subs={[e.package_title_snapshot || 'General enquiry', guestsLabel(e.party_size), formatDay(e.preferred_date)]
-                .filter(Boolean).join(' · ')}
-              side={(
-                <>
-                  <span title={formatDateTime(e.created_at)}>{formatAge(e.created_at)}</span>
-                  <EnquiryStatusPill status={e.status} />
-                </>
-              )}
-            />
-          ))}
-        </section>
-
+      <div className="dash-cols single">
         <section className="panel">
           <div className="panel-head">
             <span className="panel-title">Your packages</span>

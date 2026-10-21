@@ -16,7 +16,7 @@ from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 from fastapi import (
-    APIRouter, BackgroundTasks, Depends, File, Header, HTTPException, Query, Request,
+    APIRouter, Depends, File, Header, HTTPException, Query, Request,
     UploadFile, status,
 )
 from fastapi.responses import StreamingResponse
@@ -37,9 +37,7 @@ from app.schemas.audit import (
     PartnerSessionOut,
 )
 from app.schemas.partner import (
-    ENQUIRY_STATUSES,
     PartnerActivity, PartnerActivityListResponse, PartnerActivityUnreadResponse,
-    PartnerEnquiryListResponse, PartnerEnquiryResponse, PartnerEnquiryUpdate,
     PartnerForgotPasswordRequest, PartnerLoginRequest, PartnerMe,
     PartnerMessageResponse, PartnerPackageCreate, PartnerPackageListResponse,
     PartnerPackageResponse, PartnerPackageUpdate, PartnerReviewListResponse,
@@ -48,8 +46,7 @@ from app.schemas.partner import (
     PartnerVendorProfileUpdate,
 )
 from app.services import (
-    audit, enquiry_lifecycle, enquiry_notifications, google_places_client,
-    partner_activity, partner_events,
+    audit, google_places_client, partner_activity, partner_events,
 )
 from app.services.email_service import send_vendor_invite_email
 from app.services import experience_reviews
@@ -494,9 +491,15 @@ async def partner_event_stream(token: str = Depends(oauth2_scheme)):
 
 _PARTNER_VENDOR_SCALARS = (
     "name", "description", "address", "city", "country_code",
+    "contact_email", "website", "logo_url", "photo_urls",
+)
+
+# How travellers reach a vendor directly. Admin only: bookings go through
+# Nexaround, so a vendor cannot add a direct line around the commission. The
+# portal shows them read-only.
+_ADMIN_ONLY_VENDOR_CONTACTS = (
     "contact_phone", "contact_whatsapp", "contact_instagram",
-    "contact_facebook", "contact_x", "contact_email", "website",
-    "logo_url", "photo_urls",
+    "contact_facebook", "contact_x",
 )
 
 _PARTNER_PACKAGE_SCALARS = (
@@ -582,32 +585,6 @@ def _package_out(package) -> PartnerPackageResponse:
         longitude=lng,
         created_at=package.created_at,
         updated_at=package.updated_at,
-    )
-
-
-def _enquiry_out(e) -> PartnerEnquiryResponse:
-    return PartnerEnquiryResponse(
-        id=e.id,
-        package_id=e.package_id,
-        package_title_snapshot=e.package_title_snapshot,
-        contact_name=e.contact_name,
-        contact_phone=e.contact_phone,
-        contact_email=e.contact_email,
-        preferred_date=e.preferred_date,
-        party_size=e.party_size,
-        pickup_location=e.pickup_location,
-        message=e.message,
-        status=e.status,
-        vendor_notes=e.vendor_notes,
-        terms_version=e.terms_version,
-        terms_accepted_at=e.terms_accepted_at,
-        confirmed_date=e.confirmed_date,
-        confirmed_at=e.confirmed_at,
-        cancelled_at=e.cancelled_at,
-        cancellation_reason=e.cancellation_reason,
-        late_cancellation=e.late_cancellation,
-        free_cancellation_last_day=e.free_cancellation_last_day,
-        created_at=e.created_at,
     )
 
 
@@ -770,111 +747,6 @@ async def delete_partner_package(
     return {"status": "deleted"}
 
 
-# ── Enquiries ───────────────────────────────────────────────────────────────
-
-@router.get("/enquiries", response_model=PartnerEnquiryListResponse)
-async def list_partner_enquiries(
-    status_filter: Optional[str] = Query(None, alias="status"),
-    page: int = Query(1, ge=1),
-    page_size: int = Query(25, ge=1, le=100),
-    db: AsyncSession = Depends(get_db),
-    principal: VendorPrincipal = Depends(get_current_vendor),
-):
-    """This vendor's enquiries.
-
-    There is deliberately NO `vendor_id` parameter. The admin version of this
-    endpoint has one, and copying it across would hand vendor A vendor B's
-    entire inbox with a single query string. The scope comes from the token.
-    """
-    rows, total = await ExperienceRepository(db).list_enquiries(
-        status=status_filter,
-        vendor_id=principal.vendor.id,
-        page=page,
-        page_size=page_size,
-    )
-    return PartnerEnquiryListResponse(
-        enquiries=[_enquiry_out(r) for r in rows],
-        total=total,
-        page=page,
-        page_size=page_size,
-    )
-
-
-@router.get("/enquiries/{enquiry_id}", response_model=PartnerEnquiryResponse)
-async def get_partner_enquiry(
-    enquiry_id: uuid.UUID,
-    db: AsyncSession = Depends(get_db),
-    principal: VendorPrincipal = Depends(get_current_vendor),
-):
-    """One enquiry, so a link to it opens whichever page of the list it is on.
-
-    Scoped in the query by `get_enquiry_for_vendor`; another vendor's id is a
-    404, the same as one that does not exist.
-    """
-    enquiry = await ExperienceRepository(db).get_enquiry_for_vendor(
-        enquiry_id, principal.vendor.id
-    )
-    if enquiry is None:
-        raise HTTPException(status_code=404, detail="Enquiry not found")
-    return _enquiry_out(enquiry)
-
-
-@router.patch("/enquiries/{enquiry_id}", response_model=PartnerEnquiryResponse)
-async def update_partner_enquiry(
-    enquiry_id: uuid.UUID,
-    data: PartnerEnquiryUpdate,
-    background_tasks: BackgroundTasks,
-    db: AsyncSession = Depends(get_db),
-    principal: VendorPrincipal = Depends(get_current_vendor),
-):
-    enquiry = await ExperienceRepository(db).get_enquiry_for_vendor(
-        enquiry_id, principal.vendor.id
-    )
-    if enquiry is None:
-        raise HTTPException(status_code=404, detail="Enquiry not found")
-
-    activity = None
-    event = None
-    if data.status is not None:
-        # The column has no CHECK constraint, so an unvalidated status would
-        # let a vendor write "deleted" and vanish the row from every filtered
-        # admin view. The lifecycle also keeps a cancellation final and a
-        # confirmation dated.
-        error = enquiry_lifecycle.vendor_status_error(
-            enquiry.status, data.status,
-            enquiry_lifecycle.booked_date(enquiry, data.confirmed_date),
-        )
-        if error:
-            raise HTTPException(status_code=400, detail=error)
-        before = enquiry.status
-        event = enquiry_lifecycle.apply_status(
-            enquiry, data.status,
-            now=datetime.now(timezone.utc),
-            confirmed_date=data.confirmed_date,
-            reason=data.cancellation_reason,
-        )
-        if enquiry.status != before:
-            activity = partner_activity.enquiry_status(
-                db, enquiry, actor=partner_activity.VENDOR, login=principal.login,
-            )
-    if data.vendor_notes is not None:
-        # Their own field. `admin_notes` is the platform's and stays untouched.
-        enquiry.vendor_notes = data.vendor_notes
-
-    await db.commit()
-    await db.refresh(enquiry)
-    # For the vendor's other tabs and logins: their badge and list follow.
-    await partner_events.publish(
-        principal.vendor.id,
-        partner_events.ENQUIRY_UPDATED,
-        partner_events.enquiry_payload(enquiry),
-    )
-    await partner_activity.announce(activity)
-    if event in (enquiry_lifecycle.CONFIRMED, enquiry_lifecycle.PROVIDER_CANCELLED):
-        background_tasks.add_task(enquiry_notifications.booking_update, enquiry.id, event)
-    return _enquiry_out(enquiry)
-
-
 # ── Reviews ─────────────────────────────────────────────────────────────────
 
 def _review_out(r) -> PartnerReviewResponse:
@@ -974,6 +846,18 @@ def _not_mine(login_id):
     )
 
 
+def _shown(vendor_id):
+    """This vendor's lines, less the enquiry lines written before vendors
+    stopped seeing requests: they name the traveller."""
+    from sqlalchemy import and_
+    from app.models.experience import VendorActivity
+
+    return and_(
+        VendorActivity.vendor_id == vendor_id,
+        VendorActivity.kind.notlike("enquiry.%"),
+    )
+
+
 async def _unread_count(db: AsyncSession, principal: VendorPrincipal) -> int:
     from sqlalchemy import func, select
     from app.models.experience import VendorActivity
@@ -985,10 +869,7 @@ async def _unread_count(db: AsyncSession, principal: VendorPrincipal) -> int:
     query = (
         select(func.count())
         .select_from(VendorActivity)
-        .where(
-            VendorActivity.vendor_id == principal.vendor.id,
-            _not_mine(principal.login.id),
-        )
+        .where(_shown(principal.vendor.id), _not_mine(principal.login.id))
     )
     if since is not None:
         query = query.where(VendorActivity.created_at > since)
@@ -1007,7 +888,7 @@ async def list_partner_activity(
     from sqlalchemy import select
     from app.models.experience import VendorActivity
 
-    query = select(VendorActivity).where(VendorActivity.vendor_id == principal.vendor.id)
+    query = select(VendorActivity).where(_shown(principal.vendor.id))
     if scope == "notifications":
         query = query.where(_not_mine(principal.login.id))
     if before is not None:

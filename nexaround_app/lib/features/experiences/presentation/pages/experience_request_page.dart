@@ -488,7 +488,7 @@ class _ExperienceRequestPageState extends State<ExperienceRequestPage> {
         _buildTerms(),
         const SizedBox(height: 14),
         const Text(
-          'This is a booking request, not a confirmed booking. The provider '
+          'This is a booking request, not a confirmed booking. NexAround '
           'will contact you to confirm the date, price and pickup.',
           style: TextStyle(
               fontSize: 12, height: 1.4, color: AppColors.textSecondary),

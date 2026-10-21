@@ -880,7 +880,7 @@ export default function Experiences() {
                     <div>
                       <div className="xp-section">
                         <div className="xp-section-title">Direct contact</div>
-                        <div className="xp-section-hint">The email also receives new enquiry notifications.</div>
+                        <div className="xp-section-hint">Phone, WhatsApp and social links can be set only here; the vendor sees them read-only. Enquiries are not emailed to the vendor.</div>
                         <div className="form-grid-2">
                           <div className="form-group">
                             <label className="form-label">Phone (optional)</label>
@@ -946,7 +946,7 @@ export default function Experiences() {
                     <div>
                       <div className="xp-section-head">
                         <div className="xp-section-hint">
-                          People who can sign in at partner.nexaround.com to edit this vendor's packages and answer its enquiries.
+                          People who can sign in at partner.nexaround.com to edit this vendor's packages. Enquiries are not shown there.
                         </div>
                         {!inviteOpen && (
                           <button className="btn btn-primary btn-sm" onClick={() => setInviteOpen(true)}>

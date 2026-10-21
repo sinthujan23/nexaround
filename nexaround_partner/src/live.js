@@ -183,26 +183,3 @@ export function useLiveEvent(types, handler) {
     return () => window.removeEventListener(LIVE_EVENT, listener);
   }, [key]);
 }
-
-// ── Desktop notifications ────────────────────────────────────────────────────
-// For a vendor who keeps the portal in a background tab. Opt-in from the
-// sidebar: browsers only show the permission prompt reliably after a click.
-
-export const desktopAlertsPermission = () =>
-  (typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'unsupported');
-
-export function showDesktopAlert({ title, body, tag, onClick }) {
-  if (desktopAlertsPermission() !== 'granted') return;
-  try {
-    // `tag` collapses the copies that each open tab would otherwise show.
-    const n = new Notification(title, { body, tag, icon: '/logo_2.png' });
-    n.onclick = () => {
-      window.focus();
-      onClick?.();
-      n.close();
-    };
-  } catch {
-    // Android Chrome only allows notifications from a service worker, and
-    // throws here. The in-page alert still shows.
-  }
-}

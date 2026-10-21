@@ -1,4 +1,4 @@
-// Small pieces the Packages, Enquiries and Profile pages share. The CSS they
+// Small pieces the Packages, Reviews and Profile pages share. The CSS they
 // rely on is the shared block at the end of index.css. List, filter and form
 // pieces live in Lists.jsx and Forms.jsx.
 
@@ -36,22 +36,6 @@ export function Section({ tone = 'teal', icon: Icon, title, hint, action, childr
       </div>
       {children}
     </section>
-  );
-}
-
-/**
- * A traveller's initials on a soft colour. The colour is picked from the name,
- * so the same traveller looks the same on the dashboard and in Enquiries.
- */
-export function Avatar({ name, size }) {
-  const words = (name || '?').trim().split(/\s+/);
-  const initials = (words[0][0] + (words.length > 1 ? words[words.length - 1][0] : '')).toUpperCase();
-  let hash = 0;
-  for (const ch of name || '') hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
-  return (
-    <span className={`avatar hue-${hash % 5} ${size === 'lg' ? 'lg' : ''}`} aria-hidden="true">
-      {initials}
-    </span>
   );
 }
 

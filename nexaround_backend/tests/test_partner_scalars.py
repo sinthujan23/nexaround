@@ -13,12 +13,11 @@ import pytest
 
 from app.api.v1.experiences_admin import _PACKAGE_SCALARS, _VENDOR_SCALARS
 from app.api.v1.partner import (
-    _PARTNER_PACKAGE_SCALARS, _PARTNER_VENDOR_SCALARS,
+    _ADMIN_ONLY_VENDOR_CONTACTS, _PARTNER_PACKAGE_SCALARS, _PARTNER_VENDOR_SCALARS,
 )
 from app.schemas.experience import ExperienceVendorBase
 from app.schemas.partner import (
-    PartnerEnquiryResponse, PartnerEnquiryUpdate, PartnerPackageBase,
-    PartnerVendorProfileResponse, PartnerVendorProfileUpdate,
+    PartnerPackageBase, PartnerVendorProfileResponse, PartnerVendorProfileUpdate,
 )
 
 # Moderation and reputation. A vendor may see some of these; none may be
@@ -26,6 +25,12 @@ from app.schemas.partner import (
 FORBIDDEN = {
     "is_active", "rating", "review_count", "internal_notes", "sort_order",
     "google_place_id",
+}
+# How travellers reach the vendor. Admin only, so a vendor cannot add a direct
+# line around Nexaround; the portal shows them read-only.
+CONTACTS = {
+    "contact_phone", "contact_whatsapp", "contact_instagram",
+    "contact_facebook", "contact_x",
 }
 
 
@@ -71,7 +76,17 @@ def test_the_two_vendor_tuples_differ_by_exactly_the_forbidden_set():
     conscious decision about whether a vendor may write it too — instead of the
     field quietly existing on one side only.
     """
-    assert set(_VENDOR_SCALARS) - set(_PARTNER_VENDOR_SCALARS) == FORBIDDEN
+    assert set(_VENDOR_SCALARS) - set(_PARTNER_VENDOR_SCALARS) == FORBIDDEN | CONTACTS
+
+
+def test_a_vendor_cannot_write_how_travellers_reach_them():
+    assert set(_ADMIN_ONLY_VENDOR_CONTACTS) == CONTACTS
+    assert not CONTACTS & set(_PARTNER_VENDOR_SCALARS)
+    assert not CONTACTS & set(PartnerVendorProfileUpdate.model_fields)
+
+
+def test_a_vendor_still_sees_their_contacts():
+    assert CONTACTS <= set(PartnerVendorProfileResponse.model_fields)
 
 
 def test_a_vendor_cannot_reorder_themselves_up_the_listing():
@@ -105,14 +120,3 @@ def test_moderation_state_is_visible_but_not_writable(field):
     """A vendor should see that their listing is hidden without un-hiding it."""
     assert field in PartnerVendorProfileResponse.model_fields
     assert field not in PartnerVendorProfileUpdate.model_fields
-
-
-def test_the_platforms_private_notes_never_reach_a_vendor():
-    assert "admin_notes" not in PartnerEnquiryResponse.model_fields
-    assert "admin_notes" not in PartnerEnquiryUpdate.model_fields
-    assert "vendor_notes" in PartnerEnquiryResponse.model_fields
-
-
-def test_a_vendor_does_not_learn_the_travellers_account_id():
-    """Contact details, yes. An identifier into the traveller app, no."""
-    assert "user_id" not in PartnerEnquiryResponse.model_fields

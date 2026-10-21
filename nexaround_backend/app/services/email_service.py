@@ -185,7 +185,7 @@ async def send_vendor_invite_email(
         return False
 
 
-async def send_vendor_enquiry_email(
+async def send_new_enquiry_email(
     to_email: str,
     *,
     vendor_name: str,
@@ -198,7 +198,10 @@ async def send_vendor_enquiry_email(
     pickup_location: str = "",
     message: str = "",
 ) -> bool:
-    """Notify a vendor that a traveller enquired about one of their packages."""
+    """Tell the platform inbox a traveller enquired about a vendor's package.
+
+    Nexaround's copy only; vendors are not emailed enquiries.
+    """
     subject = f"New NexAround enquiry: {package_title}"
 
     def _row(label: str, value: str) -> str:
@@ -226,7 +229,7 @@ async def send_vendor_enquiry_email(
       <div class="card">
         <div class="logo">nexaround</div>
         <h2>New enquiry for {vendor_name}</h2>
-        <p>A traveller has asked about one of your experiences:</p>
+        <p>A traveller has asked about this experience:</p>
         <div class="package">{package_title}</div>
         <table style="width:100%;border-collapse:collapse;font-size:14px;">
           {_row("Name", contact_name)}

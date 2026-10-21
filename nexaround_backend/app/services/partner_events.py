@@ -6,7 +6,7 @@ and refreshes the affected view without a page reload.
 
 Redis pub/sub rather than an in-process queue because the API runs
 WEB_CONCURRENCY uvicorn processes: the tab's stream and the request that caused
-the event (a traveller's enquiry, an admin edit) are usually on different ones.
+the event (a traveller's review, an admin edit) are usually on different ones.
 
 Pub/sub is fire-and-forget, so an event published while a tab is reconnecting
 is lost. That is acceptable because no event is the record — the rows are — and
@@ -31,8 +31,6 @@ HEARTBEAT_SECONDS = 20
 # How often an idle stream re-checks the session. Events re-check on their own.
 RECHECK_SECONDS = 300
 
-ENQUIRY_CREATED = "enquiry.created"
-ENQUIRY_UPDATED = "enquiry.updated"
 PACKAGES_CHANGED = "packages.changed"
 # The vendor record or one of its logins changed. Carries no data; its job is
 # to make every open stream re-check its session at once, so a suspension or a
@@ -46,23 +44,6 @@ SESSION_EXPIRED_MESSAGE = "Session expired. Please sign in again."
 
 def channel(vendor_id) -> str:
     return f"partner_events:{vendor_id}"
-
-
-def enquiry_payload(enquiry) -> dict:
-    """What an ENQUIRY_UPDATED event carries: the fields either side can change,
-    so an open enquiry follows a status change, a confirmation or a
-    cancellation without a reload. Never `admin_notes`: those are the
-    platform's, not the vendor's."""
-    return {
-        "id": enquiry.id,
-        "status": enquiry.status,
-        "vendor_notes": enquiry.vendor_notes,
-        "confirmed_date": enquiry.confirmed_date,
-        "cancelled_at": enquiry.cancelled_at,
-        "cancellation_reason": enquiry.cancellation_reason,
-        "late_cancellation": enquiry.late_cancellation,
-        "free_cancellation_last_day": enquiry.free_cancellation_last_day,
-    }
 
 
 def sse(event: str, data: dict) -> str:

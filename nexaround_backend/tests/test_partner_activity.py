@@ -112,28 +112,13 @@ def test_suspending_and_restoring_a_listing_have_their_own_lines():
     assert pa.profile_updated(FakeSession(), vendor, before, actor=pa.ADMIN)["kind"] == "listing.restored"
 
 
-def test_new_enquiry_wording_matches_the_backfill():
-    """Migration d5e6f7a8b9c0 builds the same text in SQL for old enquiries."""
-    enquiry = SimpleNamespace(
-        id=uuid.uuid4(), vendor_id=uuid.uuid4(), package_id=uuid.uuid4(),
-        contact_name="Amara", package_title_snapshot="Sunset Kayak",
-        party_size=4, preferred_date=date(2026, 10, 5),
-    )
-    payload = pa.enquiry_created(FakeSession(), enquiry)
-    assert payload["title"] == "New enquiry from Amara"
-    assert payload["body"] == "Sunset Kayak · 4 guests · 5 Oct 2026"
-    assert payload["actor"] == "traveller"
-    assert payload["actor_login_id"] is None
-
-
 def test_a_vendor_action_carries_who_did_it():
     login = SimpleNamespace(id=uuid.uuid4(), display_name=None, email="priya@lagoon.lk")
-    enquiry = SimpleNamespace(
-        id=uuid.uuid4(), vendor_id=uuid.uuid4(), contact_name="Amara",
-        package_title_snapshot=None, status="contacted",
+    package = SimpleNamespace(
+        id=uuid.uuid4(), vendor_id=uuid.uuid4(), title="Sunset Kayak", is_active=True,
     )
-    payload = pa.enquiry_status(FakeSession(), enquiry, actor=pa.VENDOR, login=login)
-    assert payload["title"] == "Amara's enquiry marked Contacted"
+    payload = pa.package_deleted(FakeSession(), package, actor=pa.VENDOR, login=login)
+    assert payload["title"] == "Sunset Kayak deleted"
     assert payload["actor_login_id"] == str(login.id)
     assert payload["actor_name"] == "priya@lagoon.lk"
 
