@@ -132,6 +132,33 @@ class _TravelStoryCardState extends State<TravelStoryCard>
     );
   }
 
+  static const double _textSize = 11.5;
+  static const double _textLineHeight = 1.4;
+
+  /// [text] with as many whole lines as fit the space left between the photo
+  /// and the footer, at most [maxLines]. The card has a fixed height, so a
+  /// header that wraps or a larger system font size shortens the text
+  /// instead of pushing the footer out of the card.
+  Widget _inSpaceLeft({
+    required int maxLines,
+    required EdgeInsets padding,
+    required Widget Function(int lines) text,
+  }) {
+    return LayoutBuilder(
+      builder: (context, box) {
+        final line =
+            MediaQuery.textScalerOf(context).scale(_textSize) * _textLineHeight;
+        // The half pixel absorbs rounding: two 16.1 px lines fit in 32.0.
+        final lines = math.min(
+          maxLines,
+          ((box.maxHeight - padding.vertical + 0.5) / line).floor(),
+        );
+        if (lines < 1) return const SizedBox.shrink();
+        return Padding(padding: padding, child: text(lines));
+      },
+    );
+  }
+
   Widget _buildImageContent(String url) {
     if (url.startsWith('http://') || url.startsWith('https://')) {
       return CachedNetworkImage(
@@ -351,6 +378,8 @@ class _TravelStoryCardState extends State<TravelStoryCard>
                               fontSize: 9,
                               color: AppColors.textTertiary,
                             ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ],
                       ),
@@ -359,25 +388,32 @@ class _TravelStoryCardState extends State<TravelStoryCard>
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: catColor.withOpacity(0.08),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: catColor.withOpacity(0.3),
-                              width: 0.8,
+                        // Capped so a long label ("CHINA · FURONG TOWN") can't
+                        // squeeze the name into many lines.
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 140),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
                             ),
-                          ),
-                          child: Text(
-                            widget.story.category,
-                            style: TextStyle(
-                              fontSize: 9,
-                              fontWeight: FontWeight.w800,
-                              color: catColor,
+                            decoration: BoxDecoration(
+                              color: catColor.withOpacity(0.08),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: catColor.withOpacity(0.3),
+                                width: 0.8,
+                              ),
+                            ),
+                            child: Text(
+                              widget.story.category,
+                              style: TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.w800,
+                                color: catColor,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
                         ),
@@ -401,158 +437,168 @@ class _TravelStoryCardState extends State<TravelStoryCard>
 
               // Photo and text. The shuffle button sits across the photo's
               // bottom edge: it is laid over both, so all of it takes taps.
-              Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Post image
-                      SizedBox(
-                        height: 240,
-                        width: double.infinity,
-                        child: Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            _buildImageGrid(allUrls),
-                            // Location Overlay Tag. Bounded to the photo's width so a
-                            // long place name ellipsizes instead of pushing the
-                            // distance off the card.
-                            Positioned(
-                              bottom: 8,
-                              left: 8,
-                              right: widget.onShuffle != null ? 56 : 8,
-                              child: Align(
-                                alignment: Alignment.centerLeft,
-                                child: GestureDetector(
-                                  onTap: widget.onLocationTap,
-                                  child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(10),
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                        vertical: 4,
-                                      ),
-                                      color: Colors.black.withOpacity(0.6),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          const Icon(
-                                            Icons.location_on,
-                                            size: 10,
-                                            color: Colors.white,
-                                          ),
-                                          const SizedBox(width: 4),
-                                          Flexible(
-                                            child: Text(
-                                              widget.story.locationName,
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: const TextStyle(
-                                                fontSize: 9.5,
-                                                fontWeight: FontWeight.w700,
-                                                color: Colors.white,
+              Expanded(
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Post image
+                        SizedBox(
+                          height: 240,
+                          width: double.infinity,
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              _buildImageGrid(allUrls),
+                              // Location Overlay Tag. Bounded to the photo's width so a
+                              // long place name ellipsizes instead of pushing the
+                              // distance off the card.
+                              Positioned(
+                                bottom: 8,
+                                left: 8,
+                                right: widget.onShuffle != null ? 56 : 8,
+                                child: Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: GestureDetector(
+                                    onTap: widget.onLocationTap,
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(10),
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 4,
+                                        ),
+                                        color: Colors.black.withOpacity(0.6),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            const Icon(
+                                              Icons.location_on,
+                                              size: 10,
+                                              color: Colors.white,
+                                            ),
+                                            const SizedBox(width: 4),
+                                            Flexible(
+                                              child: Text(
+                                                widget.story.locationName,
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: const TextStyle(
+                                                  fontSize: 9.5,
+                                                  fontWeight: FontWeight.w700,
+                                                  color: Colors.white,
+                                                ),
                                               ),
                                             ),
-                                          ),
-                                          if (widget.story.distanceM != null)
-                                            Text(
-                                              '  ·  ${storyDistanceLabel(widget.story.distanceM!)}',
-                                              style: const TextStyle(
-                                                fontSize: 9.5,
-                                                fontWeight: FontWeight.w600,
-                                                color: Colors.white70,
+                                            // Capped, so at a large text size
+                                            // it can't push the tag past the
+                                            // photo's edge.
+                                            if (widget.story.distanceM != null)
+                                              ConstrainedBox(
+                                                constraints: const BoxConstraints(maxWidth: 110),
+                                                child: Text(
+                                                  '  ·  ${storyDistanceLabel(widget.story.distanceM!)}',
+                                                  maxLines: 1,
+                                                  softWrap: false,
+                                                  overflow: TextOverflow.ellipsis,
+                                                  style: const TextStyle(
+                                                    fontSize: 9.5,
+                                                    fontWeight: FontWeight.w600,
+                                                    color: Colors.white70,
+                                                  ),
+                                                ),
                                               ),
-                                            ),
-                                        ],
+                                          ],
+                                        ),
                                       ),
                                     ),
                                   ),
                                 ),
                               ),
-                            ),
-                            if (widget.story.imageUrls.length > 1)
-                              Positioned(
-                                top: 8,
-                                right: 8,
-                                child: Container(
-                                  padding: const EdgeInsets.all(4),
-                                  decoration: BoxDecoration(
-                                    color: Colors.black.withOpacity(0.6),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: const Icon(
-                                    Icons.layers_rounded,
-                                    color: Colors.white,
-                                    size: 14,
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-
-                      // Story description. An official story's intro stops at two
-                      // lines: its footer carries the "Read the experience" tab.
-                      if (widget.story.hasArticle)
-                        Padding(
-                          padding: EdgeInsets.fromLTRB(
-                            12, 10, widget.onShuffle != null ? 54 : 12, 6,
-                          ),
-                          child: Text(
-                            widget.story.description,
-                            style: const TextStyle(
-                              fontSize: 11.5,
-                              height: 1.4,
-                              fontWeight: FontWeight.w400,
-                              color: AppColors.textSecondary,
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        )
-                      else
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
-                        child: Text.rich(
-                          TextSpan(
-                            children: [
-                              TextSpan(
-                                text: widget.story.description.length > 95
-                                    ? '${widget.story.description.substring(0, 92)}...'
-                                    : widget.story.description,
-                                style: const TextStyle(
-                                  fontSize: 11.5,
-                                  height: 1.4,
-                                  fontWeight: FontWeight.w400,
-                                  color: AppColors.textSecondary,
-                                ),
-                              ),
-                              if (widget.story.description.length > 95)
-                                const TextSpan(
-                                  text: ' see more',
-                                  style: TextStyle(
-                                    fontSize: 11.5,
-                                    height: 1.4,
-                                    fontWeight: FontWeight.bold,
-                                    color: AppColors.brandGreen,
+                              if (widget.story.imageUrls.length > 1)
+                                Positioned(
+                                  top: 8,
+                                  right: 8,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(4),
+                                    decoration: BoxDecoration(
+                                      color: Colors.black.withOpacity(0.6),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(
+                                      Icons.layers_rounded,
+                                      color: Colors.white,
+                                      size: 14,
+                                    ),
                                   ),
                                 ),
                             ],
                           ),
-                          maxLines: 3,
-                          overflow: TextOverflow.ellipsis,
                         ),
-                      ),
-                    ],
-                  ),
-                  if (widget.onShuffle != null)
-                    Positioned(top: 240 - 22, right: 10, child: _shuffleButton()),
-                ],
+
+                        // Story description, in the space left above the
+                        // footer (_inSpaceLeft). An official story's intro
+                        // stops at two lines: its footer carries the "See more"
+                        // tab.
+                        Expanded(
+                          child: _inSpaceLeft(
+                            maxLines: widget.story.hasArticle ? 2 : 3,
+                            padding: EdgeInsets.fromLTRB(
+                              12, 10, widget.onShuffle != null ? 54 : 12, 6,
+                            ),
+                            text: (lines) => widget.story.hasArticle
+                                ? Text(
+                                    widget.story.description,
+                                    style: const TextStyle(
+                                      fontSize: _textSize,
+                                      height: _textLineHeight,
+                                      fontWeight: FontWeight.w400,
+                                      color: AppColors.textSecondary,
+                                    ),
+                                    maxLines: lines,
+                                    overflow: TextOverflow.ellipsis,
+                                  )
+                                : Text.rich(
+                                    TextSpan(
+                                      children: [
+                                        TextSpan(
+                                          text: widget.story.description.length > 95
+                                              ? '${widget.story.description.substring(0, 92)}...'
+                                              : widget.story.description,
+                                          style: const TextStyle(
+                                            fontSize: _textSize,
+                                            height: _textLineHeight,
+                                            fontWeight: FontWeight.w400,
+                                            color: AppColors.textSecondary,
+                                          ),
+                                        ),
+                                        if (widget.story.description.length > 95)
+                                          const TextSpan(
+                                            text: ' see more',
+                                            style: TextStyle(
+                                              fontSize: _textSize,
+                                              height: _textLineHeight,
+                                              fontWeight: FontWeight.bold,
+                                              color: AppColors.brandGreen,
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                    maxLines: lines,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (widget.onShuffle != null)
+                      Positioned(top: 240 - 22, right: 10, child: _shuffleButton()),
+                  ],
+                ),
               ),
 
-              const Spacer(),
               const Divider(height: 1, color: AppColors.border),
 
               // Social actions footer
@@ -638,17 +684,24 @@ class _TravelStoryCardState extends State<TravelStoryCard>
                         ],
                       ),
                     ),
-                    if (widget.story.hasArticle) ...[
-                      const Spacer(),
+                    if (widget.story.hasArticle)
                       // On the home row the TravelByte card leads to all of
                       // them in Exclusive; its long read is opened from the
-                      // full-screen view.
-                      ReadExperienceTab(
-                        compact: true,
-                        label: 'See more',
-                        onTap: () => openExclusive(context),
+                      // full-screen view. Shrunk only if a large text size
+                      // leaves it too little room.
+                      Expanded(
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: ReadExperienceTab(
+                              compact: true,
+                              label: 'See more',
+                              onTap: () => openExclusive(context),
+                            ),
+                          ),
+                        ),
                       ),
-                    ],
                   ],
                 ),
               ),

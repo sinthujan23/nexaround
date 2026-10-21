@@ -111,8 +111,8 @@ class TravelStory {
   bool get hasArticle => isOfficial && (articleMd ?? '').trim().isNotEmpty;
 
   /// Photo URL -> tiny base64 WebP from the server, shown blurred while that
-  /// photo loads (StoryPhotoPreview). Not written to the Hive cache or sent
-  /// when posting: offline, the photos come from the image cache anyway.
+  /// photo loads (StoryPhotoPreview). Kept in the Hive cache too, so stories
+  /// shown from it (offline, or when a fetch fails) still get the blur.
   final Map<String, String> imagePreviews;
 
   TravelStory({
@@ -302,6 +302,8 @@ class TravelStory {
       'is_official': isOfficial,
       'title': title,
       'article_md': articleMd,
+      // For the Hive cache; the server ignores it when a traveller posts.
+      'image_previews': imagePreviews,
     };
   }
 }
