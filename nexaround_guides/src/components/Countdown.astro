@@ -1,0 +1,13 @@
+---
+// Days, hours and minutes to the next start date. startCountdowns() in
+// lib/client.ts keeps it ticking; it says "Happening now" while the festival
+// is on, and hides itself when no next date is known.
+interface Props { start: Date; tone?: 'light' | 'dark' }
+const { start, tone = 'light' } = Astro.props;
+const days = Math.max(0, Math.floor((+start - Date.now()) / 864e5));
+const units = [['d', 'days', days], ['h', 'hours', 0], ['m', 'mins', 0]] as const;
+---
+<div class:list={['countdown', `countdown-${tone}`]} data-countdown role="timer" aria-label="Time until the next dates">
+  {units.map(([k, label, v]) => <span class="cd-unit"><b data-cd={k}>{String(v).padStart(2, '0')}</b><small>{label}</small></span>)}
+  <span class="cd-on">Happening now</span>
+</div>

@@ -223,7 +223,7 @@ export default function Settings() {
         <div style={{ borderTop: '1px solid var(--border)', paddingTop: '24px', marginTop: '24px' }}>
           <h4 style={{ marginBottom: '12px', color: 'var(--text-primary)' }}>Currency Exchange Rates</h4>
           <p style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
-            Converts experience prices into each traveller's currency in the app. Saving a new key fetches the rates with it straight away.
+            Converts Odyssey and Discover prices into each traveller's currency. Experience prices are typed, not converted. Saving a new key fetches the rates with it straight away.
           </p>
           <SecretField
             label="ExchangeRate-API Key"

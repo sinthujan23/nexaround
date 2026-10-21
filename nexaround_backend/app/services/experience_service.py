@@ -109,6 +109,7 @@ def package_to_card(
 ) -> ExperiencePackageCard:
     lat, lng = get_lat_lng(package.location)
     amount = float(package.price_amount) if package.price_amount is not None else None
+    usd = float(package.price_usd) if package.price_usd is not None else None
     vendor = package.vendor
     vendor_name = vendor.name if vendor else ""
     vendor_whatsapp = vendor.contact_whatsapp if vendor else None
@@ -142,6 +143,7 @@ def package_to_card(
             package.price_currency or "USD",
             package.price_basis or "per_person",
             package.max_participants,
+            usd,
         ),
         max_participants=package.max_participants,
         duration_minutes=package.duration_minutes,

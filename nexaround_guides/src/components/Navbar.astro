@@ -1,5 +1,6 @@
 ---
 import Icon from './Icon.astro';
+import LanguagePicker from './LanguagePicker.astro';
 import { PILLARS, PILLAR_KEYS } from '../data/pillars';
 import { SITE } from '../site';
 import { getAppLink } from '../lib/app';
@@ -20,7 +21,7 @@ const isCurrent = (href: string) => path === href || path.startsWith(href);
 ---
 <header class:list={['navbar', { 'navbar-article': article }]} data-navbar>
   <div class="navbar-inner">
-    <a href="/" class="brand" aria-label={`${SITE.name}, home`}>
+    <a href="/" class="brand notranslate" translate="no" aria-label={`${SITE.name}, home`}>
       <span class="brand-logo"><img src="/logo_2.png" alt="" width="30" height="30" /></span>
       <span>
         <span class="brand-title">nexARound <span style="font-weight: 300">Guides</span></span>
@@ -39,6 +40,7 @@ const isCurrent = (href: string) => path === href || path.startsWith(href);
     )}
 
     <div class="nav-actions">
+      <LanguagePicker />
       <button type="button" class="saved-btn" data-drawer-open aria-label={t.savedGuides}>
         <Icon name="bookmark" /><span class="saved-label">{t.saved}</span><span class="saved-count" data-saved-count hidden>0</span>
       </button>
@@ -55,6 +57,7 @@ const isCurrent = (href: string) => path === href || path.startsWith(href);
         <a href={i.href} aria-current={isCurrent(i.href) ? 'page' : undefined}>{i.name}</a>
       ))}
       <a href={getAppLink('nav-menu')} class="btn-get-app drawer-cta"><Icon name="smartphone" /><span>{t.getApp}</span></a>
+      <LanguagePicker variant="menu" />
     </nav>
   </div>
   {article && <div class="read-progress" data-read-progress aria-hidden="true"></div>}

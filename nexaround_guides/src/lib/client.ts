@@ -99,3 +99,70 @@ export function renderNumber(el: HTMLElement, progress = 1) {
   const neg = el.dataset.neg === '1' && to !== 0 ? '−' : '';
   el.textContent = prefix + neg + fmtNum(to, Number(el.dataset.dec ?? 0)) + (el.dataset.suffix ?? '');
 }
+
+// Festivals: dates come as JSON ({s: start, e: end, t: "6–20 Feb 2027"}, from
+// src/lib/events.ts) and are compared with the reader's today, so countdowns
+// stay right however long ago the page was built.
+export interface EventDay { s: string; e: string; t: string }
+export interface NextEvent { d: EventDay; days: number; on: boolean }
+
+export function nextEvent(dates: EventDay[]): NextEvent | null {
+  const now = new Date();
+  const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+  for (const d of [...dates].sort((a, b) => a.s.localeCompare(b.s))) {
+    const start = Date.parse(d.s);
+    if (Date.parse(d.e) >= today) return { d, days: Math.round((start - today) / 864e5), on: start <= today };
+  }
+  return null;
+}
+
+export function countdown(n: NextEvent | null): string {
+  if (!n) return 'Next dates coming soon';
+  if (n.on) return 'On now';
+  if (n.days === 1) return 'Tomorrow';
+  if (n.days < 60) return `In ${n.days} days`;
+  return `In ${Math.round(n.days / 30.44)} months`;
+}
+
+/** Fill every [data-event] element: [data-event-date] gets the next dates, [data-event-in] the countdown. */
+export function hydrateEvents(root: ParentNode = document) {
+  const els = [...root.querySelectorAll<HTMLElement>('[data-event]')];
+  if (root instanceof HTMLElement && root.matches('[data-event]')) els.unshift(root);
+  els.forEach((el) => {
+    const n = nextEvent(JSON.parse(el.dataset.event ?? '[]'));
+    el.dataset.next = n ? n.d.s : '9999';
+    el.querySelectorAll('[data-event-date]').forEach((x) => { if (n) x.textContent = n.d.t; });
+    if (n) {
+      const start = new Date(`${n.d.s}T00:00:00Z`);
+      el.querySelectorAll('[data-event-day]').forEach((x) => (x.textContent = String(start.getUTCDate())));
+      el.querySelectorAll('[data-event-mon]').forEach((x) => (x.textContent = start.toLocaleDateString('en-GB', { month: 'short', timeZone: 'UTC' })));
+      el.querySelectorAll('[data-event-yr]').forEach((x) => (x.textContent = String(start.getUTCFullYear())));
+    }
+    el.querySelectorAll('[data-event-in]').forEach((x) => {
+      x.textContent = countdown(n);
+      x.classList.toggle('is-on', !!n?.on);
+    });
+  });
+}
+
+/** Live "days / hours / minutes" boxes: [data-countdown] inside an element hydrated by hydrateEvents. */
+export function startCountdowns(root: ParentNode = document) {
+  const boxes = [...root.querySelectorAll<HTMLElement>('[data-countdown]')];
+  if (!boxes.length) return;
+  const tick = () =>
+    boxes.forEach((box) => {
+      const host = box.closest<HTMLElement>('[data-next]');
+      const next = host?.dataset.next;
+      if (!next || next === '9999') return;
+      const [y, m, d] = next.split('-').map(Number);
+      const ms = new Date(y, m - 1, d).getTime() - Date.now();
+      box.classList.toggle('is-on', ms <= 0);
+      const left = Math.max(0, ms);
+      const set = (k: string, v: number) => { const el = box.querySelector(`[data-cd="${k}"]`); if (el) el.textContent = String(v).padStart(2, '0'); };
+      set('d', Math.floor(left / 864e5));
+      set('h', Math.floor((left % 864e5) / 36e5));
+      set('m', Math.floor((left % 36e5) / 6e4));
+    });
+  tick();
+  window.setInterval(tick, 30_000);
+}

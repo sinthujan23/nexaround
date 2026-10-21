@@ -3,6 +3,9 @@ import Base from '../../layouts/Base.astro';
 import Icon from '../../components/Icon.astro';
 import GuideCard from '../../components/GuideCard.astro';
 import AppCta from '../../components/AppCta.astro';
+import FestivalCalendar from '../../components/FestivalCalendar.astro';
+import FestivalsHero from '../../components/FestivalsHero.astro';
+import GuideAppBand from '../../components/GuideAppBand.astro';
 import { PILLARS, PILLAR_KEYS, type PillarKey } from '../../data/pillars';
 import { getGuides } from '../../lib/guides';
 
@@ -27,6 +30,9 @@ const jsonLd = [
 ];
 ---
 <Base title={pillar.name} description={pillar.intro} jsonLd={jsonLd}>
+  {key === 'festivals' ? (
+    <FestivalsHero guides={guides} name={pillar.name} short={pillar.short} intro={pillar.intro} />
+  ) : (
   <section class="hero hero-page">
     <div class="container hero-inner">
       <nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span aria-hidden="true">›</span><span aria-current="page">{pillar.name}</span></nav>
@@ -37,7 +43,21 @@ const jsonLd = [
       </div>
     </div>
   </section>
+  )}
 
+  {key === 'festivals' && guides.length > 0 ? (
+    <FestivalCalendar guides={guides}>
+      <GuideAppBand
+        slug="festivals"
+        medium="festivals-band"
+        festive
+        title="Going to a festival?"
+        title2="Let Odyssey plan the trip."
+        text="Give Odyssey, the trip planner in the nexARound app, the festival's dates, your interests and your budget. It builds the day-by-day plan, splits your budget across stays, transport, food and activities, and keeps it all in your pocket for the road."
+        points={['A day-by-day plan for the festival dates', 'Budget split across stays, transport, food and activities', 'Neva, the in-app assistant, for questions on the way']}
+      />
+    </FestivalCalendar>
+  ) : (
   <section class="section">
     <div class="container">
       {guides.length > 0 ? (
@@ -54,6 +74,7 @@ const jsonLd = [
       )}
     </div>
   </section>
+  )}
 
   <section class="section" style="padding-top: 0">
     <div class="container"><AppCta medium="section-footer" campaign={key} /></div>

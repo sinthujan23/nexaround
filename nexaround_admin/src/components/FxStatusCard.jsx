@@ -95,7 +95,7 @@ export default function FxStatusCard({ version }) {
           )}
           <p className="fx-note">
             Rates are published once a day. The server fetches them shortly after each
-            publish (about 30 requests a month) and the app converts every experience price
+            publish (about 30 requests a month) and Odyssey and Discover prices are converted
             with them. Refresh now uses one request.
           </p>
         </>

@@ -1,0 +1,68 @@
+---
+// The Festivals page header: a slowly drifting wall of festival photos behind
+// the title, confetti, bunting along the bottom edge, and the next festival
+// with a countdown (worked out in the reader's browser).
+import { Image } from 'astro:assets';
+import Icon from './Icon.astro';
+import Confetti from './Confetti.astro';
+import { continentOf } from '../data/home';
+import { type Guide } from '../lib/guides';
+import { countdownText, datesJson, nextDate } from '../lib/events';
+
+interface Props { guides: Guide[]; name: string; short: string; intro: string }
+const { guides, name, short, intro } = Astro.props;
+const fests = guides
+  .filter((g) => g.data.event)
+  .map((g) => ({ g, next: nextDate(g.data.event!.dates) }))
+  .sort((a, b) => +(a.next?.start ?? Infinity) - +(b.next?.start ?? Infinity));
+const continents = new Set(fests.map(({ g }) => continentOf(g.id)).filter(Boolean)).size;
+const nameOf = (g: Guide) => g.data.title.split(':')[0];
+const wall = [0, 1, 2].map((c) => fests.filter((_, i) => i % 3 === c).slice(0, 3));
+const first = fests.find((f) => f.next);
+const data = JSON.stringify(fests.map(({ g }) => ({ n: nameOf(g), d: JSON.parse(datesJson(g.data.event!.dates)) })));
+const FLAGS = 60;
+---
+<section class="hero hero-page hero-fest">
+  <div class="fest-wall" aria-hidden="true">
+    {wall.map((col) => (
+      <div class="fw-col">
+        {col.map(({ g }) => <Image src={g.data.cover} alt="" widths={[320, 480]} sizes="(max-width: 768px) 34vw, 260px" loading="eager" />)}
+      </div>
+    ))}
+  </div>
+  <Confetti seed={11} />
+  <div class="container hero-inner">
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span aria-hidden="true">›</span><span aria-current="page">{name}</span></nav>
+    <div class="hero-copy">
+      <span class="badge badge-fest"><Icon name="sparkle" /> {short}</span>
+      <h1 style="margin-top: 20px"><span class="text-gradient-fest">{name}</span></h1>
+      <p class="hero-lead">{intro}</p>
+      <div class="fest-stats" data-fests={data}>
+        <span><b>{fests.length}</b> festivals</span>
+        <span><b>{continents}</b> continents</span>
+        {first && (
+          <a href="#next-up"><Icon name="calendar" /> Next: <b data-next-name>{nameOf(first.g)}</b> <em data-next-in>{countdownText(first.next!.start)}</em></a>
+        )}
+      </div>
+    </div>
+  </div>
+  <div class="bunting" aria-hidden="true">{Array.from({ length: FLAGS }, (_, i) => <i style={`--i:${i}`}></i>)}</div>
+</section>
+
+<script>
+  import { countdown, nextEvent, type EventDay } from '../lib/client';
+
+  const box = document.querySelector<HTMLElement>('.fest-stats[data-fests]');
+  if (box) {
+    const best = (JSON.parse(box.dataset.fests ?? '[]') as { n: string; d: EventDay[] }[])
+      .map((f) => ({ n: f.n, next: nextEvent(f.d) }))
+      .filter((f) => f.next)
+      .sort((a, b) => a.next!.d.s.localeCompare(b.next!.d.s))[0];
+    const name = box.querySelector('[data-next-name]');
+    const when = box.querySelector('[data-next-in]');
+    if (best && name && when) {
+      name.textContent = best.n;
+      when.textContent = countdown(best.next);
+    }
+  }
+</script>

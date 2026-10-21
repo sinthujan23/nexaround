@@ -4,3 +4,7 @@
 //                                        robots.txt disallows everything
 // The dev server always shows drafts.
 export const isPreview = import.meta.env.DEV || process.env.SITE_MODE === 'preview';
+
+// Guide translations (/es/, /fr/, /de/, /hi/) are only built with
+// TRANSLATIONS=1 until all of them are written and checked.
+export const withTranslations = process.env.TRANSLATIONS === '1';

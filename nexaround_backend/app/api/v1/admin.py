@@ -83,6 +83,42 @@ class DashboardApiUsage(BaseModel):
     providers: List[ApiProviderUsage]
     generated_at: datetime
 
+class ActivityBucket(BaseModel):
+    start: date         # first Sri Lanka day of the day, week (Monday) or month
+    active: int         # explorers active in it
+    new: int            # of those, how many signed up in it
+    sessions: int       # app sessions the app reported
+    app_seconds: int    # time in the app across those sessions
+
+class FrequentExplorer(BaseModel):
+    id: uuid.UUID
+    display_name: str
+    email: str
+    avatar_url: Optional[str] = None
+    active_periods: int  # days, weeks or months active in the view's window
+    sessions: int
+    app_seconds: int
+    last_active_at: datetime
+
+class ActivityView(BaseModel):
+    buckets: List[ActivityBucket]
+    top: List[FrequentExplorer]
+
+class ExplorerActivity(BaseModel):
+    today: int
+    yesterday: int
+    last_7d: int
+    prev_7d: int
+    last_30d: int
+    prev_30d: int
+    avg_daily_30d: float
+    regulars_30d: int    # active on `regular_days` or more of the last 30 days
+    regular_days: int
+    daily: ActivityView
+    weekly: ActivityView
+    monthly: ActivityView
+    generated_at: datetime
+
 class AnnouncementRequest(BaseModel):
     title: str
     message: str
@@ -464,6 +500,149 @@ async def get_dashboard_api_usage(
 
     return DashboardApiUsage(
         days=day_list, providers=providers, generated_at=datetime.now(timezone.utc)
+    )
+
+
+# Active on this many of the last 30 days, about once a week, makes a regular.
+REGULAR_DAYS = 4
+FREQUENT_LIMIT = 10
+
+
+def _activity_view(starts: List[date], bucket_of, days: dict, people: dict) -> ActivityView:
+    """Active explorers per bucket in `starts`, and who was active in the most
+    of them. `bucket_of` maps a day to the start of its bucket."""
+    index = {s: i for i, s in enumerate(starts)}
+    buckets = [{"users": set(), "sessions": 0, "seconds": 0} for _ in starts]
+    per_user: dict = {}  # user_id -> [bucket indexes, sessions, seconds]
+    for day, users in days.items():
+        i = index.get(bucket_of(day))
+        if i is None:
+            continue
+        b = buckets[i]
+        for uid, (sessions, seconds) in users.items():
+            b["users"].add(uid)
+            b["sessions"] += sessions
+            b["seconds"] += seconds
+            u = per_user.setdefault(uid, [set(), 0, 0])
+            u[0].add(i)
+            u[1] += sessions
+            u[2] += seconds
+
+    ranked = sorted(
+        per_user.items(),
+        key=lambda kv: (len(kv[1][0]), kv[1][1], people[kv[0]]["last"]),
+        reverse=True,
+    )[:FREQUENT_LIMIT]
+    return ActivityView(
+        buckets=[
+            ActivityBucket(
+                start=start,
+                active=len(b["users"]),
+                new=sum(1 for uid in b["users"] if bucket_of(people[uid]["joined"]) == start),
+                sessions=b["sessions"],
+                app_seconds=b["seconds"],
+            )
+            for start, b in zip(starts, buckets)
+        ],
+        top=[
+            FrequentExplorer(
+                id=uid,
+                display_name=people[uid]["display_name"],
+                email=people[uid]["email"],
+                avatar_url=people[uid]["avatar_url"],
+                active_periods=len(periods),
+                sessions=sessions,
+                app_seconds=seconds,
+                last_active_at=people[uid]["last"],
+            )
+            for uid, (periods, sessions, seconds) in ranked
+        ],
+    )
+
+
+@router.get("/users/activity", response_model=ExplorerActivity)
+async def get_explorer_activity(
+    db: AsyncSession = Depends(get_db),
+    _ = Depends(verify_admin_token)
+):
+    """Active explorers per Sri Lanka day, week and month, and who comes back most.
+
+    An explorer is active on a day when the app reported a session for them
+    (user_sessions) or they used a feature that shows up in our API telemetry
+    (api_events). Sessions and time in the app come from user_sessions only.
+    """
+    today = datetime.now(DASHBOARD_TZ).date()
+    day_starts = [today - timedelta(days=i) for i in range(29, -1, -1)]
+    this_week = today - timedelta(days=today.weekday())
+    week_starts = [this_week - timedelta(weeks=i) for i in range(11, -1, -1)]
+    month_starts = []
+    year, month = today.year, today.month
+    for _i in range(12):
+        month_starts.append(date(year, month, 1))
+        year, month = (year, month - 1) if month > 1 else (year - 1, 12)
+    month_starts.reverse()
+    # 60 days back covers the 30 days before the last 30, for the change figure.
+    since_day = min(month_starts[0], today - timedelta(days=59))
+
+    rows = (await db.execute(text("""
+        WITH activity AS (
+            SELECT user_id, (created_at AT TIME ZONE :tz)::date AS day, created_at AS at,
+                   1 AS sessions, duration_seconds AS seconds
+            FROM user_sessions
+            WHERE created_at >= :since AND user_id IS NOT NULL
+            UNION ALL
+            SELECT user_id, (ts AT TIME ZONE :tz)::date, max(ts), 0, 0
+            FROM api_events
+            WHERE ts >= :since AND user_id IS NOT NULL
+            GROUP BY 1, 2
+        )
+        SELECT u.id AS user_id, a.day, sum(a.sessions) AS sessions, sum(a.seconds) AS seconds,
+               max(a.at) AS last_at, u.display_name, u.email, u.avatar_url,
+               (u.created_at AT TIME ZONE :tz)::date AS joined
+        FROM activity a JOIN users u ON u.id = a.user_id
+        WHERE u.id != :official
+        GROUP BY u.id, a.day
+    """), {
+        "tz": DASHBOARD_TZ_NAME,
+        "since": datetime.combine(since_day, time.min, tzinfo=DASHBOARD_TZ),
+        "official": OFFICIAL_USER_ID,
+    })).mappings().all()
+
+    people: dict = {}  # user_id -> profile and latest activity
+    days: dict = {}    # day -> {user_id: (sessions, seconds)}
+    for r in rows:
+        p = people.setdefault(r["user_id"], {
+            "display_name": r["display_name"], "email": r["email"],
+            "avatar_url": r["avatar_url"], "joined": r["joined"], "last": r["last_at"],
+        })
+        p["last"] = max(p["last"], r["last_at"])
+        days.setdefault(r["day"], {})[r["user_id"]] = (int(r["sessions"]), int(r["seconds"] or 0))
+
+    def active_between(first: date, last: date) -> set:
+        users = set()
+        for i in range((last - first).days + 1):
+            users.update(days.get(first + timedelta(days=i), {}))
+        return users
+
+    days_active_30d: dict = {}
+    for d in day_starts:
+        for uid in days.get(d, {}):
+            days_active_30d[uid] = days_active_30d.get(uid, 0) + 1
+
+    return ExplorerActivity(
+        today=len(days.get(today, {})),
+        yesterday=len(days.get(today - timedelta(days=1), {})),
+        last_7d=len(active_between(today - timedelta(days=6), today)),
+        prev_7d=len(active_between(today - timedelta(days=13), today - timedelta(days=7))),
+        last_30d=len(days_active_30d),
+        prev_30d=len(active_between(today - timedelta(days=59), today - timedelta(days=30))),
+        avg_daily_30d=round(sum(len(days.get(d, {})) for d in day_starts) / len(day_starts), 1),
+        regulars_30d=sum(1 for n in days_active_30d.values() if n >= REGULAR_DAYS),
+        regular_days=REGULAR_DAYS,
+        daily=_activity_view(day_starts, lambda d: d, days, people),
+        weekly=_activity_view(week_starts, lambda d: d - timedelta(days=d.weekday()), days, people),
+        monthly=_activity_view(month_starts, lambda d: d.replace(day=1), days, people),
+        generated_at=datetime.now(timezone.utc),
     )
 
 

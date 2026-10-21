@@ -1,0 +1,132 @@
+---
+// The Festivals page: the next festival in a spotlight with a live countdown,
+// a 12-month timeline (one dot per festival, in its continent's colour),
+// continent chips, and every festival as a ticket card sorted by its next
+// date. Sorting and countdowns run in the reader's browser against today.
+// The slot (the Odyssey band) goes between the spotlight and the calendar.
+import { Image } from 'astro:assets';
+import Icon from './Icon.astro';
+import CalTile from './CalTile.astro';
+import Countdown from './Countdown.astro';
+import FestCard from './FestCard.astro';
+import { continentOf } from '../data/home';
+import { guideUrl, type Guide } from '../lib/guides';
+import { continentColor, datesJson, formatRange, nextDate, MONTHS } from '../lib/events';
+
+interface Props { guides: Guide[] }
+const { guides } = Astro.props;
+const items = guides
+  .filter((g) => g.data.event)
+  .map((g) => {
+    const ev = g.data.event!;
+    return { g, ev, next: nextDate(ev.dates), continent: continentOf(g.id) };
+  })
+  .sort((a, b) => +(a.next?.start ?? Infinity) - +(b.next?.start ?? Infinity));
+const byMonth = MONTHS.map((_, i) => items.filter((x) => x.ev.months.includes(i + 1)));
+const continents = [...new Set(items.map((x) => x.continent).filter(Boolean))].sort();
+const nameOf = (g: Guide) => g.data.title.split(':')[0];
+---
+<div data-fest-cal>
+<section class="section fest-cal fest-cal-top">
+  <div class="container">
+    <div class="fest-spots" id="next-up">
+      {items.filter((x) => x.next).map(({ g, ev, next, continent }, i) => (
+        <article class="fest-spot" data-spot data-event={datesJson(ev.dates)} hidden={i > 0} style={`--cont:${continentColor(continent)}`}>
+          <a class="fest-spot-img" href={guideUrl(g)} tabindex="-1" aria-hidden="true">
+            <Image src={g.data.cover} alt="" widths={[640, 960, 1280]} sizes="(max-width: 900px) 100vw, 680px" loading={i === 0 ? 'eager' : 'lazy'} />
+            <CalTile date={next!.start} size="lg" year />
+          </a>
+          <div class="fest-spot-body">
+            <span class="fest-spot-label"><Icon name="sparkle" /> Next up</span>
+            <h2><a href={guideUrl(g)}>{nameOf(g)}</a></h2>
+            <p class="fest-spot-where"><Icon name="map-pin" /> {g.data.country}{g.data.region ? ` · ${g.data.region}` : ''}</p>
+            <p class="fest-spot-desc">{g.data.description}</p>
+            <p class="fest-spot-date"><Icon name="calendar" /> <span data-event-date>{formatRange(next!.start, next!.end)}</span></p>
+            <Countdown start={next!.start} />
+            <a class="btn btn-teal" href={guideUrl(g)}>Read the guide <Icon name="arrow-right" /></a>
+          </div>
+        </article>
+      ))}
+    </div>
+  </div>
+</section>
+
+<slot />
+
+<section class="section fest-cal">
+  <div class="container">
+    <div class="fest-head">
+      <span class="badge badge-gold"><Icon name="calendar" /> The festival year</span>
+      <h2>When the world <span class="text-gradient-fest">celebrates</span></h2>
+    </div>
+
+    <div class="fest-timeline" role="group" aria-label="Show festivals by month">
+      <button type="button" class="fest-all is-on" data-month="all" aria-pressed="true"><Icon name="sparkle" /> Coming up</button>
+      <div class="fest-months">
+        {MONTHS.map((m, i) => (
+          <button type="button" data-month={i + 1} aria-pressed="false" disabled={byMonth[i].length === 0} aria-label={`${m}: ${byMonth[i].length} festival${byMonth[i].length === 1 ? '' : 's'}`}>
+            <span class="fm-name">{m.slice(0, 3)}</span>
+            <span class="fm-dots">{byMonth[i].map((x) => <i style={`--cont:${continentColor(x.continent)}`}></i>)}</span>
+            <small class="fm-now">Now</small>
+          </button>
+        ))}
+      </div>
+    </div>
+    {continents.length > 1 && (
+      <div class="chips fest-conts" role="group" aria-label="Show festivals by continent">
+        <button type="button" class="chip is-on" data-cont="all" aria-pressed="true">Everywhere</button>
+        {continents.map((c) => <button type="button" class="chip" data-cont={c} aria-pressed="false" style={`--cont:${continentColor(c)}`}><i class="cont-dot"></i>{c}</button>)}
+      </div>
+    )}
+
+    <div class="fest-grid" data-fest-grid>
+      {items.map(({ g }, i) => <FestCard guide={g} eager={i < 3} />)}
+    </div>
+    <p class="fest-empty" data-fest-empty hidden>No festivals here yet for this month. Try another month or "Everywhere".</p>
+  </div>
+</section>
+</div>
+
+<script>
+  import { hydrateEvents, startCountdowns } from '../lib/client';
+
+  const root = document.querySelector<HTMLElement>('[data-fest-cal]');
+  if (root) {
+    hydrateEvents(root);
+
+    // The spotlight shows whichever festival comes next for this reader.
+    const spots = [...root.querySelectorAll<HTMLElement>('[data-spot]')].filter((s) => s.dataset.next !== '9999');
+    const first = spots.sort((a, b) => (a.dataset.next ?? '').localeCompare(b.dataset.next ?? ''))[0];
+    root.querySelectorAll<HTMLElement>('[data-spot]').forEach((s) => (s.hidden = s !== first));
+    startCountdowns(root.querySelector('.fest-spots') ?? root);
+
+    root.querySelectorAll<HTMLElement>('.fest-months [data-month]')[new Date().getMonth()]?.classList.add('is-now');
+
+    const grid = root.querySelector<HTMLElement>('[data-fest-grid]')!;
+    const cards = [...grid.querySelectorAll<HTMLElement>('[data-fest]')];
+    cards.sort((a, b) => (a.dataset.next ?? '9999').localeCompare(b.dataset.next ?? '9999')).forEach((c) => grid.appendChild(c));
+
+    let month = 'all';
+    let cont = 'all';
+    const apply = () => {
+      let shown = 0;
+      cards.forEach((c) => {
+        const ok = (month === 'all' || (c.dataset.months ?? '').split(',').includes(month)) && (cont === 'all' || c.dataset.continent === cont);
+        c.hidden = !ok;
+        if (ok) shown++;
+      });
+      root.querySelector<HTMLElement>('[data-fest-empty]')!.hidden = shown > 0;
+    };
+    const press = (sel: string, on: HTMLElement) =>
+      root.querySelectorAll<HTMLElement>(sel).forEach((b) => {
+        b.classList.toggle('is-on', b === on);
+        b.setAttribute('aria-pressed', String(b === on));
+      });
+    root.querySelectorAll<HTMLButtonElement>('[data-month]').forEach((b) =>
+      b.addEventListener('click', () => { month = b.dataset.month!; press('[data-month]', b); apply(); }),
+    );
+    root.querySelectorAll<HTMLButtonElement>('[data-cont]').forEach((b) =>
+      b.addEventListener('click', () => { cont = b.dataset.cont!; press('[data-cont]', b); apply(); }),
+    );
+  }
+</script>

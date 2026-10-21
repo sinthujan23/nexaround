@@ -1,30 +1,34 @@
 ---
-// On every guide: the step from reading to planning. Tagged links show
-// which guides send readers to the app.
+// On every guide (and on /festivals/, with its own words and confetti): the
+// step from reading to planning. Tagged links show which pages send readers
+// to the app.
 import { Image } from 'astro:assets';
 import Icon from './Icon.astro';
+import Confetti from './Confetti.astro';
 import StoreButtons from './StoreButtons.astro';
 import { getAppLink } from '../lib/app';
 import { ui, fill, type Lang } from '../lib/i18n';
 import plan from '../assets/app/odyssey-plan.png';
 import blueprints from '../assets/app/odyssey-blueprints.png';
 
-interface Props { place: string; slug: string; lang?: Lang }
-const { place, slug, lang = 'en' } = Astro.props;
+interface Props { place?: string; slug: string; lang?: Lang; medium?: string; festive?: boolean; title?: string; title2?: string; text?: string; points?: string[] }
+const { place = '', slug, lang = 'en', medium = 'guide-band', festive = false } = Astro.props;
 const t = ui(lang);
+const { title = fill(t.bandTitle, { place }), title2 = t.bandTitle2, text = t.bandText, points = t.bandPoints } = Astro.props;
 ---
-<section class="app-band" aria-label={t.bandAria}>
+<section class:list={['app-band', { 'app-band-fest': festive }]} aria-label={t.bandAria}>
+  {festive && <Confetti seed={5} count={18} />}
   <div class="container app-band-in">
     <div class="app-band-copy">
       <span class="badge badge-teal-glow"><Icon name="sparkle" /> {t.bandBadge}</span>
-      <h2>{fill(t.bandTitle, { place })} <span class="text-gradient-bright">{t.bandTitle2}</span></h2>
-      <p>{t.bandText}</p>
+      <h2>{title} <span class={festive ? 'text-gradient-fest' : 'text-gradient-bright'}>{title2}</span></h2>
+      <p>{text}</p>
       <ul class="app-band-points">
-        {t.bandPoints.map((pt) => <li><Icon name="check-circle" /> {pt}</li>)}
+        {points.map((pt) => <li><Icon name="check-circle" /> {pt}</li>)}
       </ul>
       <div class="app-band-cta">
-        <StoreButtons onDark medium="guide-band" campaign={slug} lang={lang} />
-        <a class="qr-mini on-dark" href={getAppLink('guide-band', slug)}>
+        <StoreButtons onDark medium={medium} campaign={slug} lang={lang} />
+        <a class="qr-mini on-dark" href={getAppLink(medium, slug)}>
           <img src="/app-qr.svg" alt="" width="64" height="64" />
           <span>{t.scan1}<br />{t.scan2}</span>
         </a>

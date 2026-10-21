@@ -7,6 +7,10 @@ import { render } from 'astro:content';
 import Base from '../layouts/Base.astro';
 import Icon from './Icon.astro';
 import RouteExplorer from './RouteExplorer.astro';
+import EventWhen from './EventWhen.astro';
+import CalTile from './CalTile.astro';
+import Confetti from './Confetti.astro';
+import Countdown from './Countdown.astro';
 import LegTable from './LegTable.astro';
 import StopList from './StopList.astro';
 import FuelPlanner from './FuelPlanner.astro';
@@ -18,6 +22,8 @@ import StoreButtons from './StoreButtons.astro';
 import { PILLARS, type PillarKey } from '../data/pillars';
 import { readMinutes, type Guide, type Translation } from '../lib/guides';
 import { parseFact } from '../lib/geo';
+import { continentColor, datesJson, formatRange, nextDate } from '../lib/events';
+import { continentOf } from '../data/home';
 import { ui, fill, formatDateIn, guidePath, LANGS, LANG_NAMES, type Lang } from '../lib/i18n';
 import { SITE } from '../site';
 
@@ -53,8 +59,13 @@ const alternates = versions.length > 1 ? versions.map((l) => ({ lang: l, href: h
 const routeLabel = fill(t.routeMapLabel, { title: d.title });
 const hasRoute = d.stops.length > 0 || d.routeLines.length > 0;
 const legKm = d.legs.reduce((s: number, l: { km: number }) => s + l.km, 0);
+// Festivals: the next dates go in the hero, and "When it happens" opens the article.
+const event = base.event;
+const eventNext = event ? nextDate(event.dates) : undefined;
+const eventColor = continentColor(continentOf(guide.id));
 const toc = [
-  ...(hasRoute ? [{ slug: 'route', text: d.legs.length ? t.tocLegs : t.tocRoute }] : []),
+  ...(hasRoute ? [{ slug: 'route', text: event ? 'On the map' : d.legs.length ? t.tocLegs : t.tocRoute }] : []),
+  ...(event ? [{ slug: 'when', text: 'When it happens' }] : []),
   ...headings.filter((h: { depth: number }) => h.depth === 2),
   ...(d.fuelGaps.length ? [{ slug: 'fuel-planner', text: t.fuelPlanner }] : []),
   ...(d.stops.length ? [{ slug: 'stops', text: t.stopsAlong }] : []),
@@ -67,7 +78,8 @@ const NO_APP_BAND = ['la-rinconada'];
 // In other languages the place opens the heading ("{place}: ..."), so it starts with a capital.
 const appPlace = x ? x.place.charAt(0).toUpperCase() + x.place.slice(1) : (() => {
   let p = base.title.includes(':') ? base.title.split(':')[0] : base.title;
-  return p.replace(/^How to (visit|plan) /, '').replace(/, .*$/, '').replace(/^The /, 'the ').replace(/^Free stops on /, 'a trip across ');
+  p = p.replace(/^How to (visit|plan) /, '').replace(/, .*$/, '').replace(/^The /, 'the ').replace(/^Free stops (on|in) /, 'a trip across ');
+  return event ? `a trip for ${p}` : p;
 })();
 // Counting numbers and km/miles only on English figures, whose format the parser knows.
 const facts = d.facts.map((f: { value: string; label: string }) => ({ ...f, num: lang === 'en' ? parseFact(f.value) : null }));
@@ -109,11 +121,12 @@ const jsonLd = [
 const [checkedPre, checkedPost] = t.checked.split('{date}');
 ---
 <Base title={d.title} description={d.description} image={base.cover} type="article" jsonLd={jsonLd} article={d.title} appCampaign={guide.id} lang={lang} alternates={alternates}>
-  <section class="hero hero-guide">
+  <section class:list={['hero hero-guide', { 'hero-festival': event }]}>
     <div class="hero-bg hero-zoom">
       <Image src={base.cover} alt="" widths={[960, 1600, 2000]} sizes="100vw" loading="eager" fetchpriority="high" />
     </div>
-    <div class="container hero-inner">
+    {event && <Confetti seed={guide.id.length * 31} count={22} />}
+    <div class:list={['container hero-inner', { 'hero-split': event }]}>
       <nav class="crumbs rise" aria-label="Breadcrumb">
         <a href="/">{t.home}</a><span aria-hidden="true">›</span><a href={`/${base.pillar}/`}>{pillarName}</a>
       </nav>
@@ -130,7 +143,7 @@ const [checkedPre, checkedPost] = t.checked.split('{date}');
           {d.region && <span><Icon name="map-pin" /> {d.region}</span>}
         </div>
         <div class="hero-actions rise d3">
-          {hasRoute && <a class="btn btn-white" href="#route"><Icon name="route" /> {d.legs.length ? t.driveLegByLeg : t.seeRoute}</a>}
+          {hasRoute && <a class="btn btn-white" href="#route"><Icon name={event ? 'map-pin' : 'route'} /> {event ? 'See where it happens' : d.legs.length ? t.driveLegByLeg : t.seeRoute}</a>}
           <button type="button" class="btn btn-glass btn-save" data-save={guide.id} aria-pressed="false"><Icon name="bookmark" /> <span data-save-label>{t.saveGuide}</span></button>
           <button type="button" class="btn btn-glass" data-share={url}><Icon name="share" /> {t.share}</button>
         </div>
@@ -146,6 +159,19 @@ const [checkedPre, checkedPost] = t.checked.split('{date}');
           </nav>
         )}
       </div>
+      {event && (
+        <aside class="hero-ticket rise d3" data-event={datesJson(event.dates)} style={`--cont:${eventColor}`} aria-label="Next dates">
+          <div class="ht-top">
+            {eventNext && <CalTile date={eventNext.start} />}
+            <div>
+              <small>{eventNext ? 'Next dates' : 'When'}</small>
+              <span class="ht-dates" data-event-date>{eventNext ? formatRange(eventNext.start, eventNext.end) : event.when}</span>
+            </div>
+          </div>
+          {eventNext && <Countdown start={eventNext.start} tone="dark" />}
+          <a class="ht-link" href="#when">All dates <Icon name="arrow-right" /></a>
+        </aside>
+      )}
     </div>
     <p class="hero-credit">{d.coverAlt}. {t.photo}: {base.coverCredit.author}, <a href={base.coverCredit.source}>{base.coverCredit.license}</a></p>
   </section>
@@ -173,7 +199,7 @@ const [checkedPre, checkedPost] = t.checked.split('{date}');
   <div class="container"><p class="credit-below">{t.cover}: {d.coverAlt}. {t.photo}: {base.coverCredit.author}, <a href={base.coverCredit.source}>{base.coverCredit.license}</a></p></div>
 
   {hasRoute && (
-    <RouteExplorer route={base.route} lines={d.routeLines} stops={d.stops} legs={d.legs} legsNote={d.legsNote} label={routeLabel} lang={lang} />
+    <RouteExplorer route={base.route} lines={d.routeLines} stops={d.stops} legs={d.legs} legsNote={d.legsNote} label={routeLabel} lang={lang} heading={event ? ['Where to see it', 'Where it', 'happens'] : undefined} />
   )}
 
   {!NO_APP_BAND.includes(guide.id) && <GuideAppBand place={appPlace} slug={guide.id} lang={lang} />}
@@ -193,6 +219,8 @@ const [checkedPre, checkedPost] = t.checked.split('{date}');
             {d.intro.split(/\n\s*\n/).map((p: string) => <p>{p.trim()}</p>)}
           </div>
         )}
+
+        {event && <EventWhen event={event} color={eventColor} />}
 
         <div class="prose block">
           <Content />
@@ -314,7 +342,13 @@ const [checkedPre, checkedPost] = t.checked.split('{date}');
 </Base>
 
 <script>
-  import { T, fill } from '../lib/client';
+  import { T, fill, hydrateEvents, startCountdowns } from '../lib/client';
+
+  // Festivals: the hero ticket's next dates and countdown.
+  document.querySelectorAll<HTMLElement>('.hero-ticket[data-event]').forEach((el) => {
+    hydrateEvents(el);
+    startCountdowns(el);
+  });
 
   // Contents: highlight the section being read and show how far through the page the reader is.
   const toc = document.querySelector<HTMLElement>('[data-toc]');

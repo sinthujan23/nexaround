@@ -43,6 +43,8 @@ services:
       # this block is an allowlist, so a value only in .env never arrives
       # and the code default silently wins.
       - PARTNER_PORTAL_URL=${PARTNER_PORTAL_URL:-https://partner.nexaround.com}
+      # Where the mounted Firebase key below sits. Without it no push is sent.
+      - FIREBASE_SERVICE_ACCOUNT_FILE=/etc/nexaround/firebase-sa.json
     volumes:
       - ./app:/app/app
       # Persist proxied place photos across container restarts.
@@ -109,6 +111,8 @@ services:
       # this block is an allowlist, so a value only in .env never arrives
       # and the code default silently wins.
       - PARTNER_PORTAL_URL=${PARTNER_PORTAL_URL:-https://partner.nexaround.com}
+      # Where the mounted Firebase key below sits. Without it no push is sent.
+      - FIREBASE_SERVICE_ACCOUNT_FILE=/etc/nexaround/firebase-sa.json
     volumes:
       - ./app:/app/app
       # The same photo volume as the api, or the two processes keep separate

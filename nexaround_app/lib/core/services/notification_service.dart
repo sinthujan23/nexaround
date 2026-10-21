@@ -7,6 +7,7 @@ import 'package:nexaround_app/core/constants/api_constants.dart';
 import 'package:nexaround_app/core/network/api_client.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/core/services/discovery_history_service.dart';
+import 'package:nexaround_app/features/planning/data/odyssey_repository.dart';
 
 /// Wraps Firebase Cloud Messaging: asks permission, grabs the device token,
 /// registers it with the backend, and funnels incoming messages into the local
@@ -136,6 +137,11 @@ class NotificationService {
       type: (m.data['type'] ?? '').toString(),
       data: m.data.map((k, v) => MapEntry(k, v)),
     );
+
+    // The plan is done: refresh the Plans list now rather than on its next poll.
+    if (m.data['type'] == 'odyssey_ready') {
+      OdysseyRepository.revision.value++;
+    }
 
     if (m.data['type'] == 'discovery_ready') {
       DiscoveryHistoryService.fetchHistory().then((history) {

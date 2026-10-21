@@ -1,0 +1,151 @@
+---
+// Live translation. Picking a language stores it in Google's `googtrans`
+// cookie and reloads; on every page with that cookie, Google's website
+// translator is loaded and translates the page in the reader's browser.
+// English readers never load anything from Google.
+// `bar`: globe button with a dropdown, in the navbar. `menu`: the same list
+// inside the mobile menu, used on small screens instead.
+// To add a language: one line below, with Google Translate's code, and keep
+// `grid-template-rows` on .lang-list (global.css) at half the count, rounded up.
+import Icon from './Icon.astro';
+
+interface Props { variant?: 'bar' | 'menu' }
+const { variant = 'bar' } = Astro.props;
+
+// [Google code, name in the language, name in English]
+const LANGS = [
+  ['en', 'English', 'English'],
+  ['ar', 'العربية', 'Arabic'],
+  ['bn', 'বাংলা', 'Bengali'],
+  ['zh-CN', '中文', 'Chinese'],
+  ['cs', 'Čeština', 'Czech'],
+  ['nl', 'Nederlands', 'Dutch'],
+  ['tl', 'Filipino', 'Filipino'],
+  ['fr', 'Français', 'French'],
+  ['de', 'Deutsch', 'German'],
+  ['el', 'Ελληνικά', 'Greek'],
+  ['gu', 'ગુજરાતી', 'Gujarati'],
+  ['iw', 'עברית', 'Hebrew'],
+  ['hi', 'हिन्दी', 'Hindi'],
+  ['hu', 'Magyar', 'Hungarian'],
+  ['id', 'Bahasa Indonesia', 'Indonesian'],
+  ['it', 'Italiano', 'Italian'],
+  ['ja', '日本語', 'Japanese'],
+  ['kn', 'ಕನ್ನಡ', 'Kannada'],
+  ['ko', '한국어', 'Korean'],
+  ['ms', 'Bahasa Melayu', 'Malay'],
+  ['ml', 'മലയാളം', 'Malayalam'],
+  ['mr', 'मराठी', 'Marathi'],
+  ['ne', 'नेपाली', 'Nepali'],
+  ['fa', 'فارسی', 'Persian'],
+  ['pl', 'Polski', 'Polish'],
+  ['pt', 'Português', 'Portuguese'],
+  ['ro', 'Română', 'Romanian'],
+  ['ru', 'Русский', 'Russian'],
+  ['si', 'සිංහල', 'Sinhala'],
+  ['es', 'Español', 'Spanish'],
+  ['sw', 'Kiswahili', 'Swahili'],
+  ['sv', 'Svenska', 'Swedish'],
+  ['ta', 'தமிழ்', 'Tamil'],
+  ['te', 'తెలుగు', 'Telugu'],
+  ['th', 'ไทย', 'Thai'],
+  ['tr', 'Türkçe', 'Turkish'],
+  ['uk', 'Українська', 'Ukrainian'],
+  ['ur', 'اردو', 'Urdu'],
+  ['vi', 'Tiếng Việt', 'Vietnamese'],
+];
+const codes = LANGS.slice(1).map(([code]) => code).join(',');
+const NOTE = 'Other languages are translated automatically by Google.';
+---
+{variant === 'bar' ? (
+  <div class="lang-pick notranslate" translate="no" data-lang-pick data-langs={codes}>
+    <button type="button" class="saved-btn lang-btn" aria-label="Language" aria-haspopup="true" aria-expanded="false" aria-controls="lang-menu" data-lang-btn>
+      <Icon name="globe" /><span data-lang-code>EN</span>
+    </button>
+    <div class="lang-menu" id="lang-menu" hidden data-lang-menu>
+      <ul class="lang-list" role="menu" aria-label="Language">
+        {LANGS.map(([code, name, english]) => (
+          <li role="none"><button type="button" role="menuitemradio" aria-checked={code === 'en' ? 'true' : 'false'} data-lang={code}><span lang={code === 'iw' ? 'he' : code}>{name}</span><small>{english}</small></button></li>
+        ))}
+      </ul>
+      <p>{NOTE}</p>
+    </div>
+    <div id="nxg-gt" hidden></div>
+  </div>
+) : (
+  <div class="lang-pick-menu notranslate" translate="no" data-lang-pick data-langs={codes}>
+    <span class="lang-pick-title"><Icon name="globe" /> Language</span>
+    <ul class="lang-list" aria-label="Language">
+      {LANGS.map(([code, name, english]) => (
+        <li><button type="button" aria-pressed={code === 'en' ? 'true' : 'false'} data-lang={code}><span lang={code === 'iw' ? 'he' : code}>{name}</span><small>{english}</small></button></li>
+      ))}
+    </ul>
+    <p>{NOTE}</p>
+  </div>
+)}
+
+<script>
+  const LANGS = (document.querySelector<HTMLElement>('[data-langs]')?.dataset.langs ?? '').split(',');
+
+  const current = () => {
+    const m = document.cookie.match(/(?:^|;\s*)googtrans=\/en\/([A-Za-z-]+)/);
+    return m && LANGS.includes(m[1]) ? m[1] : 'en';
+  };
+  // Google may write the cookie on the host or on the parent domain: clear both.
+  const clearCookie = () => {
+    const parent = location.hostname.split('.').slice(-2).join('.');
+    for (const domain of ['', `; domain=${location.hostname}`, `; domain=.${parent}`]) {
+      document.cookie = `googtrans=; path=/; max-age=0${domain}`;
+    }
+  };
+  const choose = (next: string) => {
+    if (next === lang) return;
+    clearCookie();
+    if (next !== 'en') document.cookie = `googtrans=/en/${next}; path=/; max-age=31536000; SameSite=Lax`;
+    location.reload();
+  };
+
+  const lang = current();
+  // Google still uses the old code `iw` for Hebrew; show the current one.
+  const shown = lang === 'iw' ? 'he' : lang.split('-')[0];
+  document.querySelectorAll('[data-lang-code]').forEach((el) => (el.textContent = shown.toUpperCase()));
+  document.querySelectorAll<HTMLButtonElement>('[data-lang-pick] [data-lang]').forEach((b) => {
+    const on = String(b.dataset.lang === lang);
+    b.setAttribute(b.hasAttribute('aria-pressed') ? 'aria-pressed' : 'aria-checked', on);
+    b.addEventListener('click', () => choose(b.dataset.lang ?? 'en'));
+  });
+
+  if (lang !== 'en') {
+    (window as any).nxgTranslateInit = () => {
+      const g = (window as any).google;
+      new g.translate.TranslateElement({ pageLanguage: 'en', includedLanguages: LANGS.join(','), autoDisplay: false }, 'nxg-gt');
+    };
+    const s = document.createElement('script');
+    s.src = 'https://translate.google.com/translate_a/element.js?cb=nxgTranslateInit';
+    s.async = true;
+    document.head.appendChild(s);
+  }
+
+  // The navbar dropdown.
+  const root = document.querySelector<HTMLElement>('.lang-pick[data-lang-pick]');
+  const btn = root?.querySelector<HTMLButtonElement>('[data-lang-btn]');
+  const menu = root?.querySelector<HTMLElement>('[data-lang-menu]');
+  const setOpen = (open: boolean) => {
+    if (!menu || !btn) return;
+    menu.hidden = !open;
+    btn.setAttribute('aria-expanded', String(open));
+  };
+  btn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    setOpen(menu?.hidden ?? false);
+  });
+  document.addEventListener('click', (e) => {
+    if (root && !root.contains(e.target as Node)) setOpen(false);
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && menu && !menu.hidden) {
+      setOpen(false);
+      btn?.focus();
+    }
+  });
+</script>

@@ -1,0 +1,12 @@
+---
+// A tear-off calendar page: the month on a coloured band (the continent's
+// colour, from --cont) and the day below. hydrateEvents() in lib/client.ts
+// swaps in the reader's next date.
+interface Props { date: Date; size?: 'sm' | 'lg'; year?: boolean }
+const { date, size = 'sm', year = false } = Astro.props;
+---
+<span class:list={['cal-tile', `cal-${size}`]} aria-hidden="true">
+  <b data-event-mon>{date.toLocaleDateString('en-GB', { month: 'short', timeZone: 'UTC' })}</b>
+  <strong data-event-day>{date.getUTCDate()}</strong>
+  {year && <small data-event-yr>{date.getUTCFullYear()}</small>}
+</span>

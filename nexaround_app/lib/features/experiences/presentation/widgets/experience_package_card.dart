@@ -9,7 +9,6 @@ import 'package:nexaround_app/core/utils/place_image_helper.dart';
 import 'package:nexaround_app/features/experiences/data/services/experiences_service.dart';
 import 'package:nexaround_app/features/experiences/domain/entities/experience.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_category.dart';
-import 'package:nexaround_app/features/experiences/presentation/widgets/experience_price.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_stars.dart';
 
 /// Compact horizontal experience package card:
@@ -393,13 +392,7 @@ class ExperiencePackageCard extends StatelessWidget {
   /// Price display: amount, then a small line with the dollar amount and the
   /// per-unit text ("($137) per group (max 4)").
   Widget _buildPrice() {
-    return ExperiencePriceBuilder(
-      package: package,
-      builder: (context, label) => _priceText(label.trim()),
-    );
-  }
-
-  Widget _priceText(String label) {
+    final label = package.priceLabel.trim();
     if (label.isEmpty) return const SizedBox.shrink();
 
     final parts = label.split(' / ');

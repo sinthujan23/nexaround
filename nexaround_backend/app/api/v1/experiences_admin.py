@@ -79,7 +79,7 @@ _VENDOR_SCALARS = (
 
 _PACKAGE_SCALARS = (
     "title", "summary", "description", "category", "tags", "photo_urls",
-    "video_urls", "unavailable_ranges", "price_amount", "price_currency", "price_basis", "duration_minutes",
+    "video_urls", "unavailable_ranges", "price_amount", "price_currency", "price_usd", "price_basis", "duration_minutes",
     "max_participants", "booking_window_days", "inclusions", "languages",
     "uses_vendor_location", "meeting_point_address", "region_label", "is_active",
     "sort_order",
@@ -141,6 +141,7 @@ def _package_response(
             float(package.price_amount) if package.price_amount is not None else None
         ),
         price_currency=package.price_currency or "USD",
+        price_usd=float(package.price_usd) if package.price_usd is not None else None,
         price_basis=package.price_basis or "per_person",
         duration_minutes=package.duration_minutes,
         max_participants=package.max_participants,

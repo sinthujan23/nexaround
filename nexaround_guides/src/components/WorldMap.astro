@@ -30,7 +30,7 @@ const continents = new Set(places.map((p) => p.continent));
       {places.map((p, i) => (
         <button
           type="button"
-          class:list={['pin', { multi: p.list.length > 1, 'is-on': i === 0 }]}
+          class:list={['pin', { multi: p.list.length > 1, 'is-on': i === 0, 'pin-fest': p.kind === 'festival' }]}
           style={`left: ${p.x.toFixed(2)}%; top: ${p.y.toFixed(2)}%; --d: ${(i % 5) * 0.5}s`}
           data-pin={i}
           aria-pressed={i === 0 ? 'true' : 'false'}
@@ -42,6 +42,9 @@ const continents = new Set(places.map((p) => p.continent));
         </button>
       ))}
     </div>
+    {places.some((p) => p.kind === 'festival') && (
+      <p class="world-legend"><span class="lg-dot"></span> Guides <span class="lg-dot lg-fest"></span> Festivals</p>
+    )}
 
     <div class="map-panel" aria-live="polite">
       <div class="panel-info">

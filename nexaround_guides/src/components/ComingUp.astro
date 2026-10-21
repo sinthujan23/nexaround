@@ -1,0 +1,49 @@
+---
+// Home page: the next four festivals, with countdowns. The order and the
+// countdowns are worked out in the reader's browser, so they stay right
+// between rebuilds.
+import Icon from './Icon.astro';
+import FestCard from './FestCard.astro';
+import { type Guide } from '../lib/guides';
+import { nextDate } from '../lib/events';
+
+interface Props { guides: Guide[] }
+const SHOW = 4;
+const items = Astro.props.guides
+  .filter((g) => g.data.event)
+  .map((g) => ({ g, next: nextDate(g.data.event!.dates) }))
+  .sort((a, b) => +(a.next?.start ?? Infinity) - +(b.next?.start ?? Infinity));
+---
+{items.length > 0 && (
+  <section class="section coming-up" data-coming-up>
+    <div class="container">
+      <div class="section-head-row">
+        <div>
+          <span class="badge badge-teal"><Icon name="calendar" /> Festivals</span>
+          <h2>Coming <span class="text-gradient-teal">up</span></h2>
+          <p>The next festivals in our calendar, and how long you have to plan.</p>
+        </div>
+        <a class="link-arrow" href="/festivals/">See the festival calendar <Icon name="arrow-right" /></a>
+      </div>
+      <div class="fest-grid fest-grid-4" data-fest-grid>
+        {items.map(({ g }, i) => <FestCard guide={g} hidden={i >= SHOW} sizes="(max-width: 700px) 100vw, 320px" region={false} />)}
+      </div>
+    </div>
+  </section>
+)}
+
+<script>
+  import { hydrateEvents } from '../lib/client';
+
+  const root = document.querySelector<HTMLElement>('[data-coming-up]');
+  if (root) {
+    hydrateEvents(root);
+    const grid = root.querySelector<HTMLElement>('[data-fest-grid]')!;
+    [...grid.querySelectorAll<HTMLElement>('[data-fest]')]
+      .sort((a, b) => (a.dataset.next ?? '9999').localeCompare(b.dataset.next ?? '9999'))
+      .forEach((c, i) => {
+        c.hidden = i >= 4 || c.dataset.next === '9999';
+        grid.appendChild(c);
+      });
+  }
+</script>

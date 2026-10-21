@@ -173,7 +173,7 @@ class PartnerPackageCreate(PartnerPackageBase):
     @field_validator("price_currency", mode="before")
     @classmethod
     def _known_currency(cls, value):
-        # One of the app's currencies, so every price can be shown converted.
+        # One of the app's currencies (the dropdown's list).
         return check_price_currency(value)
 
 

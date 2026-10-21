@@ -1,0 +1,29 @@
+---
+// One festival as a ticket: the photo with a countdown, a calendar stub with
+// the next start date, and a perforated edge. Used on /festivals/ and on the
+// home page's "Coming up".
+import { Image } from 'astro:assets';
+import Icon from './Icon.astro';
+import CalTile from './CalTile.astro';
+import { continentOf } from '../data/home';
+import { guideUrl, type Guide } from '../lib/guides';
+import { continentColor, datesJson, formatRange, nextDate } from '../lib/events';
+
+interface Props { guide: Guide; eager?: boolean; hidden?: boolean; sizes?: string; region?: boolean }
+const { guide: g, eager = false, hidden = false, sizes = '(max-width: 700px) 100vw, 380px', region = true } = Astro.props;
+const ev = g.data.event!;
+const next = nextDate(ev.dates);
+const continent = continentOf(g.id);
+---
+<a class="fest-card" href={guideUrl(g)} data-fest data-months={ev.months.join(',')} data-continent={continent} data-event={datesJson(ev.dates)} hidden={hidden} style={`--cont:${continentColor(continent)}`}>
+  <div class="fest-img">
+    <Image src={g.data.cover} alt={g.data.coverAlt} widths={[480, 720]} sizes={sizes} loading={eager ? 'eager' : 'lazy'} />
+    <span class="fest-in" data-event-in></span>
+  </div>
+  <div class="fest-body">
+    {next && <CalTile date={next.start} />}
+    <span class="fest-date"><Icon name="calendar" /> <span data-event-date>{next ? formatRange(next.start, next.end) : ev.when}</span></span>
+    <h3>{g.data.title.split(':')[0]}</h3>
+    <p>{g.data.country}{region && g.data.region ? ` · ${g.data.region}` : ''}</p>
+  </div>
+</a>

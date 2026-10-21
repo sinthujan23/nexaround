@@ -63,7 +63,7 @@ const emptyVendor = {
 const emptyPackage = {
   title: '', summary: '', description: '', category: 'boat', tags: [],
   photo_urls: [], video_urls: [], unavailable_ranges: [], price_amount: '', price_currency: 'LKR',
-  price_basis: 'per_person', duration_minutes: '', max_participants: '',
+  price_usd: '', price_basis: 'per_person', duration_minutes: '', max_participants: '',
   booking_window_days: '',
   inclusions: [], languages: [], uses_vendor_location: true,
   latitude: null, longitude: null, meeting_point_address: '', region_label: '',
@@ -77,10 +77,15 @@ const arrayToLines = (arr) => (arr || []).join('\n');
 const categoryLabel = (value) => CATEGORIES.find((c) => c.value === value)?.label || value || 'Other';
 const basisLabel = (value) => PRICE_BASES.find((b) => b.value === value)?.label || 'Per person';
 
-const formatPrice = (pkg) =>
-  pkg.price_amount != null
-    ? `${pkg.price_currency || 'LKR'} ${Number(pkg.price_amount).toLocaleString()}`
-    : 'On request';
+// The vendor's price, then the typed dollar price in brackets, as the app shows it.
+const formatPrice = (pkg) => {
+  if (pkg.price_amount == null) return 'On request';
+  const currency = pkg.price_currency || 'LKR';
+  const price = `${currency} ${Number(pkg.price_amount).toLocaleString()}`;
+  return pkg.price_usd != null && currency !== 'USD'
+    ? `${price} ($${Number(pkg.price_usd).toLocaleString()})`
+    : price;
+};
 
 const formatDuration = (minutes) => {
   if (!minutes) return null;
@@ -413,6 +418,7 @@ export default function Experiences() {
       video_urls: pkg.video_urls || [],
       unavailable_ranges: pkg.unavailable_ranges || [],
       price_amount: pkg.price_amount ?? '',
+      price_usd: pkg.price_usd ?? '',
       duration_minutes: pkg.duration_minutes ?? '',
       max_participants: pkg.max_participants ?? '',
       booking_window_days: pkg.booking_window_days ?? '',
@@ -439,6 +445,7 @@ export default function Experiences() {
     const payload = {
       ...packageForm,
       price_amount: packageForm.price_amount === '' ? null : Number(packageForm.price_amount),
+      price_usd: packageForm.price_usd === '' ? null : Number(packageForm.price_usd),
       duration_minutes: packageForm.duration_minutes === '' ? null : Number(packageForm.duration_minutes),
       max_participants: packageForm.max_participants === '' ? null : Number(packageForm.max_participants),
       booking_window_days: packageForm.booking_window_days === '' ? null : Number(packageForm.booking_window_days),
@@ -1278,10 +1285,13 @@ export default function Experiences() {
 
           <div className="xp-section">
             <div className="xp-section-title">Price & capacity</div>
-            <div className="xp-section-hint">Leave the price empty to show “On request”.</div>
-            <div className="form-grid-3">
+            <div className="xp-section-hint">
+              Leave the price empty to show “On request”. Both prices are shown as typed, never converted:
+              “QAR 499 ($137) / group”. Leave Price in USD empty to show no dollars.
+            </div>
+            <div className="form-grid-2">
               <div className="form-group">
-                <label className="form-label">Price</label>
+                <label className="form-label">Vendor price</label>
                 <input
                   type="number" step="0.01" min="0" className="form-input" placeholder="7500"
                   value={packageForm.price_amount}
@@ -1300,6 +1310,18 @@ export default function Experiences() {
                   )}
                   {CURRENCY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
+              </div>
+            </div>
+            <div className="form-grid-2">
+              <div className="form-group">
+                <label className="form-label">Price in USD</label>
+                <input
+                  type="number" step="0.01" min="0" className="form-input" placeholder="137"
+                  value={packageForm.price_usd}
+                  disabled={packageForm.price_currency === 'USD'}
+                  title={packageForm.price_currency === 'USD' ? 'The vendor price is in dollars already' : undefined}
+                  onChange={(e) => patchPackage({ price_usd: e.target.value })}
+                />
               </div>
               <div className="form-group">
                 <label className="form-label">Basis</label>

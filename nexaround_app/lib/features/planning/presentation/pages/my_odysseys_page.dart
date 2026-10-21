@@ -32,7 +32,8 @@ class MyOdysseysPage extends StatefulWidget {
   State<MyOdysseysPage> createState() => _MyOdysseysPageState();
 }
 
-class _MyOdysseysPageState extends State<MyOdysseysPage> {
+class _MyOdysseysPageState extends State<MyOdysseysPage>
+    with WidgetsBindingObserver {
   final OdysseyRepository _repository = OdysseyRepository();
 
   bool _loading = false;
@@ -53,7 +54,18 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
     _load();
     // Refresh whenever an Odyssey is saved/deleted anywhere in the app.
     OdysseyRepository.revision.addListener(_load);
+    WidgetsBinding.instance.addObserver(this);
     _initVideo();
+  }
+
+  /// Back from the background: a plan may have finished while the app was
+  /// away, and a poll that was in flight when it was suspended may have died.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed &&
+        _odysseys.any((o) => o.status == 'generating')) {
+      _load();
+    }
   }
 
   void _initVideo() {
@@ -86,6 +98,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
   void dispose() {
     _pollTimer?.cancel();
     OdysseyRepository.revision.removeListener(_load);
+    WidgetsBinding.instance.removeObserver(this);
     _videoController?.dispose();
     super.dispose();
   }
@@ -108,6 +121,9 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
         // screen when there's nothing cached to fall back to.
         if (_odysseys.isEmpty) _error = 'Could not load your odysseys.';
       });
+      // One failed poll (a server restart, a network blip) must not stop the
+      // polling, or a finished plan sits on "Generating…" until a refresh.
+      _schedulePoll();
     }
   }
 
@@ -832,6 +848,8 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Still building this Odyssey — hang tight.')),
       );
+      // The card may be stale; check now so a finished plan flips straight away.
+      _load();
       return;
     }
     final deleted = await Navigator.push<bool>(

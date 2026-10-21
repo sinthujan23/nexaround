@@ -56,6 +56,18 @@ const guides = defineCollection({
         .array(z.object({ src: image(), alt: z.string(), caption: z.string().optional(), credit }))
         .default([]),
       sources: z.array(z.object({ title: z.string(), url: z.string() })).default([]),
+      // Festivals: when it happens. `when` is the rule in words ("Last Tuesday
+      // of January"), `months` place it in the calendar, `dates` are the next
+      // known dates (start, optional end, optional note such as "Year of the Goat").
+      event: z
+        .object({
+          when: z.string(),
+          months: z.array(z.number().int().min(1).max(12)).min(1),
+          dates: z
+            .array(z.object({ start: z.coerce.date(), end: z.coerce.date().optional(), note: z.string().optional() }))
+            .default([]),
+        })
+        .optional(),
       affiliates: z
         .array(z.object({ program: z.enum(['airalo', 'gettransfer']), country: z.string().optional() }))
         .default([]),

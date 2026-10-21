@@ -19,6 +19,11 @@ export const PILLARS = {
     short: 'Lookouts, rest areas, springs',
     intro: 'Lookouts, rest areas, ruins and springs that cost nothing, along the routes we cover.',
   },
+  festivals: {
+    name: 'Festivals',
+    short: 'When the world celebrates',
+    intro: 'Festivals and cultural events around the world: when they happen, what makes them special, and how to be there.',
+  },
   'know-how': {
     name: 'Know-how',
     short: 'Permits, fuel, no signal',

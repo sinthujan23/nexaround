@@ -11,7 +11,6 @@ import 'package:nexaround_app/features/experiences/domain/entities/experience.da
 import 'package:nexaround_app/features/experiences/presentation/pages/experience_request_page.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_description.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_fitted_photo.dart';
-import 'package:nexaround_app/features/experiences/presentation/widgets/experience_price.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_reviews_section.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_stars.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_good_to_know.dart';
@@ -474,11 +473,7 @@ class _ExperiencePackageDetailPageState
             runSpacing: 8,
             children: [
               if (_package.priceLabel.isNotEmpty)
-                ExperiencePriceBuilder(
-                  package: _package,
-                  builder: (context, label) =>
-                      _chip(Icons.sell_rounded, label, highlight: true),
-                ),
+                _chip(Icons.sell_rounded, _package.priceLabel, highlight: true),
               if (_package.formattedDuration.isNotEmpty)
                 _chip(Icons.schedule_rounded, _package.formattedDuration),
               if (_package.distanceM != null)

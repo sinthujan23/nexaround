@@ -12,9 +12,11 @@ import { ui, fill, type Lang } from '../lib/i18n';
 interface Stop { name: string; lat: number; lng: number; kind: string; note?: string }
 interface Line { key: string; label: string; dashed: boolean }
 interface Leg { from: string; to: string; km: number; min: number }
-interface Props { route?: string; lines: Line[]; stops: Stop[]; legs: Leg[]; legsNote?: string; label: string; lang?: Lang }
+// `heading`: badge text and the two halves of the title, for pages whose map
+// isn't a route (festivals: "Where to see it").
+interface Props { route?: string; lines: Line[]; stops: Stop[]; legs: Leg[]; legsNote?: string; label: string; lang?: Lang; heading?: [string, string, string] }
 
-const { route, lines, stops, legs, legsNote, label, lang = 'en' } = Astro.props;
+const { route, lines, stops, legs, legsNote, label, lang = 'en', heading } = Astro.props;
 const t = ui(lang);
 // "Leg {n} of {t}" split around the live number, in this language's word order.
 const around = (tpl: string, total: number) => fill(tpl, { t: total }).split('{n}');
@@ -35,8 +37,8 @@ const first = split?.[0];
   <div class="container">
     <div class="section-head-row">
       <div>
-        <span class="badge badge-teal"><Icon name="route" /> {hasLegs ? t.interactiveRoute : t.theRoute}</span>
-        <h2>{hasLegs ? <>{t.driveIt1} <span class="text-gradient-teal">{t.driveIt2}</span></> : <>{t.routeAt1} <span class="text-gradient-teal">{t.routeAt2}</span></>}</h2>
+        <span class="badge badge-teal"><Icon name={heading ? 'map-pin' : 'route'} /> {heading ? heading[0] : hasLegs ? t.interactiveRoute : t.theRoute}</span>
+        <h2>{heading ? <>{heading[1]} <span class="text-gradient-teal">{heading[2]}</span></> : hasLegs ? <>{t.driveIt1} <span class="text-gradient-teal">{t.driveIt2}</span></> : <>{t.routeAt1} <span class="text-gradient-teal">{t.routeAt2}</span></>}</h2>
         <p>{hasLegs ? `${t.pressPlay} ${legsNote ?? ''}` : t.tapDot}</p>
       </div>
       <div class="route-toggles">

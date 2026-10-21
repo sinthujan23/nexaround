@@ -114,6 +114,28 @@ def test_a_group_price_carries_the_group_size(amount, currency, basis, max_peopl
     assert format_price(amount, currency, basis, max_people) == expected
 
 
+@pytest.mark.parametrize(
+    "amount,currency,basis,max_people,usd,expected",
+    [
+        (499, "QAR", "per_group", 4, 137, "QAR 499 ($137) / group (max 4)"),
+        (7500, "INR", "per_group", 6, 90, "INR 7,500 ($90) / group (max 6)"),
+        (2000, "LKR", "per_person", None, 6.5, "LKR 2,000 ($6.50) / person"),
+        (3000, "INR", "from", None, 36, "From INR 3,000 ($36)"),
+        # A dollar price has no bracket, and an empty USD field shows none.
+        (40, "USD", "per_person", None, 40, "USD 40 / person"),
+        (499, "QAR", "per_group", 4, None, "QAR 499 / group (max 4)"),
+    ],
+)
+def test_the_typed_dollar_price_follows_in_brackets(
+    amount, currency, basis, max_people, usd, expected
+):
+    assert format_price(amount, currency, basis, max_people, usd) == expected
+
+
+def test_on_request_ignores_the_dollar_price():
+    assert format_price(None, "QAR", "per_group", 4, 137) == "Price on request"
+
+
 def test_a_missing_price_reads_as_on_request():
     assert format_price(None) == "Price on request"
     assert format_price(100, "USD", "on_request") == "Price on request"

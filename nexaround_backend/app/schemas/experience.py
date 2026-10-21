@@ -77,6 +77,7 @@ class ExperiencePackageCard(BaseModel):
     price_amount: Optional[float] = None
     price_currency: str = "USD"
     price_basis: str = "per_person"
+    # Carries the admin's typed dollar price in brackets: "QAR 499 ($137)".
     price_label: str = ""
     duration_minutes: Optional[int] = None
     duration_label: str = ""
@@ -222,6 +223,8 @@ class ExperiencePackageBase(BaseModel):
     )
     price_amount: Optional[float] = Field(None, ge=0)
     price_currency: str = Field("USD", max_length=10)
+    # Typed, never converted: see ExperiencePackage.price_usd.
+    price_usd: Optional[float] = Field(None, ge=0)
     price_basis: str = Field("per_person", max_length=20)
     duration_minutes: Optional[int] = Field(None, ge=0)
     max_participants: Optional[int] = Field(None, ge=1)
@@ -244,7 +247,7 @@ class ExperiencePackageCreate(ExperiencePackageBase):
     @field_validator("price_currency", mode="before")
     @classmethod
     def _known_currency(cls, value):
-        # One of the app's currencies, so every price can be shown converted.
+        # One of the app's currencies (the dropdown's list).
         return check_price_currency(value) or "USD"
 
 

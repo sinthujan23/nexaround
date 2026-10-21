@@ -18,6 +18,7 @@ sites don't have: measured legs, fuel gaps, free stops with coordinates, permits
 | Extreme places | Coldest, wettest, highest, most isolated places people live |
 | Remote villages | Villages at the end of the road |
 | Free stops | Lookouts, rest areas, ruins, springs that cost nothing (often spun off a road trip) |
+| Festivals | Festivals and cultural events: when they happen, what's special, how to be there (added 19 October 2026) |
 | Know-how | Permits, fuel range, water, no-signal planning, insurance |
 
 ## Topics
@@ -82,6 +83,47 @@ travel (Afar, checked 14 October 2026). Revisit when the advice changes.
 Chosen for spread (south, east, Indian Ocean, north, west) after checking UK FCDO advice for each:
 none is in an area the FCDO advises against. Tsingy carries the FCDO's western-Madagascar advice
 (recognised tour operator, no night driving, Tsiribihina River robberies) in the guide itself.
+
+### Free stops batch (written and published 19 October 2026)
+
+| # | Guide | Section | Status |
+| --- | --- | --- | --- |
+| 37 | Free stops in the Westfjords (hot pools) | Free stops | **Published** |
+| 38 | Free stops on the Dalton Highway | Free stops | **Published** |
+| 39 | Free stops on the Carretera Austral | Free stops | **Published** |
+| 40 | Free stops on the Karakoram Highway | Free stops | **Published** |
+| 41 | Free stops on the Gibb River Road | Free stops | **Published** |
+
+Each one is spun off a road trip we already cover and reuses its route line. A Skeleton Coast
+version was dropped: we could not confirm enough free stops (Epupa Falls now charges a community
+fee, and Cape Cross and the park charge MEFT fees). Stops are "free" only where a source says so
+or the place is a public road, lookout or town; anything we could not confirm is in the checks below.
+
+### Festivals batch (written and published 19 October 2026)
+
+| # | Guide | Section | Status |
+| --- | --- | --- | --- |
+| 42 | Vodun Days, Ouidah, Benin | Festivals | **Published** |
+| 43 | Timkat, Addis Ababa, Ethiopia | Festivals | **Published** |
+| 44 | Up Helly Aa, Shetland | Festivals | **Published** |
+| 45 | Carnaval de Québec | Festivals | **Published** |
+| 46 | Fiesta de la Candelaria, Puno | Festivals | **Published** |
+| 47 | Waitangi Day, New Zealand | Festivals | **Published** |
+| 48 | Chinese New Year | Festivals | **Published** |
+| 49 | Holi in Mathura and Vrindavan | Festivals | **Published** |
+| 50 | Hanami, Japan | Festivals | **Published** |
+| 51 | Songkran, Thailand | Festivals | **Published** |
+
+Chosen to fall between January and April 2027 (searches start about two months ahead) and to cover
+every continent. Timkat covers Addis Ababa only: Gondar and Lalibela are in Amhara, where the UK FCDO
+advises against all travel (checked 19 October 2026).
+
+**Festival dates need a yearly check.** Each festival guide has an `event` block (`when`, `months`,
+`dates`). Every autumn, add the next year's dates from an official source and remove past years; the
+site works out "next date" and countdowns in the reader's browser, so nothing else needs changing.
+Next festivals to write, in calendar order: Inti Raymi (Cusco, June), Naadam (Mongolia, July), Kandy
+Esala Perahera (Sri Lanka, July/August), Onam (Kerala, August/September), Day of the Dead (Mexico,
+November), Diwali (October/November).
 
 ### Next (two a week)
 
@@ -366,3 +408,82 @@ All 20 guides were published on the owner's instruction before the team checks b
 - [ ] Check whether there is an official tourist office or cooperative at the pier and link it.
 - [ ] Add one first-hand detail from a resident or guide, with their permission.
 
+## Follow-up checks (free stops batch, published 19 October 2026 before team review)
+
+### Free stops in the Westfjords: hot pools, a shipwreck and the bird cliffs
+`src/content/guides/free-stops-westfjords.md`
+- [ ] Confirm this season's Dynjandi parking fee (we quote the 2024 rate, 750 ISK a car).
+- [ ] The Westfjords road trip (`westfjords-iceland.md`) still marks Dynjandi as free: change it to paid.
+- [ ] Confirm Látrabjarg still has no parking fee, and whether the new Bjargtangar car park has opened.
+- [ ] Confirm the main pool at Reykjafjarðarlaug is open (one 2024 report said it was under repair).
+- [ ] Check that each pool still has a donation box and no fixed fee.
+
+### Free stops on the Dalton Highway: 10 places that cost nothing
+`src/content/guides/free-stops-dalton-highway.md`
+- [ ] Confirm Five Mile Campground still has no camping fee this season (BLM).
+- [ ] Add this season's Arctic Interagency Visitor Center and Yukon Crossing opening dates and hours.
+- [ ] Add what is at Gobblers Knob (toilets, view) from BLM or a recent visitor.
+
+### Free stops on the Carretera Austral: 7 places that cost nothing
+`src/content/guides/free-stops-carretera-austral.md`
+- [ ] Confirm with CONAF that Pumalín entry is still free, and this season's camping fee.
+- [ ] Confirm the Puerto Yungay–Río Bravo ferry is still free, and link the current timetable.
+- [ ] Confirm the Baker–Neff viewpoint is still free (it is beside private land).
+
+### Free stops on the Karakoram Highway: 7 viewpoints that cost nothing
+`src/content/guides/free-stops-karakoram-highway.md`
+- [ ] Re-check the UK FCDO advice for the KKH on the day of any update, and quote the date.
+- [ ] Confirm the Hussaini bridge toll (we quote about Rs 200 from an undated report).
+- [ ] Confirm the Sacred Rock of Hunza has no entry fee (none was reported when we checked).
+
+### Free stops on the Gibb River Road: 8 places that cost nothing
+`src/content/guides/free-stops-gibb-river-road.md`
+- [ ] Confirm Galvans Gorge has no access fee (no source says either way).
+- [ ] Confirm the Mowanjum museum fee ($5) and the gallery and museum hours for the dry season.
+- [ ] Add one first-hand detail from a Gibb traveller.
+
+## Follow-up checks (festivals batch, published 19 October 2026 before team review)
+
+### Vodun Days in Ouidah
+`src/content/guides/vodun-days-ouidah.md`
+- [ ] Add the official 2027 programme (which ceremony on which day) when it's published.
+- [ ] Confirm the Python Temple and Kpassè forest fees.
+- [ ] Add 2028 dates when the government announces them.
+
+### Timkat in Addis Ababa
+`src/content/guides/timkat-addis-ababa.md`
+- [ ] Re-check the UK FCDO advice for Ethiopia (Amhara, and travel around Addis Ababa) before each update.
+- [ ] Confirm 2029 dates (we list 18–19 January).
+
+### Up Helly Aa
+`src/content/guides/up-helly-aa-shetland.md`
+- [ ] Confirm the 2028 and 2029 dates on uphellyaa.org (we use the last-Tuesday rule).
+- [ ] Add how visitors can get hall tickets, from the Up Helly Aa committee.
+
+### Carnaval de Québec
+`src/content/guides/carnaval-de-quebec.md`
+- [ ] Confirm the 2027 dates on carnaval.qc.ca (we have them from Bonjour Québec), this year's effigy price and the ice palace's location.
+
+### Fiesta de la Candelaria in Puno
+`src/content/guides/candelaria-puno.md`
+- [ ] Add the 2027 programme (contest and parade dates) from the Federación Regional de Folklore y Cultura de Puno.
+
+### Waitangi Day
+`src/content/guides/waitangi-day.md`
+- [ ] Add the 2027 programme from waitangi.org.nz when published.
+
+### Chinese New Year
+`src/content/guides/chinese-new-year.md`
+- [ ] Add the 2027 Hong Kong parade, fireworks and fair details from the Hong Kong Tourism Board.
+
+### Holi in Mathura and Vrindavan
+`src/content/guides/holi-mathura-vrindavan.md`
+- [ ] Add the 2027 Braj calendar (Lathmar Holi in Barsana and Nandgaon, flower Holi) from the temples, and confirm the 2028 date (sources differ by a day).
+
+### Hanami
+`src/content/guides/hanami-japan.md`
+- [ ] Replace the typical 2027 window with the first official forecasts (tenki.jp, from early 2027).
+
+### Songkran
+`src/content/guides/songkran-thailand.md`
+- [ ] Confirm the Thai government's 2027 Songkran holidays when announced.

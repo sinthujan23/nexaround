@@ -113,24 +113,31 @@ def format_price(
     currency: str = "USD",
     basis: str = "per_person",
     max_participants: Optional[int] = None,
+    usd: Optional[float] = None,
 ) -> str:
     """Human price for a card. `None` means the vendor quotes on request.
 
     A group price carries the group size from the package's "Max
-    participants" field: "QAR 499 / group (max 4)". Nothing is typed into the
-    label itself; Price, Currency, Basis and Max participants make it.
+    participants" field: "QAR 499 / group (max 4)". The admin's typed dollar
+    price follows in brackets: "QAR 499 ($137) / group (max 4)", none when the
+    price is in dollars already. Nothing is typed into the label itself;
+    Price, Currency, Price in USD, Basis and Max participants make it.
     """
     if amount is None or basis == "on_request":
         return "Price on request"
 
-    # Always the ISO code ("INR 7,500", "QAR 499"), never a symbol: the app
-    # shows prices converted into the traveller's currency in this same form,
-    # and a list mixing "₹7,500" with "INR 13,037" reads as two systems.
-    symbol = f"{(currency or 'USD').strip().upper()} "
     # Whole numbers read better without trailing zeros on a card.
-    whole = float(amount)
-    rendered = f"{whole:,.0f}" if whole == int(whole) else f"{whole:,.2f}"
-    price = f"{symbol}{rendered}"
+    def rendered(value: float) -> str:
+        value = float(value)
+        return f"{value:,.0f}" if value == int(value) else f"{value:,.2f}"
+
+    # Always the ISO code ("INR 7,500", "QAR 499"), never a symbol: a list
+    # mixing "₹7,500" with "INR 13,037" reads as two systems. The bracket
+    # alone uses "$", the client's choice.
+    code = (currency or "USD").strip().upper()
+    price = f"{code} {rendered(amount)}"
+    if usd is not None and code != "USD":
+        price = f"{price} (${rendered(usd)})"
 
     if basis == "per_person":
         return f"{price} / person"

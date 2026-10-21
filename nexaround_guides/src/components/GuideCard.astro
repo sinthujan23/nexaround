@@ -4,6 +4,7 @@ import Icon from './Icon.astro';
 import { PILLARS, type PillarKey } from '../data/pillars';
 import { continentOf } from '../data/home';
 import { guideUrl, readMinutes, formatDate, type Guide } from '../lib/guides';
+import { datesJson, formatRange, nextDate } from '../lib/events';
 
 // `order`: position in newest-first order, used by the home page's sorting.
 interface Props { guide: Guide; eager?: boolean; order?: number }
@@ -11,6 +12,7 @@ const { guide, eager = false, order = 0 } = Astro.props;
 const d = guide.data;
 const pillar = PILLARS[d.pillar as PillarKey];
 const min = readMinutes(guide);
+const next = d.event ? nextDate(d.event.dates) : undefined;
 ---
 <article
   class="gcard"
@@ -36,6 +38,9 @@ const min = readMinutes(guide);
     <div class="gbody">
       {d.draft && <span class="draft-pill">Draft</span>}
       <span class="eyebrow">{d.country}</span>
+      {d.event && (
+        <span class="gdate" data-event={datesJson(d.event.dates)}><Icon name="calendar" /> <span data-event-date>{next ? formatRange(next.start, next.end) : d.event.when}</span></span>
+      )}
       <h3>{d.title}</h3>
       <p>{d.description}</p>
       <div class="gmeta">
@@ -48,3 +53,8 @@ const min = readMinutes(guide);
     <Icon name="bookmark" />
   </button>
 </article>
+
+<script>
+  import { hydrateEvents } from '../lib/client';
+  hydrateEvents();
+</script>

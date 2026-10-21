@@ -67,7 +67,9 @@ class _OdysseyDetailPageState extends State<OdysseyDetailPage> {
       if (fresh != null) {
         setState(() {
           _odyssey = fresh;
-          _loadingFresh = false;
+          // Keep the "Finalizing…" screen up while the server is still
+          // building it, instead of rendering an empty plan.
+          _loadingFresh = fresh.isGenerating;
         });
 
         // If it's still being generated on the server, poll until ready
@@ -86,14 +88,12 @@ class _OdysseyDetailPageState extends State<OdysseyDetailPage> {
 
   void _startPollTimer(String id) {
     _pollTimer?.cancel();
-    int attempts = 0;
+    // No attempt cap: a generation can wait in the job queue and then take
+    // two minutes, and giving up left an empty plan on screen. Polling ends
+    // when the plan is ready or failed, or the page closes.
     _pollTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
-      attempts++;
-      if (attempts > 50 || !mounted) {
+      if (!mounted) {
         timer.cancel();
-        if (mounted && _loadingFresh) {
-          setState(() => _loadingFresh = false);
-        }
         return;
       }
       try {

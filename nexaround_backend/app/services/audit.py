@@ -66,6 +66,7 @@ _SKIPPED_ROUTES = frozenset({
 _SENSITIVE_READS = {
     "/api/v1/admin/settings": "Viewed platform settings and API keys",
     "/api/v1/admin/users": "Viewed the explorer list",
+    "/api/v1/admin/users/activity": "Viewed explorer activity",
 }
 
 # Plain-English lines for the writes that matter most. Anything not listed gets

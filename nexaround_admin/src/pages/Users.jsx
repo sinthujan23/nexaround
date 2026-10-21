@@ -10,6 +10,7 @@ import {
   ArrowUpDownIcon,
 } from '../components/Icons';
 import { HeroBanner, HeroCount, SearchBar, Loading, EmptyState, Badge, PageError } from '../components/Kit';
+import ExplorerActivity from '../components/ExplorerActivity';
 
 const DATE_LABELS = {
   today: 'Today',
@@ -131,6 +132,8 @@ export default function Users() {
       <HeroBanner title="Registered Explorers">
         You have <HeroCount>{total}</HeroCount> registered explorers on the platform.
       </HeroBanner>
+
+      <ExplorerActivity />
 
       <div className="card modern-card" style={{ border: 'none', padding: '0', background: 'transparent', boxShadow: 'none' }}>
         <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: 'none', paddingBottom: 0 }}>

@@ -1,0 +1,27 @@
+---
+// Confetti and twinkling sparkles for the dark festival headers. Pieces are
+// placed by a seeded random, so a page keeps the same pattern on every build,
+// and mostly on the right, away from the title.
+interface Props { seed?: number; count?: number }
+const { seed = 7, count = 26 } = Astro.props;
+let s = seed;
+const rnd = () => (s = (s * 9301 + 49297) % 233280) / 233280;
+const COLORS = ['#ffb800', '#ff8a5c', '#ff5c8a', '#00d2d3', '#8b9cff', '#5ee6a8'];
+const SHAPES = ['rect', 'dot', 'strip'];
+const place = () => (rnd() < 0.82 ? [54 + rnd() * 44, 10 + rnd() * 80] : [0.5 + rnd() * 2.5, 20 + rnd() * 70]);
+const pieces = Array.from({ length: count }, (_, i) => {
+  const [x, y] = place();
+  return { x, y, c: COLORS[i % COLORS.length], shape: SHAPES[Math.floor(rnd() * SHAPES.length)], r: Math.round(rnd() * 360), d: (rnd() * 6).toFixed(2), t: (5 + rnd() * 5).toFixed(2), z: (0.7 + rnd() * 0.8).toFixed(2) };
+});
+const sparkles = Array.from({ length: 7 }, () => {
+  const [x, y] = place();
+  return { x, y, d: (rnd() * 3).toFixed(2), z: (0.6 + rnd() * 0.9).toFixed(2) };
+});
+const v = (o: Record<string, string | number>) => Object.entries(o).map(([k, val]) => `--${k}:${val}`).join(';');
+---
+<div class="confetti" aria-hidden="true">
+  {pieces.map((p) => <i class={`cf cf-${p.shape}`} style={v({ x: `${p.x.toFixed(1)}%`, y: `${p.y.toFixed(1)}%`, c: p.c, r: `${p.r}deg`, d: `-${p.d}s`, t: `${p.t}s`, z: p.z })}></i>)}
+  {sparkles.map((p) => (
+    <svg class="spark" viewBox="0 0 24 24" style={v({ x: `${p.x.toFixed(1)}%`, y: `${p.y.toFixed(1)}%`, d: `-${p.d}s`, z: p.z })}><path d="M12 0C13 8 16 11 24 12C16 13 13 16 12 24C11 16 8 13 0 12C8 11 11 8 12 0Z" /></svg>
+  ))}
+</div>

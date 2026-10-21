@@ -131,8 +131,13 @@ class ExperiencePackage(Base):
     )
 
     # Numeric, not Float: this is money and it is displayed verbatim.
+    # The vendor's own price, in the vendor's currency.
     price_amount: Mapped[float] = mapped_column(Numeric(12, 2), nullable=True)
     price_currency: Mapped[str] = mapped_column(String(10), default="LKR")
+    # The same price in US dollars, typed by the admin and shown in brackets
+    # ("QAR 499 ($137)"). Never converted: both figures carry the commission,
+    # and a daily rate would move it. Admin panel only; NULL shows no bracket.
+    price_usd: Mapped[float] = mapped_column(Numeric(12, 2), nullable=True)
     # per_person | per_group | from
     price_basis: Mapped[str] = mapped_column(String(20), default="per_person")
 

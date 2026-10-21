@@ -1,0 +1,52 @@
+---
+// "When it happens" on a festival page: a tear-off calendar page with the
+// next start date, the rule in words, a live countdown, and every known year
+// as a card. Dates and countdown are worked out in the reader's browser.
+import CalTile from './CalTile.astro';
+import Countdown from './Countdown.astro';
+import Icon from './Icon.astro';
+import { formatRange, datesJson, nextDate, type EventDate } from '../lib/events';
+
+interface Props { event: { when: string; months: number[]; dates: EventDate[] }; color: string }
+const { event, color } = Astro.props;
+const dates = [...event.dates].sort((a, b) => +a.start - +b.start);
+const next = nextDate(dates);
+const iso = (d: Date) => d.toISOString().slice(0, 10);
+---
+<div class="block event-when" id="when" data-event={datesJson(dates)} style={`--cont:${color}`}>
+  <div class="ew-main">
+    {next ? <CalTile date={next.start} size="lg" year /> : <span class="ew-icon"><Icon name="calendar" /></span>}
+    <div class="ew-copy">
+      <h2 class="block-title">When it happens</h2>
+      <p>{event.when}</p>
+      {next && (
+        <>
+          <p class="ew-next"><span>Next</span> <strong data-event-date>{formatRange(next.start, next.end)}</strong></p>
+          <Countdown start={next.start} />
+        </>
+      )}
+    </div>
+  </div>
+  {dates.length > 0 && (
+    <ul class="ew-years">
+      {dates.map((d) => (
+        <li data-s={iso(d.start)} class:list={{ 'is-next': next && +d.start === +next.start }}>
+          <b>{d.start.getUTCFullYear()}</b>
+          <span>{formatRange(d.start, d.end)}</span>
+          {d.note && <small>{d.note}</small>}
+        </li>
+      ))}
+    </ul>
+  )}
+</div>
+
+<script>
+  import { hydrateEvents, startCountdowns } from '../lib/client';
+
+  const box = document.querySelector<HTMLElement>('.event-when[data-event]');
+  if (box) {
+    hydrateEvents(box);
+    startCountdowns(box);
+    box.querySelectorAll<HTMLElement>('.ew-years li').forEach((li) => li.classList.toggle('is-next', li.dataset.s === box.dataset.next));
+  }
+</script>

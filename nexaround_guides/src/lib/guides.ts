@@ -1,11 +1,12 @@
 import { getCollection, type CollectionEntry } from 'astro:content';
-import { isPreview } from './mode';
+import { isPreview, withTranslations } from './mode';
 
 export type Guide = CollectionEntry<'guides'>;
 export type Translation = CollectionEntry<'translations'>;
 
 /** Translations of published guides, keyed `<lang>/<slug>`. */
 export async function getTranslations(guides: Guide[]): Promise<Map<string, Translation>> {
+  if (!withTranslations) return new Map();
   const ids = new Set(guides.map((g) => g.id));
   const all = await getCollection('translations', (t: Translation) => ids.has(t.data.guide));
   return new Map(all.map((t: Translation) => [`${t.data.lang}/${t.data.guide}`, t]));
