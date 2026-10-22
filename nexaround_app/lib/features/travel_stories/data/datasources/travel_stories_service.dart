@@ -20,6 +20,21 @@ class TravelStoriesService {
   /// reloads at once.
   static final ValueNotifier<int> feedChanged = ValueNotifier(0);
 
+  /// How long the app must have been in the background before coming back
+  /// reloads the home row: the fallback for a silent push the phone held
+  /// back (iOS may delay or drop them; Android delays them in deep sleep).
+  static const awayBeforeReload = Duration(minutes: 2);
+
+  /// Whether coming back to the app should reload the stories: a silent push
+  /// said they changed ([stale]), or the app was away long enough.
+  static bool shouldReloadOnReturn({
+    required DateTime? backgroundedAt,
+    required DateTime now,
+    required bool stale,
+  }) =>
+      stale ||
+      (backgroundedAt != null && now.difference(backgroundedAt) >= awayBeforeReload);
+
   // Singleton instance
   static final TravelStoriesService _instance = TravelStoriesService._internal();
   factory TravelStoriesService() => _instance;

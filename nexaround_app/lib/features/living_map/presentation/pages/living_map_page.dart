@@ -200,20 +200,38 @@ class _LivingMapPageState extends State<LivingMapPage>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Really in the background: another app, or the phone locked. Not
+    // "inactive", which is the notification shade or a system dialog.
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.hidden) {
+      _backgroundedAt ??= DateTime.now();
+    }
     // Re-check location when app resumes (user may have enabled it in settings)
     if (state == AppLifecycleState.resumed) {
       _checkLocationAndInit();
-      _reloadStoriesIfStale();
+      _reloadStoriesOnReturn();
     }
   }
 
-  /// A silent push said the TravelBytes changed while the app was away.
-  Future<void> _reloadStoriesIfStale() async {
+  // When the app last went to the background, for _reloadStoriesOnReturn.
+  DateTime? _backgroundedAt;
+
+  /// Back in the app: reload the stories if a silent push said they changed
+  /// while it was away, or if it was away long enough that one may have been
+  /// held back (TravelStoriesService.awayBeforeReload).
+  Future<void> _reloadStoriesOnReturn() async {
+    final backgroundedAt = _backgroundedAt;
+    _backgroundedAt = null;
     // The flag was written by the background isolate: read it from disk.
     await CacheService.reload();
-    if (!CacheService.storiesStale()) return;
-    await CacheService.setStoriesStale(false);
-    _loadTravelStories();
+    final stale = CacheService.storiesStale();
+    if (stale) await CacheService.setStoriesStale(false);
+    if (TravelStoriesService.shouldReloadOnReturn(
+      backgroundedAt: backgroundedAt,
+      now: DateTime.now(),
+      stale: stale,
+    )) {
+      _loadTravelStories();
+    }
   }
 
   /// A silent push arrived with the app open.
