@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.services.experience_format import (
     MAX_BOOKING_WINDOW_DAYS, MAX_PRICE_OPTIONS, MAX_UNAVAILABLE_RANGES,
-    NEARBY_THRESHOLD_M, PRICE_BASES,
+    NEARBY_THRESHOLD_M, OPTION_BASES,
 )
 from app.services.currencies import check_price_currency
 from app.services.experience_upload import MAX_VIDEOS_PER_PACKAGE
@@ -36,8 +36,8 @@ class PriceOptionBase(BaseModel):
     @field_validator("basis")
     @classmethod
     def _known_basis(cls, value):
-        if value not in PRICE_BASES:
-            raise ValueError(f"basis must be one of {', '.join(PRICE_BASES)}")
+        if value not in OPTION_BASES:
+            raise ValueError(f"basis must be one of {', '.join(OPTION_BASES)}")
         return value
 
     @model_validator(mode="after")

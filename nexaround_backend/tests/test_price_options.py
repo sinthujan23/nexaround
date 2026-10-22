@@ -22,6 +22,13 @@ def test_each_option_reads_like_the_card():
     assert option_label(PER_HEAD, "LKR", 7) == "LKR 8,000 ($24) / person (min 3)"
 
 
+def test_an_hourly_price_reads_per_hour():
+    option = {"id": "cccc3333", "amount": 13000.0, "usd": 39.0, "basis": "per_hour",
+              "min_people": None, "max_people": None}
+    assert option_label(option, "LKR", 4) == "LKR 13,000 ($39) / hour"
+    assert PriceOption(amount=13000, basis="per_hour").basis == "per_hour"
+
+
 def test_a_group_price_with_a_minimum_shows_both():
     option = {**TRIP, "min_people": 2, "max_people": 5}
     assert option_label(option, "LKR", 7) == "LKR 30,000 ($90) / group (min 2, max 5)"
@@ -113,4 +120,4 @@ def test_min_above_max_is_refused():
 
 def test_an_unknown_basis_is_refused():
     with pytest.raises(ValidationError):
-        PriceOption(amount=1, basis="per_hour")
+        PriceOption(amount=1, basis="per_day")

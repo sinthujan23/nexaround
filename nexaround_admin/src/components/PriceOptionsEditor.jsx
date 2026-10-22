@@ -3,10 +3,11 @@
 // nexaround_partner; keep the two copies identical. The partner portal passes
 // withUsd={false}: only NexAround sets the dollar price.
 
-// The server's experience_format.PRICE_BASES and MAX_PRICE_OPTIONS.
+// The server's experience_format.OPTION_BASES and MAX_PRICE_OPTIONS.
 const OPTION_BASES = [
   { value: 'per_person', label: 'Per person' },
   { value: 'per_group', label: 'Per group' },
+  { value: 'per_hour', label: 'Per hour' },
   { value: 'from', label: 'Starting from' },
 ];
 export const MAX_PRICE_OPTIONS = 6;

@@ -133,6 +133,24 @@ void main() {
     expect(find.text('2 price options'), findsOneWidget);
   });
 
+  testWidgets('an hourly price reads "per hour" on the small line', (tester) async {
+    const hourly = ExperiencePackageEntity(
+      id: '3',
+      title: 'Ocean Fishing Trip',
+      vendorId: 'v',
+      vendorName: 'Blue Ocean Adventures',
+      priceAmount: 13000,
+      priceCurrency: 'LKR',
+      priceBasis: 'per_hour',
+      priceLabel: r'LKR 13,000 ($39) / hour',
+      latitude: 0,
+      longitude: 0,
+    );
+    await pumpCard(tester, hourly, showCountry: false, width: 360);
+    expect(find.text('LKR 13,000'), findsOneWidget);
+    expect(find.text(r'($39) per hour'), findsOneWidget);
+  });
+
   testWidgets('a package with one price shows no options line', (tester) async {
     await pumpCard(tester, package(), showCountry: false);
     expect(find.textContaining('price options'), findsNothing);

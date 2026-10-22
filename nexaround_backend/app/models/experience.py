@@ -138,7 +138,7 @@ class ExperiencePackage(Base):
     # ("QAR 499 ($137)"). Never converted: both figures carry the commission,
     # and a daily rate would move it. Admin panel only; NULL shows no bracket.
     price_usd: Mapped[float] = mapped_column(Numeric(12, 2), nullable=True)
-    # per_person | per_group | from
+    # per_person | per_group | per_hour | from
     price_basis: Mapped[str] = mapped_column(String(20), default="per_person")
     # Every price the package is sold at, first one first, in `price_currency`:
     # [{"id": "3f9a1c2e", "amount": 30000, "usd": 90, "basis": "per_group",

@@ -35,7 +35,7 @@ EXPERIENCE_CATEGORIES = (
     "other",
 )
 
-PRICE_BASES = ("per_person", "per_group", "from", "on_request")
+PRICE_BASES = ("per_person", "per_group", "per_hour", "from", "on_request")
 
 
 
@@ -150,6 +150,8 @@ def format_price(
             p for p in (least, f"max {max_participants}" if max_participants else None) if p
         )
         return f"{price} / group" + (f" ({size})" if size else "")
+    if basis == "per_hour":
+        return f"{price} / hour" + (f" ({least})" if least else "")
     if basis == "from":
         return f"From {price}" + (f" ({least})" if least else "")
     return price
@@ -162,7 +164,9 @@ def format_price(
 # the first is mirrored into price_amount / price_usd / price_basis, which
 # older apps, share text and emails read.
 
-PRICE_BASES = ("per_person", "per_group", "from")
+# What a price option may be: every basis but "on_request", which is no
+# option at all.
+OPTION_BASES = ("per_person", "per_group", "per_hour", "from")
 MAX_PRICE_OPTIONS = 6
 
 

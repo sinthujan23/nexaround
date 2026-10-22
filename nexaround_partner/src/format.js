@@ -14,6 +14,7 @@ export const CATEGORIES = [
 export const PRICE_BASES = [
   { value: 'per_person', label: 'Per person' },
   { value: 'per_group', label: 'Per group' },
+  { value: 'per_hour', label: 'Per hour' },
   { value: 'from', label: 'Starting from' },
   { value: 'on_request', label: 'On request' },
 ];

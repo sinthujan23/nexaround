@@ -29,16 +29,18 @@ String categoryLabel(String? value) =>
 const priceBases = <String, String>{
   'per_person': 'Per person',
   'per_group': 'Per group',
+  'per_hour': 'Per hour',
   'from': 'Starting from',
   'on_request': 'On request',
 };
 
 /// The bases a price option takes (no "On request": that is no option at all)
-/// and how many a package may have: the server's PRICE_BASES and
+/// and how many a package may have: the server's OPTION_BASES and
 /// MAX_PRICE_OPTIONS.
 const optionBases = <String, String>{
   'per_person': 'Per person',
   'per_group': 'Per group',
+  'per_hour': 'Per hour',
   'from': 'Starting from',
 };
 const maxPriceOptions = 6;
