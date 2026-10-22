@@ -69,6 +69,7 @@ class _Vendor:
         self.photo_urls = ["https://example.test/a.jpg"]
         self.is_active = True
         self.sort_order = 3
+        self.review_status = "approved"
         # Capped at two characters by the schema, so it cannot take the
         # recognisable placeholder the others get.
         self.country_code = "LK"

@@ -33,9 +33,10 @@ class VendorDashboardTab extends StatefulWidget {
 
 class _VendorDashboardTabState extends State<VendorDashboardTab> {
   static const _preview = 3;
-  VendorStats? _stats;
-  List<VendorPackage>? _packages;
-  VendorReviewPage? _reviews;
+  // What the device kept, until the server answers.
+  late VendorStats? _stats = widget.api.cachedStats();
+  late List<VendorPackage>? _packages = widget.api.cachedPackages();
+  late VendorReviewPage? _reviews = widget.api.cachedReviews();
   Object? _error;
 
   @override
@@ -76,8 +77,8 @@ class _VendorDashboardTabState extends State<VendorDashboardTab> {
     } catch (_) {}
   }
 
-  Future<void> _edit({String? id}) async {
-    final saved = await openPackageEditor(context, widget.api, packageId: id);
+  Future<void> _edit([VendorPackage? pkg]) async {
+    final saved = await openPackageEditor(context, widget.api, packageId: pkg?.id, initial: pkg);
     if (saved == true) widget.changed.value++;
   }
 
@@ -91,6 +92,7 @@ class _VendorDashboardTabState extends State<VendorDashboardTab> {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(vendorGutter, 4, vendorGutter, 24),
         children: [
+          if (_error != null && _packages != null) const VendorSavedNote(),
           _ListingStatus(live: live),
           const SizedBox(height: 12),
           Row(
@@ -171,7 +173,7 @@ class _VendorDashboardTabState extends State<VendorDashboardTab> {
             )
           else
             for (final pkg in _packages!.take(_preview))
-              PackageRow(pkg: pkg, onTap: () => _edit(id: pkg.id)),
+              PackageRow(pkg: pkg, onTap: () => _edit(pkg)),
         ],
       ),
     );
@@ -281,7 +283,11 @@ class VendorPackagesTab extends StatefulWidget {
 }
 
 class _VendorPackagesTabState extends State<VendorPackagesTab> {
-  List<VendorPackage>? _packages;
+  // What the device kept, until the server answers.
+  late List<VendorPackage>? _packages = widget.api.cachedPackages();
+  // The switch saves the whole package, so it waits for this load's list:
+  // a kept one may be older than what is on the server.
+  bool _fresh = false;
   Object? _error;
   final Set<String> _toggling = {};
 
@@ -304,6 +310,7 @@ class _VendorPackagesTabState extends State<VendorPackagesTab> {
       if (!mounted) return;
       setState(() {
         _packages = list;
+        _fresh = true;
         _error = null;
       });
     } catch (e) {
@@ -311,8 +318,8 @@ class _VendorPackagesTabState extends State<VendorPackagesTab> {
     }
   }
 
-  Future<void> _edit({String? id}) async {
-    final saved = await openPackageEditor(context, widget.api, packageId: id);
+  Future<void> _edit([VendorPackage? pkg]) async {
+    final saved = await openPackageEditor(context, widget.api, packageId: pkg?.id, initial: pkg);
     if (saved == true) widget.changed.value++;
   }
 
@@ -352,6 +359,7 @@ class _VendorPackagesTabState extends State<VendorPackagesTab> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(vendorGutter, 4, vendorGutter, 24),
       children: [
+        if (_error != null) const VendorSavedNote(),
         Row(
           children: [
             Expanded(
@@ -389,11 +397,11 @@ class _VendorPackagesTabState extends State<VendorPackagesTab> {
           for (final pkg in packages)
             PackageRow(
               pkg: pkg,
-              onTap: () => _edit(id: pkg.id),
+              onTap: () => _edit(pkg),
               footer: VendorSwitchRow(
                 title: 'Show in app',
                 value: pkg.isActive,
-                onChanged: _toggling.contains(pkg.id) ? null : (v) => _toggle(pkg, v),
+                onChanged: !_fresh || _toggling.contains(pkg.id) ? null : (v) => _toggle(pkg, v),
               ),
             ),
       ],
@@ -448,6 +456,7 @@ class PackageRow extends StatelessWidget {
                       crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         VisibilityPill(pkg.visibility),
+                        ReviewPill(pkg.review, approved: pkg.isApproved),
                         Text(categoryLabel(pkg.category),
                             style: const TextStyle(fontSize: 12, color: AppColors.textTertiary)),
                       ],

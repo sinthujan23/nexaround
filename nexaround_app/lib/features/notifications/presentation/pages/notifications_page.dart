@@ -67,7 +67,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
     } else if (type == 'experience_request') {
       final requestId = (data['enquiry_id'] ?? n['enquiry_id'])?.toString();
       await showMyExperienceRequests(context, openRequestId: requestId);
-    } else if (type == 'vendor_request') {
+    } else if (type == 'vendor_request' || type == 'vendor_review') {
       await openVendorPortal(context,
           vendorId: (data['vendor_id'] ?? n['vendor_id'])?.toString(), toNotifications: true);
     } else if (type == 'discovery_ready' || type.contains('discovery')) {
@@ -123,6 +123,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
       case 'discovery_ready':
         return Icons.explore_rounded;
       case 'vendor_request':
+      case 'vendor_review':
         return Icons.storefront_rounded;
       case 'experience_request':
         return Icons.receipt_long_rounded;

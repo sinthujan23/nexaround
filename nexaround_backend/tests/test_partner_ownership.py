@@ -174,10 +174,11 @@ def test_a_miss_is_404_and_says_nothing_about_who_owns_it(endpoint):
             assert leak not in low, f"the 404 message leaks ownership: {message!r}"
 
 
-def test_the_profile_update_moves_the_packages_with_the_vendor():
-    """`apply_vendor_cascade` does not commit, so both the call and the commit
-    are needed. Forgetting the call leaves every package on the old
-    coordinates with a stale `is_published`."""
+def test_the_profile_update_cannot_move_the_vendor():
+    """Where the business is is an admin's to set (a vendor could otherwise
+    put a meeting place in front of travellers), so the vendor's save never
+    touches the point, and so never has packages to drag along."""
     source = inspect.getsource(P.update_partner_profile)
-    assert "apply_vendor_cascade" in source
+    assert "location" not in source
+    assert "apply_vendor_cascade" not in source
     assert "db.commit" in source

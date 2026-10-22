@@ -82,6 +82,18 @@ class ExperienceVendor(Base):
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
     )
 
+    # A vendor's own profile edits wait for an admin (services/vendor_review):
+    # the live columns above keep showing until then. "approved" (nothing
+    # waiting), "pending" or "changes_requested" (with the admin's note).
+    review_status: Mapped[str] = mapped_column(
+        String(20), default="approved", server_default="approved", nullable=False, index=True
+    )
+    # {column: proposed value} for the reviewed fields that differ from live.
+    pending_changes: Mapped[dict] = mapped_column(JSONB, nullable=True)
+    review_note: Mapped[str] = mapped_column(Text, nullable=True)
+    submitted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
+    reviewed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
+
     packages = relationship(
         "ExperiencePackage",
         back_populates="vendor",
@@ -181,7 +193,8 @@ class ExperiencePackage(Base):
 
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
-    # Derived: vendor.is_active AND package.is_active, recomputed by the service
+    # Derived: vendor.is_active AND package.is_active AND approved once
+    # (`approved_at`), recomputed by the service
     # on any vendor or package save. Denormalised for the same reason as
     # `location` — it lets the Discovery query be a single-table partial index
     # scan with no join predicate, which is what keeps the KNN plan.
@@ -194,6 +207,21 @@ class ExperiencePackage(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
     )
+
+    # Review of a vendor's own edits (services/vendor_review). A package an
+    # admin makes is approved at once; one a vendor adds has no `approved_at`
+    # and stays unpublished until an admin approves it. After that, a vendor's
+    # content edits wait in `pending_changes` while the live columns keep
+    # showing. "approved", "pending" or "changes_requested".
+    review_status: Mapped[str] = mapped_column(
+        String(20), default="approved", server_default="approved", nullable=False, index=True
+    )
+    pending_changes: Mapped[dict] = mapped_column(JSONB, nullable=True)
+    review_note: Mapped[str] = mapped_column(Text, nullable=True)
+    submitted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
+    reviewed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Set by whoever approves: the admin create endpoint, or an admin review.
+    approved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
 
     vendor = relationship("ExperienceVendor", back_populates="packages", lazy="select")
 

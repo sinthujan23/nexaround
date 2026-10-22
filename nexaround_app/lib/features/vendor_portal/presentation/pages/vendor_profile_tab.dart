@@ -10,7 +10,6 @@ import 'package:nexaround_app/features/vendor_portal/data/vendor_portal_models.d
 
 import '../vendor_ui.dart';
 import '../widgets/photo_editor.dart';
-import '../widgets/place_picker.dart';
 
 /// The business profile travellers see: details, location and contact.
 /// Phone, WhatsApp and the socials are shown read-only: NexAround sets them,
@@ -36,6 +35,9 @@ class _VendorProfileTabState extends State<VendorProfileTab> {
   bool _saving = false;
   bool _photosBusy = false;
   bool _reportedDirty = false;
+  // Whether the form holds the server's copy. A save replaces the whole
+  // profile, so it waits for it: the kept copy may be an older one.
+  bool _fresh = false;
   // Rebuilds the text fields when a saved profile comes back changed.
   int _revision = 0;
 
@@ -44,16 +46,45 @@ class _VendorProfileTabState extends State<VendorProfileTab> {
   @override
   void initState() {
     super.initState();
+    final kept = widget.api.cachedProfile();
+    if (kept != null) _set(kept);
     _load();
   }
 
   Future<void> _load() async {
     try {
       final profile = await widget.api.profile();
-      if (mounted) _set(profile);
+      if (!mounted) return;
+      _form == null ? _set(profile) : _refresh(profile);
+      setState(() {
+        _fresh = true;
+        _error = null;
+      });
     } catch (e) {
       if (mounted) setState(() => _error = e);
     }
+  }
+
+  /// The server's copy, come while the kept one showed: taken as it is, or
+  /// with the changes already typed moved onto it.
+  void _refresh(VendorProfile fresh) {
+    final freshJson = fresh.toJson();
+    if (jsonEncode(freshJson) == _base) {
+      // Only what NexAround sets can differ: no field to rebuild.
+      setState(() => _form = fresh.withManagedFrom(_form!.toJson()));
+      return;
+    }
+    if (!_dirty) {
+      _set(fresh);
+      return;
+    }
+    final mine = rebaseEdits(jsonDecode(_base) as Map<String, dynamic>, _form!.toJson(), freshJson);
+    setState(() {
+      _form = fresh.withManagedFrom(mine);
+      _base = jsonEncode(freshJson);
+      _revision++;
+    });
+    _reportDirty();
   }
 
   void _set(VendorProfile profile) {
@@ -79,19 +110,19 @@ class _VendorProfileTabState extends State<VendorProfileTab> {
   }
 
   /// Puts back what was last saved.
-  void _discard() {
-    _set(VendorProfile.fromJson({
-      ...Map<String, dynamic>.from(jsonDecode(_base) as Map),
-      // Not in the saved body (NexAround sets them), so kept from the form.
-      'contact_phone': _form!.contactPhone,
-      'contact_whatsapp': _form!.contactWhatsapp,
-      'contact_instagram': _form!.contactInstagram,
-      'contact_facebook': _form!.contactFacebook,
-      'contact_x': _form!.contactX,
-    }));
-  }
+  void _discard() => _set(_form!.withManagedFrom(jsonDecode(_base) as Map<String, dynamic>));
 
   Future<void> _save() async {
+    if (!_fresh) {
+      showVendorSnack(
+          context,
+          _error == null
+              ? 'Still loading your latest profile. Try again in a moment.'
+              : 'Can’t reach NexAround to check for changes. Connect, then save again.',
+          error: true);
+      if (_error != null) _load();
+      return;
+    }
     if (!_formKey.currentState!.validate()) {
       showVendorSnack(context, 'Check the fields marked in red.', error: true);
       return;
@@ -101,17 +132,18 @@ class _VendorProfileTabState extends State<VendorProfileTab> {
           error: true);
       return;
     }
-    if ((_form!.countryCode ?? '').isEmpty) {
-      showVendorSnack(context, 'Choose your country first.', error: true);
-      return;
-    }
     setState(() => _saving = true);
     try {
       final saved = await widget.api.saveProfile(_form!);
       if (!mounted) return;
       _set(saved);
-      widget.onRenamed(saved.name);
-      showVendorSnack(context, 'Saved. Travellers see this straight away.');
+      // The header keeps the live name until NexAround approves a new one.
+      if (saved.review.status == 'approved') widget.onRenamed(saved.name);
+      showVendorSnack(
+          context,
+          saved.review.isPending
+              ? 'Sent for review. Travellers see your current profile until NexAround approves it.'
+              : 'Saved.');
     } catch (e) {
       if (mounted) showVendorSnack(context, userMessageFor(e, action: 'save your profile'), error: true);
     } finally {
@@ -149,138 +181,89 @@ class _VendorProfileTabState extends State<VendorProfileTab> {
         Expanded(
           child: Form(
             key: _formKey,
-            child: ListView(
-              key: ValueKey(_revision),
-              padding: const EdgeInsets.fromLTRB(vendorGutter, 4, vendorGutter, 24),
-              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-              children: [
-                const Text('Business profile',
-                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, letterSpacing: -0.3)),
-                const SizedBox(height: 2),
-                const Text('What travellers see about your business',
-                    style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
-                const SizedBox(height: 16),
-                VendorSection(
-                  icon: Icons.storefront_outlined,
-                  title: 'Details',
-                  children: [
-                    TextFormField(
-                      initialValue: f.name,
-                      maxLength: 255,
-                      textCapitalization: TextCapitalization.words,
-                      decoration: vendorInput('Business name *'),
-                      validator: (v) => (v ?? '').trim().isEmpty ? 'Enter the business name.' : null,
-                      onChanged: (v) => _patch((p) => p.copyWith(name: v)),
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      initialValue: f.description,
-                      minLines: 4,
-                      maxLines: 10,
-                      textCapitalization: TextCapitalization.sentences,
-                      decoration: vendorInput('Description', hint: 'What makes your business special'),
-                      onChanged: (v) => _patch((p) => p.copyWith(description: v)),
-                    ),
-                  ],
-                ),
-                VendorSection(
-                  icon: Icons.photo_library_outlined,
-                  title: 'Photos',
-                  hint: 'The first photo is the cover of your business page.',
-                  children: [
-                    PhotoEditor(
-                      api: widget.api,
-                      value: f.photoUrls,
-                      onBusy: (busy) => setState(() => _photosBusy = busy),
-                      onChanged: (urls) => _patch((p) => p.copyWith(photoUrls: urls)),
-                    ),
-                  ],
-                ),
-                VendorSection(
-                  icon: Icons.place_outlined,
-                  title: 'Location',
-                  hint: 'Where your business is. Packages that meet at your business use this.',
-                  children: [
-                    PlacePicker(
-                      api: widget.api,
-                      latitude: f.latitude,
-                      longitude: f.longitude,
-                      onPick: (lat, lng, place) {
-                        _patch((p) => p.copyWith(
-                              latitude: () => lat,
-                              longitude: () => lng,
-                              address: place?.address,
-                              city: place?.city,
-                              countryCode: place?.countryCode,
-                            ));
-                        if (place != null) setState(() => _revision++);
-                      },
-                    ),
-                    const SizedBox(height: 14),
-                    TextFormField(
-                      initialValue: f.address,
-                      maxLength: 500,
-                      decoration: vendorInput('Address'),
-                      onChanged: (v) => _patch((p) => p.copyWith(address: v)),
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      initialValue: f.city,
-                      maxLength: 120,
-                      textCapitalization: TextCapitalization.words,
-                      decoration: vendorInput('City'),
-                      onChanged: (v) => _patch((p) => p.copyWith(city: v)),
-                    ),
-                    const SizedBox(height: 12),
-                    DropdownButtonFormField<String>(
-                      initialValue: country,
-                      isExpanded: true,
-                      icon: vendorDropdownIcon,
-                      style: vendorDropdownText(context),
-                      decoration: vendorInput('Country *'),
-                      items: [
-                        for (final name in countriesList)
-                          if (countryCodes[name] != null)
-                            DropdownMenuItem(value: name, child: Text(name)),
-                      ],
-                      validator: (v) => v == null ? 'Choose your country.' : null,
-                      onChanged: (v) => _patch((p) => p.copyWith(countryCode: countryCodes[v])),
-                    ),
-                  ],
-                ),
-                VendorSection(
-                  icon: Icons.alternate_email_rounded,
-                  title: 'Email & website',
-                  children: [
-                    TextFormField(
-                      initialValue: f.contactEmail,
-                      keyboardType: TextInputType.emailAddress,
-                      decoration: vendorInput('Email', hint: 'bookings@business.com'),
-                      onChanged: (v) => _patch((p) => p.copyWith(contactEmail: v)),
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      initialValue: f.website,
-                      keyboardType: TextInputType.url,
-                      decoration: vendorInput('Website', hint: 'https://business.com'),
-                      onChanged: (v) => _patch((p) => p.copyWith(website: v)),
-                    ),
-                  ],
-                ),
-                VendorSection(
-                  icon: Icons.lock_outline_rounded,
-                  title: 'Set by NexAround',
-                  hint: 'Travellers reach you through NexAround, so these are kept by our team. '
-                      'Ask NexAround to change them.',
-                  children: [
-                    _managed(Icons.call_outlined, 'Phone', f.contactPhone),
-                    _managed(Icons.chat_outlined, 'WhatsApp', f.contactWhatsapp),
-                    _managed(Icons.camera_alt_outlined, 'Instagram', f.contactInstagram),
-                    _managed(Icons.facebook_outlined, 'Facebook', f.contactFacebook),
-                    _managed(Icons.alternate_email_rounded, 'X', f.contactX, last: true),
-                  ],
-                ),
-              ],
+            child: RefreshIndicator(
+              onRefresh: _load,
+              child: ListView(
+                key: ValueKey(_revision),
+                padding: const EdgeInsets.fromLTRB(vendorGutter, 4, vendorGutter, 24),
+                keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                children: [
+                  if (_error != null) const VendorSavedNote(),
+                  const Text('Business profile',
+                      style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, letterSpacing: -0.3)),
+                  const SizedBox(height: 2),
+                  const Text('What travellers see about your business',
+                      style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+                  const SizedBox(height: 16),
+                  VendorReviewBanner(review: f.review, what: 'profile'),
+                  VendorSection(
+                    icon: Icons.storefront_outlined,
+                    title: 'Details',
+                    children: [
+                      TextFormField(
+                        initialValue: f.name,
+                        maxLength: 255,
+                        textCapitalization: TextCapitalization.words,
+                        decoration: vendorInput('Business name *'),
+                        validator: (v) => (v ?? '').trim().isEmpty ? 'Enter the business name.' : null,
+                        onChanged: (v) => _patch((p) => p.copyWith(name: v)),
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        initialValue: f.description,
+                        minLines: 4,
+                        maxLines: 10,
+                        textCapitalization: TextCapitalization.sentences,
+                        decoration: vendorInput('Description', hint: 'What makes your business special'),
+                        onChanged: (v) => _patch((p) => p.copyWith(description: v)),
+                      ),
+                    ],
+                  ),
+                  VendorSection(
+                    icon: Icons.photo_library_outlined,
+                    title: 'Photos',
+                    hint: 'The first photo is the cover of your business page.',
+                    children: [
+                      PhotoEditor(
+                        api: widget.api,
+                        value: f.photoUrls,
+                        onBusy: (busy) => setState(() => _photosBusy = busy),
+                        onChanged: (urls) => _patch((p) => p.copyWith(photoUrls: urls)),
+                      ),
+                    ],
+                  ),
+                  VendorSection(
+                    icon: Icons.alternate_email_rounded,
+                    title: 'Email',
+                    hint: 'Not shown in the app.',
+                    children: [
+                      TextFormField(
+                        initialValue: f.contactEmail,
+                        keyboardType: TextInputType.emailAddress,
+                        decoration: vendorInput('Email', hint: 'bookings@business.com'),
+                        onChanged: (v) => _patch((p) => p.copyWith(contactEmail: v)),
+                      ),
+                    ],
+                  ),
+                  VendorSection(
+                    icon: Icons.lock_outline_rounded,
+                    title: 'Set by NexAround',
+                    hint: 'Travellers find and book you through NexAround, so where you are and '
+                        'how to reach you are kept by our team. Ask NexAround to change them.',
+                    children: [
+                      _managed(Icons.place_outlined, 'Address', f.address),
+                      _managed(Icons.location_city_outlined, 'City', f.city),
+                      _managed(Icons.flag_outlined, 'Country', country),
+                      _managed(Icons.language_rounded, 'Website', f.website),
+                      _managed(Icons.call_outlined, 'Phone', f.contactPhone),
+                      _managed(Icons.chat_outlined, 'WhatsApp', f.contactWhatsapp),
+                      _managed(Icons.camera_alt_outlined, 'Instagram', f.contactInstagram),
+                      _managed(Icons.facebook_outlined, 'Facebook', f.contactFacebook),
+                      _managed(Icons.alternate_email_rounded, 'X', f.contactX, last: true),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
         ),

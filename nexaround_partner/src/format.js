@@ -54,14 +54,25 @@ export const categoryTone = (value) => CATEGORY_TONES[value] || 'teal';
 
 // is_published is the server's word, not the form's: it also needs the whole
 // listing to be live, which only NexAround can switch.
+// A package added by the vendor is not live until NexAround approves it.
 export const visibility = (pkg) => {
+  if (pkg.is_approved === false) return 'Not live yet';
   if (!pkg.is_active) return 'Hidden';
   return pkg.is_published ? 'Live' : 'On, not visible';
 };
 
 export const visibilityTone = (pkg) => {
-  if (!pkg.is_active) return 'gray';
+  if (pkg.is_approved === false || !pkg.is_active) return 'gray';
   return pkg.is_published ? 'green' : 'amber';
+};
+
+// Where the vendor's own edits stand; null when nothing waits.
+export const reviewState = (item) => {
+  if (item.review_status === 'changes_requested') return { label: 'Changes needed', tone: 'rose' };
+  if (item.review_status === 'pending') {
+    return { label: item.is_approved === false ? 'In review' : 'Edit in review', tone: 'amber' };
+  }
+  return null;
 };
 
 export const categoryLabel = (value) => CATEGORIES.find((c) => c.value === value)?.label || value || 'Other';

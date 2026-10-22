@@ -376,5 +376,6 @@ def test_the_vendor_forms_accept_a_vendor_with_only_a_country():
 
     admin = ExperienceVendorCreate(name="Boat Co", country_code="LK")
     assert admin.latitude is None and admin.description is None and admin.contact_phone is None
+    # Where the business is is the admin's alone: the vendor's form drops it.
     partner = PartnerVendorProfileUpdate(name="Boat Co", country_code="LK")
-    assert partner.latitude is None
+    assert "country_code" not in partner.model_dump()

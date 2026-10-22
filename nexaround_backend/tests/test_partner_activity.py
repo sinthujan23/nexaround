@@ -67,7 +67,7 @@ def test_a_real_edit_is_recorded():
     db = FakeSession()
     package = _package()
     before = pa.snapshot(package, _PARTNER_PACKAGE_SCALARS)
-    _save(package, price_amount=120)
+    _save(package, duration_minutes=120)
     payload = pa.package_updated(db, package, before, actor=pa.ADMIN)
     assert payload["kind"] == "package.updated"
     assert payload["title"] == "Sunset Kayak updated"

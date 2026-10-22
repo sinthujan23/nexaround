@@ -210,7 +210,9 @@ def apply_package_derived_fields(
         vendor_lat, vendor_lng, package.uses_vendor_location, override_lat, override_lng
     )
     package.location = point_or_none(lat, lng)
-    package.is_published = is_published(vendor.is_active, package.is_active)
+    package.is_published = is_published(
+        vendor.is_active, package.is_active, package.approved_at is not None
+    )
 
 
 async def apply_vendor_cascade(db: AsyncSession, vendor: ExperienceVendor) -> int:
@@ -229,5 +231,7 @@ async def apply_vendor_cascade(db: AsyncSession, vendor: ExperienceVendor) -> in
     for package in rows:
         if package.uses_vendor_location:
             package.location = point_or_none(vendor_lat, vendor_lng)
-        package.is_published = is_published(vendor.is_active, package.is_active)
+        package.is_published = is_published(
+            vendor.is_active, package.is_active, package.approved_at is not None
+        )
     return len(rows)

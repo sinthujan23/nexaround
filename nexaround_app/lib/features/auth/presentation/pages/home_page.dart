@@ -83,8 +83,9 @@ class HomePageState extends State<HomePage> with WidgetsBindingObserver {
         showMyExperienceRequests(context,
             openRequestId: data['enquiry_id']?.toString());
       }
-      // A request for a business this traveller manages: its notifications.
-      if (type == 'vendor_request' && mounted) {
+      // A request for a business this traveller manages, or NexAround's
+      // check of its changes: its notifications.
+      if ((type == 'vendor_request' || type == 'vendor_review') && mounted) {
         openVendorPortal(context,
             vendorId: data['vendor_id']?.toString(), toNotifications: true);
       }

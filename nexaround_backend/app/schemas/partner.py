@@ -129,28 +129,36 @@ class PartnerMessageResponse(BaseModel):
 # --- Partner-side: the business profile -------------------------------------
 
 class PartnerVendorProfileUpdate(BaseModel):
-    """Everything a vendor may change about themselves, and nothing else.
+    """Everything a vendor may change about themselves, and nothing else; an
+    admin reviews it before travellers see it (services/vendor_review).
 
     The six forbidden names are simply not declared, and neither are the
-    traveller-facing contacts (phone, WhatsApp, Instagram, Facebook, X), which
+    traveller-facing contacts (phone, WhatsApp, Instagram, Facebook, X) or
+    where the business is (address, city, country, map point, website), which
     only an admin sets. Pydantic's default `extra="ignore"` means a client that
-    sends `is_active` has it dropped before it can reach the setattr loop.
+    sends `is_active` - or an older portal that still sends the address - has
+    it dropped before it can reach the save.
     """
 
     name: str = Field(..., max_length=255)
     description: Optional[str] = None
-    latitude: Optional[float] = Field(None, ge=-90, le=90)
-    longitude: Optional[float] = Field(None, ge=-180, le=180)
-    address: Optional[str] = Field(None, max_length=500)
-    city: Optional[str] = Field(None, max_length=120)
-    country_code: Optional[str] = Field(None, max_length=2)
     contact_email: Optional[str] = Field(None, max_length=255)
-    website: Optional[str] = Field(None, max_length=500)
     logo_url: Optional[str] = Field(None, max_length=500)
     photo_urls: list[str] = []
 
 
-class PartnerVendorProfileResponse(PartnerVendorProfileUpdate):
+class PartnerReviewState(BaseModel):
+    """Where a vendor's own edits stand. The other fields of the response are
+    what the vendor last asked for, which is live once `review_status` is
+    "approved"."""
+
+    review_status: str = "approved"  # approved | pending | changes_requested
+    review_note: Optional[str] = None
+    submitted_at: Optional[datetime] = None
+    reviewed_at: Optional[datetime] = None
+
+
+class PartnerVendorProfileResponse(PartnerVendorProfileUpdate, PartnerReviewState):
     """The profile plus the read-only facts a vendor should be able to see.
 
     `is_active` is here so the portal can say "your listing is hidden"; it is
@@ -160,6 +168,13 @@ class PartnerVendorProfileResponse(PartnerVendorProfileUpdate):
 
     id: uuid.UUID
     is_active: bool
+    # Shown read-only: only an admin sets where the business is.
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    address: Optional[str] = None
+    city: Optional[str] = None
+    country_code: Optional[str] = None
+    website: Optional[str] = None
     # Shown read-only: only an admin sets how travellers reach the vendor.
     contact_phone: Optional[str] = None
     contact_whatsapp: Optional[str] = None
@@ -199,13 +214,11 @@ class PartnerPackageBase(BaseModel):
     booking_window_days: Optional[int] = Field(None, ge=1, le=MAX_BOOKING_WINDOW_DAYS)
     inclusions: list[str] = []
     languages: list[str] = []
-    uses_vendor_location: bool = True
-    meeting_point_address: Optional[str] = Field(None, max_length=500)
     # The vendor's own publish toggle. Safe to expose: `is_published` stays
     # gated behind the vendor's own `is_active`, which only an admin can set.
+    # No meeting point: where travellers meet the vendor is an admin's to set
+    # (an older portal that still sends one has it dropped).
     is_active: bool = True
-    latitude: Optional[float] = Field(None, ge=-90, le=90)
-    longitude: Optional[float] = Field(None, ge=-180, le=180)
 
 
 class PartnerPackageCreate(PartnerPackageBase):
@@ -222,10 +235,18 @@ class PartnerPackageUpdate(PartnerPackageCreate):
     pass
 
 
-class PartnerPackageResponse(PartnerPackageBase):
+class PartnerPackageResponse(PartnerPackageBase, PartnerReviewState):
     id: uuid.UUID
     vendor_id: uuid.UUID
+    # Whether travellers see the live version (approved once, switched on,
+    # listing live). `is_approved` is false for a new package still waiting.
     is_published: bool = False
+    is_approved: bool = True
+    # Read-only: set by NexAround.
+    uses_vendor_location: bool = True
+    meeting_point_address: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

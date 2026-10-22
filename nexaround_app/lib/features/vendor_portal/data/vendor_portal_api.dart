@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:nexaround_app/core/constants/api_constants.dart';
 import 'package:nexaround_app/core/network/api_client.dart';
+import 'package:nexaround_app/core/services/cache_service.dart';
 
 import 'vendor_portal_models.dart';
 
@@ -16,6 +17,11 @@ import 'vendor_portal_models.dart';
 /// vendor call goes through this class's own Dio, which carries nothing but
 /// that partner token. The partner token lasts an hour and has no refresh
 /// token; when it runs out the next call trades again.
+///
+/// Every read is also kept on the device (CacheService), and the `cached…`
+/// getters give it back, so the screens open at once and offline. A kept
+/// package or profile is for showing only: saves replace the whole record,
+/// so the screens save only what came fresh from the server.
 class VendorPortalApi {
   final String vendorId;
 
@@ -30,15 +36,29 @@ class VendorPortalApi {
   /// The vendors the signed-in traveller may manage; empty for everyone else.
   static Future<List<VendorAccess>> access() async {
     final res = await ApiClient.instance.get('$_base/app/access');
-    final list = (res.data as Map)['vendors'] as List? ?? const [];
-    return list
-        .map((v) => VendorAccess.fromJson(Map<String, dynamic>.from(v as Map)))
+    final raw = ((res.data as Map)['vendors'] as List? ?? const [])
+        .map((v) => Map<String, dynamic>.from(v as Map))
         .toList();
+    CacheService.cacheVendorAccess(raw);
+    return raw.map(VendorAccess.fromJson).toList();
+  }
+
+  /// What [access] last answered; empty when it never has.
+  static List<VendorAccess> cachedAccess() {
+    try {
+      return (CacheService.getCachedVendorAccess() ?? const [])
+          .map(VendorAccess.fromJson)
+          .toList();
+    } catch (_) {
+      return const [];
+    }
   }
 
   String? _token;
   Future<VendorMe>? _trading;
-  VendorMe? me;
+
+  /// The last session's answer until this one's trade is done.
+  late VendorMe? me = _cachedAs('me', VendorMe.fromJson);
 
   late final Dio _dio = _createDio();
 
@@ -94,7 +114,9 @@ class VendorPortalApi {
         );
         final data = Map<String, dynamic>.from(res.data as Map);
         _token = data['access_token'] as String?;
-        return me = VendorMe.fromJson(Map<String, dynamic>.from(data['me'] as Map));
+        final raw = Map<String, dynamic>.from(data['me'] as Map);
+        CacheService.cacheVendorData(vendorId, 'me', raw);
+        return me = VendorMe.fromJson(raw);
       } finally {
         _trading = null;
       }
@@ -110,41 +132,63 @@ class VendorPortalApi {
     _token = null;
   }
 
-  Future<Map<String, dynamic>> _get(String path, [Map<String, dynamic>? query]) async {
-    final res = await _dio.get('$_base$path', queryParameters: query);
-    return Map<String, dynamic>.from(res.data as Map);
+  /// The answer, kept as [keepAs] when given.
+  Map<String, dynamic> _answer(Response res, String? keepAs) {
+    final data = Map<String, dynamic>.from(res.data as Map);
+    if (keepAs != null) CacheService.cacheVendorData(vendorId, keepAs, data);
+    return data;
   }
 
-  Future<Map<String, dynamic>> _put(String path, Object body) async {
-    final res = await _dio.put('$_base$path', data: body);
-    return Map<String, dynamic>.from(res.data as Map);
+  Future<Map<String, dynamic>> _get(String path, {Map<String, dynamic>? query, String? keepAs}) async =>
+      _answer(await _dio.get('$_base$path', queryParameters: query), keepAs);
+
+  Future<Map<String, dynamic>> _put(String path, Object body, {String? keepAs}) async =>
+      _answer(await _dio.put('$_base$path', data: body), keepAs);
+
+  Future<Map<String, dynamic>> _post(String path, Object body, {String? keepAs}) async =>
+      _answer(await _dio.post('$_base$path', data: body), keepAs);
+
+  /// The kept answer [part], or null when there is none or it no longer
+  /// reads (an older app's shape).
+  T? _cachedAs<T>(String part, T Function(Map<String, dynamic> json) parse) {
+    final raw = CacheService.getCachedVendorData(vendorId, part);
+    if (raw == null) return null;
+    try {
+      return parse(raw);
+    } catch (_) {
+      return null;
+    }
   }
 
-  Future<Map<String, dynamic>> _post(String path, Object body) async {
-    final res = await _dio.post('$_base$path', data: body);
-    return Map<String, dynamic>.from(res.data as Map);
-  }
+  static List<VendorPackage> _packageList(Map<String, dynamic> data) =>
+      ((data['packages'] as List?) ?? const [])
+          .map((p) => VendorPackage.fromJson(Map<String, dynamic>.from(p as Map)))
+          .toList();
+
+  static String _reviewsPart(bool unansweredOnly) => unansweredOnly ? 'reviews_unanswered' : 'reviews';
 
   // ── Agreement ─────────────────────────────────────────────────────────────
 
   Future<PartnerAgreement> agreement() async =>
-      PartnerAgreement.fromJson(await _get('/agreement'));
+      PartnerAgreement.fromJson(await _get('/agreement', keepAs: 'agreement'));
+
+  PartnerAgreement? cachedAgreement() => _cachedAs('agreement', PartnerAgreement.fromJson);
 
   /// [version] is the text the person read; the server also takes their word
   /// that they may accept for the business (the box they ticked).
   Future<PartnerAgreement> acceptAgreement(int version) async => PartnerAgreement.fromJson(
-      await _post('/agreement/accept', {'version': version, 'authorised': true}));
+      await _post('/agreement/accept', {'version': version, 'authorised': true}, keepAs: 'agreement'));
 
   // ── Dashboard and packages ────────────────────────────────────────────────
 
-  Future<VendorStats> stats() async => VendorStats.fromJson(await _get('/stats'));
+  Future<VendorStats> stats() async => VendorStats.fromJson(await _get('/stats', keepAs: 'stats'));
 
-  Future<List<VendorPackage>> packages() async {
-    final data = await _get('/packages');
-    return ((data['packages'] as List?) ?? const [])
-        .map((p) => VendorPackage.fromJson(Map<String, dynamic>.from(p as Map)))
-        .toList();
-  }
+  VendorStats? cachedStats() => _cachedAs('stats', VendorStats.fromJson);
+
+  Future<List<VendorPackage>> packages() async =>
+      _packageList(await _get('/packages', keepAs: 'packages'));
+
+  List<VendorPackage>? cachedPackages() => _cachedAs('packages', _packageList);
 
   Future<VendorPackage> package(String id) async =>
       VendorPackage.fromJson(await _get('/packages/$id'));
@@ -173,44 +217,53 @@ class VendorPortalApi {
     return ((res.data as Map)['urls'] as List? ?? const []).map((u) => u.toString()).toList();
   }
 
-  Future<List<VendorPlace>> searchPlaces(String query, double lat, double lng) async {
-    final data = await _get('/place-search', {'query': query, 'lat': lat, 'lng': lng});
-    return ((data['places'] as List?) ?? const [])
-        .map((p) => VendorPlace.fromJson(Map<String, dynamic>.from(p as Map)))
-        .where((p) => p.latitude != 0 || p.longitude != 0)
-        .toList();
-  }
-
   // ── Reviews ───────────────────────────────────────────────────────────────
 
+  /// The first page is kept, one per filter.
   Future<VendorReviewPage> reviews({int page = 1, bool unansweredOnly = false}) async =>
-      VendorReviewPage.fromJson(await _get('/reviews', {
-        'page': page,
-        'page_size': 25,
-        if (unansweredOnly) 'unanswered': true,
-      }));
+      VendorReviewPage.fromJson(await _get('/reviews',
+          query: {
+            'page': page,
+            'page_size': 25,
+            if (unansweredOnly) 'unanswered': true,
+          },
+          keepAs: page == 1 ? _reviewsPart(unansweredOnly) : null));
+
+  VendorReviewPage? cachedReviews({bool unansweredOnly = false}) =>
+      _cachedAs(_reviewsPart(unansweredOnly), VendorReviewPage.fromJson);
 
   Future<VendorReview> reply(String reviewId, String? reply) async =>
       VendorReview.fromJson(await _put('/reviews/$reviewId/reply', {'reply': reply}));
 
   // ── Profile ───────────────────────────────────────────────────────────────
 
-  Future<VendorProfile> profile() async => VendorProfile.fromJson(await _get('/profile'));
+  Future<VendorProfile> profile() async =>
+      VendorProfile.fromJson(await _get('/profile', keepAs: 'profile'));
+
+  VendorProfile? cachedProfile() => _cachedAs('profile', VendorProfile.fromJson);
 
   Future<VendorProfile> saveProfile(VendorProfile profile) async =>
-      VendorProfile.fromJson(await _put('/profile', profile.toJson()));
+      VendorProfile.fromJson(await _put('/profile', profile.toJson(), keepAs: 'profile'));
 
   // ── Notifications ─────────────────────────────────────────────────────────
 
+  /// The first page is kept.
   Future<VendorActivityPage> activity({DateTime? before}) async =>
-      VendorActivityPage.fromJson(await _get('/activity', {
-        'scope': 'notifications',
-        if (before != null) 'before': before.toUtc().toIso8601String(),
-      }));
+      VendorActivityPage.fromJson(await _get('/activity',
+          query: {
+            'scope': 'notifications',
+            if (before != null) 'before': before.toUtc().toIso8601String(),
+          },
+          keepAs: before == null ? 'activity' : null));
 
-  Future<int> unread() async => ((await _get('/activity/unread'))['unread'] as num?)?.toInt() ?? 0;
+  VendorActivityPage? cachedActivity() => _cachedAs('activity', VendorActivityPage.fromJson);
+
+  Future<int> unread() async =>
+      ((await _get('/activity/unread', keepAs: 'unread'))['unread'] as num?)?.toInt() ?? 0;
+
+  int? cachedUnread() => _cachedAs('unread', (j) => (j['unread'] as num?)?.toInt() ?? 0);
 
   Future<void> markSeen() async {
-    await _post('/activity/seen', const {});
+    await _post('/activity/seen', const {}, keepAs: 'unread');
   }
 }

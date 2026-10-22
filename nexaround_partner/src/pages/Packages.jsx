@@ -7,7 +7,8 @@ import { PlusIcon, TicketIcon } from '../components/Icons';
 import { Switch } from '../components/Kit';
 import { EmptyState, ErrorBanner, Loader, SearchInput, StatusPill, Tabs } from '../components/Lists';
 import {
-  categoryLabel, categoryTone, basisLabel, formatPrice, formatDuration, visibility, visibilityTone,
+  categoryLabel, categoryTone, basisLabel, formatPrice, formatDuration, reviewState, visibility,
+  visibilityTone,
 } from '../format';
 import { toPayload } from './packageForm';
 
@@ -108,6 +109,11 @@ export default function Packages() {
               <div className="pkg-card-body">
                 <div className={`pkg-eyebrow tone-${categoryTone(pkg.category)}`}>{categoryLabel(pkg.category)}</div>
                 <div className="pkg-card-title">{pkg.title}</div>
+                {reviewState(pkg) && (
+                  <div style={{ marginTop: 4 }}>
+                    <StatusPill tone={reviewState(pkg).tone}>{reviewState(pkg).label}</StatusPill>
+                  </div>
+                )}
                 {pkg.summary && <div className="pkg-card-vendor">{pkg.summary}</div>}
                 <div className="pkg-card-foot">
                   <div>

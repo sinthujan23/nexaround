@@ -5,16 +5,16 @@ import { useConfirm } from '../confirm';
 import { useUnsavedGuard } from '../hooks';
 import { useToast } from '../toast';
 import {
-  TrashIcon, TicketIcon, DollarIcon, ImageIcon, ClipboardCheckIcon, MapPinIcon, ClockIcon,
+  TrashIcon, TicketIcon, DollarIcon, ImageIcon, ClipboardCheckIcon, ClockIcon,
 } from '../components/Icons';
 import { Switch, Section } from '../components/Kit';
 import { EmptyState, Loader } from '../components/Lists';
 import { FieldGrid, SaveBar, SelectField, TextArea, TextField, Field } from '../components/Forms';
-import LocationPicker from '../components/LocationPicker';
 import ImageUploader from '../components/ImageUploader';
 import AvailabilityCalendar from '../components/AvailabilityCalendar';
 import DescriptionEditor from '../components/DescriptionEditor';
 import PriceOptionsEditor from '../components/PriceOptionsEditor';
+import ReviewNotice from '../components/ReviewNotice';
 import { CATEGORIES, bookingWindowOptions } from '../format';
 import { CURRENCY_OPTIONS } from '../constants/currencies';
 import {
@@ -59,15 +59,14 @@ function PackageForm({ packageId }) {
       notify('Photos are still uploading. Wait for them to finish, then save.', 'error');
       return;
     }
-    if (!form.uses_vendor_location && (form.latitude === '' || form.latitude == null)) {
-      notify('Pick the meeting point on the map, or use your business address.', 'error');
-      return;
-    }
     setSaving(true);
     try {
-      if (isNew) await apiPost('/partner/packages', toPayload(form));
-      else await apiPut(`/partner/packages/${packageId}`, toPayload(form));
-      notify(isNew ? 'Package created' : 'Package saved');
+      const saved = isNew
+        ? await apiPost('/partner/packages', toPayload(form))
+        : await apiPut(`/partner/packages/${packageId}`, toPayload(form));
+      notify(saved.review_status === 'pending' && saved.submitted_at !== base?.submitted_at
+        ? 'Sent for review. NexAround will check it before travellers see it.'
+        : 'Package saved');
       backToList();
     } catch (err) {
       notify(`Could not save: ${err.message}`, 'error');
@@ -106,6 +105,7 @@ function PackageForm({ packageId }) {
 
   return (
     <form className="editor" onSubmit={save}>
+      <ReviewNotice item={base} isNew={isNew} />
       <Section tone="teal" icon={TicketIcon} title="Basic details" hint="What travellers see first.">
         <TextField
           label="Title *" required autoFocus={isNew} value={form.title}
@@ -206,49 +206,12 @@ function PackageForm({ packageId }) {
         </FieldGrid>
       </Section>
 
-      <Section
-        tone="rose"
-        icon={MapPinIcon}
-        title="Meeting point"
-        hint="Where travellers meet you."
-        action={
-          <Switch
-            checked={form.uses_vendor_location}
-            onChange={(v) => patch({ uses_vendor_location: v, latitude: v ? null : '', longitude: v ? null : '' })}
-            label="My business address"
-          />
-        }
-      >
-        {!form.uses_vendor_location && (
-          <Field>
-            <LocationPicker
-              mapId="partner-package-map"
-              latitude={form.latitude ?? ''}
-              longitude={form.longitude ?? ''}
-              address={form.meeting_point_address || ''}
-              searchEndpoint="/partner/place-search"
-              onPick={(p) => {
-                const next = { ...p };
-                delete next.name;
-                delete next.google_place_id;
-                const picked = next.address;
-                delete next.address;
-                setForm((prev) => ({
-                  ...prev, ...next,
-                  ...(picked !== undefined ? { meeting_point_address: picked } : {}),
-                }));
-              }}
-            />
-          </Field>
-        )}
-      </Section>
-
       <SaveBar
         submit
         dirty={dirty}
         saving={saving}
         busy={photosBusy}
-        saveLabel={isNew ? 'Create package' : 'Save package'}
+        saveLabel={isNew ? 'Send for review' : 'Save package'}
         left={(
           <Switch
             checked={form.is_active}

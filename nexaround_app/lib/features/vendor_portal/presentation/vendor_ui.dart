@@ -348,7 +348,122 @@ class VendorSwitchRow extends StatelessWidget {
   }
 }
 
-/// "Live" (green), "On, not visible" (amber) or "Hidden" (grey).
+/// Where the vendor's own edits stand, over a form: waiting for NexAround,
+/// sent back with NexAround's note, or (nothing waiting) how review works.
+/// [firstTime] for a package not approved yet; [what] names the record.
+class VendorReviewBanner extends StatelessWidget {
+  final VendorReviewState review;
+  final bool firstTime;
+  final String what;
+
+  const VendorReviewBanner({
+    super.key,
+    required this.review,
+    this.firstTime = false,
+    this.what = 'package',
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final (Color color, IconData icon, String title, String body) = review.changesRequested
+        ? (
+            AppColors.error,
+            Icons.edit_note_rounded,
+            'NexAround asked for changes',
+            'Make the changes and save to send it for review again.',
+          )
+        : review.isPending
+            ? (
+                const Color(0xFFB7791F),
+                Icons.hourglass_top_rounded,
+                'Waiting for NexAround’s review',
+                firstTime
+                    ? 'Travellers can see it once it is approved. You will get a notification when it is checked.'
+                    : 'Travellers see the current $what until your changes are approved. '
+                        'You will get a notification when they are checked.',
+              )
+            : (
+                AppColors.brandGreen,
+                Icons.verified_outlined,
+                firstTime ? 'Checked before it goes live' : 'Changes are checked first',
+                firstTime
+                    ? 'NexAround checks new packages before travellers can see them.'
+                    : 'NexAround checks changes to the details, photos${what == 'package' ? ' and prices' : ''} '
+                        'before travellers see them.'
+                        '${what == 'package' ? ' Availability and Show in the app apply at once.' : ''}',
+              );
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.07),
+        borderRadius: AppRadii.brMd,
+        border: Border.all(color: color.withValues(alpha: 0.25), width: 0.8),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 20, color: color),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title,
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: color)),
+                if (review.changesRequested && (review.note ?? '').isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: AppRadii.brSm,
+                      border: Border.all(color: color.withValues(alpha: 0.2)),
+                    ),
+                    child: Text(review.note!,
+                        style: const TextStyle(
+                            fontSize: 13.5, height: 1.4, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                  ),
+                ],
+                const SizedBox(height: 4),
+                Text(body,
+                    style: const TextStyle(fontSize: 12.5, height: 1.4, color: AppColors.textSecondary)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// "In review", "Edit in review" or "Changes needed"; nothing when no edit
+/// waits.
+class ReviewPill extends StatelessWidget {
+  final VendorReviewState review;
+  final bool approved;
+
+  const ReviewPill(this.review, {super.key, this.approved = true});
+
+  @override
+  Widget build(BuildContext context) {
+    if (!review.isPending && !review.changesRequested) return const SizedBox.shrink();
+    final color = review.changesRequested ? AppColors.error : const Color(0xFFB7791F);
+    final label = review.changesRequested ? 'Changes needed' : (approved ? 'Edit in review' : 'In review');
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(AppRadii.pill),
+      ),
+      child: Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color)),
+    );
+  }
+}
+
+/// "Live" (green), "On, not visible" (amber), "Hidden" or "Not live yet"
+/// (grey).
 class VisibilityPill extends StatelessWidget {
   final String label;
 
@@ -358,7 +473,7 @@ class VisibilityPill extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = switch (label) {
       'Live' => AppColors.success,
-      'Hidden' => AppColors.textTertiary,
+      'Hidden' || 'Not live yet' => AppColors.textTertiary,
       _ => const Color(0xFFB7791F),
     };
     return Container(
@@ -421,6 +536,30 @@ class VendorEmptyState extends StatelessWidget {
               textAlign: TextAlign.center,
               style: const TextStyle(fontSize: 13.5, height: 1.4, color: AppColors.textSecondary)),
           if (action != null) ...[const SizedBox(height: 18), action!],
+        ],
+      ),
+    );
+  }
+}
+
+/// Over a list shown from what the device kept, when the server could not
+/// be reached: the same line My requests shows.
+class VendorSavedNote extends StatelessWidget {
+  final String message;
+
+  const VendorSavedNote({super.key, this.message = 'Showing saved data. Pull down to refresh.'});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        children: [
+          const Icon(Icons.cloud_off_rounded, size: 15, color: AppColors.textTertiary),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(message, style: const TextStyle(fontSize: 12.5, color: AppColors.textTertiary)),
+          ),
         ],
       ),
     );

@@ -4,7 +4,7 @@ import { useAuth } from '../auth';
 import { RESYNC, useLiveEvent } from '../live';
 import { TicketIcon, CheckIcon, PlusIcon, EditIcon } from '../components/Icons';
 import { EmptyState, ListRow, Loader, StatusPill } from '../components/Lists';
-import { formatPrice, basisLabel, visibility, visibilityTone } from '../format';
+import { formatPrice, basisLabel, reviewState, visibility, visibilityTone } from '../format';
 
 // The dashboard shows the first few; the rest are one click away.
 const PACKAGE_PREVIEW = 5;
@@ -91,7 +91,12 @@ export default function Dashboard() {
               )}
               title={pkg.title}
               subs={[formatPrice(pkg), pkg.price_amount != null && basisLabel(pkg.price_basis)].filter(Boolean).join(' · ')}
-              side={<StatusPill tone={visibilityTone(pkg)}>{visibility(pkg)}</StatusPill>}
+              side={(
+                <>
+                  {reviewState(pkg) && <StatusPill tone={reviewState(pkg).tone}>{reviewState(pkg).label}</StatusPill>}
+                  <StatusPill tone={visibilityTone(pkg)}>{visibility(pkg)}</StatusPill>
+                </>
+              )}
             />
           ))}
         </section>

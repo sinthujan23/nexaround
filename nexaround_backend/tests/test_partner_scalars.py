@@ -13,11 +13,13 @@ import pytest
 
 from app.api.v1.experiences_admin import _PACKAGE_SCALARS, _VENDOR_SCALARS
 from app.api.v1.partner import (
-    _ADMIN_ONLY_VENDOR_CONTACTS, _PARTNER_PACKAGE_SCALARS, _PARTNER_VENDOR_SCALARS,
+    _ADMIN_ONLY_PACKAGE_PLACE, _ADMIN_ONLY_VENDOR_CONTACTS, _ADMIN_ONLY_VENDOR_PLACE,
+    _PARTNER_PACKAGE_SCALARS, _PARTNER_VENDOR_SCALARS,
 )
 from app.schemas.experience import ExperienceVendorBase
 from app.schemas.partner import (
-    PartnerPackageBase, PartnerVendorProfileResponse, PartnerVendorProfileUpdate,
+    PartnerPackageBase, PartnerPackageCreate, PartnerVendorProfileResponse,
+    PartnerVendorProfileUpdate,
 )
 
 # Moderation and reputation. A vendor may see some of these; none may be
@@ -32,6 +34,8 @@ CONTACTS = {
     "contact_phone", "contact_whatsapp", "contact_instagram",
     "contact_facebook", "contact_x",
 }
+# Where the business is, and its website: admin only for the same reason.
+PLACE = {"address", "city", "country_code", "website"}
 
 
 def test_the_partner_tuple_is_not_the_admin_tuple():
@@ -76,7 +80,24 @@ def test_the_two_vendor_tuples_differ_by_exactly_the_forbidden_set():
     conscious decision about whether a vendor may write it too — instead of the
     field quietly existing on one side only.
     """
-    assert set(_VENDOR_SCALARS) - set(_PARTNER_VENDOR_SCALARS) == FORBIDDEN | CONTACTS
+    assert set(_VENDOR_SCALARS) - set(_PARTNER_VENDOR_SCALARS) == FORBIDDEN | CONTACTS | PLACE
+
+
+def test_a_vendor_cannot_write_where_they_are_or_their_website():
+    assert set(_ADMIN_ONLY_VENDOR_PLACE) == PLACE
+    assert not PLACE & set(_PARTNER_VENDOR_SCALARS)
+    leaked = (PLACE | {"latitude", "longitude"}) & set(PartnerVendorProfileUpdate.model_fields)
+    assert not leaked, f"the vendor's profile form still accepts {sorted(leaked)}"
+    # Still shown to them, read-only.
+    assert PLACE <= set(PartnerVendorProfileResponse.model_fields)
+
+
+def test_a_vendor_cannot_set_where_travellers_meet_them():
+    meeting = {"uses_vendor_location", "meeting_point_address", "latitude", "longitude"}
+    assert not meeting & set(_PARTNER_PACKAGE_SCALARS)
+    leaked = meeting & set(PartnerPackageCreate.model_fields)
+    assert not leaked, f"the vendor's package form still accepts {sorted(leaked)}"
+    assert set(_ADMIN_ONLY_PACKAGE_PLACE) == {"uses_vendor_location", "meeting_point_address"}
 
 
 def test_a_vendor_cannot_write_how_travellers_reach_them():

@@ -9,15 +9,16 @@ export const EMPTY_PACKAGE = {
   price_basis: 'per_person', price_rows: optionsToRows([]),
   duration_minutes: '', max_participants: '',
   booking_window_days: '',
-  inclusions: [], languages: [], uses_vendor_location: true,
-  meeting_point_address: '', is_active: true, latitude: null, longitude: null,
+  inclusions: [], languages: [], is_active: true,
 };
 
 const blankToNull = (v) => (v === '' || v == null ? null : Number(v));
 
-// A package that meets at the business has no point of its own; the server
-// copies the vendor's.
-export const toPayload = ({ price_rows: priceRows, ...form }) => ({
+// The meeting point is not the vendor's to send: NexAround sets it.
+export const toPayload = ({
+  price_rows: priceRows, uses_vendor_location: _u, meeting_point_address: _m,
+  latitude: _lat, longitude: _lng, ...form
+}) => ({
   ...form,
   // The server keeps the dollar prices NexAround set, by option.
   price_options: rowsToOptions(priceRows, false),
@@ -25,8 +26,6 @@ export const toPayload = ({ price_rows: priceRows, ...form }) => ({
   duration_minutes: blankToNull(form.duration_minutes),
   max_participants: blankToNull(form.max_participants),
   booking_window_days: blankToNull(form.booking_window_days),
-  latitude: form.uses_vendor_location ? null : Number(form.latitude),
-  longitude: form.uses_vendor_location ? null : Number(form.longitude),
 });
 
 /** A package from the API, as the form's fields (numbers become strings). */

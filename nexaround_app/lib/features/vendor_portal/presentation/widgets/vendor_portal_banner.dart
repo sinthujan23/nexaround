@@ -21,7 +21,11 @@ class _VendorPortalBannerState extends State<VendorPortalBanner> {
   @override
   void initState() {
     super.initState();
-    if (CacheService.isLoggedIn()) _load();
+    if (CacheService.isLoggedIn()) {
+      // The last answer at once, then the server's.
+      _access = VendorPortalApi.cachedAccess();
+      _load();
+    }
   }
 
   Future<void> _load() async {
@@ -29,7 +33,7 @@ class _VendorPortalBannerState extends State<VendorPortalBanner> {
       final access = await VendorPortalApi.access();
       if (mounted) setState(() => _access = access);
     } catch (_) {
-      // No button is the right answer when the check fails.
+      // Keep what was kept: none for someone never given a business.
     }
   }
 

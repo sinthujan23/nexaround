@@ -97,9 +97,10 @@ def parse_country_mode(value: Optional[str]) -> bool:
     return (value or "").strip().lower() not in ("false", "0", "off", "no")
 
 
-def is_published(vendor_active: bool, package_active: bool) -> bool:
-    """Derived publish state. A package is only visible if its vendor is too."""
-    return bool(vendor_active) and bool(package_active)
+def is_published(vendor_active: bool, package_active: bool, approved: bool = True) -> bool:
+    """Derived publish state. A package is only visible if its vendor is too,
+    and once an admin has approved it (a vendor's new package waits)."""
+    return bool(vendor_active) and bool(package_active) and bool(approved)
 
 
 def is_nearby(nearest_m: Optional[float], threshold_m: int = NEARBY_THRESHOLD_M) -> bool:

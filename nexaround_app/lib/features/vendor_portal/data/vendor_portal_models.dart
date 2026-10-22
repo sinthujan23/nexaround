@@ -7,6 +7,23 @@
 /// Desert Safari · Sun 25 Oct · 4 guests").
 library;
 
+import 'dart:convert';
+
+/// A form's edits moved onto a fresher copy of its record, so a save never
+/// sends back an older copy's other fields: [mine] is the form, edited from
+/// [base]; each field the person changed keeps their value, every other
+/// field takes [fresh]'s. All three are `toJson()` bodies.
+Map<String, dynamic> rebaseEdits(
+  Map<String, dynamic> base,
+  Map<String, dynamic> mine,
+  Map<String, dynamic> fresh,
+) =>
+    {
+      ...fresh,
+      for (final e in mine.entries)
+        if (jsonEncode(e.value) != jsonEncode(base[e.key])) e.key: e.value,
+    };
+
 /// One price a package is sold at (the server's PriceOptionBase). No dollar
 /// price: only NexAround sets that, and the server keeps it by [id]. A blank
 /// min is 1 and a blank max is the package's Max participants.
@@ -76,6 +93,36 @@ List<String> _strings(dynamic v) =>
 
 String _day(DateTime d) =>
     '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+/// Where a vendor's own edits stand: NexAround checks a package's content
+/// and the profile before travellers see them, while the live version keeps
+/// showing (the server's services/vendor_review). Availability and the
+/// Show in app switch apply at once.
+class VendorReviewState {
+  /// "approved" (nothing waiting), "pending" or "changes_requested".
+  final String status;
+
+  /// What NexAround asked to change, when it sent the edit back.
+  final String? note;
+  final DateTime? submittedAt;
+
+  const VendorReviewState({this.status = 'approved', this.note, this.submittedAt});
+
+  factory VendorReviewState.fromJson(Map<String, dynamic> json) => VendorReviewState(
+        status: (json['review_status'] ?? 'approved').toString(),
+        note: json['review_note'] as String?,
+        submittedAt: _date(json['submitted_at']),
+      );
+
+  bool get isPending => status == 'pending';
+  bool get changesRequested => status == 'changes_requested';
+
+  Map<String, dynamic> toJson() => {
+        'review_status': status,
+        'review_note': note,
+        'submitted_at': submittedAt?.toIso8601String(),
+      };
+}
 
 /// A vendor the signed-in traveller has been given to manage.
 class VendorAccess {
@@ -160,6 +207,8 @@ class VendorPackage {
   final int? bookingWindowDays;
   final List<String> inclusions;
   final List<String> languages;
+  /// Where travellers meet the vendor: NexAround sets it, so these are
+  /// shown, never sent.
   final bool usesVendorLocation;
   final String meetingPointAddress;
   final bool isActive;
@@ -169,6 +218,14 @@ class VendorPackage {
   /// The server's word, not the form's: it also needs the whole listing to
   /// be live, which only NexAround can switch.
   final bool isPublished;
+
+  /// False for a package the vendor added that NexAround has not approved
+  /// yet: travellers cannot see it.
+  final bool isApproved;
+
+  /// The fields above are what the vendor last asked for; this says whether
+  /// they wait for NexAround.
+  final VendorReviewState review;
 
   const VendorPackage({
     this.id,
@@ -194,6 +251,8 @@ class VendorPackage {
     this.latitude,
     this.longitude,
     this.isPublished = false,
+    this.isApproved = true,
+    this.review = const VendorReviewState(),
   });
 
   factory VendorPackage.fromJson(Map<String, dynamic> json) => VendorPackage(
@@ -224,11 +283,12 @@ class VendorPackage {
         latitude: _double(json['latitude']),
         longitude: _double(json['longitude']),
         isPublished: json['is_published'] == true,
+        isApproved: json['is_approved'] != false,
+        review: VendorReviewState.fromJson(json),
       );
 
-  /// The body of a create or update, which is a full replacement. A package
-  /// that meets at the business has no point of its own; the server copies
-  /// the vendor's.
+  /// The body of a create or update, which is a full replacement. No
+  /// meeting point: only NexAround sets where travellers meet the vendor.
   Map<String, dynamic> toJson() => {
         'title': title.trim(),
         'summary': summary.trim().isEmpty ? null : summary.trim(),
@@ -250,12 +310,7 @@ class VendorPackage {
         'booking_window_days': bookingWindowDays,
         'inclusions': inclusions,
         'languages': languages,
-        'uses_vendor_location': usesVendorLocation,
-        'meeting_point_address':
-            meetingPointAddress.trim().isEmpty ? null : meetingPointAddress.trim(),
         'is_active': isActive,
-        'latitude': usesVendorLocation ? null : latitude,
-        'longitude': usesVendorLocation ? null : longitude,
       };
 
   VendorPackage copyWith({
@@ -274,11 +329,7 @@ class VendorPackage {
     int? Function()? bookingWindowDays,
     List<String>? inclusions,
     List<String>? languages,
-    bool? usesVendorLocation,
-    String? meetingPointAddress,
     bool? isActive,
-    double? Function()? latitude,
-    double? Function()? longitude,
   }) =>
       VendorPackage(
         id: id,
@@ -299,16 +350,34 @@ class VendorPackage {
             bookingWindowDays != null ? bookingWindowDays() : this.bookingWindowDays,
         inclusions: inclusions ?? this.inclusions,
         languages: languages ?? this.languages,
-        usesVendorLocation: usesVendorLocation ?? this.usesVendorLocation,
-        meetingPointAddress: meetingPointAddress ?? this.meetingPointAddress,
+        usesVendorLocation: usesVendorLocation,
+        meetingPointAddress: meetingPointAddress,
         isActive: isActive ?? this.isActive,
-        latitude: latitude != null ? latitude() : this.latitude,
-        longitude: longitude != null ? longitude() : this.longitude,
+        latitude: latitude,
+        longitude: longitude,
         isPublished: isPublished,
+        isApproved: isApproved,
+        review: review,
       );
 
-  /// "Live", "Hidden" or "On, not visible", as the web portal says it.
+  /// [body] (a [toJson] body) as a package, with what only the server says
+  /// - id, publish and review state, meeting point - taken from this one.
+  VendorPackage withContent(Map<String, dynamic> body) => VendorPackage.fromJson({
+        ...body,
+        'id': id,
+        'is_published': isPublished,
+        'is_approved': isApproved,
+        'uses_vendor_location': usesVendorLocation,
+        'meeting_point_address': meetingPointAddress,
+        'latitude': latitude,
+        'longitude': longitude,
+        ...review.toJson(),
+      });
+
+  /// "Not live yet", "Live", "Hidden" or "On, not visible", as the web
+  /// portal says it.
   String get visibility {
+    if (!isApproved) return 'Not live yet';
     if (!isActive) return 'Hidden';
     return isPublished ? 'Live' : 'On, not visible';
   }
@@ -387,8 +456,10 @@ class VendorReviewPage {
       );
 }
 
-/// The business profile. Phone, WhatsApp and the socials are shown but only
+/// The business profile. Where the business is (address, city, country, map
+/// point), its website, phone, WhatsApp and the socials are shown but only
 /// NexAround sets them: travellers reach the business through NexAround.
+/// What the vendor can change waits for NexAround's review ([review]).
 class VendorProfile {
   final String name;
   final String description;
@@ -406,6 +477,7 @@ class VendorProfile {
   final String? contactInstagram;
   final String? contactFacebook;
   final String? contactX;
+  final VendorReviewState review;
 
   const VendorProfile({
     this.name = '',
@@ -424,6 +496,7 @@ class VendorProfile {
     this.contactInstagram,
     this.contactFacebook,
     this.contactX,
+    this.review = const VendorReviewState(),
   });
 
   factory VendorProfile.fromJson(Map<String, dynamic> json) => VendorProfile(
@@ -443,49 +516,56 @@ class VendorProfile {
         contactInstagram: json['contact_instagram'] as String?,
         contactFacebook: json['contact_facebook'] as String?,
         contactX: json['contact_x'] as String?,
+        review: VendorReviewState.fromJson(json),
       );
 
   /// Only the fields a vendor may change (PartnerVendorProfileUpdate); the
-  /// contacts above are left out, and the server would drop them anyway.
+  /// ones NexAround sets are left out, and the server would drop them anyway.
   Map<String, dynamic> toJson() {
     String? blank(String v) => v.trim().isEmpty ? null : v.trim();
     return {
       'name': name.trim(),
       'description': blank(description),
-      'latitude': latitude,
-      'longitude': longitude,
-      'address': blank(address),
-      'city': blank(city),
-      'country_code': countryCode,
       'contact_email': blank(contactEmail),
-      'website': blank(website),
       'logo_url': logoUrl,
       'photo_urls': photoUrls,
     };
   }
 
+  /// [json] (a [toJson] body) with everything NexAround sets - which the
+  /// body leaves out - taken from this profile.
+  VendorProfile withManagedFrom(Map<String, dynamic> json) => VendorProfile.fromJson({
+        ...json,
+        'latitude': latitude,
+        'longitude': longitude,
+        'address': address,
+        'city': city,
+        'country_code': countryCode,
+        'website': website,
+        'contact_phone': contactPhone,
+        'contact_whatsapp': contactWhatsapp,
+        'contact_instagram': contactInstagram,
+        'contact_facebook': contactFacebook,
+        'contact_x': contactX,
+        ...review.toJson(),
+      });
+
   VendorProfile copyWith({
     String? name,
     String? description,
-    double? Function()? latitude,
-    double? Function()? longitude,
-    String? address,
-    String? city,
-    String? countryCode,
     String? contactEmail,
-    String? website,
     List<String>? photoUrls,
   }) =>
       VendorProfile(
         name: name ?? this.name,
         description: description ?? this.description,
-        latitude: latitude != null ? latitude() : this.latitude,
-        longitude: longitude != null ? longitude() : this.longitude,
-        address: address ?? this.address,
-        city: city ?? this.city,
-        countryCode: countryCode ?? this.countryCode,
+        latitude: latitude,
+        longitude: longitude,
+        address: address,
+        city: city,
+        countryCode: countryCode,
         contactEmail: contactEmail ?? this.contactEmail,
-        website: website ?? this.website,
+        website: website,
         logoUrl: logoUrl,
         photoUrls: photoUrls ?? this.photoUrls,
         contactPhone: contactPhone,
@@ -493,6 +573,7 @@ class VendorProfile {
         contactInstagram: contactInstagram,
         contactFacebook: contactFacebook,
         contactX: contactX,
+        review: review,
       );
 }
 
@@ -584,32 +665,4 @@ class PartnerAgreement {
       mustAccept: json['required'] == true,
     );
   }
-}
-
-/// A Google place found by the server's search, for placing a map pin.
-class VendorPlace {
-  final String? name;
-  final String? address;
-  final double latitude;
-  final double longitude;
-  final String? city;
-  final String? countryCode;
-
-  const VendorPlace({
-    this.name,
-    this.address,
-    required this.latitude,
-    required this.longitude,
-    this.city,
-    this.countryCode,
-  });
-
-  factory VendorPlace.fromJson(Map<String, dynamic> json) => VendorPlace(
-        name: json['name'] as String?,
-        address: json['address'] as String?,
-        latitude: _double(json['latitude']) ?? 0,
-        longitude: _double(json['longitude']) ?? 0,
-        city: json['city'] as String?,
-        countryCode: (json['country_code'] as String?)?.toUpperCase(),
-      );
 }

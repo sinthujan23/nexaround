@@ -11,6 +11,7 @@ import ApiUsage from './pages/ApiUsage';
 import Experiences from './pages/Experiences';
 import ExperienceEnquiries from './pages/ExperienceEnquiries';
 import ExperienceReviews from './pages/ExperienceReviews';
+import VendorChanges from './pages/VendorChanges';
 import AuditTrail from './pages/AuditTrail';
 import Legal from './pages/Legal';
 import Sessions from './pages/Sessions';
@@ -47,6 +48,7 @@ export const NAV_SECTIONS = [
     label: 'Business',
     items: [
       { path: '/experiences', label: 'Experiences', title: 'Experiences & Vendors', icon: TicketIcon, page: Experiences },
+      { path: '/experiences/changes', label: 'Vendor changes', title: 'Experiences · Vendor changes', icon: ClipboardCheckIcon, page: VendorChanges, badge: 'vendor_changes' },
       { path: '/enquiries', label: 'Enquiries', title: 'Experience Enquiries', icon: InboxIcon, page: ExperienceEnquiries },
       { path: '/reviews', label: 'Reviews', title: 'Experience Reviews', icon: StarIcon, page: ExperienceReviews },
       { path: '/legal', label: 'Legal & Terms', title: 'Legal & Terms', icon: ClipboardCheckIcon, page: Legal },

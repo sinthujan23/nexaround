@@ -12,14 +12,16 @@ import '../vendor_ui.dart';
 import '../widgets/availability_calendar.dart';
 import '../widgets/description_editor.dart';
 import '../widgets/photo_editor.dart';
-import '../widgets/place_picker.dart';
 
 /// Opens the editor; completes with true when the package was saved or
-/// deleted, so the list reloads.
-Future<bool?> openPackageEditor(BuildContext context, VendorPortalApi api, {String? packageId}) =>
+/// deleted, so the list reloads. [initial] is the list's copy, shown while
+/// the package is fetched.
+Future<bool?> openPackageEditor(BuildContext context, VendorPortalApi api,
+        {String? packageId, VendorPackage? initial}) =>
     Navigator.push<bool>(
       context,
-      MaterialPageRoute(builder: (_) => PackageEditorPage(api: api, packageId: packageId)),
+      MaterialPageRoute(
+          builder: (_) => PackageEditorPage(api: api, packageId: packageId, initial: initial)),
     );
 
 /// A new package or an existing one, field for field the web portal's editor.
@@ -27,7 +29,11 @@ class PackageEditorPage extends StatefulWidget {
   final VendorPortalApi api;
   final String? packageId;
 
-  const PackageEditorPage({super.key, required this.api, this.packageId});
+  /// The package as a list showed it (maybe from what the device kept):
+  /// shown at once, then replaced by the server's copy.
+  final VendorPackage? initial;
+
+  const PackageEditorPage({super.key, required this.api, this.packageId, this.initial});
 
   @override
   State<PackageEditorPage> createState() => _PackageEditorPageState();
@@ -40,6 +46,11 @@ class _PackageEditorPageState extends State<PackageEditorPage> {
   Object? _loadError;
   bool _saving = false;
   bool _photosBusy = false;
+  // Whether the form holds the server's copy. A save replaces the whole
+  // package, so it waits for it: the list's copy may be an older one.
+  bool _fresh = false;
+  // Rebuilds the fields when the server's copy replaces the list's.
+  int _revision = 0;
 
   bool get _isNew => widget.packageId == null;
   bool get _dirty => _form != null && jsonEncode(_form!.toJson()) != _base;
@@ -49,11 +60,39 @@ class _PackageEditorPageState extends State<PackageEditorPage> {
     super.initState();
     if (_isNew) {
       _setLoaded(const VendorPackage());
+      _fresh = true;
     } else {
-      widget.api.package(widget.packageId!).then(_setLoaded).catchError((Object e) {
-        if (mounted) setState(() => _loadError = e);
-      });
+      if (widget.initial != null) _setLoaded(widget.initial!);
+      _fetch();
     }
+  }
+
+  Future<void> _fetch() async {
+    setState(() => _loadError = null);
+    try {
+      final pkg = await widget.api.package(widget.packageId!);
+      if (!mounted) return;
+      _form == null ? _setLoaded(pkg) : _refresh(pkg);
+      setState(() => _fresh = true);
+    } catch (e) {
+      if (mounted) setState(() => _loadError = e);
+    }
+  }
+
+  /// The server's copy, come while the list's showed: taken as it is, or
+  /// with the changes already typed moved onto it.
+  void _refresh(VendorPackage fresh) {
+    final freshJson = fresh.toJson();
+    if (jsonEncode(freshJson) == _base) return;
+    final form = _dirty
+        ? fresh.withContent(
+            rebaseEdits(jsonDecode(_base) as Map<String, dynamic>, _form!.toJson(), freshJson))
+        : fresh;
+    setState(() {
+      _form = form;
+      _base = jsonEncode(freshJson);
+      _revision++;
+    });
   }
 
   void _setLoaded(VendorPackage pkg) {
@@ -78,6 +117,16 @@ class _PackageEditorPageState extends State<PackageEditorPage> {
       setState(() => _form = change(_form!));
 
   Future<void> _save() async {
+    if (!_fresh) {
+      showVendorSnack(
+          context,
+          _loadError == null
+              ? 'Still loading the latest copy of this package. Try again in a moment.'
+              : 'Can’t reach NexAround to check for changes. Connect, then save again.',
+          error: true);
+      if (_loadError != null) _fetch();
+      return;
+    }
     // The field at fault may be far up the form: say so.
     if (!_formKey.currentState!.validate()) {
       showVendorSnack(context, 'Check the fields marked in red.', error: true);
@@ -89,16 +138,16 @@ class _PackageEditorPageState extends State<PackageEditorPage> {
           error: true);
       return;
     }
-    if (!form.usesVendorLocation && (form.latitude == null || form.longitude == null)) {
-      showVendorSnack(context, 'Pick the meeting point on the map, or use your business address.',
-          error: true);
-      return;
-    }
     setState(() => _saving = true);
     try {
-      await widget.api.savePackage(form);
+      final saved = await widget.api.savePackage(form);
       if (!mounted) return;
-      showVendorSnack(context, _isNew ? 'Package created' : 'Package saved');
+      final sent = saved.review.isPending && saved.review.submittedAt != form.review.submittedAt;
+      showVendorSnack(
+          context,
+          sent
+              ? 'Sent for review. NexAround will check it before travellers see it.'
+              : 'Package saved');
       _base = jsonEncode(form.toJson());
       Navigator.pop(context, true);
     } catch (e) {
@@ -184,7 +233,7 @@ class _PackageEditorPageState extends State<PackageEditorPage> {
             ? null
             : VendorActionBar(
                 child: VendorPrimaryButton(
-                  label: _saving ? 'Saving…' : (_isNew ? 'Create package' : 'Save changes'),
+                  label: _saving ? 'Saving…' : (_isNew ? 'Send for review' : 'Save changes'),
                   onPressed: _saving ? null : _save,
                 ),
               ),
@@ -193,7 +242,8 @@ class _PackageEditorPageState extends State<PackageEditorPage> {
   }
 
   Widget _body() {
-    if (_loadError != null) {
+    // Deleted meanwhile: the list's copy is no use.
+    if (_loadError != null && (_form == null || statusCodeOf(_loadError) == 404)) {
       return VendorEmptyState(
         icon: Icons.confirmation_number_outlined,
         title: 'Package not found',
@@ -216,18 +266,24 @@ class _PackageEditorPageState extends State<PackageEditorPage> {
     return Form(
       key: _formKey,
       child: ListView(
+        key: ValueKey(_revision),
         padding: const EdgeInsets.fromLTRB(vendorGutter, 4, vendorGutter, 24),
         keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         children: [
-          // The web editor's "Show in the app" switch.
+          if (_loadError != null)
+            const VendorSavedNote(message: 'Showing the saved copy. Connect to save changes.'),
+          VendorReviewBanner(review: f.review, firstTime: _isNew || !f.isApproved),
+          // The web editor's "Show in the app" switch: applies at once.
           VendorCard(
             padding: const EdgeInsets.fromLTRB(16, 4, 12, 4),
             margin: const EdgeInsets.only(bottom: 14),
             child: VendorSwitchRow(
               title: f.isActive ? 'Show in the app' : 'Hidden (draft)',
-              subtitle: f.isActive
-                  ? 'Travellers can find this package once it is saved.'
-                  : 'Only you can see it. Switch on when it is ready.',
+              subtitle: !f.isActive
+                  ? 'Only you can see it. Switch on when it is ready.'
+                  : _isNew || !f.isApproved
+                      ? 'Travellers can find it once NexAround approves it.'
+                      : 'Travellers can find it. This switch applies at once.',
               value: f.isActive,
               onChanged: (v) => _patch((p) => p.copyWith(isActive: v)),
             ),
@@ -367,46 +423,6 @@ class _PackageEditorPageState extends State<PackageEditorPage> {
               const SizedBox(height: 12),
               _linesField('Languages', 'English\nTamil\nSinhala', f.languages,
                   (v) => _patch((p) => p.copyWith(languages: v))),
-            ],
-          ),
-          VendorSection(
-            icon: Icons.place_outlined,
-            title: 'Meeting point',
-            hint: 'Where travellers meet you.',
-            children: [
-              VendorSwitchRow(
-                title: 'My business address',
-                subtitle: f.usesVendorLocation
-                    ? 'Travellers meet you at the address in your profile.'
-                    : 'Travellers meet you at the place you pick below.',
-                value: f.usesVendorLocation,
-                onChanged: (v) => _patch((p) => p.copyWith(
-                      usesVendorLocation: v,
-                      latitude: () => null,
-                      longitude: () => null,
-                    )),
-              ),
-              if (!f.usesVendorLocation) ...[
-                const SizedBox(height: 8),
-                PlacePicker(
-                  api: widget.api,
-                  latitude: f.latitude,
-                  longitude: f.longitude,
-                  onPick: (lat, lng, place) => _patch((p) => p.copyWith(
-                        latitude: () => lat,
-                        longitude: () => lng,
-                        meetingPointAddress: place?.address ?? p.meetingPointAddress,
-                      )),
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  key: ValueKey(f.meetingPointAddress.isEmpty ? 'empty' : 'set'),
-                  initialValue: f.meetingPointAddress,
-                  maxLength: 500,
-                  decoration: vendorInput('Address travellers see', hint: 'Jetty 3, Nilaveli Beach'),
-                  onChanged: (v) => _patch((p) => p.copyWith(meetingPointAddress: v)),
-                ),
-              ],
             ],
           ),
         ],

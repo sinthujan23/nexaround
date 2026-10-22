@@ -29,6 +29,8 @@ class CacheService {
     await _prefs.remove('discovery_history_cache');
     await _prefs.remove(_experienceTermsKey);
     await _prefs.remove(_myExperienceRequestsKey);
+    await _prefs.remove(_vendorAccessKey);
+    await _prefs.remove(_vendorPortalKey);
 
     savedPlacesNotifier.value++;
     favoritePlacesNotifier.value++;
@@ -1036,6 +1038,57 @@ class CacheService {
     } catch (_) {
       return null;
     }
+  }
+
+  // ── Vendor portal (the businesses a traveller manages) ─────────────────
+  // Raw partner-API answers, so the vendor screens open at once and offline,
+  // like My requests. One entry per business, a part per answer ('stats',
+  // 'packages', 'profile', ...), at most a few businesses. Per account, so
+  // dropped on sign-out.
+  static const String _vendorAccessKey = 'vendor_access_v1';
+  static const String _vendorPortalKey = 'vendor_portal_v1';
+  static const int _maxCachedVendors = 4;
+
+  /// The `/partner/app/access` list, for the Vendor portal button.
+  static Future<void> cacheVendorAccess(List<Map<String, dynamic>> raw) async {
+    if (_prefsOrNull == null) return;
+    try {
+      await _prefs.setString(_vendorAccessKey, json.encode(raw));
+    } catch (_) {}
+  }
+
+  static List<Map<String, dynamic>>? getCachedVendorAccess() {
+    if (_prefsOrNull == null) return null;
+    final str = _prefs.getString(_vendorAccessKey);
+    if (str == null || str.isEmpty) return null;
+    try {
+      return (json.decode(str) as List).whereType<Map<String, dynamic>>().toList();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<void> cacheVendorData(
+      String vendorId, String part, Map<String, dynamic> raw) async {
+    final entry = Map<String, dynamic>.from(
+        _readJsonMap(_vendorPortalKey)[vendorId] as Map? ?? const {});
+    entry[part] = raw;
+    await _putBounded(_vendorPortalKey, vendorId, entry, _maxCachedVendors);
+  }
+
+  static Map<String, dynamic>? getCachedVendorData(String vendorId, String part) {
+    final entry = _readJsonMap(_vendorPortalKey)[vendorId];
+    if (entry is! Map<String, dynamic>) return null;
+    final value = entry[part];
+    return value is Map<String, dynamic> ? value : null;
+  }
+
+  /// Drops everything kept for a business (access to it was taken away).
+  static Future<void> removeCachedVendor(String vendorId) async {
+    if (_prefsOrNull == null) return;
+    final map = _readJsonMap(_vendorPortalKey);
+    if (map.remove(vendorId) == null) return;
+    await _prefs.setString(_vendorPortalKey, json.encode(map));
   }
 
   static Map<String, dynamic> _readJsonMap(String key) {

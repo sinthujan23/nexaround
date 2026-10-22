@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/app/theme/app_dimensions.dart';
 import 'package:nexaround_app/core/error/user_message.dart';
+import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/legal_body.dart';
 import 'package:nexaround_app/features/vendor_portal/data/vendor_portal_api.dart';
 import 'package:nexaround_app/features/vendor_portal/data/vendor_portal_models.dart';
@@ -27,10 +28,16 @@ Future<void> openVendorPortal(
     try {
       list = await VendorPortalApi.access();
     } catch (e) {
-      if (context.mounted) {
-        showVendorSnack(context, userMessageFor(e, action: 'open the vendor portal'), error: true);
+      // Offline: the businesses last seen still open, from what was kept.
+      final kept = VendorPortalApi.cachedAccess();
+      if (kept.isNotEmpty && statusCodeOf(e) == null) {
+        list = kept;
+      } else {
+        if (context.mounted) {
+          showVendorSnack(context, userMessageFor(e, action: 'open the vendor portal'), error: true);
+        }
+        return;
       }
-      return;
     }
   }
   if (!context.mounted || list.isEmpty) return;
@@ -145,6 +152,10 @@ class _VendorPortalPageState extends State<VendorPortalPage> {
   @override
   void initState() {
     super.initState();
+    // Opened before and accepted then: the tabs show what was kept while
+    // the session is traded. The fresh answer still decides.
+    final kept = _api.cachedAgreement();
+    if (kept != null && !kept.mustAccept) _agreement = kept;
     _open();
   }
 
@@ -161,6 +172,10 @@ class _VendorPortalPageState extends State<VendorPortalPage> {
       final agreement = await _api.agreement();
       if (mounted) setState(() => _agreement = agreement);
     } catch (e) {
+      final status = statusCodeOf(e);
+      if (status == 404) CacheService.removeCachedVendor(widget.access.vendorId);
+      // Offline while the kept tabs show: each tab says it is offline.
+      if (_agreement != null && status != 404 && status != 403) return;
       if (mounted) setState(() => _error = e);
     }
   }
@@ -346,7 +361,7 @@ class _VendorShellState extends State<VendorShell> {
   ];
 
   int _tab = 0;
-  int _unread = 0;
+  late int _unread = widget.api.cachedUnread() ?? 0;
   late String _vendorName = widget.vendorName;
   // Profile edits not saved yet: leaving the portal asks first.
   bool _profileDirty = false;

@@ -2597,3 +2597,16 @@ a.nav-item, a.dash-row, a.xp-row, a.sec-row, a.kpi, a.link-btn, a.xp-tab { text-
 @media (max-width: 720px) {
   .price-option-grid, .price-option-grid.with-usd { grid-template-columns: 1fr 1fr; }
 }
+
+/* Where a vendor's own edits stand (components/ReviewNotice). */
+.review-notice {
+  display: flex; flex-direction: column; gap: 4px;
+  background: var(--tone-soft); border: 1px solid var(--tone-border); border-radius: 12px;
+  padding: 12px 16px; margin-bottom: 16px; font-size: 13.5px; line-height: 1.5; color: var(--text-primary);
+}
+.review-notice strong { color: var(--tone); font-size: 14px; }
+.review-notice .review-note {
+  margin: 4px 0; padding: 8px 12px; background: #fff; border-radius: 8px;
+  border: 1px solid var(--tone-border); white-space: pre-wrap; font-weight: 600;
+}
+.xp-body > .review-notice { margin: 0 0 16px; }

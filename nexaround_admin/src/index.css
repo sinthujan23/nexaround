@@ -3634,3 +3634,38 @@ a.btn { text-decoration: none; }
 @media (max-width: 720px) {
   .price-option-grid, .price-option-grid.with-usd { grid-template-columns: 1fr 1fr; }
 }
+
+
+/* ── Vendor changes (review of vendors' own edits) ─────────────────────── */
+.vc-table { display: flex; flex-direction: column; border-top: 1px solid var(--border); }
+.vc-row {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13.5px;
+  align-items: start;
+}
+.vc-row.vc-new { grid-template-columns: 140px minmax(0, 1fr); }
+.vc-head {
+  font-size: 11px; font-weight: 700; color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: 0.7px; padding: 8px 0;
+}
+.vc-field { font-weight: 700; color: var(--text-secondary); }
+.vc-before { color: var(--text-secondary); }
+.vc-before .vc-photos img { opacity: 0.7; }
+.vc-after { color: var(--text-primary); font-weight: 600; }
+.vc-text { white-space: pre-wrap; word-break: break-word; }
+.vc-list { margin: 0; padding-left: 18px; }
+.vc-list li { margin-bottom: 2px; }
+.vc-long { max-height: 260px; overflow: auto; font-weight: 500; }
+.vc-photos { display: flex; flex-wrap: wrap; gap: 6px; }
+.vc-photos img {
+  width: 72px; height: 54px; object-fit: cover; border-radius: 8px;
+  border: 1px solid var(--border); display: block;
+}
+@media (max-width: 720px) {
+  .vc-row, .vc-row.vc-new { grid-template-columns: 1fr; gap: 6px; }
+  .vc-head { display: none; }
+}

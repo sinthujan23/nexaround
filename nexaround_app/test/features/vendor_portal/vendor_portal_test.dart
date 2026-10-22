@@ -11,6 +11,7 @@ import 'package:nexaround_app/features/vendor_portal/data/vendor_portal_models.d
 import 'package:nexaround_app/features/vendor_portal/presentation/pages/package_editor_page.dart';
 import 'package:nexaround_app/features/vendor_portal/presentation/pages/vendor_notifications_page.dart';
 import 'package:nexaround_app/features/vendor_portal/presentation/pages/vendor_portal_page.dart';
+import 'package:nexaround_app/features/vendor_portal/presentation/pages/vendor_profile_tab.dart';
 import 'package:nexaround_app/features/vendor_portal/presentation/vendor_ui.dart';
 import 'package:nexaround_app/features/vendor_portal/presentation/widgets/availability_calendar.dart';
 import 'package:nexaround_app/features/vendor_portal/presentation/widgets/description_editor.dart';
@@ -29,6 +30,12 @@ class _Server implements HttpClientAdapter {
   int sessionStatus = 200;
   bool agreementRequired = false;
   int trades = 0;
+
+  /// No network at all: every call fails before reaching the server.
+  bool offline = false;
+
+  /// Where the vendor's edits to package p1 stand.
+  Map<String, dynamic> p1Review = {};
 
   /// Partner tokens the server no longer accepts (expired).
   final Set<String> expired = {};
@@ -63,6 +70,7 @@ class _Server implements HttpClientAdapter {
       Future<void>? cancelFuture) async {
     final path = options.path.replaceFirst('/api/v1/partner', '');
     final auth = options.headers['Authorization'] as String?;
+    if (offline) throw DioException.connectionError(requestOptions: options, reason: 'offline');
     requests.add((method: options.method, path: path, auth: auth, body: options.data));
     var status = 200;
     Object body = {};
@@ -89,16 +97,21 @@ class _Server implements HttpClientAdapter {
       body = {
         'packages': [
           {'id': 'p1', 'vendor_id': 'v1', 'title': 'Desert Safari', 'price_amount': 499,
-           'price_currency': 'QAR', 'is_active': true, 'is_published': true, 'category': 'adventure'},
+           'price_currency': 'QAR', 'is_active': true, 'is_published': true, 'category': 'adventure',
+           ...p1Review},
         ],
       };
+    } else if (path == '/packages/p1' && options.method == 'GET') {
+      body = {'id': 'p1', 'vendor_id': 'v1', 'title': 'Desert Safari', 'price_amount': 499,
+              'price_currency': 'QAR', 'is_active': true, 'is_published': true, 'category': 'adventure',
+              ...p1Review};
     } else if (path == '/packages' && options.method == 'POST') {
       body = {...Map<String, dynamic>.from(options.data as Map), 'id': 'p2', 'vendor_id': 'v1'};
     } else if (path == '/reviews') {
       body = {'reviews': [], 'total': 0, 'review_count': 0, 'unanswered': 0};
     } else if (path == '/profile') {
       body = {'id': 'v1', 'name': 'Desert Track Tourism', 'country_code': 'QA', 'is_active': true,
-              'photo_urls': []};
+              'photo_urls': [], 'website': 'https://deserttrack.example', 'city': 'Doha'};
     } else if (path == '/activity/unread') {
       body = {'unread': 1, 'seen_at': null};
     } else if (path == '/activity') {
@@ -139,6 +152,9 @@ void main() {
     server = _Server();
     ApiClient.instance.httpClientAdapter = server;
     VendorPortalApi.testAdapter = server;
+    // CacheService keeps its prefs from test to test: start with nothing kept.
+    await CacheService.removeCachedVendor('v1');
+    await CacheService.cacheVendorAccess([]);
   });
 
   tearDown(() => VendorPortalApi.testAdapter = null);
@@ -249,7 +265,7 @@ void main() {
     await tester.pumpWidget(MaterialApp(home: PackageEditorPage(api: api)));
     await tester.pump();
     await tester.enterText(find.widgetWithText(TextFormField, 'Title *'), 'Dune bashing at sunset');
-    await tester.tap(find.text('Create package'));
+    await tester.tap(find.text('Send for review'));
     for (var i = 0; i < 10; i++) {
       await tester.pump(const Duration(milliseconds: 50));
     }
@@ -257,8 +273,10 @@ void main() {
     final body = Map<String, dynamic>.from(create.body as Map);
     expect(body['title'], 'Dune bashing at sunset');
     expect(body['is_active'], isTrue);
-    expect(body['uses_vendor_location'], isTrue);
-    expect(body['latitude'], isNull);
+    // Where travellers meet the vendor is NexAround's to set.
+    expect(body.containsKey('uses_vendor_location'), isFalse);
+    expect(body.containsKey('meeting_point_address'), isFalse);
+    expect(body.containsKey('latitude'), isFalse);
     expect(body['price_amount'], isNull);
     expect(create.auth, 'Bearer partner-1');
   });
@@ -271,7 +289,7 @@ void main() {
     await tester.tap(find.text('Show in the app'));
     await tester.pump();
     expect(find.text('Hidden (draft)'), findsOneWidget);
-    await tester.tap(find.text('Create package'));
+    await tester.tap(find.text('Send for review'));
     for (var i = 0; i < 10; i++) {
       await tester.pump(const Duration(milliseconds: 50));
     }
@@ -319,7 +337,7 @@ void main() {
     expect(find.text('Option 3'), findsNothing);
     expect(find.text('8000'), findsOneWidget);
 
-    await tester.tap(find.text('Create package'), warnIfMissed: false);
+    await tester.tap(find.text('Send for review'), warnIfMissed: false);
     for (var i = 0; i < 10; i++) {
       await tester.pump(const Duration(milliseconds: 50));
     }
@@ -329,6 +347,127 @@ void main() {
     expect(options.map((o) => o['amount']), [30000, 8000]);
     expect(options[1]['min_people'], 3);
     expect(options.every((o) => !o.containsKey('usd')), isTrue);
+  });
+
+  group('NexAround checks the changes', () {
+    testWidgets('a package sent back shows NexAround\'s note, in the editor and the list', (tester) async {
+      server.p1Review = {'review_status': 'changes_requested', 'review_note': 'Use a photo of the boat.'};
+      await pumpPortal(tester);
+      await tester.tap(find.text('Packages'));
+      await tester.pump();
+      expect(find.text('Changes needed'), findsOneWidget);
+      await closePortal(tester);
+
+      await tester.pumpWidget(MaterialApp(home: PackageEditorPage(api: VendorPortalApi('v1'), packageId: 'p1')));
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(find.text('NexAround asked for changes'), findsOneWidget);
+      expect(find.text('Use a photo of the boat.'), findsOneWidget);
+    });
+
+    testWidgets('a new package waiting for approval says it is not live yet', (tester) async {
+      server.p1Review = {'review_status': 'pending', 'is_approved': false, 'is_published': false};
+      await pumpPortal(tester);
+      await tester.tap(find.text('Packages'));
+      await tester.pump();
+      expect(find.text('Not live yet'), findsOneWidget);
+      expect(find.text('In review'), findsOneWidget);
+      await closePortal(tester);
+    });
+
+    testWidgets('the website and where the business is are shown, not edited', (tester) async {
+      await pumpPortal(tester);
+      await tester.tap(find.text('Profile'));
+      await tester.pump();
+      // The "Set by NexAround" list is at the foot of the form.
+      await tester.scrollUntilVisible(find.text('https://deserttrack.example'), 300,
+          scrollable: find.descendant(of: find.byType(VendorProfileTab), matching: find.byType(Scrollable)).first);
+      expect(find.text('https://deserttrack.example'), findsOneWidget);
+      expect(find.widgetWithText(TextFormField, 'Website'), findsNothing);
+      expect(find.widgetWithText(TextFormField, 'Address'), findsNothing);
+      expect(find.text('Doha'), findsOneWidget);
+      await closePortal(tester);
+    });
+  });
+
+  group('what the device keeps', () {
+    testWidgets('a second visit opens on the kept packages, even offline', (tester) async {
+      await pumpPortal(tester);
+      expect(find.text('Desert Safari'), findsOneWidget);
+      await closePortal(tester);
+
+      server.offline = true;
+      await pumpPortal(tester);
+      expect(find.text('Desert Track Tourism'), findsWidgets);
+      expect(find.text('Desert Safari'), findsOneWidget);
+      expect(find.text('Showing saved data. Pull down to refresh.'), findsOneWidget);
+      await closePortal(tester);
+    });
+
+    testWidgets('a kept list cannot switch a package off: that saves the whole package',
+        (tester) async {
+      await pumpPortal(tester);
+      await closePortal(tester);
+
+      server.offline = true;
+      await pumpPortal(tester);
+      await tester.tap(find.text('Packages'));
+      await tester.pump();
+      expect(tester.widget<SwitchListTile>(find.byType(SwitchListTile)).onChanged, isNull);
+      await closePortal(tester);
+    });
+
+    testWidgets('the editor shows the list\'s copy but saves only the server\'s', (tester) async {
+      server.offline = true;
+      final api = VendorPortalApi('v1');
+      await tester.pumpWidget(MaterialApp(
+        home: PackageEditorPage(
+          api: api,
+          packageId: 'p1',
+          initial: const VendorPackage(id: 'p1', title: 'Desert Safari (kept)', isPublished: true),
+        ),
+      ));
+      for (var i = 0; i < 5; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(find.text('Desert Safari (kept)'), findsOneWidget);
+      expect(find.text('Showing the saved copy. Connect to save changes.'), findsOneWidget);
+      await tester.tap(find.text('Save changes'));
+      await tester.pump();
+      expect(find.textContaining('Can’t reach NexAround'), findsOneWidget);
+
+      // Back online: the server's copy replaces the kept one, then saves.
+      server.offline = false;
+      await tester.tap(find.text('Save changes'));
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(find.text('Desert Safari'), findsOneWidget);
+      expect(server.requests.where((r) => r.method == 'PUT'), isEmpty);
+    });
+
+    test('changes typed on a kept copy move onto the fresh one', () {
+      final base = {'title': 'Boat', 'summary': 'old', 'photo_urls': ['a']};
+      final mine = {'title': 'Boat trip', 'summary': 'old', 'photo_urls': ['a']};
+      final fresh = {'title': 'Boat', 'summary': 'new', 'photo_urls': ['a', 'b']};
+      expect(rebaseEdits(base, mine, fresh), {
+        'title': 'Boat trip',
+        'summary': 'new',
+        'photo_urls': ['a', 'b'],
+      });
+    });
+
+    test('signing out drops what was kept', () async {
+      final api = VendorPortalApi('v1');
+      await api.stats();
+      await VendorPortalApi.access();
+      expect(api.cachedStats(), isNotNull);
+      expect(VendorPortalApi.cachedAccess(), isNotEmpty);
+      await CacheService.clearUserData();
+      expect(api.cachedStats(), isNull);
+      expect(VendorPortalApi.cachedAccess(), isEmpty);
+    });
   });
 
   group('the forms', () {
@@ -349,11 +488,11 @@ void main() {
           [BlockedRange(DateTime(2026, 10, 31), DateTime(2026, 11, 1))]);
     });
 
-    test('a package at the business sends no point of its own', () {
-      const atBusiness = VendorPackage(title: 'Boat', latitude: 25.1, longitude: 51.5);
-      expect(atBusiness.toJson()['latitude'], isNull);
+    test('no package or profile body carries where the vendor is', () {
       const elsewhere = VendorPackage(title: 'Boat', usesVendorLocation: false, latitude: 25.1, longitude: 51.5);
-      expect(elsewhere.toJson()['latitude'], 25.1);
+      expect(elsewhere.toJson().keys, isNot(contains('latitude')));
+      const profile = VendorProfile(name: 'Boat Co', website: 'https://x.example', address: 'Jetty 3', city: 'Doha');
+      expect(profile.toJson().keys, unorderedEquals(['name', 'description', 'contact_email', 'logo_url', 'photo_urls']));
       final pkg = VendorPackage.fromJson({
         'id': 'p1', 'title': 'Boat', 'unavailable_ranges': [{'start': '2026-10-25', 'end': '2026-10-26'}],
         'price_amount': 7500, 'price_currency': 'LKR', 'is_published': true, 'is_active': true,

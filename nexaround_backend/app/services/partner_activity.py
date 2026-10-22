@@ -284,3 +284,59 @@ def profile_updated(db, vendor, before: dict, *, actor: str, login=None) -> Opti
             actor=actor, login=login,
         )
     return record(db, vendor.id, "profile.updated", "Business profile updated", actor=actor, login=login)
+
+
+# ── Review of the vendor's own edits (services/vendor_review) ───────────────
+
+def package_submitted(db, package, *, login=None) -> dict:
+    """The vendor's own line: what they saved waits for NexAround."""
+    if package.approved_at is None:
+        title = f"{package.title} sent for review"
+        body = "NexAround checks new packages before travellers can see them."
+    else:
+        title = f"Changes to {package.title} sent for review"
+        body = "Travellers see the current version until NexAround approves them."
+    return record(
+        db, package.vendor_id, "package.submitted", title, body=body,
+        actor=VENDOR, login=login, package_id=package.id,
+    )
+
+
+def profile_submitted(db, vendor, *, login=None) -> dict:
+    return record(
+        db, vendor.id, "profile.submitted", "Profile changes sent for review",
+        body="Travellers see your current profile until NexAround approves them.",
+        actor=VENDOR, login=login,
+    )
+
+
+def review_text(subject: str, approved: bool, note: str | None, *, is_new: bool = False) -> tuple[str, str]:
+    """(title, body) for the line, the push and the email subject."""
+    if approved:
+        title = f"Approved: {subject}"
+        body = (
+            "It is now live for travellers." if is_new
+            else "Your changes are now live for travellers."
+        )
+    else:
+        title = f"Changes needed: {subject}"
+        body = note or "NexAround asked for changes before this can go live."
+    return title, body
+
+
+def package_reviewed(db, package, *, approved: bool, note: str | None, is_new: bool) -> dict:
+    title, body = review_text(package.title, approved, note, is_new=is_new)
+    return record(
+        db, package.vendor_id,
+        "package.approved" if approved else "package.changes_requested",
+        title, body=body, actor=ADMIN, package_id=package.id,
+    )
+
+
+def profile_reviewed(db, vendor, *, approved: bool, note: str | None) -> dict:
+    title, body = review_text("your business profile", approved, note)
+    return record(
+        db, vendor.id,
+        "profile.approved" if approved else "profile.changes_requested",
+        title, body=body, actor=ADMIN,
+    )

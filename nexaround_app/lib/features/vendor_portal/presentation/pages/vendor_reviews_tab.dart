@@ -21,8 +21,11 @@ class VendorReviewsTab extends StatefulWidget {
 }
 
 class _VendorReviewsTabState extends State<VendorReviewsTab> {
-  VendorReviewPage? _summary;
-  final List<VendorReview> _reviews = [];
+  // What the device kept, until the server answers.
+  late VendorReviewPage? _summary = widget.api.cachedReviews();
+  late final List<VendorReview> _reviews = [...?_summary?.reviews];
+  // The list showing is the kept one: no load for this filter worked yet.
+  late bool _fromCache = _summary != null;
   int _page = 1;
   bool _unansweredOnly = false;
   bool _loading = false;
@@ -52,6 +55,7 @@ class _VendorReviewsTabState extends State<VendorReviewsTab> {
         _page = page;
         if (reset) _reviews.clear();
         _reviews.addAll(result.reviews);
+        if (reset) _fromCache = false;
         _error = null;
       });
     } catch (e) {
@@ -63,7 +67,17 @@ class _VendorReviewsTabState extends State<VendorReviewsTab> {
 
   void _filter(bool unansweredOnly) {
     if (unansweredOnly == _unansweredOnly) return;
-    setState(() => _unansweredOnly = unansweredOnly);
+    // That filter's kept list while it loads, else the spinner.
+    final kept = widget.api.cachedReviews(unansweredOnly: unansweredOnly);
+    setState(() {
+      _unansweredOnly = unansweredOnly;
+      _reviews
+        ..clear()
+        ..addAll(kept?.reviews ?? const []);
+      if (kept != null) _summary = kept;
+      _fromCache = kept != null;
+      _error = null;
+    });
     _load(reset: true);
   }
 
@@ -147,6 +161,7 @@ class _VendorReviewsTabState extends State<VendorReviewsTab> {
           const Text('What travellers say about your packages',
               style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
           const SizedBox(height: 16),
+          if (_error != null && _fromCache) const VendorSavedNote(),
           if (summary != null) _summaryCard(summary),
           _filters(summary),
           const SizedBox(height: 14),

@@ -26,11 +26,21 @@ class _VendorNotificationsPageState extends State<VendorNotificationsPage> {
   bool _hasMore = false;
   bool _loading = false;
   bool _loaded = false;
+  // Showing the kept first page: every line on it was seen when it was kept
+  // (the page marks the feed seen after each load).
+  bool _fromCache = false;
   Object? _error;
 
   @override
   void initState() {
     super.initState();
+    final kept = widget.api.cachedActivity();
+    if (kept != null) {
+      _items.addAll(kept.items);
+      _hasMore = kept.hasMore;
+      _loaded = true;
+      _fromCache = true;
+    }
     _load(reset: true);
   }
 
@@ -49,6 +59,7 @@ class _VendorNotificationsPageState extends State<VendorNotificationsPage> {
         _items.addAll(page.items);
         _hasMore = page.hasMore;
         _loaded = true;
+        if (reset) _fromCache = false;
         _error = null;
       });
       if (reset) await widget.api.markSeen();
@@ -68,6 +79,9 @@ class _VendorNotificationsPageState extends State<VendorNotificationsPage> {
         'package.hidden' => (Icons.visibility_off_rounded, AppColors.textTertiary),
         'package.deleted' => (Icons.delete_outline_rounded, AppColors.error),
         'package.created' => (Icons.add_rounded, AppColors.actionTeal),
+        'package.submitted' || 'profile.submitted' => (Icons.hourglass_top_rounded, const Color(0xFFB7791F)),
+        'package.approved' || 'profile.approved' => (Icons.verified_rounded, AppColors.success),
+        'package.changes_requested' || 'profile.changes_requested' => (Icons.edit_note_rounded, AppColors.error),
         'package.updated' => (Icons.edit_rounded, AppColors.actionTeal),
         _ => (Icons.notifications_none_rounded, AppColors.textTertiary),
       };
@@ -109,15 +123,20 @@ class _VendorNotificationsPageState extends State<VendorNotificationsPage> {
         VendorEmptyState(
           icon: Icons.notifications_none_rounded,
           title: 'Nothing new',
-          message: 'New requests, reviews and changes NexAround makes to your listing show here.',
+          message: 'New requests, reviews, NexAround’s checks of your changes and changes NexAround '
+              'makes to your listing show here.',
         ),
       ]);
     }
+    // Offline over the kept page: say so first.
+    final note = _error != null && _fromCache ? 1 : 0;
     return ListView.separated(
       padding: const EdgeInsets.fromLTRB(vendorGutter, 4, vendorGutter, 24),
-      itemCount: _items.length + (_hasMore ? 1 : 0),
+      itemCount: note + _items.length + (_hasMore ? 1 : 0),
       separatorBuilder: (_, __) => const SizedBox(height: 10),
-      itemBuilder: (context, i) {
+      itemBuilder: (context, index) {
+        if (index < note) return const VendorSavedNote();
+        final i = index - note;
         if (i == _items.length) {
           return OutlinedButton(
             onPressed: _loading ? null : () => _load(),
@@ -126,7 +145,7 @@ class _VendorNotificationsPageState extends State<VendorNotificationsPage> {
         }
         final item = _items[i];
         final (icon, color) = _look(item.kind);
-        final isNew = _seenAt == null || item.createdAt.isAfter(_seenAt!);
+        final isNew = !_fromCache && (_seenAt == null || item.createdAt.isAfter(_seenAt!));
         final card = VendorCard(
           padding: const EdgeInsets.all(14),
           margin: EdgeInsets.zero,

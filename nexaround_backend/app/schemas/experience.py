@@ -249,6 +249,8 @@ class ExperienceVendorAdminResponse(ExperienceVendorBase):
     # no longer shown anywhere.
     traveller_rating: Optional[float] = None
     traveller_review_count: int = 0
+    # Whether the vendor's own profile edits wait for review (vendor_review).
+    review_status: str = "approved"
     created_at: datetime
     updated_at: Optional[datetime] = None
 
@@ -314,6 +316,10 @@ class ExperiencePackageAdminResponse(ExperiencePackageBase):
     is_published: bool = True
     rating_avg: Optional[float] = None
     rating_count: int = 0
+    # Whether the vendor's own edits wait for review (vendor_review); a
+    # package a vendor added is not approved until an admin says so.
+    review_status: str = "approved"
+    is_approved: bool = True
     created_at: datetime
     updated_at: Optional[datetime] = None
 
@@ -496,3 +502,45 @@ class ExperienceReviewUpdate(BaseModel):
 
 
 MyEnquiryOut.model_rebuild()
+
+
+# --- Admin: review of vendors' own edits (services/vendor_review) ------------
+
+class VendorChangeRow(BaseModel):
+    """One field: what travellers see now, and what the vendor asked for.
+    Values are as stored: text, numbers, lists of text or photo paths, and
+    price options."""
+
+    field: str
+    label: str
+    before: Optional[object] = None
+    after: Optional[object] = None
+
+
+class VendorChangeItem(BaseModel):
+    kind: str  # package | profile
+    id: uuid.UUID  # the package's id, or the vendor's for a profile
+    vendor_id: uuid.UUID
+    vendor_name: str
+    title: str
+    is_new: bool = False
+    review_status: str
+    review_note: Optional[str] = None
+    submitted_at: Optional[datetime] = None
+    reviewed_at: Optional[datetime] = None
+    summary: Optional[str] = None
+    # The live price currency, to read prices in rows by.
+    price_currency: Optional[str] = None
+    changes: list[VendorChangeRow] = []
+
+
+class VendorChangeListResponse(BaseModel):
+    items: list[VendorChangeItem]
+    # Waiting for an admin (not counting ones sent back to the vendor).
+    pending: int = 0
+
+
+class VendorChangeDecision(BaseModel):
+    decision: str = Field(..., pattern="^(approve|request_changes)$")
+    # What the vendor should change; required to send it back.
+    note: Optional[str] = Field(None, max_length=2000)

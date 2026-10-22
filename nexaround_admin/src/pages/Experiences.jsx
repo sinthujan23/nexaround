@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useApi, apiGet, apiPost, apiPut, apiPatch, apiDelete, mediaUrl } from '../api';
 import {
   CompassIcon, UsersIcon, PlusIcon, EditIcon, TrashIcon,
@@ -91,6 +92,18 @@ const formatPrice = (pkg) => {
     ? `${price} ($${Number(pkg.price_usd).toLocaleString()})`
     : price) + (more > 0 ? ` +${more} more` : '');
 };
+
+/** A vendor's own edit waiting in Vendor changes, as a link there. */
+function ReviewBadge({ status, isNew, what }) {
+  const label = status === 'changes_requested'
+    ? 'Sent back'
+    : isNew ? 'New · awaiting approval' : `${what ? `${what} edit` : 'Edit'} awaiting approval`;
+  return (
+    <Link to="/experiences/changes" style={{ marginLeft: 8, textDecoration: 'none' }} onClick={(e) => e.stopPropagation()}>
+      <Badge tone={status === 'changes_requested' ? 'red' : 'yellow'}>{label}</Badge>
+    </Link>
+  );
+}
 
 const formatDuration = (minutes) => {
   if (!minutes) return null;
@@ -680,7 +693,12 @@ export default function Experiences() {
                 >
                   <VendorAvatar vendor={vendor} />
                   <div className="xp-row-main">
-                    <div className="xp-row-title">{vendor.name}</div>
+                    <div className="xp-row-title">
+                      {vendor.name}
+                      {vendor.review_status && vendor.review_status !== 'approved' && (
+                        <ReviewBadge status={vendor.review_status} what="Profile" />
+                      )}
+                    </div>
                     <div className="xp-row-sub">
                       {vendor.city || getCountryByCode(vendor.country_code).name}{vendor.latitude == null ? ' · No map pin' : ''} · {vendor.package_count} {vendor.package_count === 1 ? 'package' : 'packages'}
                     </div>
@@ -785,7 +803,12 @@ export default function Experiences() {
                             {pkg.photo_urls?.[0] ? <img src={mediaUrl(pkg.photo_urls[0])} alt="" /> : <TicketIcon size={18} />}
                           </div>
                           <div className="pkg-row-main">
-                            <div className="pkg-row-title">{pkg.title}</div>
+                            <div className="pkg-row-title">
+                              {pkg.title}
+                              {(!pkg.is_approved || pkg.review_status !== 'approved') && (
+                                <ReviewBadge status={pkg.review_status} isNew={!pkg.is_approved} />
+                              )}
+                            </div>
                             <div className="pkg-row-meta">
                               <span className="pkg-price">{formatPrice(pkg)}</span>
                               <span>{categoryLabel(pkg.category)}</span>

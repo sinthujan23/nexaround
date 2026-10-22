@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
-import { Outlet, useNavigate } from 'react-router-dom';
+import { Outlet } from 'react-router-dom';
 import { apiGet, apiPut, mediaUrl } from '../../api';
-import { useAuth } from '../../auth';
 import { useUnsavedGuard } from '../../hooks';
 import { useToast } from '../../toast';
 import { StarIcon } from '../../components/Icons';
 import { ErrorBanner, Loader, StatusPill } from '../../components/Lists';
 import { SaveBar } from '../../components/Forms';
 import TabNav from '../../components/TabNav';
+import ReviewNotice from '../../components/ReviewNotice';
 
 const TABS = [
   { to: '/profile/details', label: 'Details' },
@@ -20,8 +20,11 @@ const TABS = [
  *
  * Mirrors the admin vendor form minus everything the platform reserves:
  * Active/Hidden, rating, review count, internal notes and sort order have no
- * inputs here. That is presentation only — the server drops those fields even
- * if a crafted request carries them.
+ * inputs here, and where the business is (address, map pin, website) and
+ * how travellers reach it are shown read-only. That is presentation only —
+ * the server drops those fields even if a crafted request carries them.
+ * What the vendor can change waits for NexAround's review before travellers
+ * see it.
  *
  * Each tab is its own page, but they are one form: this layout owns the state
  * and the Save bar, and the tabs read it through the router's outlet context.
@@ -29,9 +32,7 @@ const TABS = [
  * unsaved changes asks first.
  */
 export default function ProfileLayout() {
-  const navigate = useNavigate();
   const notify = useToast();
-  const { setMe } = useAuth();
   const [form, setForm] = useState(null);
   const [base, setBase] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -58,24 +59,21 @@ export default function ProfileLayout() {
       notify('Photos are still uploading. Wait for them to finish, then save.', 'error');
       return;
     }
-    if (!form.country_code) {
-      navigate('/profile/location');
-      notify('Choose your country first.', 'error');
-      return;
-    }
     setSaving(true);
     try {
       const updated = await apiPut('/partner/profile', {
-        ...form,
-        // The map pin is optional: no pin goes up as null, never as 0.
-        latitude: form.latitude === '' || form.latitude == null ? null : Number(form.latitude),
-        longitude: form.longitude === '' || form.longitude == null ? null : Number(form.longitude),
+        name: form.name,
+        description: form.description,
+        contact_email: form.contact_email,
+        logo_url: form.logo_url,
+        photo_urls: form.photo_urls,
       });
       setForm(updated);
       setBase(updated);
-      notify('Saved. Travellers see this straight away.');
-      // The sidebar shows the business name, so a rename must reach it.
-      setMe((prev) => (prev ? { ...prev, vendor_name: updated.name } : prev));
+      // The sidebar keeps the live name until NexAround approves a new one.
+      notify(updated.review_status === 'pending'
+        ? 'Sent for review. Travellers see your current profile until NexAround approves it.'
+        : 'Saved.');
     } catch (err) {
       notify(err.message || 'Could not save.', 'error');
     } finally {
@@ -118,6 +116,7 @@ export default function ProfileLayout() {
       <TabNav items={TABS} />
 
       <div className="xp-body">
+        <ReviewNotice item={base} what="profile" />
         <Outlet context={{ form, patch, setPhotosBusy }} />
       </div>
 

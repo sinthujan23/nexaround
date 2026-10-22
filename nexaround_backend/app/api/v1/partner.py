@@ -48,15 +48,14 @@ from app.schemas.partner import (
     PartnerVendorProfileUpdate,
 )
 from app.services import (
-    audit, google_places_client, partner_activity, partner_events,
+    audit, google_places_client, partner_activity, partner_events, vendor_review,
 )
 from app.services.email_service import send_vendor_invite_email
 from app.services import experience_reviews
-from app.services.experience_format import (
-    apply_price_options, package_field_value, price_options_for_save,
-)
+from app.services.experience_format import package_field_value
 from app.services.experience_upload import save_experience_images
 from app.services.settings_service import SettingsService
+from app.utils.geo_utils import get_lat_lng
 from app.services.partner_auth import consume_link_token, store_link_token
 
 router = APIRouter(prefix="/partner", tags=["Partner Portal"])
@@ -584,10 +583,14 @@ async def partner_event_stream(token: str = Depends(oauth2_scheme)):
 # `review_count`, zero `sort_order`, blank `internal_notes`, and re-point
 # `google_place_id` at someone else's Google listing.
 
-_PARTNER_VENDOR_SCALARS = (
-    "name", "description", "address", "city", "country_code",
-    "contact_email", "website", "logo_url", "photo_urls",
-)
+# What a vendor may write to their own row. All of it waits for an admin
+# (services/vendor_review) before travellers see it.
+_PARTNER_VENDOR_SCALARS = vendor_review.PROFILE_REVIEWED
+
+# Where the business is, and its website. Admin only: a vendor who could put
+# an address or a site in front of travellers could be met around Nexaround.
+# The portal shows them read-only.
+_ADMIN_ONLY_VENDOR_PLACE = ("address", "city", "country_code", "website")
 
 # How travellers reach a vendor directly. Admin only: bookings go through
 # Nexaround, so a vendor cannot add a direct line around the commission. The
@@ -597,18 +600,18 @@ _ADMIN_ONLY_VENDOR_CONTACTS = (
     "contact_facebook", "contact_x",
 )
 
+# What a vendor may write to a package: the content an admin reviews first,
+# then what applies at once - availability, and `is_active`, kept deliberately:
+# on a package it is the vendor's own publish toggle. It is safe because
+# `is_published` stays gated behind the vendor's `is_active`, which only an
+# admin can set - so a suspended vendor cannot surface anything by flipping it.
+# The prices travel as price options beside these.
 _PARTNER_PACKAGE_SCALARS = (
-    "title", "summary", "description", "category", "tags", "photo_urls",
-    "unavailable_ranges",
-    "price_amount", "price_currency", "price_basis", "duration_minutes",
-    "max_participants", "booking_window_days", "inclusions", "languages",
-    "uses_vendor_location", "meeting_point_address",
-    # Kept deliberately: on a package this is the vendor's own publish toggle.
-    # It is safe because `is_published` stays gated behind the vendor's
-    # `is_active`, which only an admin can set - so a suspended vendor cannot
-    # surface anything by flipping it.
-    "is_active",
+    vendor_review.PACKAGE_REVIEWED_SCALARS + vendor_review.PACKAGE_INSTANT
 )
+
+# Where travellers meet the vendor. Admin only, like the vendor's address.
+_ADMIN_ONLY_PACKAGE_PLACE = ("uses_vendor_location", "meeting_point_address")
 
 
 def _profile_response(vendor, package_count: int) -> PartnerVendorProfileResponse:
@@ -617,13 +620,13 @@ def _profile_response(vendor, package_count: int) -> PartnerVendorProfileRespons
     Not `_vendor_response` from the admin router: that one returns
     `internal_notes`, which the model comment marks admin-only.
     """
-    from app.utils.geo_utils import get_lat_lng
-
     lat, lng = get_lat_lng(vendor.location)
+    # What the vendor last asked for, so their form shows it while it waits.
+    asked = vendor_review.vendor_profile_content(vendor)
     return PartnerVendorProfileResponse(
         id=vendor.id,
-        name=vendor.name,
-        description=vendor.description,
+        name=asked["name"],
+        description=asked["description"],
         latitude=lat,
         longitude=lng,
         address=vendor.address,
@@ -634,10 +637,14 @@ def _profile_response(vendor, package_count: int) -> PartnerVendorProfileRespons
         contact_instagram=vendor.contact_instagram,
         contact_facebook=vendor.contact_facebook,
         contact_x=vendor.contact_x,
-        contact_email=vendor.contact_email,
+        contact_email=asked["contact_email"],
         website=vendor.website,
-        logo_url=vendor.logo_url,
-        photo_urls=vendor.photo_urls or [],
+        logo_url=asked["logo_url"],
+        photo_urls=asked["photo_urls"] or [],
+        review_status=vendor.review_status or vendor_review.APPROVED,
+        review_note=vendor.review_note,
+        submitted_at=vendor.submitted_at,
+        reviewed_at=vendor.reviewed_at,
         # Read-only here, and absent from the update schema: the vendor should
         # be able to see that their listing is hidden without being able to
         # un-hide it.
@@ -651,33 +658,41 @@ def _profile_response(vendor, package_count: int) -> PartnerVendorProfileRespons
 
 
 def _package_out(package) -> PartnerPackageResponse:
-    from app.utils.geo_utils import get_lat_lng
-
     lat, lng = get_lat_lng(package.location)
+    # What the vendor last asked for, so their form shows it while it waits;
+    # `is_published` still says whether travellers see the live version.
+    asked = vendor_review.vendor_package_content(package)
+    options = asked["price_options"] or []
+    first = options[0] if options else None
     return PartnerPackageResponse(
         id=package.id,
         vendor_id=package.vendor_id,
-        title=package.title,
-        summary=package.summary,
-        description=package.description,
-        category=package.category,
-        tags=package.tags or [],
-        photo_urls=package.photo_urls or [],
+        title=asked["title"],
+        summary=asked["summary"],
+        description=asked["description"],
+        category=asked["category"],
+        tags=asked["tags"] or [],
+        photo_urls=asked["photo_urls"] or [],
         unavailable_ranges=package.unavailable_ranges or [],
-        price_amount=float(package.price_amount) if package.price_amount is not None else None,
-        price_currency=package.price_currency,
-        price_basis=package.price_basis,
+        price_amount=first["amount"] if first else None,
+        price_currency=asked["price_currency"],
+        price_basis=first["basis"] if first else package.price_basis,
         # No dollar price: PriceOptionBase has none, so it is dropped here.
-        price_options=package.price_options or [],
-        duration_minutes=package.duration_minutes,
-        max_participants=package.max_participants,
+        price_options=options,
+        duration_minutes=asked["duration_minutes"],
+        max_participants=asked["max_participants"],
         booking_window_days=package.booking_window_days,
-        inclusions=package.inclusions or [],
-        languages=package.languages or [],
+        inclusions=asked["inclusions"] or [],
+        languages=asked["languages"] or [],
         uses_vendor_location=bool(package.uses_vendor_location),
         meeting_point_address=package.meeting_point_address,
         is_active=bool(package.is_active),
         is_published=bool(package.is_published),
+        is_approved=package.approved_at is not None,
+        review_status=package.review_status or vendor_review.APPROVED,
+        review_note=package.review_note,
+        submitted_at=package.submitted_at,
+        reviewed_at=package.reviewed_at,
         latitude=lat,
         longitude=lng,
         created_at=package.created_at,
@@ -704,33 +719,22 @@ async def update_partner_profile(
     db: AsyncSession = Depends(get_db),
     principal: VendorPrincipal = Depends(get_current_vendor),
 ):
-    from app.services.experience_service import apply_vendor_cascade
-    from app.services.experience_format import vendor_place_problem
-    from app.utils.geo_utils import point_or_none
-
-    problem = vendor_place_problem(data.latitude, data.longitude, data.country_code)
-    if problem:
-        raise HTTPException(status_code=422, detail=problem)
-
+    """Files the vendor's edits for an admin's review; nothing a traveller
+    sees changes until it is approved. The address, map point and website
+    are not the vendor's to set (the schema drops them)."""
     vendor = principal.vendor
-    before = partner_activity.snapshot(vendor, _PARTNER_VENDOR_SCALARS)
-    for key in _PARTNER_VENDOR_SCALARS:
-        setattr(vendor, key, getattr(data, key))
-    vendor.location = point_or_none(data.latitude, data.longitude)
-
-    # A vendor that moved drags its packages with it. `apply_vendor_cascade`
-    # does not commit, so the call and the commit are both needed - forgetting
-    # the call leaves every package on the old coordinates with a stale
-    # `is_published`.
-    count = await apply_vendor_cascade(db, vendor)
-    activity = partner_activity.profile_updated(
-        db, vendor, before, actor=partner_activity.VENDOR, login=principal.login,
+    sent = vendor_review.submit_profile(
+        vendor, vendor_review.profile_proposal(data), datetime.now(timezone.utc),
+    )
+    activity = (
+        partner_activity.profile_submitted(db, vendor, login=principal.login) if sent else None
     )
     await db.commit()
     await db.refresh(vendor)
     await partner_events.publish(vendor.id, partner_events.ACCOUNT_CHANGED)
     await partner_activity.announce(activity)
-    return _profile_response(vendor, count)
+    packages = await ExperienceRepository(db).list_packages_for_vendor(vendor.id)
+    return _profile_response(vendor, len(packages))
 
 
 # ── Packages ────────────────────────────────────────────────────────────────
@@ -761,18 +765,18 @@ async def create_partner_package(
         # Taken from the token, never from the body: a vendor_id in the payload
         # would be a way to file a package under someone else's name.
         vendor_id=principal.vendor.id,
-        **{key: package_field_value(data, key) for key in _PARTNER_PACKAGE_SCALARS},
+        # Met at the business; only an admin gives a package its own point.
+        uses_vendor_location=True,
+        **{key: package_field_value(data, key) for key in vendor_review.PACKAGE_INSTANT},
     )
-    apply_price_options(package, price_options_for_save(data, None, vendor=True))
-
-    apply_package_derived_fields(
-        package, principal.vendor, data.latitude, data.longitude
+    # Unpublished until an admin approves it.
+    vendor_review.new_package(
+        package, vendor_review.package_proposal(data), datetime.now(timezone.utc),
     )
+    apply_package_derived_fields(package, principal.vendor)
     db.add(package)
     await db.flush()  # the feed line links to the package's id
-    activity = partner_activity.package_created(
-        db, package, actor=partner_activity.VENDOR, login=principal.login,
-    )
+    activity = partner_activity.package_submitted(db, package, login=principal.login)
     await db.commit()
     await db.refresh(package)
     await partner_events.publish(principal.vendor.id, partner_events.PACKAGES_CHANGED)
@@ -810,17 +814,23 @@ async def update_partner_package(
     if package is None:
         raise HTTPException(status_code=404, detail="Package not found")
 
-    before = partner_activity.snapshot(
-        package, _PARTNER_PACKAGE_SCALARS + ("vendor_price_options",)
-    )
-    for key in _PARTNER_PACKAGE_SCALARS:
+    # Availability and Show/Hide at once; the content waits for an admin
+    # while the live version keeps showing.
+    before = partner_activity.snapshot(package, vendor_review.PACKAGE_INSTANT)
+    for key in vendor_review.PACKAGE_INSTANT:
         setattr(package, key, package_field_value(data, key))
-    apply_price_options(package, price_options_for_save(data, package.price_options, vendor=True))
-    apply_package_derived_fields(
-        package, principal.vendor, data.latitude, data.longitude
+    sent = vendor_review.submit_package(
+        package, vendor_review.package_proposal(data, package), datetime.now(timezone.utc),
     )
-    activity = partner_activity.package_updated(
-        db, package, before, actor=partner_activity.VENDOR, login=principal.login,
+    # The meeting point stays where an admin put it.
+    own_lat, own_lng = get_lat_lng(package.location) if not package.uses_vendor_location else (None, None)
+    apply_package_derived_fields(package, principal.vendor, own_lat, own_lng)
+    activity = (
+        partner_activity.package_submitted(db, package, login=principal.login)
+        if sent else
+        partner_activity.package_updated(
+            db, package, before, actor=partner_activity.VENDOR, login=principal.login,
+        )
     )
     await db.commit()
     await db.refresh(package)

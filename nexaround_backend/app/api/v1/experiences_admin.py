@@ -7,6 +7,7 @@ Kept out of `admin.py`, which is already long, following the precedent of
 import io
 import os
 import uuid
+from datetime import datetime, timezone
 from typing import List, Optional
 
 from fastapi import (
@@ -28,11 +29,12 @@ from app.schemas.partner import (
     VendorLoginListResponse, VendorLoginUpdate,
 )
 from app.api.v1.partner import (
-    _ADMIN_ONLY_VENDOR_CONTACTS, _PARTNER_PACKAGE_SCALARS, _PARTNER_VENDOR_SCALARS,
+    _ADMIN_ONLY_PACKAGE_PLACE, _ADMIN_ONLY_VENDOR_CONTACTS, _ADMIN_ONLY_VENDOR_PLACE,
+    _PARTNER_PACKAGE_SCALARS, _PARTNER_VENDOR_SCALARS,
 )
 from app.services import (
     audit, enquiry_lifecycle, enquiry_notifications, partner_activity,
-    partner_events,
+    partner_events, vendor_review, vendor_review_notifications,
 )
 from app.services.email_service import send_vendor_invite_email
 from app.services.experience_upload import save_experience_images, save_experience_video
@@ -53,6 +55,9 @@ from app.schemas.experience import (
     ExperienceVendorCreate,
     ExperienceVendorListResponse,
     ExperienceVendorUpdate,
+    VendorChangeDecision,
+    VendorChangeItem,
+    VendorChangeListResponse,
 )
 from app.services import experience_reviews, google_places_client
 from app.services.experience_service import (
@@ -122,6 +127,7 @@ def _vendor_response(
         package_count=package_count,
         traveller_rating=rating[0],
         traveller_review_count=rating[1],
+        review_status=vendor.review_status or vendor_review.APPROVED,
         created_at=vendor.created_at,
         updated_at=vendor.updated_at,
     )
@@ -163,6 +169,8 @@ def _package_response(
         is_published=package.is_published,
         rating_avg=rating[0],
         rating_count=rating[1],
+        review_status=package.review_status or vendor_review.APPROVED,
+        is_approved=package.approved_at is not None,
         sort_order=package.sort_order or 0,
         created_at=package.created_at,
         updated_at=package.updated_at,
@@ -253,7 +261,9 @@ async def update_vendor(
     # Judged on what the vendor can see, plus is_active for suspend/restore:
     # an edit to internal_notes or sort_order must not reach their feed.
     before = partner_activity.snapshot(
-        vendor, _PARTNER_VENDOR_SCALARS + _ADMIN_ONLY_VENDOR_CONTACTS + ("is_active",)
+        vendor,
+        _PARTNER_VENDOR_SCALARS + _ADMIN_ONLY_VENDOR_CONTACTS + _ADMIN_ONLY_VENDOR_PLACE
+        + ("is_active",),
     )
     for key in _VENDOR_SCALARS:
         setattr(vendor, key, getattr(data, key))
@@ -327,6 +337,8 @@ async def create_package(
 
     package = ExperiencePackage(
         vendor_id=vendor.id,
+        # An admin's own package needs no review.
+        approved_at=datetime.now(timezone.utc),
         **{key: package_field_value(data, key) for key in _PACKAGE_SCALARS},
     )
     apply_price_options(package, price_options_for_save(data, None))
@@ -357,7 +369,7 @@ async def update_package(
         raise HTTPException(status_code=404, detail="Vendor not found")
 
     before = partner_activity.snapshot(
-        package, _PARTNER_PACKAGE_SCALARS + ("vendor_price_options",)
+        package, _PARTNER_PACKAGE_SCALARS + _ADMIN_ONLY_PACKAGE_PLACE + ("vendor_price_options",)
     )
     for key in _PACKAGE_SCALARS:
         setattr(package, key, package_field_value(data, key))
@@ -391,6 +403,197 @@ async def delete_package(
     await partner_events.publish(vendor_id, partner_events.PACKAGES_CHANGED)
     await partner_activity.announce(activity)
     return {"status": "success"}
+
+
+# --- Review of vendors' own edits (services/vendor_review) -----------------
+
+def _package_change_item(package: ExperiencePackage, vendor_name: str) -> VendorChangeItem:
+    is_new = package.approved_at is None
+    live = vendor_review.live_package_content(package)
+    # A new package has nothing live: the row is what the vendor asked for.
+    asked = live if is_new else (package.pending_changes or {})
+    return VendorChangeItem(
+        kind="package",
+        id=package.id,
+        vendor_id=package.vendor_id,
+        vendor_name=vendor_name,
+        title=package.title,
+        is_new=is_new,
+        review_status=package.review_status,
+        review_note=package.review_note,
+        submitted_at=package.submitted_at,
+        reviewed_at=package.reviewed_at,
+        summary=vendor_review.pending_summary(package, "package"),
+        price_currency=package.price_currency,
+        changes=vendor_review.diff_rows(live, asked, is_new=is_new),
+    )
+
+
+def _profile_change_item(vendor: ExperienceVendor) -> VendorChangeItem:
+    return VendorChangeItem(
+        kind="profile",
+        id=vendor.id,
+        vendor_id=vendor.id,
+        vendor_name=vendor.name,
+        title="Business profile",
+        review_status=vendor.review_status,
+        review_note=vendor.review_note,
+        submitted_at=vendor.submitted_at,
+        reviewed_at=vendor.reviewed_at,
+        summary=vendor_review.pending_summary(vendor, "profile"),
+        changes=vendor_review.diff_rows(
+            vendor_review.live_profile_content(vendor), vendor.pending_changes or {},
+        ),
+    )
+
+
+@router.get("/changes", response_model=VendorChangeListResponse)
+async def list_vendor_changes(
+    status_filter: str = Query("open", alias="status", pattern="^(open|pending|changes_requested)$"),
+    db: AsyncSession = Depends(get_db),
+    _=Depends(verify_admin_token),
+):
+    """What vendors changed themselves: waiting for an admin ("pending"), or
+    sent back to them ("changes_requested"); "open" is both. Oldest waiting
+    first, as a queue."""
+    statuses = (
+        [vendor_review.PENDING, vendor_review.CHANGES_REQUESTED]
+        if status_filter == "open" else [status_filter]
+    )
+    rows = (await db.execute(
+        select(ExperiencePackage, ExperienceVendor.name)
+        .join(ExperienceVendor, ExperienceVendor.id == ExperiencePackage.vendor_id)
+        .where(ExperiencePackage.review_status.in_(statuses))
+    )).all()
+    vendors = (await db.execute(
+        select(ExperienceVendor).where(ExperienceVendor.review_status.in_(statuses))
+    )).scalars().all()
+    items = [_package_change_item(p, name) for p, name in rows] + [
+        _profile_change_item(v) for v in vendors
+    ]
+    # Waiting ones first, each group oldest first.
+    items.sort(key=lambda i: (
+        i.review_status != vendor_review.PENDING,
+        i.submitted_at or datetime.min.replace(tzinfo=timezone.utc),
+    ))
+    return VendorChangeListResponse(
+        items=items,
+        pending=sum(1 for i in items if i.review_status == vendor_review.PENDING),
+    )
+
+
+@router.get("/changes/count")
+async def count_vendor_changes(
+    db: AsyncSession = Depends(get_db),
+    _=Depends(verify_admin_token),
+):
+    """How many wait for an admin, for the sidebar badge."""
+    from sqlalchemy import func
+
+    packages = await db.scalar(
+        select(func.count()).select_from(ExperiencePackage)
+        .where(ExperiencePackage.review_status == vendor_review.PENDING)
+    )
+    vendors = await db.scalar(
+        select(func.count()).select_from(ExperienceVendor)
+        .where(ExperienceVendor.review_status == vendor_review.PENDING)
+    )
+    return {"pending": (packages or 0) + (vendors or 0)}
+
+
+def _decision_note(data: VendorChangeDecision) -> Optional[str]:
+    if data.decision == "approve":
+        return None
+    note = (data.note or "").strip()
+    if not note:
+        raise HTTPException(
+            status_code=422, detail="Tell the vendor what to change before sending it back.",
+        )
+    return note
+
+
+@router.post("/packages/{package_id}/review", response_model=VendorChangeItem)
+async def review_package_changes(
+    package_id: uuid.UUID,
+    data: VendorChangeDecision,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(verify_admin_token),
+):
+    repo = ExperienceRepository(db)
+    package = await repo.get_package(package_id, published_only=False)
+    if not package:
+        raise HTTPException(status_code=404, detail="Package not found")
+    if package.review_status == vendor_review.APPROVED:
+        raise HTTPException(status_code=409, detail="Nothing on this package is waiting for review.")
+    vendor = await repo.get_vendor(package.vendor_id)
+    if not vendor:
+        raise HTTPException(status_code=404, detail="Vendor not found")
+
+    note = _decision_note(data)
+    approved = note is None
+    is_new = package.approved_at is None
+    now = datetime.now(timezone.utc)
+    if approved:
+        vendor_review.approve_package(package, now)
+        # A first approval publishes; the meeting point stays where it is.
+        own_lat, own_lng = (
+            get_lat_lng(package.location) if not package.uses_vendor_location else (None, None)
+        )
+        apply_package_derived_fields(package, vendor, own_lat, own_lng)
+    else:
+        vendor_review.request_changes(package, note, now)
+    activity = partner_activity.package_reviewed(
+        db, package, approved=approved, note=note, is_new=is_new,
+    )
+    await db.commit()
+    await db.refresh(package)
+    await partner_events.publish(vendor.id, partner_events.PACKAGES_CHANGED)
+    await partner_activity.announce(activity)
+
+    title, body = partner_activity.review_text(package.title, approved, note, is_new=is_new)
+    background_tasks.add_task(
+        vendor_review_notifications.review_decided, vendor.id,
+        title=title, body=body, subject=package.title, approved=approved, note=note,
+        package_id=package.id, is_new=is_new,
+    )
+    return _package_change_item(package, vendor.name)
+
+
+@router.post("/vendors/{vendor_id}/review", response_model=VendorChangeItem)
+async def review_profile_changes(
+    vendor_id: uuid.UUID,
+    data: VendorChangeDecision,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(verify_admin_token),
+):
+    repo = ExperienceRepository(db)
+    vendor = await repo.get_vendor(vendor_id)
+    if not vendor:
+        raise HTTPException(status_code=404, detail="Vendor not found")
+    if vendor.review_status == vendor_review.APPROVED:
+        raise HTTPException(status_code=409, detail="Nothing on this profile is waiting for review.")
+
+    note = _decision_note(data)
+    approved = note is None
+    now = datetime.now(timezone.utc)
+    if approved:
+        vendor_review.approve_profile(vendor, now)
+    else:
+        vendor_review.request_changes(vendor, note, now)
+    activity = partner_activity.profile_reviewed(db, vendor, approved=approved, note=note)
+    await db.commit()
+    await db.refresh(vendor)
+    await partner_events.publish(vendor.id, partner_events.ACCOUNT_CHANGED)
+    await partner_activity.announce(activity)
+
+    title, body = partner_activity.review_text("your business profile", approved, note)
+    background_tasks.add_task(
+        vendor_review_notifications.review_decided, vendor.id,
+        title=title, body=body, subject="your business profile", approved=approved, note=note,
+    )
+    return _profile_change_item(vendor)
 
 
 # --- Enquiries --------------------------------------------------------------
