@@ -1,8 +1,8 @@
 """TravelBytes: the travel stories the team posts as the TravelByte account.
 
-They lead the feed under every filter - the ones about the traveller's own
-country (or the country they picked) first, nearest first, then the rest
-newest first - and the admin form is checked before anything is written.
+They lead the feed, newest first wherever the traveller is (a picked
+country keeps only its own), and the admin form is checked before anything
+is written.
 No database: the ordering is a pure function and the form is a schema plus
 `_apply`.
 """
@@ -42,11 +42,11 @@ def story(name, lat, lng, days_old, official=False, country=None):
     )
 
 
-def feed(stories, first_country=None, here=TRINCOMALEE, stack=True):
+def feed(stories, here=TRINCOMALEE, stack=True):
     """The feed's order: TravelBytes first, then travellers' stories near-you style."""
     pairs = [(s, _distance_m(s, *here)) for s in stories]
     limit = OFFICIAL_IN_STACK if stack else OFFICIAL_IN_OLD_FEED
-    official = _order_official([p for p in pairs if p[0].is_official], first_country, limit)
+    official = _order_official([p for p in pairs if p[0].is_official], limit)
     others = _order_nearby([p for p in pairs if not p[0].is_official])
     return [s.name for s, _ in official + others]
 
@@ -78,26 +78,23 @@ def test_a_picked_country_keeps_only_its_own_travelbytes():
     assert _is_about(story("x", None, None, 0, official=True, country="Atlantis"), "atlantis")
 
 
-def test_the_travelbyte_about_your_country_comes_first():
-    # Standing in China: Furong first although Vietnam is newer.
-    assert feed([vietnam(0), furong(3)], first_country="CN", here=BEIJING) == ["furong", "vietnam"]
-    # Standing in Vietnam: the other way round.
-    assert feed([furong(0), vietnam(3)], first_country="VN") == ["vietnam", "furong"]
+def test_the_newest_travelbyte_comes_first_even_in_another_ones_country():
+    # Standing in China: Vietnam first, it is newer than Furong. (Until
+    # 2026-10-22 Furong came first here, being about China.)
+    assert feed([furong(3), vietnam(0)], here=BEIJING) == ["vietnam", "furong"]
+    # The 2026-10-22 report: in Kerala, Sri Lanka (newest) before Sikkim.
+    sikkim = story("sikkim", 27.3516, 88.3239, 1, official=True, country="India")
+    sri_lanka = story("sri_lanka", 7.8731, 80.7718, 0, official=True, country="Sri Lanka")
+    assert feed([sikkim, sri_lanka, furong(3)], here=(10.1223, 76.3321)) == ["sri_lanka", "sikkim", "furong"]
 
 
-def test_in_your_country_the_nearest_comes_first():
+def test_distance_does_not_change_the_order():
     great_wall = story("great_wall", 40.432, 116.570, 9, official=True, country="China")
     shanghai = story("shanghai", 31.230, 121.474, 0, official=True, country="China")
-    assert feed([shanghai, great_wall, vietnam()], first_country="CN", here=BEIJING) == [
-        "great_wall", "shanghai", "vietnam",
-    ]
-
-
-def test_elsewhere_newest_first():
-    # In Sri Lanka there is no TravelByte about Sri Lanka: newest to oldest.
-    assert feed([furong(3), vietnam(0)], first_country="LK") == ["vietnam", "furong"]
+    assert feed([great_wall, shanghai, vietnam(1)], here=BEIJING) == ["shanghai", "vietnam", "great_wall"]
     # No location at all: the same.
-    assert feed([furong(3), vietnam(0)], first_country=None) == ["vietnam", "furong"]
+    unplaced = [(furong(3), None), (vietnam(0), None)]
+    assert [s.name for s, _ in _order_official(unplaced, None)] == ["vietnam", "furong"]
 
 
 def test_older_app_builds_get_one_travelbyte():
@@ -110,13 +107,13 @@ def test_older_app_builds_get_one_travelbyte():
 def test_the_exclusive_page_gets_every_travelbyte_in_card_order():
     many = [story(f"tb{i}", None, None, i, official=True, country="Japan") for i in range(15)]
     pairs = [(s, None) for s in many] + [(furong(20), None)]
-    names = [s.name for s, _ in _order_official(pairs, "CN", None)]
-    assert names == ["furong"] + [f"tb{i}" for i in range(15)]
+    names = [s.name for s, _ in _order_official(pairs, None)]
+    assert names == [f"tb{i}" for i in range(15)] + ["furong"]
 
 
 def test_without_travelbytes_the_row_is_the_near_you_order():
     pairs = [(story(n, None, None, d), None) for n, d in (("a", 0), ("b", 5), ("c", 1))]
-    assert _order_official([], "LK", OFFICIAL_IN_STACK) == []
+    assert _order_official([], OFFICIAL_IN_STACK) == []
     assert [s.name for s, _ in _order_nearby(pairs)] == ["a", "c", "b"]
 
 

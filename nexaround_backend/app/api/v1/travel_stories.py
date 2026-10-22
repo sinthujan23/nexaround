@@ -20,7 +20,7 @@ from app.schemas.travel_story import (
     TravelStoryCommentResponse
 )
 from app.utils.place_match import haversine_m
-from app.services import image_preview, story_location, user_country
+from app.services import image_preview, story_location
 from app.services.trip_cost_floor import country_for
 
 router = APIRouter(prefix="/travel-stories", tags=["travel-stories"])
@@ -86,22 +86,14 @@ def _is_about(story, country: str) -> bool:
     return (story.country or "").strip().lower() == country.strip().lower()
 
 
-def _order_official(pairs: list, first_country: Optional[str], limit: Optional[int]) -> list:
-    """TravelBytes in the order the app shows them, at most `limit` (None: all).
-
-    First the ones about `first_country` (ISO code: the country the traveller
-    picked, or else the one they are in), nearest first; then every other one,
-    newest first.
+def _order_official(pairs: list, limit: Optional[int]) -> list:
+    """TravelBytes in the order the app shows them, at most `limit` (None: all):
+    newest first, wherever the traveller is (client, 2026-10-22: "the latest
+    TravelByte is not seen as the first one"). Until then the ones about the
+    traveller's own country came first, so in India Sikkim stayed in front of
+    every newer one. A picked country narrows the list instead (`_is_about`).
     """
-    def is_first(story) -> bool:
-        return bool(first_country) and country_for(story.country or "") == first_country
-
-    first = sorted(
-        (p for p in pairs if is_first(p[0])),
-        key=lambda p: (p[1] is None, p[1] or 0, -_created_ts(p[0])),
-    )
-    rest = sorted((p for p in pairs if not is_first(p[0])), key=lambda p: -_created_ts(p[0]))
-    return (first + rest)[:limit]
+    return sorted(pairs, key=lambda p: -_created_ts(p[0]))[:limit]
 
 
 def _photo_urls(story) -> list[str]:
@@ -188,14 +180,8 @@ async def get_travel_stories(
     if near and not country:
         pairs = _order_nearby(pairs)
     if official:
-        if country:
-            first_country = country_for(country)
-        elif near:
-            first_country = await user_country.country_at(db, lat, lng)
-        else:
-            first_country = None
         limit = OFFICIAL_IN_STACK if official_stack else OFFICIAL_IN_OLD_FEED
-        pairs = _order_official(official, first_country, limit) + pairs
+        pairs = _order_official(official, limit) + pairs
 
     previews = await _previews(s for s, _ in pairs)
     return [_feed_response(s, current_user.id, distance, previews) for s, distance in pairs]
@@ -211,8 +197,7 @@ async def get_travelbytes(
     """Every published TravelByte, for the app's Exclusive page.
 
     In the same order as the TravelByte card in the feed (`_order_official`,
-    by the country at `lat`/`lng`), but all of them: the card carries at most
-    OFFICIAL_IN_STACK.
+    newest first), but all of them: the card carries at most OFFICIAL_IN_STACK.
     """
     stmt = (
         select(TravelStory)
@@ -223,8 +208,7 @@ async def get_travelbytes(
 
     near = lat is not None and lng is not None
     pairs = [(s, _distance_m(s, lat, lng) if near else None) for s in stories]
-    first_country = await user_country.country_at(db, lat, lng) if near and pairs else None
-    pairs = _order_official(pairs, first_country, None)
+    pairs = _order_official(pairs, None)
     previews = await _previews(s for s, _ in pairs)
     return [_feed_response(s, current_user.id, distance, previews) for s, distance in pairs]
 
