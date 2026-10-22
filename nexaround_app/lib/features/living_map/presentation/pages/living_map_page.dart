@@ -116,6 +116,7 @@ class _LivingMapPageState extends State<LivingMapPage>
   void initState() {
     super.initState();
     _loadTravelStories();
+    TravelStoriesService.feedChanged.addListener(_onStoriesFeedChanged);
     // Cache is deliberately left alone here: a repeat visit to the same area
     // should paint instantly from what's already saved while MapBloc's own
     // distance/staleness check (see _onFetchNearbyAttractions) decides
@@ -190,6 +191,7 @@ class _LivingMapPageState extends State<LivingMapPage>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    TravelStoriesService.feedChanged.removeListener(_onStoriesFeedChanged);
     _pulseController.dispose();
     _globeController.dispose();
     _positionSubscription?.cancel();
@@ -201,8 +203,21 @@ class _LivingMapPageState extends State<LivingMapPage>
     // Re-check location when app resumes (user may have enabled it in settings)
     if (state == AppLifecycleState.resumed) {
       _checkLocationAndInit();
+      _reloadStoriesIfStale();
     }
   }
+
+  /// A silent push said the TravelBytes changed while the app was away.
+  Future<void> _reloadStoriesIfStale() async {
+    // The flag was written by the background isolate: read it from disk.
+    await CacheService.reload();
+    if (!CacheService.storiesStale()) return;
+    await CacheService.setStoriesStale(false);
+    _loadTravelStories();
+  }
+
+  /// A silent push arrived with the app open.
+  void _onStoriesFeedChanged() => _loadTravelStories();
 
   Future<void> _checkLocationAndInit() async {
     // Check location permission first (critical for iOS)
@@ -903,105 +918,243 @@ class _LivingMapPageState extends State<LivingMapPage>
           body: Stack(
             children: [
               // Layer 2: Content
-              CustomScrollView(
-                physics: const BouncingScrollPhysics(),
-                slivers: [
-                  SliverAppBar(
-                    floating: false,
-                    pinned: true,
-                    automaticallyImplyLeading: false,
-                    backgroundColor: Colors.transparent,
-                    elevation: 0,
-                    toolbarHeight: 64,
-                    titleSpacing: 24,
-                    centerTitle: false,
-                    flexibleSpace: Container(
-                      color: AppColors.background.withOpacity(0.95),
-                    ),
-                    title: _buildExploringCard(),
-                    actions: [
-                      Padding(
-                        padding: const EdgeInsets.only(right: 24),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            // Emergency Icon
-                            _buildGlassCircle(
-                              Icons.emergency_rounded,
-                              bgColor: AppColors.error.withOpacity(0.15),
-                              iconColor: AppColors.error,
-                              onTap: () {
-                                final homeState = context.findAncestorStateOfType<HomePageState>();
-                                if (homeState != null) {
-                                  homeState.switchToDiscover(
-                                    initialTab: DiscoverPage.emergencyTabIndex,
+              // Pull down to fetch the latest Travel Stories (a new TravelByte
+              // shows here without reopening the app).
+              RefreshIndicator(
+                onRefresh: _pullToRefresh,
+                color: AppColors.brandGreen,
+                // Below the pinned header, not behind it.
+                edgeOffset: MediaQuery.of(context).padding.top + 64,
+                child: CustomScrollView(
+                  // Always scrollable, so a short page can still be pulled down.
+                  physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+                  slivers: [
+                    SliverAppBar(
+                      floating: false,
+                      pinned: true,
+                      automaticallyImplyLeading: false,
+                      backgroundColor: Colors.transparent,
+                      elevation: 0,
+                      toolbarHeight: 64,
+                      titleSpacing: 24,
+                      centerTitle: false,
+                      flexibleSpace: Container(
+                        color: AppColors.background.withOpacity(0.95),
+                      ),
+                      title: _buildExploringCard(),
+                      actions: [
+                        Padding(
+                          padding: const EdgeInsets.only(right: 24),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              // Emergency Icon
+                              _buildGlassCircle(
+                                Icons.emergency_rounded,
+                                bgColor: AppColors.error.withOpacity(0.15),
+                                iconColor: AppColors.error,
+                                onTap: () {
+                                  final homeState = context.findAncestorStateOfType<HomePageState>();
+                                  if (homeState != null) {
+                                    homeState.switchToDiscover(
+                                      initialTab: DiscoverPage.emergencyTabIndex,
+                                    );
+                                  }
+                                },
+                              ),
+                              const SizedBox(width: 8),
+                              // Profile Avatar
+                              BlocBuilder<AuthBloc, AuthState>(
+                                builder: (context, authState) {
+                                  final user = authState is AuthAuthenticated ? authState.user : null;
+                                  return GestureDetector(
+                                    onTap: () {
+                                      final homeState = context.findAncestorStateOfType<HomePageState>();
+                                      if (homeState != null) {
+                                        homeState.switchToProfile();
+                                      }
+                                    },
+                                    child: UserAvatarView(
+                                      user: user,
+                                      size: 38,
+                                    ),
                                   );
-                                }
-                              },
-                            ),
-                            const SizedBox(width: 8),
-                            // Profile Avatar
-                            BlocBuilder<AuthBloc, AuthState>(
-                              builder: (context, authState) {
-                                final user = authState is AuthAuthenticated ? authState.user : null;
-                                return GestureDetector(
-                                  onTap: () {
-                                    final homeState = context.findAncestorStateOfType<HomePageState>();
-                                    if (homeState != null) {
-                                      homeState.switchToProfile();
-                                    }
-                                  },
-                                  child: UserAvatarView(
-                                    user: user,
-                                    size: 38,
-                                  ),
-                                );
-                              },
-                            ),
-                            const SizedBox(width: 8),
-                            // Bell Icon
-                            ValueListenableBuilder<int>(
-                              valueListenable: CacheService.notificationsNotifier,
-                              builder: (_, __, ___) => _buildGlassCircle(
-                                Icons.notifications_none_rounded,
-                                badge: CacheService.unreadNotifications(),
-                                onTap: () => Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => const NotificationsPage(),
+                                },
+                              ),
+                              const SizedBox(width: 8),
+                              // Bell Icon
+                              ValueListenableBuilder<int>(
+                                valueListenable: CacheService.notificationsNotifier,
+                                builder: (_, __, ___) => _buildGlassCircle(
+                                  Icons.notifications_none_rounded,
+                                  badge: CacheService.unreadNotifications(),
+                                  onTap: () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => const NotificationsPage(),
+                                    ),
                                   ),
                                 ),
                               ),
-                            ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    // Greeting + AI prompt
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _buildGreeting(),
+                            const SizedBox(height: 24),
+                            _buildArSpotlight(),
+                            const SizedBox(height: 16),
+                            _buildExperienceRibbon(),
+                            const SizedBox(height: 16),
+                            _buildOdysseyCTA(),
                           ],
                         ),
                       ),
-                    ],
-                  ),
-
-                  // Greeting + AI prompt
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _buildGreeting(),
-                          const SizedBox(height: 24),
-                          _buildArSpotlight(),
-                          const SizedBox(height: 16),
-                          _buildExperienceRibbon(),
-                          const SizedBox(height: 16),
-                          _buildOdysseyCTA(),
-                        ],
-                      ),
                     ),
-                  ),
 
-                  ...() {
-                    if (state.status == MapStatus.loading ||
-                        state.status == MapStatus.initial ||
-                        masterAttractions.isEmpty) {
+                    ...() {
+                      if (state.status == MapStatus.loading ||
+                          state.status == MapStatus.initial ||
+                          masterAttractions.isEmpty) {
+                        return [
+                          // Travel Stories (Where Was I?)
+                          SliverToBoxAdapter(
+                            child: Padding(
+                              padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
+                              child: _buildSectionHeader(
+                                'Travel Stories',
+                                null,
+                                customAction: _buildTravelStoriesHeaderAction(),
+                              ),
+                            ),
+                          ),
+                          SliverToBoxAdapter(child: _buildTravelStoriesFeed()),
+
+                          SliverToBoxAdapter(
+                            child: Padding(
+                              padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
+                              child: _buildSectionHeader(
+                                !_isLocationOverridden
+                                    ? 'Around You'
+                                    : (_currentLocationName == 'Locating...' || _currentLocationName.isEmpty || _currentLocationName == 'Unknown' 
+                                        ? 'Around You' 
+                                        : 'Around $_currentLocationName'),
+                                null,
+                                imageIconPath: 'assets/images/near.png',
+                                customAction: _buildAroundYouRefreshButton(),
+                              ),
+                            ),
+                          ),
+                          SliverToBoxAdapter(
+                            child: _buildHiddenGemCards(masterAttractions, state.status),
+                          ),
+                          SliverToBoxAdapter(
+                            child: Padding(
+                              padding: const EdgeInsets.only(top: 4, bottom: 8),
+                              child: _buildForumBanner(),
+                            ),
+                          ),
+
+                          /*
+                          // Curated For You Shimmer
+                          SliverToBoxAdapter(
+                            child: Padding(
+                              padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
+                              child: _buildSectionHeader(
+                                'Curated For You',
+                                null,
+                                imageIconPath: 'assets/images/popular.png',
+                                customAction: _buildNevaReportButton(),
+                              ),
+                            ),
+                          ),
+                          SliverToBoxAdapter(child: _buildShimmerTrendingCards()),
+                          */
+                        ];
+                      }
+
+                      // Filter out private residences and personal markers to keep only public/walkable spots
+                      bool isPublicSpot(AttractionEntity place) {
+                        final name = place.name.toLowerCase();
+                        final desc = (place.description ?? '').toLowerCase();
+                        final tags = place.tags
+                            .map((t) => t.toLowerCase())
+                            .toList();
+
+                        final privateKeywords = [
+                          'home',
+                          'house',
+                          'residence',
+                          "'s place",
+                          'my place',
+                          'my home',
+                          'private',
+                          'personal',
+                          'apartment',
+                          'flat',
+                          'villa',
+                          'homestay',
+                          'guest house',
+                          'guesthouse',
+                          '3bhk',
+                          '2bhk',
+                          '4bhk',
+                          '1bhk',
+                          'cottage',
+                          'bungalow',
+                          'stay',
+                        ];
+
+                        // Check name/description for private indicators
+                        for (final keyword in privateKeywords) {
+                          if (name.contains(keyword)) {
+                            // Allow public historic/museum houses
+                            if (name.contains('museum') ||
+                                name.contains('historic') ||
+                                name.contains('heritage') ||
+                                name.contains('public')) {
+                              continue;
+                            }
+                            return false;
+                          }
+                        }
+
+                        // Filter out residential tags
+                        if (tags.any(
+                          (t) =>
+                              t.contains('home') ||
+                              t.contains('private') ||
+                              t.contains('residential') ||
+                              t.contains('personal'),
+                        )) {
+                          return false;
+                        }
+
+                        return true;
+                      }
+
+                      final publicAttractions = masterAttractions
+                          .where(isPublicSpot)
+                          .toList();
+                      final trendingPlaces = _geminiTrendingPlaces.isNotEmpty
+                          ? _geminiTrendingPlaces
+                          : (List<AttractionEntity>.from(publicAttractions)..sort(
+                              (a, b) =>
+                                  _trendingScore(b).compareTo(_trendingScore(a)),
+                            ));
+
+                      final showTrendingLoading =
+                          _loadingGeminiTrending && _geminiTrendingPlaces.isEmpty;
+
                       return [
                         // Travel Stories (Where Was I?)
                         SliverToBoxAdapter(
@@ -1016,33 +1169,36 @@ class _LivingMapPageState extends State<LivingMapPage>
                         ),
                         SliverToBoxAdapter(child: _buildTravelStoriesFeed()),
 
-                        SliverToBoxAdapter(
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
-                            child: _buildSectionHeader(
-                              !_isLocationOverridden
-                                  ? 'Around You'
-                                  : (_currentLocationName == 'Locating...' || _currentLocationName.isEmpty || _currentLocationName == 'Unknown' 
-                                      ? 'Around You' 
-                                      : 'Around $_currentLocationName'),
-                              null,
-                              imageIconPath: 'assets/images/near.png',
-                              customAction: _buildAroundYouRefreshButton(),
+                        if (publicAttractions.isNotEmpty) ...[
+                          SliverToBoxAdapter(
+                            child: Padding(
+                              padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
+                              child: _buildSectionHeader(
+                                !_isLocationOverridden
+                                    ? 'Around You'
+                                    : (_currentLocationName == 'Locating...' || _currentLocationName.isEmpty || _currentLocationName == 'Unknown' 
+                                        ? 'Around You' 
+                                        : 'Around $_currentLocationName'),
+                                null,
+                                imageIconPath: 'assets/images/near.png',
+                                customAction: _buildAroundYouRefreshButton(),
+                              ),
                             ),
                           ),
-                        ),
-                        SliverToBoxAdapter(
-                          child: _buildHiddenGemCards(masterAttractions, state.status),
-                        ),
+                          SliverToBoxAdapter(
+                            child: _buildHiddenGemCards(publicAttractions, state.status),
+                          ),
+                        ],
+
                         SliverToBoxAdapter(
                           child: Padding(
-                            padding: const EdgeInsets.only(top: 4, bottom: 8),
+                            padding: const EdgeInsets.only(top: 4, bottom: 14),
                             child: _buildForumBanner(),
                           ),
                         ),
 
                         /*
-                        // Curated For You Shimmer
+                        // Curated For You
                         SliverToBoxAdapter(
                           child: Padding(
                             padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
@@ -1054,187 +1210,55 @@ class _LivingMapPageState extends State<LivingMapPage>
                             ),
                           ),
                         ),
-                        SliverToBoxAdapter(child: _buildShimmerTrendingCards()),
+                        if (_loadingGeminiTrending && _aiExperiences.isEmpty)
+                          SliverToBoxAdapter(child: _buildShimmerTrendingCards())
+                        else if (_aiExperiences.isNotEmpty)
+                          SliverToBoxAdapter(
+                            child: _buildTrendingPlacesList(state),
+                          )
+                        else if (_geminiError != null)
+                          SliverToBoxAdapter(
+                            child: _buildCuratedErrorCard(),
+                          )
+                        else
+                          const SliverToBoxAdapter(
+                            child: Padding(
+                              padding: EdgeInsets.symmetric(
+                                horizontal: 24,
+                                vertical: 16,
+                              ),
+                              child: Text(
+                                'No popular recommendations found nearby.',
+                                style: TextStyle(color: AppColors.textSecondary),
+                              ),
+                            ),
+                          ),
                         */
                       ];
-                    }
+                    }(),
 
-                    // Filter out private residences and personal markers to keep only public/walkable spots
-                    bool isPublicSpot(AttractionEntity place) {
-                      final name = place.name.toLowerCase();
-                      final desc = (place.description ?? '').toLowerCase();
-                      final tags = place.tags
-                          .map((t) => t.toLowerCase())
-                          .toList();
-
-                      final privateKeywords = [
-                        'home',
-                        'house',
-                        'residence',
-                        "'s place",
-                        'my place',
-                        'my home',
-                        'private',
-                        'personal',
-                        'apartment',
-                        'flat',
-                        'villa',
-                        'homestay',
-                        'guest house',
-                        'guesthouse',
-                        '3bhk',
-                        '2bhk',
-                        '4bhk',
-                        '1bhk',
-                        'cottage',
-                        'bungalow',
-                        'stay',
-                      ];
-
-                      // Check name/description for private indicators
-                      for (final keyword in privateKeywords) {
-                        if (name.contains(keyword)) {
-                          // Allow public historic/museum houses
-                          if (name.contains('museum') ||
-                              name.contains('historic') ||
-                              name.contains('heritage') ||
-                              name.contains('public')) {
-                            continue;
-                          }
-                          return false;
-                        }
+                    // Cluster suggestion
+                    ...() {
+                      if (_miniTourPlaces != null &&
+                          _miniTourPlaces!.length >= 3) {
+                        return <Widget>[
+                          SliverToBoxAdapter(
+                            child: Padding(
+                              padding: const EdgeInsets.fromLTRB(24, 12, 24, 12),
+                              child: _buildClusterSuggestion(_miniTourPlaces!),
+                            ),
+                          ),
+                        ];
                       }
 
-                      // Filter out residential tags
-                      if (tags.any(
-                        (t) =>
-                            t.contains('home') ||
-                            t.contains('private') ||
-                            t.contains('residential') ||
-                            t.contains('personal'),
-                      )) {
-                        return false;
-                      }
-
-                      return true;
-                    }
-
-                    final publicAttractions = masterAttractions
-                        .where(isPublicSpot)
-                        .toList();
-                    final trendingPlaces = _geminiTrendingPlaces.isNotEmpty
-                        ? _geminiTrendingPlaces
-                        : (List<AttractionEntity>.from(publicAttractions)..sort(
-                            (a, b) =>
-                                _trendingScore(b).compareTo(_trendingScore(a)),
-                          ));
-
-                    final showTrendingLoading =
-                        _loadingGeminiTrending && _geminiTrendingPlaces.isEmpty;
-
-                    return [
-                      // Travel Stories (Where Was I?)
-                      SliverToBoxAdapter(
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
-                          child: _buildSectionHeader(
-                            'Travel Stories',
-                            null,
-                            customAction: _buildTravelStoriesHeaderAction(),
-                          ),
-                        ),
-                      ),
-                      SliverToBoxAdapter(child: _buildTravelStoriesFeed()),
-
-                      if (publicAttractions.isNotEmpty) ...[
-                        SliverToBoxAdapter(
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
-                            child: _buildSectionHeader(
-                              !_isLocationOverridden
-                                  ? 'Around You'
-                                  : (_currentLocationName == 'Locating...' || _currentLocationName.isEmpty || _currentLocationName == 'Unknown' 
-                                      ? 'Around You' 
-                                      : 'Around $_currentLocationName'),
-                              null,
-                              imageIconPath: 'assets/images/near.png',
-                              customAction: _buildAroundYouRefreshButton(),
-                            ),
-                          ),
-                        ),
-                        SliverToBoxAdapter(
-                          child: _buildHiddenGemCards(publicAttractions, state.status),
-                        ),
-                      ],
-
-                      SliverToBoxAdapter(
-                        child: Padding(
-                          padding: const EdgeInsets.only(top: 4, bottom: 14),
-                          child: _buildForumBanner(),
-                        ),
-                      ),
-
-                      /*
-                      // Curated For You
-                      SliverToBoxAdapter(
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
-                          child: _buildSectionHeader(
-                            'Curated For You',
-                            null,
-                            imageIconPath: 'assets/images/popular.png',
-                            customAction: _buildNevaReportButton(),
-                          ),
-                        ),
-                      ),
-                      if (_loadingGeminiTrending && _aiExperiences.isEmpty)
-                        SliverToBoxAdapter(child: _buildShimmerTrendingCards())
-                      else if (_aiExperiences.isNotEmpty)
-                        SliverToBoxAdapter(
-                          child: _buildTrendingPlacesList(state),
-                        )
-                      else if (_geminiError != null)
-                        SliverToBoxAdapter(
-                          child: _buildCuratedErrorCard(),
-                        )
-                      else
-                        const SliverToBoxAdapter(
-                          child: Padding(
-                            padding: EdgeInsets.symmetric(
-                              horizontal: 24,
-                              vertical: 16,
-                            ),
-                            child: Text(
-                              'No popular recommendations found nearby.',
-                              style: TextStyle(color: AppColors.textSecondary),
-                            ),
-                          ),
-                        ),
-                      */
-                    ];
-                  }(),
-
-                  // Cluster suggestion
-                  ...() {
-                    if (_miniTourPlaces != null &&
-                        _miniTourPlaces!.length >= 3) {
                       return <Widget>[
-                        SliverToBoxAdapter(
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(24, 12, 24, 12),
-                            child: _buildClusterSuggestion(_miniTourPlaces!),
-                          ),
-                        ),
+                        const SliverToBoxAdapter(child: SizedBox.shrink()),
                       ];
-                    }
+                    }(),
 
-                    return <Widget>[
-                      const SliverToBoxAdapter(child: SizedBox.shrink()),
-                    ];
-                  }(),
-
-                  const SliverToBoxAdapter(child: SizedBox(height: 90)),
-                ],
+                    const SliverToBoxAdapter(child: SizedBox(height: 90)),
+                  ],
+                ),
               ),
               
               // Floating Neva Banner (below App Bar on the right)
@@ -3069,6 +3093,15 @@ class _LivingMapPageState extends State<LivingMapPage>
     } catch (e) {
       debugPrint('⚠️ Failed to load travel stories: $e');
     }
+  }
+
+  /// Pull-to-refresh on the home screen: the Travel Stories row again, with
+  /// the TravelByte card back on the top one, so a TravelByte posted since
+  /// shows at once. (Places nearby keep their own refresh rules.)
+  Future<void> _pullToRefresh() async {
+    _shownTravelByteId = null;
+    _travelBytesToShuffle = [];
+    await _loadTravelStories();
   }
 
   /// TravelBytes lead [_travelStories] (the server puts them first) and share

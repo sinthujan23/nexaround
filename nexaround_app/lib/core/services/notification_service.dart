@@ -8,6 +8,7 @@ import 'package:nexaround_app/core/network/api_client.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/core/services/discovery_history_service.dart';
 import 'package:nexaround_app/features/planning/data/odyssey_repository.dart';
+import 'package:nexaround_app/features/travel_stories/data/datasources/travel_stories_service.dart';
 
 /// Wraps Firebase Cloud Messaging: asks permission, grabs the device token,
 /// registers it with the backend, and funnels incoming messages into the local
@@ -114,6 +115,12 @@ class NotificationService {
         debugPrint('💡 Suggestion: If on iOS, make sure APNs key/certificates are uploaded to Firebase Console, Bundle ID matches, and Push Notifications capability is enabled in Xcode/Developer Portal.');
       }
 
+      // Silent "Travel Stories changed" messages, for every install.
+      try {
+        await _fm.subscribeToTopic(TravelStoriesService.feedTopic);
+      } catch (e) {
+        debugPrint('Travel Stories topic subscribe failed: $e');
+      }
       // main() doesn't wait for init(), so Home can open (and try to sync)
       // before the token exists — on iOS, before APNs has delivered it.
       if (_token != null && CacheService.isLoggedIn()) unawaited(syncToken());
@@ -129,6 +136,11 @@ class NotificationService {
 
   /// Foreground message → drop it into the bell inbox.
   void _record(RemoteMessage m) {
+    // Silent: the Travel Stories row reloads; nothing goes in the bell.
+    if (m.data['type'] == TravelStoriesService.feedUpdatedType) {
+      TravelStoriesService.feedChanged.value++;
+      return;
+    }
     final n = m.notification;
     CacheService.addNotification(
       id: m.messageId,

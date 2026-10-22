@@ -197,6 +197,17 @@ class CacheService {
     await _prefs.setBool('first_time', false);
   }
 
+  // Travel Stories changed on the server (a silent push said so while the app
+  // was in the background); the home row reloads when the app comes back.
+  static bool storiesStale() {
+    return _prefsOrNull?.getBool('stories_stale') ?? false;
+  }
+
+  static Future<void> setStoriesStale(bool value) async {
+    if (_prefsOrNull == null) return;
+    await _prefs.setBool('stories_stale', value);
+  }
+
   // Auth Session
   static bool isLoggedIn() {
     return _prefs.getBool('is_logged_in') ?? false;

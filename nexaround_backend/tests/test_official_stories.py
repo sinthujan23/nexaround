@@ -211,3 +211,38 @@ def test_the_feed_says_which_stories_are_official():
     fields = TravelStoryResponse.model_fields
     assert {"is_official", "title", "article_md"} <= set(fields)
     assert fields["is_official"].default is False
+
+
+def test_the_feed_broadcast_is_silent(monkeypatch):
+    """A TravelByte change reaches every app as a data-only topic message:
+    nothing shows on the phone, the app reloads its Travel Stories row."""
+    from firebase_admin import messaging
+    from app.services import fcm_service, official_stories
+
+    sent = []
+
+    async def an_app(db):
+        return object()
+
+    monkeypatch.setattr(fcm_service, "_resolve_app", an_app)
+    monkeypatch.setattr(messaging, "send", lambda message: sent.append(message) or "id")
+
+    class Session:
+        async def __aenter__(self):
+            return None
+
+        async def __aexit__(self, *exc):
+            return False
+
+    monkeypatch.setattr(official_stories, "async_session", Session)
+    asyncio.run(official_stories.announce_feed_changed())
+
+    assert len(sent) == 1
+    message = sent[0]
+    assert message.topic == "travel_stories"
+    assert message.data == {"type": "stories_updated"}
+    assert message.notification is None
+    assert message.android.priority == "normal"
+    assert message.apns.headers == {"apns-push-type": "background", "apns-priority": "5"}
+    assert message.apns.payload.aps.content_available is True
+    assert message.apns.payload.aps.alert is None and message.apns.payload.aps.sound is None

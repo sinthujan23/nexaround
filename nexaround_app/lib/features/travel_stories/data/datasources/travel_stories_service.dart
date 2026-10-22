@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -9,6 +10,16 @@ import '../../../../core/services/cache_service.dart';
 import '../models/travel_story.dart';
 
 class TravelStoriesService {
+  /// Every install subscribes to this FCM topic; the server sends a silent
+  /// [feedUpdatedType] message on it when the TravelBytes change
+  /// (official_stories.announce_feed_changed).
+  static const feedTopic = 'travel_stories';
+  static const feedUpdatedType = 'stories_updated';
+
+  /// Bumped when such a message arrives with the app open: the home row
+  /// reloads at once.
+  static final ValueNotifier<int> feedChanged = ValueNotifier(0);
+
   // Singleton instance
   static final TravelStoriesService _instance = TravelStoriesService._internal();
   factory TravelStoriesService() => _instance;

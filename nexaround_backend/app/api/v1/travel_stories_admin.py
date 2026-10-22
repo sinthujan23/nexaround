@@ -10,7 +10,7 @@ do. Every write here is recorded by the audit middleware.
 import uuid
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,7 +18,7 @@ from app.api.v1.admin import verify_admin_token
 from app.core.database import get_db
 from app.models.travel_story import TravelStory
 from app.schemas.travel_story import OfficialStoryAdminOut, OfficialStoryIn
-from app.services.official_stories import ensure_official_user, place_label
+from app.services.official_stories import announce_feed_changed, ensure_official_user, place_label
 
 router = APIRouter(prefix="/admin/travel-stories", tags=["Admin Travel Stories"])
 
@@ -98,6 +98,7 @@ async def list_official_stories(
 @router.post("", response_model=OfficialStoryAdminOut, status_code=status.HTTP_201_CREATED)
 async def create_official_story(
     data: OfficialStoryIn,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     _=Depends(verify_admin_token),
 ):
@@ -106,6 +107,9 @@ async def create_official_story(
     _apply(story, data)
     db.add(story)
     await db.commit()
+    # Open apps show it without a pull-to-refresh or a restart.
+    if story.is_public:
+        background_tasks.add_task(announce_feed_changed)
     return _out(await _get_official(db, story.id))
 
 
@@ -113,23 +117,32 @@ async def create_official_story(
 async def update_official_story(
     story_id: uuid.UUID,
     data: OfficialStoryIn,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     _=Depends(verify_admin_token),
 ):
     story = await _get_official(db, story_id)
+    was_public = story.is_public
     _apply(story, data)
     await db.commit()
+    # Shown, hidden or changed while shown: the apps' row is out of date.
+    if was_public or story.is_public:
+        background_tasks.add_task(announce_feed_changed)
     return _out(await _get_official(db, story_id))
 
 
 @router.delete("/{story_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_official_story(
     story_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     _=Depends(verify_admin_token),
 ):
     """Delete for good, with its likes and comments. Hiding keeps them."""
     story = await _get_official(db, story_id)
+    was_public = story.is_public
     await db.delete(story)
     await db.commit()
+    if was_public:
+        background_tasks.add_task(announce_feed_changed)
     return None

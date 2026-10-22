@@ -264,6 +264,39 @@ async def send_multicast(
     return success, failure, unregistered, token_status
 
 
+async def send_silent_to_topic(db, topic: str, data: dict) -> bool:
+    """A data-only message to every device subscribed to ``topic``.
+
+    No notification part, so nothing appears on the phone: the app reads
+    ``data`` and refreshes what it shows. Normal priority on Android and a
+    background push on iOS, which is what both platforms ask of messages that
+    only refresh content (high priority is for something the user will see).
+    Returns True when FCM accepted it. Never raises.
+    """
+    from firebase_admin import messaging
+
+    app = await _resolve_app(db)
+    if app is None:
+        logger.warning("FCM topic send skipped: no Firebase credential configured")
+        return False
+    message = messaging.Message(
+        topic=topic,
+        data={k: str(v) for k, v in (data or {}).items()},
+        android=messaging.AndroidConfig(priority="normal"),
+        apns=messaging.APNSConfig(
+            headers={"apns-push-type": "background", "apns-priority": "5"},
+            payload=messaging.APNSPayload(aps=messaging.Aps(content_available=True)),
+        ),
+    )
+    try:
+        await asyncio.to_thread(messaging.send, message)
+        logger.info(f"FCM silent message to topic '{topic}': {data}")
+        return True
+    except Exception as e:
+        logger.error(f"FCM silent message to topic '{topic}' failed: {e}")
+        return False
+
+
 async def send_to_tokens(
     db,
     tokens: list,

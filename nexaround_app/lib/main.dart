@@ -6,6 +6,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:nexaround_app/app/app.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
+import 'package:nexaround_app/features/travel_stories/data/datasources/travel_stories_service.dart';
 import 'package:nexaround_app/core/services/config_key_service.dart';
 import 'package:nexaround_app/core/services/notification_service.dart';
 import 'package:nexaround_app/core/services/session_tracker.dart';
@@ -22,6 +23,12 @@ import 'package:hive_flutter/hive_flutter.dart';
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   try {
     await CacheService.init();
+    // Silent: the home row reloads when the app is next opened; nothing goes
+    // in the bell.
+    if (message.data['type'] == TravelStoriesService.feedUpdatedType) {
+      await CacheService.setStoriesStale(true);
+      return;
+    }
     final n = message.notification;
     await CacheService.addNotification(
       id: message.messageId,
