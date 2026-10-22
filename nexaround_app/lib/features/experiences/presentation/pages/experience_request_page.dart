@@ -5,7 +5,9 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
+import 'package:nexaround_app/core/constants/country_dial_codes.dart';
 import 'package:nexaround_app/core/services/google_places_service.dart';
+import 'package:nexaround_app/core/widgets/phone_number_field.dart';
 import 'package:nexaround_app/core/utils/contact_launcher.dart';
 import 'package:nexaround_app/core/utils/place_image_helper.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
@@ -48,6 +50,9 @@ class ExperienceRequestPage extends StatefulWidget {
 class _ExperienceRequestPageState extends State<ExperienceRequestPage> {
   final _nameController = TextEditingController();
   final _phoneController = TextEditingController();
+  late CountryDialCode _phoneCountry;
+  String? _phoneError;
+  final _phoneFieldKey = GlobalKey<State>();
   final _emailController = TextEditingController();
   final _messageController = TextEditingController();
   final _pickupController = TextEditingController();
@@ -87,6 +92,8 @@ class _ExperienceRequestPageState extends State<ExperienceRequestPage> {
   @override
   void initState() {
     super.initState();
+    // Default to Sri Lanka; overridden below if the user has a saved phone.
+    _phoneCountry = countryDialCodes.first;
     _partySize = _fitGuests(2);
     _initialPartySize = _partySize;
     _loadTerms();
@@ -102,7 +109,20 @@ class _ExperienceRequestPageState extends State<ExperienceRequestPage> {
         final phone = authState.user.preferences['phone'] ??
             authState.user.preferences['phone_number'];
         if (phone != null && phone.toString().trim().isNotEmpty) {
-          _phoneController.text = phone.toString().trim();
+          final raw = phone.toString().trim();
+          final detected = detectCountryFromPhone(raw);
+          if (detected != null) {
+            _phoneCountry = detected;
+            // Strip the dial code from the prefilled number so the field
+            // shows only the national part.
+            var digits = raw.replaceAll(RegExp(r'[^0-9]'), '');
+            if (digits.startsWith(detected.dialCode)) {
+              digits = digits.substring(detected.dialCode.length);
+            }
+            _phoneController.text = digits;
+          } else {
+            _phoneController.text = raw;
+          }
         }
       }
     } catch (_) {
@@ -135,7 +155,7 @@ class _ExperienceRequestPageState extends State<ExperienceRequestPage> {
   }
 
   String get _contact =>
-      '${_nameController.text}|${_phoneController.text}|${_emailController.text}';
+      '${_nameController.text}|${_phoneCountry.dialCode}${_phoneController.text}|${_emailController.text}';
 
   bool get _hasInput =>
       _contact != _initialContact ||
@@ -249,9 +269,29 @@ class _ExperienceRequestPageState extends State<ExperienceRequestPage> {
   }
 
   Future<void> _submit() async {
+    // Validate phone with country-aware digit count.
+    final phoneDigits =
+        PhoneNumberField.normalizeDigits(_phoneController.text, _phoneCountry);
+    String? phoneErr;
+    if (phoneDigits.isEmpty) {
+      phoneErr = 'Please enter your phone number.';
+    } else if (phoneDigits.length < _phoneCountry.minDigits) {
+      phoneErr = 'Too short for ${_phoneCountry.name}. '
+          'Expected at least ${_phoneCountry.minDigits} digits.';
+    } else if (phoneDigits.length > _phoneCountry.maxDigits) {
+      phoneErr = 'Too long for ${_phoneCountry.name}. '
+          'Expected at most ${_phoneCountry.maxDigits} digits.';
+    }
+    if (phoneErr != null) {
+      setState(() => _phoneError = phoneErr);
+      return;
+    }
+    setState(() => _phoneError = null);
+
+    final fullPhone = '+${_phoneCountry.dialCode}$phoneDigits';
     final error = validateEnquiry(
       name: _nameController.text,
-      phone: _phoneController.text,
+      phone: fullPhone,
       email: _emailController.text,
       partySize: _partySize,
     );
@@ -275,10 +315,11 @@ class _ExperienceRequestPageState extends State<ExperienceRequestPage> {
       _error = null;
     });
 
+
     final result = await ExperiencesService.submitEnquiry(
       packageId: widget.package.id,
       contactName: _nameController.text.trim(),
-      contactPhone: _phoneController.text.trim(),
+      contactPhone: fullPhone,
       acceptedTermsVersion: terms.version,
       contactEmail: _emailController.text.trim(),
       preferredDate: _preferredDate,
@@ -447,7 +488,18 @@ class _ExperienceRequestPageState extends State<ExperienceRequestPage> {
         _section('Your details', [
           _field(_nameController, 'Your name', TextInputType.name),
           const SizedBox(height: 12),
-          _field(_phoneController, 'Phone number', TextInputType.phone),
+          PhoneNumberField(
+            key: _phoneFieldKey,
+            selectedCountry: _phoneCountry,
+            controller: _phoneController,
+            onCountryChanged: (country) {
+              setState(() {
+                _phoneCountry = country;
+                _phoneError = null;
+              });
+            },
+            errorText: _phoneError,
+          ),
           const SizedBox(height: 12),
           _field(_emailController, 'Email (optional)', TextInputType.emailAddress),
           const SizedBox(height: 6),

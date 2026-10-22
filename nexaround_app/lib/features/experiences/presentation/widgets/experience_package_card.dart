@@ -1,4 +1,4 @@
-import 'dart:math' as math;
+
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -40,7 +40,7 @@ class ExperiencePackageCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final category = experienceCategoryFor(package.category);
 
-    return RepaintBoundary(
+    final card = RepaintBoundary(
       child: Container(
         margin: const EdgeInsets.only(bottom: 12),
         decoration: BoxDecoration(
@@ -79,13 +79,21 @@ class ExperiencePackageCard extends StatelessWidget {
           ),
         ),
       ),
-    )
-        .animate()
-        .fadeIn(
-          duration: 320.ms,
-          delay: (50 * math.min(index, 5)).ms,
-        )
-        .slideY(begin: 0.04, end: 0, curve: Curves.easeOutCubic);
+    );
+
+    // Only animate the first visible batch. Cards that scroll into view
+    // must appear instantly — an entrance animation on them starts at
+    // opacity 0, which shows as white space while scrolling.
+    if (index <= 5) {
+      return card
+          .animate()
+          .fadeIn(
+            duration: 320.ms,
+            delay: (50 * index).ms,
+          )
+          .slideY(begin: 0.04, end: 0, curve: Curves.easeOutCubic);
+    }
+    return card;
   }
 
   Widget _buildThumbnail(ExperienceCategory category) {
