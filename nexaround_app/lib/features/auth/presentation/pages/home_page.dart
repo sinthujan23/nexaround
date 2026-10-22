@@ -489,6 +489,11 @@ class HomePageState extends State<HomePage> with WidgetsBindingObserver {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () {
+        if (index == 0 && _selectedIndex == 0) {
+          // Home again: back to the top and the first, latest stories.
+          LivingMapPage.homeTabReselected.value++;
+          return;
+        }
         if (index == 3) {
           // Entering Discovery from the nav bar lands on the POI tab.
           switchToDiscover(initialTab: DiscoverPage.tabs.indexOf('POI'));

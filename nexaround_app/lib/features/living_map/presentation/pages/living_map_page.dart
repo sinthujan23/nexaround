@@ -66,6 +66,10 @@ class LivingMapPage extends StatefulWidget {
   final bool isActive;
   const LivingMapPage({super.key, this.isActive = true});
 
+  /// Bumped by the bottom bar when Home is tapped while already on Home:
+  /// back to the top, the first story, and the latest stories.
+  static final ValueNotifier<int> homeTabReselected = ValueNotifier(0);
+
   @override
   State<LivingMapPage> createState() => _LivingMapPageState();
 }
@@ -117,6 +121,7 @@ class _LivingMapPageState extends State<LivingMapPage>
     super.initState();
     _loadTravelStories();
     TravelStoriesService.feedChanged.addListener(_onStoriesFeedChanged);
+    LivingMapPage.homeTabReselected.addListener(_onHomeReselected);
     // Cache is deliberately left alone here: a repeat visit to the same area
     // should paint instantly from what's already saved while MapBloc's own
     // distance/staleness check (see _onFetchNearbyAttractions) decides
@@ -192,6 +197,9 @@ class _LivingMapPageState extends State<LivingMapPage>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     TravelStoriesService.feedChanged.removeListener(_onStoriesFeedChanged);
+    LivingMapPage.homeTabReselected.removeListener(_onHomeReselected);
+    _homeScroll.dispose();
+    _storiesScroll.dispose();
     _pulseController.dispose();
     _globeController.dispose();
     _positionSubscription?.cancel();
@@ -215,6 +223,32 @@ class _LivingMapPageState extends State<LivingMapPage>
   // When the app last went to the background, for _reloadStoriesOnReturn.
   DateTime? _backgroundedAt;
 
+  // The home page, and the Travel Stories row across it.
+  final ScrollController _homeScroll = ScrollController();
+  final ScrollController _storiesScroll = ScrollController();
+
+  /// Home tapped again: the top of the page and the first story at once,
+  /// then the latest stories (as a pull-to-refresh).
+  void _onHomeReselected() {
+    if (_homeScroll.hasClients) {
+      _homeScroll.animateTo(0,
+          duration: const Duration(milliseconds: 450), curve: Curves.easeOutCubic);
+    }
+    _showFirstStory();
+    _pullToRefresh();
+  }
+
+  /// Slides the Travel Stories row back to its first story, once the row
+  /// has been rebuilt with whatever just loaded.
+  void _showFirstStory() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_storiesScroll.hasClients && _storiesScroll.offset > 0) {
+        _storiesScroll.animateTo(0,
+            duration: const Duration(milliseconds: 400), curve: Curves.easeOutCubic);
+      }
+    });
+  }
+
   /// Back in the app: reload the stories if a silent push said they changed
   /// while it was away, or if it was away long enough that one may have been
   /// held back (TravelStoriesService.awayBeforeReload).
@@ -230,12 +264,12 @@ class _LivingMapPageState extends State<LivingMapPage>
       now: DateTime.now(),
       stale: stale,
     )) {
-      _loadTravelStories();
+      _loadTravelStories(toFirst: true);
     }
   }
 
   /// A silent push arrived with the app open.
-  void _onStoriesFeedChanged() => _loadTravelStories();
+  void _onStoriesFeedChanged() => _loadTravelStories(toFirst: true);
 
   Future<void> _checkLocationAndInit() async {
     // Check location permission first (critical for iOS)
@@ -944,6 +978,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                 // Below the pinned header, not behind it.
                 edgeOffset: MediaQuery.of(context).padding.top + 64,
                 child: CustomScrollView(
+                  controller: _homeScroll,
                   // Always scrollable, so a short page can still be pulled down.
                   physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
                   slivers: [
@@ -3005,7 +3040,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                               _selectedCountryFilter = 'Global';
                               _shownTravelByteId = null;
                             });
-                            _loadTravelStories();
+                            _loadTravelStories(toFirst: true);
                             Navigator.pop(context);
                           },
                         ),
@@ -3024,7 +3059,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                                 _selectedCountryFilter = country;
                                 _shownTravelByteId = null;
                               });
-                              _loadTravelStories();
+                              _loadTravelStories(toFirst: true);
                               Navigator.pop(context);
                             },
                           );
@@ -3085,7 +3120,10 @@ class _LivingMapPageState extends State<LivingMapPage>
     );
   }
 
-  Future<void> _loadTravelStories() async {
+  /// [toFirst]: slide the row back to the first story once it has loaded,
+  /// for reloads that are about showing what is newest (pull-to-refresh,
+  /// coming back to the app, a silent push, a new country filter).
+  Future<void> _loadTravelStories({bool toFirst = false}) async {
     final isGlobal = _selectedCountryFilter == 'Global';
     // When Global (default), load proximity stories level-by-level based on user location.
     // If location is not yet known, fall back to last cached location.
@@ -3107,6 +3145,7 @@ class _LivingMapPageState extends State<LivingMapPage>
         setState(() {
           _travelStories = stories.where((s) => !s.isJournal).toList();
         });
+        if (toFirst) _showFirstStory();
       }
     } catch (e) {
       debugPrint('⚠️ Failed to load travel stories: $e');
@@ -3119,7 +3158,7 @@ class _LivingMapPageState extends State<LivingMapPage>
   Future<void> _pullToRefresh() async {
     _shownTravelByteId = null;
     _travelBytesToShuffle = [];
-    await _loadTravelStories();
+    await _loadTravelStories(toFirst: true);
   }
 
   /// TravelBytes lead [_travelStories] (the server puts them first) and share
@@ -3291,6 +3330,7 @@ class _LivingMapPageState extends State<LivingMapPage>
     return SizedBox(
       height: 425,
       child: ListView.builder(
+        controller: _storiesScroll,
         padding: const EdgeInsets.fromLTRB(24, 12, 6, 0),
         scrollDirection: Axis.horizontal,
         // All TravelBytes share the first card. It shows one at a time
