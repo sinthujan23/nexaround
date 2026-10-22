@@ -1,27 +1,30 @@
 import 'package:flutter/material.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
+import 'package:nexaround_app/app/theme/app_dimensions.dart';
 import 'package:nexaround_app/core/error/user_message.dart';
+import 'package:nexaround_app/core/widgets/glass_card.dart';
 import 'package:nexaround_app/features/vendor_portal/data/vendor_portal_api.dart';
 import 'package:nexaround_app/features/vendor_portal/data/vendor_portal_models.dart';
 
 import '../vendor_ui.dart';
 import 'package_editor_page.dart';
 
-/// Welcome, how many packages are live, and the first few packages.
+/// Whether the listing is live, three numbers that each open their tab, the
+/// New package button and the first few packages.
 class VendorDashboardTab extends StatefulWidget {
   final VendorPortalApi api;
-  final String vendorName;
   final ValueNotifier<int> changed;
-  final VoidCallback onOpenPackages;
-  final VoidCallback onOpenProfile;
+  final ValueNotifier<int> reviewsChanged;
+
+  /// Switches the portal to a tab: 1 Packages, 2 Reviews, 3 Profile.
+  final ValueChanged<int> onOpenTab;
 
   const VendorDashboardTab({
     super.key,
     required this.api,
-    required this.vendorName,
     required this.changed,
-    required this.onOpenPackages,
-    required this.onOpenProfile,
+    required this.reviewsChanged,
+    required this.onOpenTab,
   });
 
   @override
@@ -29,25 +32,29 @@ class VendorDashboardTab extends StatefulWidget {
 }
 
 class _VendorDashboardTabState extends State<VendorDashboardTab> {
-  static const _preview = 5;
+  static const _preview = 3;
   VendorStats? _stats;
   List<VendorPackage>? _packages;
+  VendorReviewPage? _reviews;
   Object? _error;
 
   @override
   void initState() {
     super.initState();
     widget.changed.addListener(_load);
+    widget.reviewsChanged.addListener(_loadReviews);
     _load();
   }
 
   @override
   void dispose() {
     widget.changed.removeListener(_load);
+    widget.reviewsChanged.removeListener(_loadReviews);
     super.dispose();
   }
 
   Future<void> _load() async {
+    _loadReviews();
     try {
       final results = await Future.wait([widget.api.stats(), widget.api.packages()]);
       if (!mounted) return;
@@ -61,6 +68,14 @@ class _VendorDashboardTabState extends State<VendorDashboardTab> {
     }
   }
 
+  /// Only the totals are used; a failure leaves the tiles at "–".
+  Future<void> _loadReviews() async {
+    try {
+      final page = await widget.api.reviews();
+      if (mounted) setState(() => _reviews = page);
+    } catch (_) {}
+  }
+
   Future<void> _edit({String? id}) async {
     final saved = await openPackageEditor(context, widget.api, packageId: id);
     if (saved == true) widget.changed.value++;
@@ -69,102 +84,72 @@ class _VendorDashboardTabState extends State<VendorDashboardTab> {
   @override
   Widget build(BuildContext context) {
     final live = widget.api.me?.vendorIsActive ?? true;
+    final stats = _stats;
+    final reviews = _reviews;
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+        padding: const EdgeInsets.fromLTRB(vendorGutter, 4, vendorGutter, 24),
         children: [
-          Text('Welcome back, ${widget.vendorName}',
-              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, letterSpacing: -0.3)),
-          const SizedBox(height: 6),
+          _ListingStatus(live: live),
+          const SizedBox(height: 12),
           Row(
             children: [
-              Container(
-                width: 8,
-                height: 8,
-                decoration: BoxDecoration(
-                  color: live ? AppColors.success : AppColors.error,
-                  shape: BoxShape.circle,
+              Expanded(
+                child: _StatTile(
+                  icon: Icons.check_circle_rounded,
+                  color: AppColors.brandGreen,
+                  value: stats == null ? '–' : '${stats.packagesPublished}/${stats.packagesTotal}',
+                  label: 'Packages live',
+                  onTap: () => widget.onOpenTab(1),
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 10),
               Expanded(
-                child: Text(
-                  live ? 'Your listing is live on NexAround' : 'Your listing is hidden. Contact NexAround.',
-                  style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                child: _StatTile(
+                  icon: Icons.star_rounded,
+                  color: AppColors.ratingGold,
+                  value: reviews?.average?.toStringAsFixed(1) ?? '–',
+                  label: reviews == null
+                      ? 'Rating'
+                      : '${reviews.reviewCount} review${reviews.reviewCount == 1 ? '' : 's'}',
+                  onTap: () => widget.onOpenTab(2),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _StatTile(
+                  icon: Icons.mark_chat_unread_rounded,
+                  color: (reviews?.unanswered ?? 0) > 0 ? AppColors.error : AppColors.textTertiary,
+                  value: '${reviews?.unanswered ?? '–'}',
+                  label: 'To reply',
+                  onTap: () => widget.onOpenTab(2),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [AppColors.brandGreen, AppColors.brandGreenDark],
-              ),
-              borderRadius: BorderRadius.circular(18),
-            ),
-            child: InkWell(
-              onTap: widget.onOpenPackages,
-              child: Row(
-                children: [
-                  const Icon(Icons.check_circle_outline_rounded, color: Colors.white, size: 30),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('Packages live',
-                            style: TextStyle(color: Colors.white70, fontSize: 13)),
-                        Text('${_stats?.packagesPublished ?? '–'}',
-                            style: const TextStyle(
-                                color: Colors.white, fontSize: 28, fontWeight: FontWeight.w800)),
-                        Text('${_stats?.packagesTotal ?? 0} in total',
-                            style: const TextStyle(color: Colors.white70, fontSize: 12)),
-                      ],
-                    ),
-                  ),
-                  const Icon(Icons.chevron_right_rounded, color: Colors.white),
-                ],
-              ),
-            ),
+          VendorPrimaryButton(
+            label: 'New package',
+            icon: Icons.add_rounded,
+            onPressed: () => _edit(),
           ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: widget.onOpenProfile,
-                  icon: const Icon(Icons.edit_outlined, size: 18),
-                  label: const Text('Profile'),
-                  style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(46)),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: FilledButton.icon(
-                  onPressed: () => _edit(),
-                  icon: const Icon(Icons.add_rounded, size: 18),
-                  label: const Text('New package'),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: AppColors.brandGreen,
-                    minimumSize: const Size.fromHeight(46),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 24),
           Row(
             children: [
               const Expanded(
                 child: Text('Your packages',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, letterSpacing: -0.2)),
               ),
-              TextButton(onPressed: widget.onOpenPackages, child: const Text('Manage')),
+              if ((_packages?.length ?? 0) > 0)
+                TextButton(
+                  onPressed: () => widget.onOpenTab(1),
+                  style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8)),
+                  child: Text((_packages!.length > _preview) ? 'See all ${_packages!.length}' : 'Manage'),
+                ),
             ],
           ),
+          const SizedBox(height: 8),
           if (_error != null && _packages == null)
             VendorEmptyState(
               icon: Icons.cloud_off_rounded,
@@ -178,19 +163,106 @@ class _VendorDashboardTabState extends State<VendorDashboardTab> {
               child: Center(child: CircularProgressIndicator()),
             )
           else if (_packages!.isEmpty)
-            VendorEmptyState(
+            const VendorEmptyState(
               icon: Icons.confirmation_number_outlined,
               title: 'List your first package',
-              message: 'Each package appears in the app as its own experience travellers can request.',
-              action: FilledButton(
-                onPressed: () => _edit(),
-                style: FilledButton.styleFrom(backgroundColor: AppColors.brandGreen),
-                child: const Text('Add package'),
-              ),
+              message: 'Each package appears in the app as its own experience travellers can request. '
+                  'Tap New package to add one.',
             )
           else
             for (final pkg in _packages!.take(_preview))
               PackageRow(pkg: pkg, onTap: () => _edit(id: pkg.id)),
+        ],
+      ),
+    );
+  }
+}
+
+/// Green "live" or red "hidden" at the top of Home.
+class _ListingStatus extends StatelessWidget {
+  final bool live;
+
+  const _ListingStatus({required this.live});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = live ? AppColors.success : AppColors.error;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: AppRadii.brMd,
+        border: Border.all(color: color.withValues(alpha: 0.25), width: 0.8),
+      ),
+      child: Row(
+        children: [
+          Icon(live ? Icons.public_rounded : Icons.visibility_off_rounded, size: 20, color: color),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  live ? 'Your listing is live on NexAround' : 'Your listing is hidden',
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  live
+                      ? 'Travellers can find and request your live packages.'
+                      : 'Travellers can’t see your packages. Contact NexAround.',
+                  style: const TextStyle(fontSize: 12.5, height: 1.35, color: AppColors.textSecondary),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One number on Home, like the stats on the traveller's Profile.
+class _StatTile extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final String value;
+  final String label;
+  final VoidCallback onTap;
+
+  const _StatTile({
+    required this.icon,
+    required this.color,
+    required this.value,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassCard(
+      onTap: onTap,
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+      borderRadius: AppRadii.brMd,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 30,
+            height: 30,
+            decoration: BoxDecoration(color: color.withValues(alpha: 0.12), shape: BoxShape.circle),
+            child: Icon(icon, size: 16, color: color),
+          ),
+          const SizedBox(height: 10),
+          Text(value,
+              style: const TextStyle(
+                  fontSize: 22, fontWeight: FontWeight.w800, height: 1.1, color: AppColors.textPrimary)),
+          const SizedBox(height: 2),
+          Text(label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                  fontSize: 11.5, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
         ],
       ),
     );
@@ -260,20 +332,7 @@ class _VendorPackagesTabState extends State<VendorPackagesTab> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _edit(),
-        backgroundColor: AppColors.brandGreen,
-        foregroundColor: Colors.white,
-        icon: const Icon(Icons.add_rounded),
-        label: const Text('New package'),
-      ),
-      body: RefreshIndicator(
-        onRefresh: _load,
-        child: _body(),
-      ),
-    );
+    return RefreshIndicator(onRefresh: _load, child: _body());
   }
 
   Widget _body() {
@@ -289,61 +348,80 @@ class _VendorPackagesTabState extends State<VendorPackagesTab> {
     }
     final packages = _packages;
     if (packages == null) return const Center(child: CircularProgressIndicator());
-    if (packages.isEmpty) {
-      return ListView(children: const [
-        VendorEmptyState(
-          icon: Icons.confirmation_number_outlined,
-          title: 'List your first package',
-          message: 'Each package appears in the app as its own experience travellers can request.',
-        ),
-      ]);
-    }
+    final live = packages.where((p) => p.isActive).length;
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
+      padding: const EdgeInsets.fromLTRB(vendorGutter, 4, vendorGutter, 24),
       children: [
-        for (final pkg in packages)
-          PackageRow(
-            pkg: pkg,
-            onTap: () => _edit(id: pkg.id),
-            trailing: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Switch.adaptive(
-                  value: pkg.isActive,
-                  activeThumbColor: AppColors.brandGreen,
-                  onChanged: _toggling.contains(pkg.id) ? null : (v) => _toggle(pkg, v),
-                ),
-                const Text('Show in app', style: TextStyle(fontSize: 10, color: AppColors.textTertiary)),
-              ],
+        Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Packages',
+                      style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, letterSpacing: -0.3)),
+                  const SizedBox(height: 2),
+                  Text(
+                    packages.isEmpty
+                        ? 'Nothing listed yet'
+                        : '${packages.length} in total · $live shown in the app',
+                    style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                  ),
+                ],
+              ),
             ),
-          ),
+            VendorPrimaryButton(
+              label: 'New package',
+              icon: Icons.add_rounded,
+              compact: true,
+              onPressed: () => _edit(),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        if (packages.isEmpty)
+          const VendorEmptyState(
+            icon: Icons.confirmation_number_outlined,
+            title: 'List your first package',
+            message: 'Each package appears in the app as its own experience travellers can request.',
+          )
+        else
+          for (final pkg in packages)
+            PackageRow(
+              pkg: pkg,
+              onTap: () => _edit(id: pkg.id),
+              footer: VendorSwitchRow(
+                title: 'Show in app',
+                value: pkg.isActive,
+                onChanged: _toggling.contains(pkg.id) ? null : (v) => _toggle(pkg, v),
+              ),
+            ),
       ],
     );
   }
 }
 
+/// A package card: photo, title, price, category and where it stands.
 class PackageRow extends StatelessWidget {
   final VendorPackage pkg;
   final VoidCallback onTap;
-  final Widget? trailing;
 
-  const PackageRow({super.key, required this.pkg, required this.onTap, this.trailing});
+  /// Under a line at the foot of the card (the Packages tab's switch).
+  final Widget? footer;
+
+  const PackageRow({super.key, required this.pkg, required this.onTap, this.footer});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(10),
-          child: Row(
+    final more = pkg.priceOptions.length - 1;
+    return VendorCard(
+      padding: EdgeInsets.fromLTRB(12, 12, 12, footer == null ? 12 : 2),
+      onTap: onTap,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               PackageThumb(pkg.photoUrls),
               const SizedBox(width: 12),
@@ -354,23 +432,41 @@ class PackageRow extends StatelessWidget {
                     Text(pkg.title,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
-                    const SizedBox(height: 4),
+                        style: const TextStyle(
+                            fontSize: 15, fontWeight: FontWeight.w700, height: 1.25, color: AppColors.textPrimary)),
+                    const SizedBox(height: 3),
                     Text(
-                      '${formatPrice(pkg.priceAmount, pkg.priceCurrency)}'
-                      '${pkg.priceOptions.length > 1 ? ' +${pkg.priceOptions.length - 1} more' : ''}'
-                      ' · ${categoryLabel(pkg.category)}',
-                      style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                      '${packagePriceLine(pkg)}${more > 0 ? ' · +$more more' : ''}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.brandGreen),
                     ),
                     const SizedBox(height: 6),
-                    VisibilityPill(pkg.visibility),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        VisibilityPill(pkg.visibility),
+                        Text(categoryLabel(pkg.category),
+                            style: const TextStyle(fontSize: 12, color: AppColors.textTertiary)),
+                      ],
+                    ),
                   ],
                 ),
               ),
-              if (trailing != null) trailing! else const Icon(Icons.chevron_right_rounded),
+              const Padding(
+                padding: EdgeInsets.only(top: 2),
+                child: Icon(Icons.chevron_right_rounded, color: AppColors.textTertiary),
+              ),
             ],
           ),
-        ),
+          if (footer != null) ...[
+            const SizedBox(height: 8),
+            const Divider(height: 1),
+            footer!,
+          ],
+        ],
       ),
     );
   }

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
+import 'package:nexaround_app/app/theme/app_dimensions.dart';
+import 'package:nexaround_app/core/widgets/premium_widgets.dart';
 import 'package:nexaround_app/core/error/user_message.dart';
 import 'package:nexaround_app/features/vendor_portal/data/vendor_portal_api.dart';
 import 'package:nexaround_app/features/vendor_portal/data/vendor_portal_models.dart';
@@ -85,11 +87,7 @@ class _VendorNotificationsPageState extends State<VendorNotificationsPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: AppColors.background,
-        scrolledUnderElevation: 0,
-        title: const Text('Notifications', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
-      ),
+      appBar: vendorAppBar(context, 'Notifications'),
       body: RefreshIndicator(onRefresh: () => _load(reset: true), child: _body()),
     );
   }
@@ -116,9 +114,9 @@ class _VendorNotificationsPageState extends State<VendorNotificationsPage> {
       ]);
     }
     return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+      padding: const EdgeInsets.fromLTRB(vendorGutter, 4, vendorGutter, 24),
       itemCount: _items.length + (_hasMore ? 1 : 0),
-      separatorBuilder: (_, __) => const SizedBox(height: 8),
+      separatorBuilder: (_, __) => const SizedBox(height: 10),
       itemBuilder: (context, i) {
         if (i == _items.length) {
           return OutlinedButton(
@@ -129,30 +127,36 @@ class _VendorNotificationsPageState extends State<VendorNotificationsPage> {
         final item = _items[i];
         final (icon, color) = _look(item.kind);
         final isNew = _seenAt == null || item.createdAt.isAfter(_seenAt!);
-        return Container(
+        final card = VendorCard(
           padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: isNew ? AppColors.brandGreen.withValues(alpha: 0.05) : Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: isNew ? AppColors.brandGreen.withValues(alpha: 0.3) : AppColors.border),
-          ),
+          margin: EdgeInsets.zero,
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.12),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(icon, size: 18, color: color),
-              ),
+              IconBadge(icon: icon, color: color, size: 38, iconSize: 18),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(item.title, style: const TextStyle(fontWeight: FontWeight.w700, height: 1.3)),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Text(item.title,
+                              style: const TextStyle(
+                                  fontSize: 14.5, fontWeight: FontWeight.w700, height: 1.3)),
+                        ),
+                        if (isNew)
+                          Container(
+                            margin: const EdgeInsets.only(left: 8, top: 5),
+                            width: 8,
+                            height: 8,
+                            decoration: const BoxDecoration(
+                                color: AppColors.brandGreen, shape: BoxShape.circle),
+                          ),
+                      ],
+                    ),
                     if ((item.body ?? '').isNotEmpty) ...[
                       const SizedBox(height: 4),
                       Text(item.body!,
@@ -160,12 +164,21 @@ class _VendorNotificationsPageState extends State<VendorNotificationsPage> {
                     ],
                     const SizedBox(height: 6),
                     Text(_age(item.createdAt),
-                        style: const TextStyle(fontSize: 11, color: AppColors.textTertiary)),
+                        style: const TextStyle(fontSize: 11.5, color: AppColors.textTertiary)),
                   ],
                 ),
               ),
             ],
           ),
+        );
+        if (!isNew) return card;
+        // New lines get a teal edge, like an unread message.
+        return DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: AppRadii.brLg,
+            border: Border.all(color: AppColors.brandGreen.withValues(alpha: 0.35)),
+          ),
+          child: card,
         );
       },
     );

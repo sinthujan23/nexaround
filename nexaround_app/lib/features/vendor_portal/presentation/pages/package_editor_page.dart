@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
+import 'package:nexaround_app/app/theme/app_dimensions.dart';
 import 'package:nexaround_app/core/error/user_message.dart';
 import 'package:nexaround_app/features/vendor_portal/data/vendor_portal_api.dart';
 import 'package:nexaround_app/features/vendor_portal/data/vendor_portal_models.dart';
@@ -77,7 +78,11 @@ class _PackageEditorPageState extends State<PackageEditorPage> {
       setState(() => _form = change(_form!));
 
   Future<void> _save() async {
-    if (!_formKey.currentState!.validate()) return;
+    // The field at fault may be far up the form: say so.
+    if (!_formKey.currentState!.validate()) {
+      showVendorSnack(context, 'Check the fields marked in red.', error: true);
+      return;
+    }
     final form = _form!;
     if (_photosBusy) {
       showVendorSnack(context, 'Photos are still uploading. Wait for them to finish, then save.',
@@ -161,16 +166,15 @@ class _PackageEditorPageState extends State<PackageEditorPage> {
       },
       child: Scaffold(
         backgroundColor: AppColors.background,
-        appBar: AppBar(
-          backgroundColor: AppColors.background,
-          scrolledUnderElevation: 0,
-          title: Text(_isNew ? 'New package' : 'Edit package',
-              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+        appBar: vendorAppBar(
+          context,
+          _isNew ? 'New package' : 'Edit package',
           actions: [
             if (!_isNew && _form != null)
-              IconButton(
+              VendorCircleButton(
+                icon: Icons.delete_outline_rounded,
                 tooltip: 'Delete package',
-                icon: const Icon(Icons.delete_outline_rounded, color: AppColors.error),
+                color: AppColors.error,
                 onPressed: _delete,
               ),
           ],
@@ -178,16 +182,10 @@ class _PackageEditorPageState extends State<PackageEditorPage> {
         body: _body(),
         bottomNavigationBar: _form == null
             ? null
-            : SafeArea(
-                minimum: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                child: FilledButton(
+            : VendorActionBar(
+                child: VendorPrimaryButton(
+                  label: _saving ? 'Saving…' : (_isNew ? 'Create package' : 'Save changes'),
                   onPressed: _saving ? null : _save,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: AppColors.brandGreen,
-                    minimumSize: const Size.fromHeight(50),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                  ),
-                  child: Text(_saving ? 'Saving…' : (_isNew ? 'Create package' : 'Save changes')),
                 ),
               ),
       ),
@@ -218,8 +216,22 @@ class _PackageEditorPageState extends State<PackageEditorPage> {
     return Form(
       key: _formKey,
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+        padding: const EdgeInsets.fromLTRB(vendorGutter, 4, vendorGutter, 24),
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         children: [
+          // The web editor's "Show in the app" switch.
+          VendorCard(
+            padding: const EdgeInsets.fromLTRB(16, 4, 12, 4),
+            margin: const EdgeInsets.only(bottom: 14),
+            child: VendorSwitchRow(
+              title: f.isActive ? 'Show in the app' : 'Hidden (draft)',
+              subtitle: f.isActive
+                  ? 'Travellers can find this package once it is saved.'
+                  : 'Only you can see it. Switch on when it is ready.',
+              value: f.isActive,
+              onChanged: (v) => _patch((p) => p.copyWith(isActive: v)),
+            ),
+          ),
           VendorSection(
             icon: Icons.confirmation_number_outlined,
             title: 'Basic details',
@@ -233,9 +245,11 @@ class _PackageEditorPageState extends State<PackageEditorPage> {
                 validator: (v) => (v ?? '').trim().isEmpty ? 'Give the package a title.' : null,
                 onChanged: (v) => _patch((p) => p.copyWith(title: v)),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
               DropdownButtonFormField<String>(
                 initialValue: vendorCategories.any((c) => c.value == f.category) ? f.category : 'other',
+                icon: vendorDropdownIcon,
+                style: vendorDropdownText(context),
                 decoration: vendorInput('Category'),
                 items: [
                   for (final c in vendorCategories)
@@ -251,7 +265,7 @@ class _PackageEditorPageState extends State<PackageEditorPage> {
                 decoration: vendorInput('Summary', hint: 'One line for the card in the app'),
                 onChanged: (v) => _patch((p) => p.copyWith(summary: v)),
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 8),
               DescriptionEditor(
                 value: f.description,
                 onChanged: (v) => _patch((p) => p.copyWith(description: v)),
@@ -267,6 +281,8 @@ class _PackageEditorPageState extends State<PackageEditorPage> {
               DropdownButtonFormField<String>(
                 initialValue: f.priceCurrency,
                 isExpanded: true,
+                icon: vendorDropdownIcon,
+                style: vendorDropdownText(context),
                 decoration: vendorInput('Currency'),
                 items: [
                   for (final c in currencies)
@@ -304,6 +320,8 @@ class _PackageEditorPageState extends State<PackageEditorPage> {
               const SizedBox(height: 12),
               DropdownButtonFormField<int?>(
                 initialValue: f.bookingWindowDays,
+                icon: vendorDropdownIcon,
+                style: vendorDropdownText(context),
                 decoration: vendorInput('Bookable', helper: 'How far ahead travellers can pick a date'),
                 items: [
                   for (final e in windows.entries)
@@ -356,21 +374,17 @@ class _PackageEditorPageState extends State<PackageEditorPage> {
             title: 'Meeting point',
             hint: 'Where travellers meet you.',
             children: [
-              // Its own Material: the section's white box would otherwise hide
-              // the tile's ink (and debug builds assert on it).
-              Material(
-                type: MaterialType.transparency,
-                child: SwitchListTile.adaptive(
-                  contentPadding: EdgeInsets.zero,
-                  value: f.usesVendorLocation,
-                  activeThumbColor: AppColors.brandGreen,
-                  title: const Text('My business address'),
-                  onChanged: (v) => _patch((p) => p.copyWith(
-                        usesVendorLocation: v,
-                        latitude: () => null,
-                        longitude: () => null,
-                      )),
-                ),
+              VendorSwitchRow(
+                title: 'My business address',
+                subtitle: f.usesVendorLocation
+                    ? 'Travellers meet you at the address in your profile.'
+                    : 'Travellers meet you at the place you pick below.',
+                value: f.usesVendorLocation,
+                onChanged: (v) => _patch((p) => p.copyWith(
+                      usesVendorLocation: v,
+                      latitude: () => null,
+                      longitude: () => null,
+                    )),
               ),
               if (!f.usesVendorLocation) ...[
                 const SizedBox(height: 8),
@@ -411,7 +425,7 @@ class _PackageEditorPageState extends State<PackageEditorPage> {
       padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
       decoration: BoxDecoration(
         border: Border.all(color: AppColors.border),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: AppRadii.brMd,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -420,9 +434,10 @@ class _PackageEditorPageState extends State<PackageEditorPage> {
             children: [
               Expanded(
                 child: Text(index == 0 ? 'Main price' : 'Option ${index + 1}',
-                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+                    style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
               ),
               TextButton(
+                style: TextButton.styleFrom(foregroundColor: AppColors.error),
                 onPressed: () => _patch((p) => p.copyWith(priceOptions: [
                       for (var i = 0; i < p.priceOptions.length; i++)
                         if (i != index) p.priceOptions[i],
@@ -444,6 +459,8 @@ class _PackageEditorPageState extends State<PackageEditorPage> {
           const SizedBox(height: 12),
           DropdownButtonFormField<String>(
             initialValue: optionBases.containsKey(o.basis) ? o.basis : 'per_person',
+            icon: vendorDropdownIcon,
+            style: vendorDropdownText(context),
             decoration: vendorInput('Basis'),
             items: [
               for (final e in optionBases.entries)

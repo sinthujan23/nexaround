@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
+import 'package:nexaround_app/app/theme/app_dimensions.dart';
 import 'package:nexaround_app/core/error/user_message.dart';
 import 'package:nexaround_app/features/vendor_portal/data/vendor_portal_api.dart';
 import 'package:nexaround_app/features/vendor_portal/data/vendor_portal_models.dart';
@@ -10,7 +11,10 @@ import '../vendor_ui.dart';
 class VendorReviewsTab extends StatefulWidget {
   final VendorPortalApi api;
 
-  const VendorReviewsTab({super.key, required this.api});
+  /// After a reply is posted or removed (Home counts the ones waiting).
+  final VoidCallback? onReplied;
+
+  const VendorReviewsTab({super.key, required this.api, this.onReplied});
 
   @override
   State<VendorReviewsTab> createState() => _VendorReviewsTabState();
@@ -23,6 +27,9 @@ class _VendorReviewsTabState extends State<VendorReviewsTab> {
   bool _unansweredOnly = false;
   bool _loading = false;
   Object? _error;
+  // A fresh list (pull, or the filter changed) outdates any load still
+  // running: its answer is for the old filter.
+  int _generation = 0;
 
   bool get _hasMore => _summary != null && _reviews.length < _summary!.total;
 
@@ -33,12 +40,13 @@ class _VendorReviewsTabState extends State<VendorReviewsTab> {
   }
 
   Future<void> _load({bool reset = false}) async {
-    if (_loading) return;
+    if (_loading && !reset) return;
+    final generation = reset ? ++_generation : _generation;
     setState(() => _loading = true);
     try {
       final page = reset ? 1 : _page + 1;
       final result = await widget.api.reviews(page: page, unansweredOnly: _unansweredOnly);
-      if (!mounted) return;
+      if (!mounted || generation != _generation) return;
       setState(() {
         _summary = result;
         _page = page;
@@ -47,10 +55,16 @@ class _VendorReviewsTabState extends State<VendorReviewsTab> {
         _error = null;
       });
     } catch (e) {
-      if (mounted) setState(() => _error = e);
+      if (mounted && generation == _generation) setState(() => _error = e);
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && generation == _generation) setState(() => _loading = false);
     }
+  }
+
+  void _filter(bool unansweredOnly) {
+    if (unansweredOnly == _unansweredOnly) return;
+    setState(() => _unansweredOnly = unansweredOnly);
+    _load(reset: true);
   }
 
   Future<void> _reply(VendorReview review) async {
@@ -60,42 +74,44 @@ class _VendorReviewsTabState extends State<VendorReviewsTab> {
       isScrollControlled: true,
       showDragHandle: true,
       builder: (ctx) => Padding(
-        padding: EdgeInsets.fromLTRB(20, 0, 20, MediaQuery.of(ctx).viewInsets.bottom + 20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text('Reply to ${review.reviewerName}',
-                style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 4),
-            const Text('Everyone who reads the review sees your reply.',
-                style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-            const SizedBox(height: 12),
-            TextField(
-              controller: controller,
-              autofocus: true,
-              minLines: 3,
-              maxLines: 8,
-              maxLength: 1000,
-              textCapitalization: TextCapitalization.sentences,
-              decoration: vendorInput('Your reply'),
-            ),
-            const SizedBox(height: 8),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, controller.text.trim()),
-              style: FilledButton.styleFrom(
-                backgroundColor: AppColors.brandGreen,
-                minimumSize: const Size.fromHeight(48),
+        padding: EdgeInsets.fromLTRB(
+            vendorGutter, 0, vendorGutter, MediaQuery.of(ctx).viewInsets.bottom + 16),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('Reply to ${review.reviewerName}',
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, letterSpacing: -0.2)),
+              const SizedBox(height: 4),
+              const Text('Everyone who reads the review sees your reply.',
+                  style: TextStyle(fontSize: 12.5, color: AppColors.textSecondary)),
+              const SizedBox(height: 14),
+              TextField(
+                controller: controller,
+                autofocus: true,
+                minLines: 3,
+                maxLines: 8,
+                maxLength: 1000,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: vendorInput('Your reply'),
               ),
-              child: const Text('Post reply'),
-            ),
-            if (review.vendorReply != null)
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, ''),
-                style: TextButton.styleFrom(foregroundColor: AppColors.error),
-                child: const Text('Remove my reply'),
+              const SizedBox(height: 12),
+              VendorPrimaryButton(
+                label: 'Post reply',
+                onPressed: () => Navigator.pop(ctx, controller.text.trim()),
               ),
-          ],
+              if (review.vendorReply != null) ...[
+                const SizedBox(height: 4),
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, ''),
+                  style: TextButton.styleFrom(foregroundColor: AppColors.error),
+                  child: const Text('Remove my reply'),
+                ),
+              ],
+            ],
+          ),
         ),
       ),
     );
@@ -109,6 +125,9 @@ class _VendorReviewsTabState extends State<VendorReviewsTab> {
         if (i >= 0) _reviews[i] = updated;
       });
       showVendorSnack(context, text.isEmpty ? 'Reply removed' : 'Reply posted');
+      widget.onReplied?.call();
+      // The counts in the summary changed.
+      _load(reset: true);
     } catch (e) {
       if (mounted) showVendorSnack(context, userMessageFor(e, action: 'save the reply'), error: true);
     }
@@ -120,56 +139,17 @@ class _VendorReviewsTabState extends State<VendorReviewsTab> {
     return RefreshIndicator(
       onRefresh: () => _load(reset: true),
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+        padding: const EdgeInsets.fromLTRB(vendorGutter, 4, vendorGutter, 24),
         children: [
-          if (summary != null)
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: AppColors.border),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.star_rounded, color: AppColors.ratingGold, size: 34),
-                  const SizedBox(width: 10),
-                  Text(summary.average == null ? '–' : summary.average!.toStringAsFixed(1),
-                      style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w800)),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      '${summary.reviewCount} review${summary.reviewCount == 1 ? '' : 's'}'
-                      '${summary.unanswered > 0 ? '\n${summary.unanswered} waiting for a reply' : ''}',
-                      style: const TextStyle(fontSize: 13, height: 1.4, color: AppColors.textSecondary),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            children: [
-              ChoiceChip(
-                label: const Text('All'),
-                selected: !_unansweredOnly,
-                onSelected: (_) {
-                  setState(() => _unansweredOnly = false);
-                  _load(reset: true);
-                },
-              ),
-              ChoiceChip(
-                label: const Text('Waiting for a reply'),
-                selected: _unansweredOnly,
-                onSelected: (_) {
-                  setState(() => _unansweredOnly = true);
-                  _load(reset: true);
-                },
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
+          const Text('Reviews',
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, letterSpacing: -0.3)),
+          const SizedBox(height: 2),
+          const Text('What travellers say about your packages',
+              style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+          const SizedBox(height: 16),
+          if (summary != null) _summaryCard(summary),
+          _filters(summary),
+          const SizedBox(height: 14),
           if (_error != null && _reviews.isEmpty)
             VendorEmptyState(
               icon: Icons.cloud_off_rounded,
@@ -177,13 +157,15 @@ class _VendorReviewsTabState extends State<VendorReviewsTab> {
               message: userMessageFor(_error),
               action: OutlinedButton(onPressed: () => _load(reset: true), child: const Text('Try again')),
             )
-          else if (summary == null)
+          else if (summary == null || (_loading && _reviews.isEmpty))
             const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator()))
           else if (_reviews.isEmpty)
             VendorEmptyState(
-              icon: Icons.star_outline_rounded,
-              title: _unansweredOnly ? 'Nothing waiting for a reply' : 'No reviews yet',
-              message: 'Reviews travellers leave on your packages show here.',
+              icon: _unansweredOnly ? Icons.mark_chat_read_outlined : Icons.star_outline_rounded,
+              title: _unansweredOnly ? 'All caught up' : 'No reviews yet',
+              message: _unansweredOnly
+                  ? 'Every review has your reply.'
+                  : 'Reviews travellers leave on your packages show here.',
             )
           else ...[
             for (final review in _reviews) _ReviewCard(review: review, onReply: () => _reply(review)),
@@ -198,6 +180,104 @@ class _VendorReviewsTabState extends State<VendorReviewsTab> {
           ],
         ],
       ),
+    );
+  }
+
+  Widget _summaryCard(VendorReviewPage summary) {
+    final average = summary.average;
+    return VendorCard(
+      margin: const EdgeInsets.only(bottom: 14),
+      child: Row(
+        children: [
+          Text(average == null ? '–' : average.toStringAsFixed(1),
+              style: const TextStyle(fontSize: 40, fontWeight: FontWeight.w800, height: 1, letterSpacing: -1)),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _Stars(rating: average ?? 0, size: 18),
+                const SizedBox(height: 4),
+                Text(
+                  '${summary.reviewCount} review${summary.reviewCount == 1 ? '' : 's'}',
+                  style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// All / Waiting for a reply, as one segmented control.
+  Widget _filters(VendorReviewPage? summary) {
+    final waiting = summary?.unanswered ?? 0;
+    Widget segment(String label, bool selected, VoidCallback onTap) => Expanded(
+          child: Semantics(
+            button: true,
+            selected: selected,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: onTap,
+              child: AnimatedContainer(
+                duration: AppDurations.fast,
+                height: 38,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: selected ? Colors.white : Colors.transparent,
+                  borderRadius: BorderRadius.circular(AppRadii.pill),
+                  boxShadow: selected ? AppShadows.sm : null,
+                ),
+                child: Text(label,
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                      color: selected ? AppColors.textPrimary : AppColors.textSecondary,
+                    )),
+              ),
+            ),
+          ),
+        );
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppRadii.pill),
+      ),
+      child: Row(
+        children: [
+          segment('All', !_unansweredOnly, () => _filter(false)),
+          segment(waiting > 0 ? 'Waiting for a reply ($waiting)' : 'Waiting for a reply', _unansweredOnly,
+              () => _filter(true)),
+        ],
+      ),
+    );
+  }
+}
+
+class _Stars extends StatelessWidget {
+  final double rating;
+  final double size;
+
+  const _Stars({required this.rating, this.size = 16});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var i = 1; i <= 5; i++)
+          Icon(
+            rating >= i
+                ? Icons.star_rounded
+                : rating >= i - 0.5
+                    ? Icons.star_half_rounded
+                    : Icons.star_outline_rounded,
+            size: size,
+            color: AppColors.ratingGold,
+          ),
+      ],
     );
   }
 }
@@ -217,67 +297,99 @@ class _ReviewCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
-      ),
+    final name = review.reviewerName.trim();
+    final replied = review.vendorReply != null;
+    return VendorCard(
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 6),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              for (var i = 1; i <= 5; i++)
-                Icon(i <= review.rating ? Icons.star_rounded : Icons.star_outline_rounded,
-                    size: 18, color: AppColors.ratingGold),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(review.reviewerName,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w700)),
+              Container(
+                width: 36,
+                height: 36,
+                alignment: Alignment.center,
+                decoration: const BoxDecoration(color: AppColors.surfaceVariant, shape: BoxShape.circle),
+                child: Text(name.isEmpty ? '?' : name.characters.first.toUpperCase(),
+                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
               ),
-              Text(_date(review.createdAt),
-                  style: const TextStyle(fontSize: 11, color: AppColors.textTertiary)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        _Stars(rating: review.rating.toDouble(), size: 14),
+                        const SizedBox(width: 6),
+                        Text(_date(review.createdAt),
+                            style: const TextStyle(fontSize: 11.5, color: AppColors.textTertiary)),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
           if (review.packageTitle != null) ...[
-            const SizedBox(height: 4),
-            Text(review.packageTitle!,
-                style: const TextStyle(fontSize: 12, color: AppColors.brandGreen, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                const Icon(Icons.confirmation_number_outlined, size: 14, color: AppColors.brandGreen),
+                const SizedBox(width: 5),
+                Expanded(
+                  child: Text(review.packageTitle!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontSize: 12.5, color: AppColors.brandGreen, fontWeight: FontWeight.w600)),
+                ),
+              ],
+            ),
           ],
           if ((review.comment ?? '').isNotEmpty) ...[
             const SizedBox(height: 8),
-            Text(review.comment!, style: const TextStyle(fontSize: 14, height: 1.4)),
+            Text(review.comment!, style: const TextStyle(fontSize: 14, height: 1.45)),
           ],
-          const SizedBox(height: 10),
-          if (review.vendorReply != null)
+          if (replied) ...[
+            const SizedBox(height: 12),
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppColors.brandGreen.withValues(alpha: 0.06),
-                borderRadius: BorderRadius.circular(12),
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+              decoration: const BoxDecoration(
+                color: AppColors.brandGreenLight,
+                borderRadius: AppRadii.brSm,
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text('Your reply',
-                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.brandGreen)),
+                      style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: AppColors.brandGreen)),
                   const SizedBox(height: 4),
-                  Text(review.vendorReply!, style: const TextStyle(fontSize: 13, height: 1.4)),
+                  Text(review.vendorReply!, style: const TextStyle(fontSize: 13.5, height: 1.4)),
                 ],
               ),
             ),
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton.icon(
-              onPressed: onReply,
-              icon: Icon(review.vendorReply == null ? Icons.reply_rounded : Icons.edit_outlined, size: 18),
-              label: Text(review.vendorReply == null ? 'Reply' : 'Edit reply'),
-            ),
+          ],
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              if (!replied)
+                const Text('Waiting for your reply',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFFB7791F))),
+              const Spacer(),
+              TextButton.icon(
+                onPressed: onReply,
+                icon: Icon(replied ? Icons.edit_outlined : Icons.reply_rounded, size: 18),
+                label: Text(replied ? 'Edit reply' : 'Reply'),
+              ),
+            ],
           ),
         ],
       ),

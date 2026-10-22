@@ -263,6 +263,22 @@ void main() {
     expect(create.auth, 'Bearer partner-1');
   });
 
+  testWidgets('a package can be saved hidden, as with the web editor\'s switch', (tester) async {
+    final api = VendorPortalApi('v1');
+    await tester.pumpWidget(MaterialApp(home: PackageEditorPage(api: api)));
+    await tester.pump();
+    await tester.enterText(find.widgetWithText(TextFormField, 'Title *'), 'Draft trip');
+    await tester.tap(find.text('Show in the app'));
+    await tester.pump();
+    expect(find.text('Hidden (draft)'), findsOneWidget);
+    await tester.tap(find.text('Create package'));
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    final create = server.requests.singleWhere((r) => r.path == '/packages' && r.method == 'POST');
+    expect(Map<String, dynamic>.from(create.body as Map)['is_active'], isFalse);
+  });
+
   testWidgets('a package can be sold at two prices', (tester) async {
     final api = VendorPortalApi('v1');
     await tester.pumpWidget(MaterialApp(home: PackageEditorPage(api: api)));

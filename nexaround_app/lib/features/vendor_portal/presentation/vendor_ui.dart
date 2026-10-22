@@ -1,11 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
+import 'package:nexaround_app/app/theme/app_dimensions.dart';
 import 'package:nexaround_app/core/constants/api_constants.dart';
 import 'package:nexaround_app/core/services/currency_service.dart';
+import 'package:nexaround_app/core/widgets/glass_card.dart';
+import 'package:nexaround_app/core/widgets/premium_widgets.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_category.dart';
+import 'package:nexaround_app/features/vendor_portal/data/vendor_portal_models.dart';
 
 /// The pieces every vendor screen shares: the option lists the web portal
-/// offers (nexaround_partner/src/format.js) and a few app-styled widgets.
+/// offers (nexaround_partner/src/format.js) and the app-styled widgets the
+/// screens are built from, so they all line up on the same 16 px gutter.
+
+/// The side margin of every vendor screen, as in Experiences.
+const vendorGutter = 16.0;
 
 /// The package categories the server takes: the app's, without the "All"
 /// filter chip, plus "Other", which the app shows with the generic style.
@@ -73,6 +81,22 @@ String formatPrice(double? amount, String currency) {
   return '$currency $grouped';
 }
 
+/// A package's main price as the card in the app reads it: "LKR 30,000 /
+/// group", "From LKR 7,000" or "Price on request".
+String packagePriceLine(VendorPackage pkg) {
+  final first = pkg.priceOptions.isEmpty ? null : pkg.priceOptions.first;
+  final amount = first?.amount ?? pkg.priceAmount;
+  if (amount == null) return 'Price on request';
+  final price = formatPrice(amount, pkg.priceCurrency);
+  return switch (first?.basis ?? pkg.priceBasis) {
+    'per_person' => '$price / person',
+    'per_group' => '$price / group',
+    'per_hour' => '$price / hour',
+    'from' => 'From $price',
+    _ => price,
+  };
+}
+
 /// Photo URLs the server returns are paths ("/static/uploads/...").
 String mediaUrl(String url) =>
     url.startsWith('http') ? url : '${ApiConstants.baseUrl}$url';
@@ -85,6 +109,118 @@ void showVendorSnack(BuildContext context, String message, {bool error = false})
       behavior: SnackBarBehavior.floating,
       backgroundColor: error ? AppColors.error : AppColors.charcoal,
     ));
+}
+
+/// The round, outlined button the Experiences screens use for Back.
+class VendorCircleButton extends StatelessWidget {
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onPressed;
+  final Color color;
+  final Widget? badge;
+
+  const VendorCircleButton({
+    super.key,
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+    this.color = AppColors.textPrimary,
+    this.badge,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final button = Container(
+      width: 40,
+      height: 40,
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        shape: BoxShape.circle,
+        border: Border.all(color: AppColors.border.withValues(alpha: 0.6)),
+      ),
+      child: IconButton(
+        tooltip: tooltip,
+        padding: EdgeInsets.zero,
+        onPressed: onPressed,
+        icon: Icon(icon, size: icon == Icons.arrow_back_ios_new_rounded ? 16 : 20, color: color),
+      ),
+    );
+    if (badge == null) return button;
+    return Stack(clipBehavior: Clip.none, children: [
+      button,
+      Positioned(top: -2, right: -2, child: badge!),
+    ]);
+  }
+}
+
+/// The app bar of a vendor page: the round Back button and a centred title,
+/// like Experiences.
+PreferredSizeWidget vendorAppBar(BuildContext context, String title, {List<Widget> actions = const []}) {
+  return AppBar(
+    backgroundColor: AppColors.background,
+    surfaceTintColor: Colors.transparent,
+    elevation: 0,
+    scrolledUnderElevation: 0,
+    centerTitle: true,
+    automaticallyImplyLeading: false,
+    leadingWidth: 56 + vendorGutter - 8,
+    leading: Navigator.of(context).canPop()
+        ? Padding(
+            padding: const EdgeInsets.only(left: vendorGutter),
+            child: Center(
+              child: VendorCircleButton(
+                icon: Icons.arrow_back_ios_new_rounded,
+                tooltip: 'Back',
+                onPressed: () => Navigator.maybePop(context),
+              ),
+            ),
+          )
+        : null,
+    title: Text(
+      title,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: const TextStyle(
+        fontSize: 18,
+        fontWeight: FontWeight.w700,
+        letterSpacing: -0.2,
+        color: AppColors.textPrimary,
+      ),
+    ),
+    actions: [
+      for (final a in actions) Center(child: a),
+      const SizedBox(width: vendorGutter),
+    ],
+  );
+}
+
+/// The white card every vendor list and form is made of: the app's
+/// GlassCard, tappable when [onTap] is given.
+class VendorCard extends StatelessWidget {
+  final Widget child;
+  final VoidCallback? onTap;
+  final EdgeInsetsGeometry padding;
+  final EdgeInsetsGeometry margin;
+
+  const VendorCard({
+    super.key,
+    required this.child,
+    this.onTap,
+    this.padding = const EdgeInsets.all(16),
+    this.margin = const EdgeInsets.only(bottom: 12),
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassCard(
+      onTap: onTap,
+      padding: padding,
+      margin: margin,
+      borderRadius: AppRadii.brLg,
+      // Fields inside need a Material for their ink.
+      child: Material(type: MaterialType.transparency, child: child),
+    );
+  }
 }
 
 /// A titled card that groups a few fields, like the web portal's sections.
@@ -106,47 +242,44 @@ class VendorSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return VendorCard(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
       margin: const EdgeInsets.only(bottom: 14),
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.border),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                padding: const EdgeInsets.all(7),
-                decoration: BoxDecoration(
-                  color: AppColors.brandGreen.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(icon, size: 17, color: AppColors.brandGreen),
-              ),
-              const SizedBox(width: 10),
+              IconBadge(icon: icon, color: AppColors.brandGreen, size: 36, iconSize: 18),
+              const SizedBox(width: 12),
               Expanded(
-                child: Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 1),
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: -0.1,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    if (hint != null) ...[
+                      const SizedBox(height: 2),
+                      Text(hint!,
+                          style: const TextStyle(
+                              fontSize: 12.5, height: 1.4, color: AppColors.textSecondary)),
+                    ],
+                  ],
                 ),
               ),
               if (trailing != null) trailing!,
             ],
           ),
-          if (hint != null) ...[
-            const SizedBox(height: 6),
-            Text(hint!,
-                style: const TextStyle(fontSize: 12, height: 1.35, color: AppColors.textSecondary)),
-          ],
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
           ...children,
         ],
       ),
@@ -154,31 +287,66 @@ class VendorSection extends StatelessWidget {
   }
 }
 
-/// The input decoration every vendor form field uses.
-InputDecoration vendorInput(String label, {String? hint, String? helper, Widget? suffix}) =>
+/// The input decoration every vendor form field uses: the app's field style
+/// (theme), with the label kept at the top of tall fields and no character
+/// counter (the limit still holds).
+InputDecoration vendorInput(String label, {String? hint, String? helper, Widget? suffix, Widget? prefix}) =>
     InputDecoration(
       labelText: label,
       hintText: hint,
       helperText: helper,
       helperMaxLines: 3,
       suffixIcon: suffix,
-      filled: true,
-      fillColor: AppColors.surface,
-      isDense: true,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: AppColors.border),
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: AppColors.border),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: AppColors.brandGreen, width: 1.6),
+      prefixIcon: prefix,
+      alignLabelWithHint: true,
+      counterText: '',
+    );
+
+/// What a dropdown in a vendor form needs on top of [vendorInput]: an arrow
+/// that shows on the light field (the theme's default is white) and the
+/// field's own text size rather than a heading's. The style replaces the
+/// theme's outright, so it starts from the theme's to keep the app font.
+const vendorDropdownIcon = Icon(Icons.keyboard_arrow_down_rounded, color: AppColors.textSecondary);
+TextStyle? vendorDropdownText(BuildContext context) => Theme.of(context)
+    .textTheme
+    .titleMedium
+    ?.copyWith(fontSize: 15, fontWeight: FontWeight.w500, color: AppColors.textPrimary);
+
+/// A label and a switch on one line, the switch in the app's colours.
+class VendorSwitchRow extends StatelessWidget {
+  final String title;
+  final String? subtitle;
+  final bool value;
+  final ValueChanged<bool>? onChanged;
+
+  const VendorSwitchRow({
+    super.key,
+    required this.title,
+    this.subtitle,
+    required this.value,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      type: MaterialType.transparency,
+      child: SwitchListTile.adaptive(
+        contentPadding: EdgeInsets.zero,
+        dense: true,
+        value: value,
+        onChanged: onChanged,
+        title: Text(title,
+            style: const TextStyle(
+                fontSize: 14.5, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+        subtitle: subtitle == null
+            ? null
+            : Text(subtitle!,
+                style: const TextStyle(fontSize: 12.5, height: 1.35, color: AppColors.textSecondary)),
       ),
     );
+  }
+}
 
 /// "Live" (green), "On, not visible" (amber) or "Hidden" (grey).
 class VisibilityPill extends StatelessWidget {
@@ -191,16 +359,27 @@ class VisibilityPill extends StatelessWidget {
     final color = switch (label) {
       'Live' => AppColors.success,
       'Hidden' => AppColors.textTertiary,
-      _ => AppColors.warning,
+      _ => const Color(0xFFB7791F),
     };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AppRadii.pill),
       ),
-      child: Text(label,
-          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 5),
+          Text(label,
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color)),
+        ],
+      ),
     );
   }
 }
@@ -226,8 +405,13 @@ class VendorEmptyState extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 40, color: AppColors.textTertiary),
-          const SizedBox(height: 12),
+          Container(
+            width: 64,
+            height: 64,
+            decoration: const BoxDecoration(color: AppColors.brandGreenLight, shape: BoxShape.circle),
+            child: Icon(icon, size: 30, color: AppColors.brandGreen),
+          ),
+          const SizedBox(height: 14),
           Text(title,
               textAlign: TextAlign.center,
               style: const TextStyle(
@@ -235,9 +419,75 @@ class VendorEmptyState extends StatelessWidget {
           const SizedBox(height: 6),
           Text(message,
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 13, height: 1.4, color: AppColors.textSecondary)),
-          if (action != null) ...[const SizedBox(height: 16), action!],
+              style: const TextStyle(fontSize: 13.5, height: 1.4, color: AppColors.textSecondary)),
+          if (action != null) ...[const SizedBox(height: 18), action!],
         ],
+      ),
+    );
+  }
+}
+
+/// The teal call to action of a vendor screen (the Experiences screens'
+/// "Request booking" colour), full width unless [compact].
+class VendorPrimaryButton extends StatelessWidget {
+  final String label;
+  final IconData? icon;
+  final VoidCallback? onPressed;
+  final bool compact;
+
+  const VendorPrimaryButton({
+    super.key,
+    required this.label,
+    this.icon,
+    required this.onPressed,
+    this.compact = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final style = ElevatedButton.styleFrom(
+      backgroundColor: AppColors.brandGreen,
+      foregroundColor: Colors.white,
+      disabledBackgroundColor: AppColors.surfaceElevated,
+      disabledForegroundColor: AppColors.textTertiary,
+      minimumSize: compact ? const Size(0, 40) : const Size.fromHeight(52),
+      padding: compact ? const EdgeInsets.symmetric(horizontal: 16) : null,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(compact ? AppRadii.pill : AppRadii.md)),
+      // From the theme's, which carries the app font: this one replaces it.
+      textStyle: Theme.of(context)
+          .textTheme
+          .labelLarge
+          ?.copyWith(fontSize: compact ? 13.5 : 15, fontWeight: FontWeight.w700),
+    );
+    return icon == null
+        ? ElevatedButton(onPressed: onPressed, style: style, child: Text(label))
+        : ElevatedButton.icon(
+            onPressed: onPressed,
+            style: style,
+            icon: Icon(icon, size: compact ? 18 : 20),
+            label: Text(label),
+          );
+  }
+}
+
+/// The bar pinned under a form with its Save button, so it is in reach
+/// however long the form is.
+class VendorActionBar extends StatelessWidget {
+  final Widget child;
+
+  const VendorActionBar({super.key, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: AppColors.background,
+        border: Border(top: BorderSide(color: AppColors.border, width: 0.6)),
+      ),
+      child: SafeArea(
+        top: false,
+        minimum: const EdgeInsets.fromLTRB(vendorGutter, 10, vendorGutter, 12),
+        child: child,
       ),
     );
   }
@@ -248,25 +498,25 @@ class PackageThumb extends StatelessWidget {
   final List<String> photoUrls;
   final double size;
 
-  const PackageThumb(this.photoUrls, {super.key, this.size = 56});
+  const PackageThumb(this.photoUrls, {super.key, this.size = 64});
 
   @override
   Widget build(BuildContext context) {
+    final placeholder = Container(
+      color: AppColors.surface,
+      child: const Icon(Icons.kayaking_rounded, color: AppColors.textMuted),
+    );
     return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: AppRadii.brSm,
       child: SizedBox(
         width: size,
         height: size,
         child: photoUrls.isEmpty
-            ? Container(
-                color: AppColors.surfaceVariant,
-                child: const Icon(Icons.confirmation_number_outlined,
-                    color: AppColors.textTertiary),
-              )
+            ? placeholder
             : Image.network(
                 mediaUrl(photoUrls.first),
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => Container(color: AppColors.surfaceVariant),
+                errorBuilder: (_, __, ___) => placeholder,
               ),
       ),
     );
