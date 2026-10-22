@@ -33,6 +33,16 @@ const priceBases = <String, String>{
   'on_request': 'On request',
 };
 
+/// The bases a price option takes (no "On request": that is no option at all)
+/// and how many a package may have: the server's PRICE_BASES and
+/// MAX_PRICE_OPTIONS.
+const optionBases = <String, String>{
+  'per_person': 'Per person',
+  'per_group': 'Per group',
+  'from': 'Starting from',
+};
+const maxPriceOptions = 6;
+
 /// How far ahead travellers may pick a date; null is the platform default
 /// (a year).
 const bookingWindows = <int?, String>{

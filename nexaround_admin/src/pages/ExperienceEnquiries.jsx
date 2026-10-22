@@ -289,6 +289,12 @@ export default function ExperienceEnquiries() {
                       </dd>
                     </div>
                     <div>
+                      <dt>Chosen price</dt>
+                      <dd className={selected.price_option ? '' : 'muted'}>
+                        {selected.price_option?.label || 'Price on request'}
+                      </dd>
+                    </div>
+                    <div>
                       <dt>Preferred date</dt>
                       <dd className={selected.preferred_date ? '' : 'muted'}>
                         {formatDay(selected.preferred_date) || 'Flexible'}

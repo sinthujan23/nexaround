@@ -14,9 +14,11 @@ from typing import Optional
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
-from app.schemas.experience import DateRange
+from app.schemas.experience import DateRange, PriceOptionBase
 from app.services.currencies import check_price_currency
-from app.services.experience_format import MAX_BOOKING_WINDOW_DAYS, MAX_UNAVAILABLE_RANGES
+from app.services.experience_format import (
+    MAX_BOOKING_WINDOW_DAYS, MAX_PRICE_OPTIONS, MAX_UNAVAILABLE_RANGES,
+)
 
 
 # --- Admin-side: managing a vendor's logins ---------------------------------
@@ -187,6 +189,10 @@ class PartnerPackageBase(BaseModel):
     price_amount: Optional[float] = Field(None, ge=0)
     price_currency: Optional[str] = Field("LKR", max_length=10)
     price_basis: Optional[str] = Field("per_person", max_length=20)
+    # Every price, first one first, without the dollar price: only an admin
+    # sets that. None (a form from before price options) makes the single
+    # fields above the first option and keeps the rest.
+    price_options: Optional[list[PriceOptionBase]] = Field(None, max_length=MAX_PRICE_OPTIONS)
     duration_minutes: Optional[int] = Field(None, ge=0)
     max_participants: Optional[int] = Field(None, ge=1)
     # How far ahead travellers may book: the vendor's own business rule.

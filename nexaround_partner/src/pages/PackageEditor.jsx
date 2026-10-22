@@ -14,7 +14,8 @@ import LocationPicker from '../components/LocationPicker';
 import ImageUploader from '../components/ImageUploader';
 import AvailabilityCalendar from '../components/AvailabilityCalendar';
 import DescriptionEditor from '../components/DescriptionEditor';
-import { CATEGORIES, PRICE_BASES, bookingWindowOptions } from '../format';
+import PriceOptionsEditor from '../components/PriceOptionsEditor';
+import { CATEGORIES, bookingWindowOptions } from '../format';
 import { CURRENCY_OPTIONS } from '../constants/currencies';
 import {
   EMPTY_PACKAGE, arrayToLines, fromPackage, linesToArray, toPayload,
@@ -129,12 +130,11 @@ function PackageForm({ packageId }) {
         </Field>
       </Section>
 
-      <Section tone="amber" icon={DollarIcon} title="Price & capacity" hint="Leave the price empty to show “On request”.">
-        <FieldGrid cols={3}>
-          <TextField
-            label="Price" type="number" step="0.01" min="0" placeholder="7500"
-            value={form.price_amount} onChange={(v) => patch({ price_amount: v })}
-          />
+      <Section
+        tone="amber" icon={DollarIcon} title="Price & capacity"
+        hint="The main price shows on the card; travellers choose between all of them when they ask to book. Remove every price to show “On request”. A blank Min people is 1, a blank Max people is Max participants."
+      >
+        <FieldGrid cols={2}>
           <SelectField
             label="Currency" value={form.price_currency || 'LKR'}
             options={
@@ -145,11 +145,13 @@ function PackageForm({ packageId }) {
             }
             onChange={(v) => patch({ price_currency: v })}
           />
-          <SelectField
-            label="Basis" value={form.price_basis || 'per_person'} options={PRICE_BASES}
-            onChange={(v) => patch({ price_basis: v })}
-          />
         </FieldGrid>
+        <PriceOptionsEditor
+          rows={form.price_rows} withUsd={false}
+          currency={form.price_currency || 'LKR'}
+          packageMax={form.max_participants === '' ? null : Number(form.max_participants)}
+          onChange={(rows) => patch({ price_rows: rows })}
+        />
         <FieldGrid cols={3}>
           <TextField
             label="Duration (minutes)" type="number" min="0" placeholder="180"

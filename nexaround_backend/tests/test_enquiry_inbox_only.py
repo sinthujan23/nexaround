@@ -22,7 +22,7 @@ def _enquiry():
         vendor_name_snapshot="Desert Track", package_title_snapshot="Desert Safari",
         contact_name="Ann", contact_phone="+97455554444", contact_email="ann@example.com",
         preferred_date=None, confirmed_date=None, party_size=2,
-        pickup_location="Al Wakrah", message=None,
+        pickup_location="Al Wakrah", message=None, price_option=None,
         cancelled_at=datetime(2026, 10, 21, tzinfo=timezone.utc),
         cancellation_reason=None, late_cancellation=False,
     )

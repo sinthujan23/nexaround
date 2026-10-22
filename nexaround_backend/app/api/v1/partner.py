@@ -52,7 +52,9 @@ from app.services import (
 )
 from app.services.email_service import send_vendor_invite_email
 from app.services import experience_reviews
-from app.services.experience_format import package_field_value
+from app.services.experience_format import (
+    apply_price_options, package_field_value, price_options_for_save,
+)
 from app.services.experience_upload import save_experience_images
 from app.services.settings_service import SettingsService
 from app.services.partner_auth import consume_link_token, store_link_token
@@ -665,6 +667,8 @@ def _package_out(package) -> PartnerPackageResponse:
         price_amount=float(package.price_amount) if package.price_amount is not None else None,
         price_currency=package.price_currency,
         price_basis=package.price_basis,
+        # No dollar price: PriceOptionBase has none, so it is dropped here.
+        price_options=package.price_options or [],
         duration_minutes=package.duration_minutes,
         max_participants=package.max_participants,
         booking_window_days=package.booking_window_days,
@@ -759,6 +763,8 @@ async def create_partner_package(
         vendor_id=principal.vendor.id,
         **{key: package_field_value(data, key) for key in _PARTNER_PACKAGE_SCALARS},
     )
+    apply_price_options(package, price_options_for_save(data, None, vendor=True))
+
     apply_package_derived_fields(
         package, principal.vendor, data.latitude, data.longitude
     )
@@ -804,9 +810,12 @@ async def update_partner_package(
     if package is None:
         raise HTTPException(status_code=404, detail="Package not found")
 
-    before = partner_activity.snapshot(package, _PARTNER_PACKAGE_SCALARS)
+    before = partner_activity.snapshot(
+        package, _PARTNER_PACKAGE_SCALARS + ("vendor_price_options",)
+    )
     for key in _PARTNER_PACKAGE_SCALARS:
         setattr(package, key, package_field_value(data, key))
+    apply_price_options(package, price_options_for_save(data, package.price_options, vendor=True))
     apply_package_derived_fields(
         package, principal.vendor, data.latitude, data.longitude
     )

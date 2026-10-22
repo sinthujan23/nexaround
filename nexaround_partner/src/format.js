@@ -66,10 +66,13 @@ export const visibilityTone = (pkg) => {
 export const categoryLabel = (value) => CATEGORIES.find((c) => c.value === value)?.label || value || 'Other';
 export const basisLabel = (value) => PRICE_BASES.find((b) => b.value === value)?.label || 'Per person';
 
-export const formatPrice = (pkg) =>
-  pkg.price_amount != null
-    ? `${pkg.price_currency || 'LKR'} ${Number(pkg.price_amount).toLocaleString()}`
-    : 'On request';
+// The main price, and how many other prices there are.
+export const formatPrice = (pkg) => {
+  if (pkg.price_amount == null) return 'On request';
+  const more = (pkg.price_options?.length || 1) - 1;
+  return `${pkg.price_currency || 'LKR'} ${Number(pkg.price_amount).toLocaleString()}`
+    + (more > 0 ? ` +${more} more` : '');
+};
 
 export const formatDuration = (minutes) => {
   if (!minutes) return null;

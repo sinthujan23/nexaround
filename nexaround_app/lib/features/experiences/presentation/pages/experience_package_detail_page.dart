@@ -472,7 +472,8 @@ class _ExperiencePackageDetailPageState
             spacing: 8,
             runSpacing: 8,
             children: [
-              if (_package.priceLabel.isNotEmpty)
+              // With several prices they are listed below instead.
+              if (_package.priceLabel.isNotEmpty && _package.priceOptions.length < 2)
                 _chip(Icons.sell_rounded, _package.priceLabel, highlight: true),
               if (_package.formattedDuration.isNotEmpty)
                 _chip(Icons.schedule_rounded, _package.formattedDuration),
@@ -484,6 +485,36 @@ class _ExperiencePackageDetailPageState
                     'Up to ${_package.maxParticipants}'),
             ],
           ),
+
+          if (_package.priceOptions.length > 1) ...[
+            const SizedBox(height: 20),
+            _sectionTitle('Prices'),
+            const SizedBox(height: 10),
+            ..._package.priceOptions.map(
+              (option) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(Icons.sell_rounded,
+                        size: 16, color: AppColors.brandGreen),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(option.label,
+                          style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.textPrimary)),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const Text(
+              'Choose one when you ask to book.',
+              style: TextStyle(fontSize: 12.5, color: AppColors.textSecondary),
+            ),
+          ],
 
           if ((_package.summary ?? '').isNotEmpty) ...[
             const SizedBox(height: 20),

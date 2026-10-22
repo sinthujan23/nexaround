@@ -7,6 +7,64 @@
 /// Desert Safari · Sun 25 Oct · 4 guests").
 library;
 
+/// One price a package is sold at (the server's PriceOptionBase). No dollar
+/// price: only NexAround sets that, and the server keeps it by [id]. A blank
+/// min is 1 and a blank max is the package's Max participants.
+class VendorPriceOption {
+  /// The server's id; null for a price added in this form.
+  final String? id;
+
+  /// Stays the same while the row is edited, so its fields keep their place
+  /// when a row above is removed.
+  final String key;
+  final double? amount;
+  final String basis;
+  final int? minPeople;
+  final int? maxPeople;
+
+  VendorPriceOption({
+    this.id,
+    String? key,
+    this.amount,
+    this.basis = 'per_person',
+    this.minPeople,
+    this.maxPeople,
+  }) : key = key ?? id ?? 'new-${_newKeys++}';
+
+  static int _newKeys = 0;
+
+  factory VendorPriceOption.fromJson(Map<String, dynamic> json) => VendorPriceOption(
+        id: json['id']?.toString(),
+        amount: _double(json['amount']),
+        basis: (json['basis'] ?? 'per_person').toString(),
+        minPeople: _int(json['min_people']),
+        maxPeople: _int(json['max_people']),
+      );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'amount': amount,
+        'basis': basis,
+        'min_people': minPeople,
+        'max_people': maxPeople,
+      };
+
+  VendorPriceOption copyWith({
+    double? Function()? amount,
+    String? basis,
+    int? Function()? minPeople,
+    int? Function()? maxPeople,
+  }) =>
+      VendorPriceOption(
+        id: id,
+        key: key,
+        amount: amount != null ? amount() : this.amount,
+        basis: basis ?? this.basis,
+        minPeople: minPeople != null ? minPeople() : this.minPeople,
+        maxPeople: maxPeople != null ? maxPeople() : this.maxPeople,
+      );
+}
+
 DateTime? _date(dynamic v) => v == null ? null : DateTime.tryParse(v.toString());
 
 double? _double(dynamic v) => v is num ? v.toDouble() : double.tryParse('${v ?? ''}');
@@ -93,6 +151,10 @@ class VendorPackage {
   final double? priceAmount;
   final String priceCurrency;
   final String priceBasis;
+
+  /// Every price, first one first. The server mirrors the first into the
+  /// three fields above. Empty means "Price on request".
+  final List<VendorPriceOption> priceOptions;
   final int? durationMinutes;
   final int? maxParticipants;
   final int? bookingWindowDays;
@@ -120,6 +182,7 @@ class VendorPackage {
     this.priceAmount,
     this.priceCurrency = 'LKR',
     this.priceBasis = 'per_person',
+    this.priceOptions = const [],
     this.durationMinutes,
     this.maxParticipants,
     this.bookingWindowDays,
@@ -147,6 +210,9 @@ class VendorPackage {
         priceAmount: _double(json['price_amount']),
         priceCurrency: (json['price_currency'] ?? 'LKR').toString(),
         priceBasis: (json['price_basis'] ?? 'per_person').toString(),
+        priceOptions: ((json['price_options'] as List?) ?? const [])
+            .map((o) => VendorPriceOption.fromJson(Map<String, dynamic>.from(o as Map)))
+            .toList(),
         durationMinutes: _int(json['duration_minutes']),
         maxParticipants: _int(json['max_participants']),
         bookingWindowDays: _int(json['booking_window_days']),
@@ -174,6 +240,11 @@ class VendorPackage {
         'price_amount': priceAmount,
         'price_currency': priceCurrency,
         'price_basis': priceBasis,
+        // A row with no price is dropped; none left is "Price on request".
+        'price_options': [
+          for (final o in priceOptions)
+            if (o.amount != null) o.toJson(),
+        ],
         'duration_minutes': durationMinutes,
         'max_participants': maxParticipants,
         'booking_window_days': bookingWindowDays,
@@ -197,6 +268,7 @@ class VendorPackage {
     double? Function()? priceAmount,
     String? priceCurrency,
     String? priceBasis,
+    List<VendorPriceOption>? priceOptions,
     int? Function()? durationMinutes,
     int? Function()? maxParticipants,
     int? Function()? bookingWindowDays,
@@ -220,6 +292,7 @@ class VendorPackage {
         priceAmount: priceAmount != null ? priceAmount() : this.priceAmount,
         priceCurrency: priceCurrency ?? this.priceCurrency,
         priceBasis: priceBasis ?? this.priceBasis,
+        priceOptions: priceOptions ?? this.priceOptions,
         durationMinutes: durationMinutes != null ? durationMinutes() : this.durationMinutes,
         maxParticipants: maxParticipants != null ? maxParticipants() : this.maxParticipants,
         bookingWindowDays:

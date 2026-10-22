@@ -438,6 +438,19 @@ class ExperiencePackageCard extends StatelessWidget {
               height: 1.15,
             ),
           ),
+        // The card shows the first price; the others are on the package page.
+        if (package.priceOptions.length > 1)
+          Text(
+            '${package.priceOptions.length} price options',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 9.5,
+              fontWeight: FontWeight.w700,
+              color: AppColors.brandGreen,
+              height: 1.15,
+            ),
+          ),
       ],
     );
   }

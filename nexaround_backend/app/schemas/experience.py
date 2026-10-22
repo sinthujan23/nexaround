@@ -15,10 +15,54 @@ from typing import Optional
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.services.experience_format import (
-    MAX_BOOKING_WINDOW_DAYS, MAX_UNAVAILABLE_RANGES, NEARBY_THRESHOLD_M,
+    MAX_BOOKING_WINDOW_DAYS, MAX_PRICE_OPTIONS, MAX_UNAVAILABLE_RANGES,
+    NEARBY_THRESHOLD_M, PRICE_BASES,
 )
 from app.services.currencies import check_price_currency
 from app.services.experience_upload import MAX_VIDEOS_PER_PACKAGE
+
+
+class PriceOptionBase(BaseModel):
+    """One price a package is sold at. A blank min is 1 and a blank max is the
+    package's Max participants."""
+
+    # Kept from the package's options; a missing or unknown one gets a new id.
+    id: Optional[str] = Field(None, max_length=16)
+    amount: float = Field(..., ge=0)
+    basis: str = "per_person"
+    min_people: Optional[int] = Field(None, ge=1, le=100)
+    max_people: Optional[int] = Field(None, ge=1, le=100)
+
+    @field_validator("basis")
+    @classmethod
+    def _known_basis(cls, value):
+        if value not in PRICE_BASES:
+            raise ValueError(f"basis must be one of {', '.join(PRICE_BASES)}")
+        return value
+
+    @model_validator(mode="after")
+    def _min_not_above_max(self):
+        if self.min_people and self.max_people and self.min_people > self.max_people:
+            raise ValueError("Min people cannot be more than max people.")
+        return self
+
+
+class PriceOption(PriceOptionBase):
+    """The admin's view: the dollar price is typed here, never converted."""
+
+    usd: Optional[float] = Field(None, ge=0)
+
+
+class PriceOptionOut(BaseModel):
+    """A price as the app shows and books it."""
+
+    id: str
+    # "LKR 8,000 ($24) / person (min 3)", made like `price_label`.
+    label: str
+    basis: str
+    # The guests the option allows, blanks already filled in.
+    min_people: int = 1
+    max_people: Optional[int] = None
 
 
 class DateRange(BaseModel):
@@ -90,6 +134,9 @@ class ExperiencePackageCard(BaseModel):
     rating_count: int = 0
     # Group size; a group price also shows it in `price_label` ("(max 4)").
     max_participants: Optional[int] = None
+    # Every price, first one first; `price_label` is the first. Empty when the
+    # price is on request.
+    price_options: list[PriceOptionOut] = []
     # Admin's free-text region, e.g. "Kerala State · Munnar region".
     region_label: Optional[str] = None
     # The vendor's country, ISO 3166-1 alpha-2 and its English name. The app
@@ -140,6 +187,9 @@ class ExperienceEnquiryCreate(BaseModel):
     party_size: Optional[int] = Field(None, ge=1, le=100)
     pickup_location: Optional[str] = Field(None, max_length=500)
     message: Optional[str] = Field(None, max_length=2000)
+    # The price option chosen. Absent from apps before price options, which
+    # showed only the first one; that is the one recorded.
+    price_option_id: Optional[str] = Field(None, max_length=16)
     # The Experience Booking Terms version the traveller ticked. Absent only
     # from apps older than the terms (see legal_service.customer_terms_error).
     accepted_terms_version: Optional[int] = Field(None, ge=1)
@@ -226,6 +276,9 @@ class ExperiencePackageBase(BaseModel):
     # Typed, never converted: see ExperiencePackage.price_usd.
     price_usd: Optional[float] = Field(None, ge=0)
     price_basis: str = Field("per_person", max_length=20)
+    # Every price, first one first. None (a form from before price options)
+    # makes the single price fields above the first option and keeps the rest.
+    price_options: Optional[list[PriceOption]] = Field(None, max_length=MAX_PRICE_OPTIONS)
     duration_minutes: Optional[int] = Field(None, ge=0)
     max_participants: Optional[int] = Field(None, ge=1)
     # None: the platform default (DEFAULT_BOOKING_WINDOW_DAYS).
@@ -284,6 +337,8 @@ class ExperienceEnquiryAdminResponse(BaseModel):
     party_size: Optional[int] = None
     pickup_location: Optional[str] = None
     message: Optional[str] = None
+    # The price chosen, as it read then; `label` is what to show.
+    price_option: Optional[dict] = None
     status: str
     admin_notes: Optional[str] = None
     terms_version: Optional[int] = None

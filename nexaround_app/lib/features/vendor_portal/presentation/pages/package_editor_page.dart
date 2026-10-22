@@ -56,11 +56,22 @@ class _PackageEditorPageState extends State<PackageEditorPage> {
   }
 
   void _setLoaded(VendorPackage pkg) {
+    // A new package starts with one blank price; a blank row is not sent, so
+    // it does not count as a change.
+    if (_isNew && pkg.priceOptions.isEmpty) {
+      pkg = pkg.copyWith(priceOptions: [VendorPriceOption()]);
+    }
     setState(() {
       _form = pkg;
       _base = jsonEncode(pkg.toJson());
     });
   }
+
+  void _patchOption(int index, VendorPriceOption Function(VendorPriceOption o) change) =>
+      _patch((p) => p.copyWith(priceOptions: [
+            for (var i = 0; i < p.priceOptions.length; i++)
+              i == index ? change(p.priceOptions[i]) : p.priceOptions[i],
+          ]));
 
   void _patch(VendorPackage Function(VendorPackage f) change) =>
       setState(() => _form = change(_form!));
@@ -250,50 +261,39 @@ class _PackageEditorPageState extends State<PackageEditorPage> {
           VendorSection(
             icon: Icons.payments_outlined,
             title: 'Price & capacity',
-            hint: 'Leave the price empty to show “On request”.',
+            hint: 'The main price shows on the card; travellers choose between all of them '
+                'when they ask to book. Remove every price to show “On request”.',
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: TextFormField(
-                      initialValue: f.priceAmount == null ? '' : _num(f.priceAmount!),
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
-                      decoration: vendorInput('Price', hint: '7500'),
-                      validator: (v) => (v ?? '').isNotEmpty && double.tryParse(v!) == null
-                          ? 'Enter a number.'
-                          : null,
-                      onChanged: (v) => _patch((p) => p.copyWith(priceAmount: () => double.tryParse(v))),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: DropdownButtonFormField<String>(
-                      initialValue: f.priceCurrency,
-                      isExpanded: true,
-                      decoration: vendorInput('Currency'),
-                      items: [
-                        for (final c in currencies)
-                          DropdownMenuItem(
-                            value: c['code'],
-                            child: Text('${c['code']} · ${c['name']}', overflow: TextOverflow.ellipsis),
-                          ),
-                      ],
-                      onChanged: (v) => _patch((p) => p.copyWith(priceCurrency: v)),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
               DropdownButtonFormField<String>(
-                initialValue: priceBases.containsKey(f.priceBasis) ? f.priceBasis : 'per_person',
-                decoration: vendorInput('Basis'),
+                initialValue: f.priceCurrency,
+                isExpanded: true,
+                decoration: vendorInput('Currency'),
                 items: [
-                  for (final e in priceBases.entries)
-                    DropdownMenuItem(value: e.key, child: Text(e.value)),
+                  for (final c in currencies)
+                    DropdownMenuItem(
+                      value: c['code'],
+                      child: Text('${c['code']} · ${c['name']}', overflow: TextOverflow.ellipsis),
+                    ),
                 ],
-                onChanged: (v) => _patch((p) => p.copyWith(priceBasis: v)),
+                onChanged: (v) => _patch((p) => p.copyWith(priceCurrency: v)),
               ),
+              for (var i = 0; i < f.priceOptions.length; i++) _priceOption(f, i),
+              if (f.priceOptions.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.only(top: 12),
+                  child: Text('No price: travellers see “Price on request”.',
+                      style: TextStyle(fontSize: 12.5, color: AppColors.textSecondary)),
+                ),
+              if (f.priceOptions.length < maxPriceOptions)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: () => _patch((p) =>
+                        p.copyWith(priceOptions: [...p.priceOptions, VendorPriceOption()])),
+                    icon: const Icon(Icons.add_rounded, size: 18),
+                    label: const Text('Add price option'),
+                  ),
+                ),
               const SizedBox(height: 12),
               // One per row: side by side, a phone cuts their labels off.
               _intField('Duration (minutes)', '180', f.durationMinutes,
@@ -356,16 +356,21 @@ class _PackageEditorPageState extends State<PackageEditorPage> {
             title: 'Meeting point',
             hint: 'Where travellers meet you.',
             children: [
-              SwitchListTile.adaptive(
-                contentPadding: EdgeInsets.zero,
-                value: f.usesVendorLocation,
-                activeThumbColor: AppColors.brandGreen,
-                title: const Text('My business address'),
-                onChanged: (v) => _patch((p) => p.copyWith(
-                      usesVendorLocation: v,
-                      latitude: () => null,
-                      longitude: () => null,
-                    )),
+              // Its own Material: the section's white box would otherwise hide
+              // the tile's ink (and debug builds assert on it).
+              Material(
+                type: MaterialType.transparency,
+                child: SwitchListTile.adaptive(
+                  contentPadding: EdgeInsets.zero,
+                  value: f.usesVendorLocation,
+                  activeThumbColor: AppColors.brandGreen,
+                  title: const Text('My business address'),
+                  onChanged: (v) => _patch((p) => p.copyWith(
+                        usesVendorLocation: v,
+                        latitude: () => null,
+                        longitude: () => null,
+                      )),
+                ),
               ),
               if (!f.usesVendorLocation) ...[
                 const SizedBox(height: 8),
@@ -396,6 +401,80 @@ class _PackageEditorPageState extends State<PackageEditorPage> {
   }
 
   String _num(double v) => v == v.roundToDouble() ? v.toInt().toString() : v.toString();
+
+  /// One price: amount, basis, and the guests it allows.
+  Widget _priceOption(VendorPackage f, int index) {
+    final o = f.priceOptions[index];
+    return Container(
+      key: ValueKey(o.key),
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+      decoration: BoxDecoration(
+        border: Border.all(color: AppColors.border),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(index == 0 ? 'Main price' : 'Option ${index + 1}',
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+              ),
+              TextButton(
+                onPressed: () => _patch((p) => p.copyWith(priceOptions: [
+                      for (var i = 0; i < p.priceOptions.length; i++)
+                        if (i != index) p.priceOptions[i],
+                    ])),
+                child: const Text('Remove'),
+              ),
+            ],
+          ),
+          TextFormField(
+            initialValue: o.amount == null ? '' : _num(o.amount!),
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
+            decoration: vendorInput('Price (${f.priceCurrency})', hint: '7500'),
+            validator: (v) => (v ?? '').isNotEmpty && double.tryParse(v!) == null
+                ? 'Enter a number.'
+                : null,
+            onChanged: (v) => _patchOption(index, (x) => x.copyWith(amount: () => double.tryParse(v))),
+          ),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String>(
+            initialValue: optionBases.containsKey(o.basis) ? o.basis : 'per_person',
+            decoration: vendorInput('Basis'),
+            items: [
+              for (final e in optionBases.entries)
+                DropdownMenuItem(value: e.key, child: Text(e.value)),
+            ],
+            onChanged: (v) => _patchOption(index, (x) => x.copyWith(basis: v)),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: _intField('Min people', '1', o.minPeople,
+                    (v) => _patchOption(index, (x) => x.copyWith(minPeople: () => v)), min: 1),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _intField(
+                  'Max people',
+                  f.maxParticipants?.toString() ?? 'Any',
+                  o.maxPeople,
+                  (v) => _patchOption(index, (x) => x.copyWith(maxPeople: () => v)),
+                  min: o.minPeople ?? 1,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _intField(String label, String hint, int? value, ValueChanged<int?> onChanged, {int min = 0}) =>
       TextFormField(

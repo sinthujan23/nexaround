@@ -259,4 +259,95 @@ void main() {
       expect(tester.widget<Checkbox>(find.byType(Checkbox)).value, isFalse);
     });
   });
+
+  group('a package with several prices', () {
+    const twoPrices = ExperiencePackageEntity(
+      id: 'p2',
+      title: 'Pigeon Island snorkeling',
+      vendorId: 'v1',
+      vendorName: 'Blue Ocean Adventures',
+      latitude: 6,
+      longitude: 80,
+      priceLabel: r'LKR 30,000 ($90) / group (max 7)',
+      priceOptions: [
+        ExperiencePriceOption(id: 'a', label: r'LKR 30,000 ($90) / group (max 7)',
+            basis: 'per_group', maxPeople: 7),
+        ExperiencePriceOption(id: 'b', label: r'LKR 8,000 ($24) / person (min 3)',
+            minPeople: 3, maxPeople: 7),
+      ],
+    );
+
+    Future<void> open(WidgetTester tester, ExperiencePackageEntity package) async {
+      server.termsAccepted = true;
+      tester.view.physicalSize = const Size(1500, 3000);
+      tester.view.devicePixelRatio = 3;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => showExperienceRequestPage(context, package),
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      ));
+      await tester.tap(find.text('open'));
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      await tester.enterText(
+          find.widgetWithText(TextField, 'Your name'), 'Test Traveller');
+      await tester.enterText(
+          find.widgetWithText(TextField, 'Phone number'), '+94715550000');
+    }
+
+    Future<void> send(WidgetTester tester) async {
+      await tester.ensureVisible(find.text('Send request'));
+      await tester.tap(find.text('Send request'));
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+    }
+
+    testWidgets('the first price is chosen until another is picked', (tester) async {
+      await open(tester, twoPrices);
+
+      expect(find.text('Price'), findsOneWidget);
+      expect(find.byIcon(Icons.radio_button_checked_rounded), findsOneWidget);
+      expect(find.text('Up to 7 guests'), findsOneWidget);
+      await send(tester);
+
+      expect(server.enquiries.single['price_option_id'], 'a');
+      expect(server.enquiries.single['party_size'], 2);
+    });
+
+    testWidgets('a per-person price with a minimum raises the guests to it',
+        (tester) async {
+      await open(tester, twoPrices);
+
+      await tester.ensureVisible(find.text(r'LKR 8,000 ($24) / person (min 3)'));
+      await tester.tap(find.text(r'LKR 8,000 ($24) / person (min 3)'));
+      await tester.pump();
+      expect(find.text('3–7 guests for this price'), findsOneWidget);
+      expect(find.text('3'), findsOneWidget);
+
+      // Cannot go below the minimum.
+      await tester.tap(find.byIcon(Icons.remove_rounded));
+      await tester.pump();
+      expect(find.text('3'), findsOneWidget);
+
+      await send(tester);
+      expect(server.enquiries.single['price_option_id'], 'b');
+      expect(server.enquiries.single['party_size'], 3);
+    });
+
+    testWidgets('a package with no prices sends no option', (tester) async {
+      await open(tester, _package);
+
+      expect(find.text('Price'), findsNothing);
+      await send(tester);
+      expect(server.enquiries.single.containsKey('price_option_id'), isFalse);
+    });
+  });
 }

@@ -34,7 +34,7 @@ from app.schemas.experience import (
 from app.services.email_service import send_new_enquiry_email
 from app.services.experience_format import (
     COUNTRY_MODE_KEY, NEARBY_THRESHOLD_M, booking_window_error, is_nearby,
-    parse_country_mode, unavailable_error, validate_enquiry_payload,
+    parse_country_mode, pick_price_option, unavailable_error, validate_enquiry_payload,
 )
 from app.services.experience_upload import (
     VIDEO_MEDIA_TYPES, parse_range, video_file,
@@ -314,6 +314,7 @@ async def _dispatch_enquiry_email(enquiry_id: uuid.UUID) -> None:
                 party_size=str(enquiry.party_size) if enquiry.party_size else "",
                 pickup_location=enquiry.pickup_location or "",
                 message=enquiry.message or "",
+                price=(enquiry.price_option or {}).get("label", ""),
             )
 
 
@@ -349,6 +350,14 @@ async def create_experience_enquiry(
     blocked_error = unavailable_error(data.preferred_date, package.unavailable_ranges)
     if blocked_error:
         errors.append(blocked_error)
+    # The price chosen, and the guests it allows ("at least 3" for a
+    # per-person price). Copied onto the request as it reads now.
+    price_option, option_error = pick_price_option(
+        package.price_options, data.price_option_id, data.party_size,
+        package.price_currency or "USD", package.max_participants,
+    )
+    if option_error:
+        errors.append(option_error)
     if errors:
         raise HTTPException(status_code=400, detail=" ".join(errors))
 
@@ -382,6 +391,7 @@ async def create_experience_enquiry(
         party_size=data.party_size,
         pickup_location=(data.pickup_location or "").strip() or None,
         message=(data.message or "").strip() or None,
+        price_option=price_option,
         status="new",
         terms_version=terms.version if accepted_terms else None,
         terms_accepted_at=now if accepted_terms else None,

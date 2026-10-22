@@ -197,6 +197,7 @@ async def send_new_enquiry_email(
     party_size: str = "",
     pickup_location: str = "",
     message: str = "",
+    price: str = "",
 ) -> bool:
     """Tell the platform inbox a traveller enquired about a vendor's package.
 
@@ -237,6 +238,7 @@ async def send_new_enquiry_email(
           {_row("Email", contact_email)}
           {_row("Preferred date", preferred_date)}
           {_row("Party size", party_size)}
+          {_row("Price", html.escape(price))}
           {_row("Pickup", html.escape(pickup_location))}
         </table>
         {f'<div class="message">{message}</div>' if message else ''}

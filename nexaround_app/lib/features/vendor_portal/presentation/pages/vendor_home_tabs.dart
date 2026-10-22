@@ -357,7 +357,9 @@ class PackageRow extends StatelessWidget {
                         style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
                     const SizedBox(height: 4),
                     Text(
-                      '${formatPrice(pkg.priceAmount, pkg.priceCurrency)} · ${categoryLabel(pkg.category)}',
+                      '${formatPrice(pkg.priceAmount, pkg.priceCurrency)}'
+                      '${pkg.priceOptions.length > 1 ? ' +${pkg.priceOptions.length - 1} more' : ''}'
+                      ' · ${categoryLabel(pkg.category)}',
                       style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
                     ),
                     const SizedBox(height: 6),

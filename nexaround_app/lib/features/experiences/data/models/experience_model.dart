@@ -69,6 +69,7 @@ class ExperiencePackageModel extends ExperiencePackageEntity {
     super.priceCurrency,
     super.priceBasis,
     super.priceLabel,
+    super.priceOptions,
     super.durationMinutes,
     super.durationLabel,
     required super.latitude,
@@ -112,6 +113,7 @@ class ExperiencePackageModel extends ExperiencePackageEntity {
       priceCurrency: json['price_currency'] as String? ?? 'USD',
       priceBasis: json['price_basis'] as String? ?? 'per_person',
       priceLabel: json['price_label'] as String? ?? '',
+      priceOptions: _priceOptions(json['price_options']),
       durationMinutes: (json['duration_minutes'] as num?)?.toInt(),
       durationLabel: json['duration_label'] as String? ?? '',
       latitude: (json['latitude'] as num?)?.toDouble() ?? 0.0,
@@ -156,6 +158,27 @@ List<ExperienceDateRange> _dateRanges(dynamic value) {
     ));
   }
   return ranges;
+}
+
+/// `[{"id": "3f9a1c2e", "label": "LKR 8,000 (\$24) / person (min 3)", ...}]`.
+/// An entry without an id or a label is skipped.
+List<ExperiencePriceOption> _priceOptions(dynamic value) {
+  if (value is! List) return const [];
+  final options = <ExperiencePriceOption>[];
+  for (final item in value) {
+    if (item is! Map) continue;
+    final id = item['id']?.toString() ?? '';
+    final label = item['label']?.toString() ?? '';
+    if (id.isEmpty || label.isEmpty) continue;
+    options.add(ExperiencePriceOption(
+      id: id,
+      label: label,
+      basis: item['basis']?.toString() ?? 'per_person',
+      minPeople: (item['min_people'] as num?)?.toInt() ?? 1,
+      maxPeople: (item['max_people'] as num?)?.toInt(),
+    ));
+  }
+  return options;
 }
 
 List<String> _stringList(dynamic value) {

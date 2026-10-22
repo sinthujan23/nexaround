@@ -263,6 +263,58 @@ void main() {
     expect(create.auth, 'Bearer partner-1');
   });
 
+  testWidgets('a package can be sold at two prices', (tester) async {
+    final api = VendorPortalApi('v1');
+    await tester.pumpWidget(MaterialApp(home: PackageEditorPage(api: api)));
+    await tester.pump();
+    await tester.enterText(find.widgetWithText(TextFormField, 'Title *'), 'Pigeon Island');
+
+    // The form is a lazy list: scroll a field into being, then to the middle
+    // of the screen, clear of the Create bar, before using it.
+    Future<void> reach(Finder f) async {
+      await tester.scrollUntilVisible(f, 150, scrollable: find.byType(Scrollable).first);
+      await tester.pump();
+      await Scrollable.ensureVisible(tester.element(f.first), alignment: 0.5);
+      await tester.pump();
+    }
+
+    Future<void> tap(Finder f) async {
+      await reach(f);
+      await tester.tap(f);
+      await tester.pump();
+    }
+
+    Future<void> type(Finder f, String text) async {
+      await reach(f);
+      await tester.enterText(f, text);
+    }
+
+    final price = find.widgetWithText(TextFormField, 'Price (LKR)');
+    await type(price, '30000');
+    await tap(find.text('Add price option'));
+    await reach(find.text('Option 2'));
+    await tester.enterText(price.at(1), '8000');
+    await tester.enterText(find.widgetWithText(TextFormField, 'Min people').at(1), '3');
+    // A third, then removed again: the second keeps what was typed in it.
+    await tap(find.text('Add price option'));
+    await reach(find.text('Option 3'));
+    await tester.tap(find.text('Remove').last);
+    await tester.pump();
+    expect(find.text('Option 3'), findsNothing);
+    expect(find.text('8000'), findsOneWidget);
+
+    await tester.tap(find.text('Create package'), warnIfMissed: false);
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    final create = server.requests.singleWhere((r) => r.path == '/packages' && r.method == 'POST');
+    final options = (Map<String, dynamic>.from(create.body as Map)['price_options'] as List)
+        .cast<Map<String, dynamic>>();
+    expect(options.map((o) => o['amount']), [30000, 8000]);
+    expect(options[1]['min_people'], 3);
+    expect(options.every((o) => !o.containsKey('usd')), isTrue);
+  });
+
   group('the forms', () {
     test('blocked days join into ranges and split back', () {
       final days = {

@@ -1,10 +1,13 @@
 // What the package list and the package page share: the blank form and how a
 // form becomes the payload the API takes.
 
+import { optionsToRows, rowsToOptions } from '../components/PriceOptionsEditor';
+
 export const EMPTY_PACKAGE = {
   title: '', summary: '', description: '', category: 'boat', tags: [],
   photo_urls: [], unavailable_ranges: [], price_amount: '', price_currency: 'LKR',
-  price_basis: 'per_person', duration_minutes: '', max_participants: '',
+  price_basis: 'per_person', price_rows: optionsToRows([]),
+  duration_minutes: '', max_participants: '',
   booking_window_days: '',
   inclusions: [], languages: [], uses_vendor_location: true,
   meeting_point_address: '', is_active: true, latitude: null, longitude: null,
@@ -14,8 +17,10 @@ const blankToNull = (v) => (v === '' || v == null ? null : Number(v));
 
 // A package that meets at the business has no point of its own; the server
 // copies the vendor's.
-export const toPayload = (form) => ({
+export const toPayload = ({ price_rows: priceRows, ...form }) => ({
   ...form,
+  // The server keeps the dollar prices NexAround set, by option.
+  price_options: rowsToOptions(priceRows, false),
   price_amount: blankToNull(form.price_amount),
   duration_minutes: blankToNull(form.duration_minutes),
   max_participants: blankToNull(form.max_participants),
@@ -28,6 +33,8 @@ export const toPayload = (form) => ({
 export const fromPackage = (pkg) => ({
   ...EMPTY_PACKAGE, ...pkg,
   price_amount: pkg.price_amount ?? '',
+  // No price shows no rows ("On request") rather than a blank one.
+  price_rows: pkg.price_options?.length ? optionsToRows(pkg.price_options) : [],
   duration_minutes: pkg.duration_minutes ?? '',
   max_participants: pkg.max_participants ?? '',
   booking_window_days: pkg.booking_window_days ?? '',

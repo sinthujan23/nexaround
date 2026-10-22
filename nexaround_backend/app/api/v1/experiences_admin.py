@@ -59,7 +59,9 @@ from app.services.experience_service import (
     apply_package_derived_fields, apply_vendor_cascade,
 )
 from app.services.settings_service import SettingsService
-from app.services.experience_format import package_field_value, vendor_place_problem
+from app.services.experience_format import (
+    apply_price_options, package_field_value, price_options_for_save, vendor_place_problem,
+)
 from app.utils.geo_utils import get_lat_lng, point_or_none
 
 router = APIRouter(prefix="/admin/experiences", tags=["Admin Experiences"])
@@ -146,6 +148,7 @@ def _package_response(
         price_currency=package.price_currency or "USD",
         price_usd=float(package.price_usd) if package.price_usd is not None else None,
         price_basis=package.price_basis or "per_person",
+        price_options=package.price_options or [],
         duration_minutes=package.duration_minutes,
         max_participants=package.max_participants,
         booking_window_days=package.booking_window_days,
@@ -326,6 +329,7 @@ async def create_package(
         vendor_id=vendor.id,
         **{key: package_field_value(data, key) for key in _PACKAGE_SCALARS},
     )
+    apply_price_options(package, price_options_for_save(data, None))
     apply_package_derived_fields(package, vendor, data.latitude, data.longitude)
     db.add(package)
     await db.flush()  # the feed line links to the package's id
@@ -352,9 +356,12 @@ async def update_package(
     if not vendor:
         raise HTTPException(status_code=404, detail="Vendor not found")
 
-    before = partner_activity.snapshot(package, _PARTNER_PACKAGE_SCALARS)
+    before = partner_activity.snapshot(
+        package, _PARTNER_PACKAGE_SCALARS + ("vendor_price_options",)
+    )
     for key in _PACKAGE_SCALARS:
         setattr(package, key, package_field_value(data, key))
+    apply_price_options(package, price_options_for_save(data, package.price_options))
     apply_package_derived_fields(package, vendor, data.latitude, data.longitude)
     activity = partner_activity.package_updated(
         db, package, before, actor=partner_activity.ADMIN,

@@ -20,11 +20,13 @@ from app.schemas.experience import (
     ExperiencePackageDetail,
     ExperienceVendorPublic,
     MyReviewOut,
+    PriceOptionOut,
     ReviewPublic,
     ReviewSummary,
 )
 from app.services.experience_format import (
     DEFAULT_BOOKING_WINDOW_DAYS, format_duration, format_price, is_published,
+    option_bounds, option_label,
     resolve_package_point, strip_markdown,
 )
 from app.services.ride_apps_service import COUNTRY_NAMES
@@ -102,6 +104,17 @@ def review_summary_out(summary: dict) -> ReviewSummary:
     )
 
 
+def _option_out(option: dict, currency: str, package_max: Optional[int]) -> PriceOptionOut:
+    least, most = option_bounds(option, package_max)
+    return PriceOptionOut(
+        id=option["id"],
+        label=option_label(option, currency, package_max),
+        basis=option.get("basis") or "per_person",
+        min_people=least,
+        max_people=most,
+    )
+
+
 def package_to_card(
     package: ExperiencePackage,
     distance_m: Optional[float] = None,
@@ -119,6 +132,8 @@ def package_to_card(
     country_code = ((vendor.country_code if vendor else None) or "").strip().upper()
     if country_code == "94":  # legacy rows hold the dial code, as in the country list
         country_code = "LK"
+    currency = package.price_currency or "USD"
+    options = package.price_options or []
 
     return ExperiencePackageCard(
         id=package.id,
@@ -137,14 +152,15 @@ def package_to_card(
         price_currency=package.price_currency or "USD",
         price_basis=package.price_basis or "per_person",
         # Rendered server-side so the app, the admin panel and any future
-        # surface cannot disagree about how a price reads.
-        price_label=format_price(
-            amount,
-            package.price_currency or "USD",
-            package.price_basis or "per_person",
-            package.max_participants,
-            usd,
+        # surface cannot disagree about how a price reads. The first option.
+        price_label=(
+            option_label(options[0], currency, package.max_participants)
+            if options else format_price(
+                amount, currency, package.price_basis or "per_person",
+                package.max_participants, usd,
+            )
         ),
+        price_options=[_option_out(o, currency, package.max_participants) for o in options],
         max_participants=package.max_participants,
         duration_minutes=package.duration_minutes,
         duration_label=format_duration(package.duration_minutes),

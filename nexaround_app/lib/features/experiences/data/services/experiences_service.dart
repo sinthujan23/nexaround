@@ -321,6 +321,7 @@ class ExperiencesService {
     int? partySize,
     String? pickupLocation,
     String? message,
+    String? priceOptionId,
   }) async {
     try {
       await ApiClient.instance.post(
@@ -339,6 +340,7 @@ class ExperiencesService {
           if (pickupLocation != null && pickupLocation.isNotEmpty)
             'pickup_location': pickupLocation,
           if (message != null && message.isNotEmpty) 'message': message,
+          if (priceOptionId != null) 'price_option_id': priceOptionId,
         },
       );
       CacheService.markExperienceTermsAccepted(acceptedTermsVersion);

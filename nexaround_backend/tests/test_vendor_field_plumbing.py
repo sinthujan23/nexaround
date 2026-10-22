@@ -24,9 +24,10 @@ from app.schemas.experience import (
 from app.utils.geo_utils import create_point
 
 # Written into the model by hand because they are not plain columns: the two
-# coordinates become a PostGIS point.
+# coordinates become a PostGIS point, and the price options go through
+# experience_format.apply_price_options.
 _VENDOR_HANDLED_SEPARATELY = {"latitude", "longitude"}
-_PACKAGE_HANDLED_SEPARATELY = {"latitude", "longitude", "vendor_id"}
+_PACKAGE_HANDLED_SEPARATELY = {"latitude", "longitude", "vendor_id", "price_options"}
 
 
 def test_every_vendor_field_is_written_to_the_row():

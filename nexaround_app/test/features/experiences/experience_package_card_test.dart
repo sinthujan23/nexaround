@@ -99,4 +99,42 @@ void main() {
     expect(tester.getTopRight(country).dx,
         lessThanOrEqualTo(tester.getTopRight(find.byType(ExperiencePackageCard)).dx));
   });
+
+  testWidgets('a package with two prices says so under the first, inside the card',
+      (tester) async {
+    const twoPrices = ExperiencePackageEntity(
+      id: '2',
+      title: 'Pigeon Island Snorkeling and Coral Reef Discovery Adventure',
+      vendorId: 'v',
+      vendorName: 'Blue Ocean Adventures',
+      priceAmount: 30000,
+      priceCurrency: 'LKR',
+      priceBasis: 'per_group',
+      priceLabel: r'LKR 30,000 ($90) / group (max 7)',
+      priceOptions: [
+        ExperiencePriceOption(id: 'a', label: r'LKR 30,000 ($90) / group (max 7)',
+            basis: 'per_group', maxPeople: 7),
+        ExperiencePriceOption(id: 'b', label: r'LKR 8,000 ($24) / person (min 3)',
+            minPeople: 3, maxPeople: 7),
+      ],
+      durationMinutes: 150,
+      durationLabel: '2h 30m',
+      latitude: 0,
+      longitude: 0,
+      regionLabel: 'Trincomalee · Nilaveli',
+      countryCode: 'LK',
+      countryName: 'Sri Lanka',
+    );
+    await pumpCard(tester, twoPrices, showCountry: true, width: 360);
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('LKR 30,000'), findsOneWidget);
+    expect(find.text(r'($90) per group (max 7)'), findsOneWidget);
+    expect(find.text('2 price options'), findsOneWidget);
+  });
+
+  testWidgets('a package with one price shows no options line', (tester) async {
+    await pumpCard(tester, package(), showCountry: false);
+    expect(find.textContaining('price options'), findsNothing);
+  });
 }

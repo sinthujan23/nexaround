@@ -13,6 +13,7 @@ import AvailabilityCalendar from '../components/AvailabilityCalendar';
 import DescriptionEditor from '../components/DescriptionEditor';
 import { COUNTRIES, getCountryByCode, normalizeCountryCode } from '../constants/countries';
 import { CURRENCY_OPTIONS } from '../constants/currencies';
+import PriceOptionsEditor, { optionsToRows, rowsToOptions } from '../components/PriceOptionsEditor';
 
 const CATEGORIES = [
   { value: 'boat', label: 'Boat ride' },
@@ -63,7 +64,8 @@ const emptyVendor = {
 const emptyPackage = {
   title: '', summary: '', description: '', category: 'boat', tags: [],
   photo_urls: [], video_urls: [], unavailable_ranges: [], price_amount: '', price_currency: 'LKR',
-  price_usd: '', price_basis: 'per_person', duration_minutes: '', max_participants: '',
+  price_usd: '', price_basis: 'per_person', price_rows: optionsToRows([]),
+  duration_minutes: '', max_participants: '',
   booking_window_days: '',
   inclusions: [], languages: [], uses_vendor_location: true,
   latitude: null, longitude: null, meeting_point_address: '', region_label: '',
@@ -77,14 +79,16 @@ const arrayToLines = (arr) => (arr || []).join('\n');
 const categoryLabel = (value) => CATEGORIES.find((c) => c.value === value)?.label || value || 'Other';
 const basisLabel = (value) => PRICE_BASES.find((b) => b.value === value)?.label || 'Per person';
 
-// The vendor's price, then the typed dollar price in brackets, as the app shows it.
+// The main price, then the typed dollar price in brackets, as the app shows it,
+// and how many other prices there are.
 const formatPrice = (pkg) => {
   if (pkg.price_amount == null) return 'On request';
   const currency = pkg.price_currency || 'LKR';
   const price = `${currency} ${Number(pkg.price_amount).toLocaleString()}`;
-  return pkg.price_usd != null && currency !== 'USD'
+  const more = (pkg.price_options?.length || 1) - 1;
+  return (pkg.price_usd != null && currency !== 'USD'
     ? `${price} ($${Number(pkg.price_usd).toLocaleString()})`
-    : price;
+    : price) + (more > 0 ? ` +${more} more` : '');
 };
 
 const formatDuration = (minutes) => {
@@ -424,6 +428,8 @@ export default function Experiences() {
       unavailable_ranges: pkg.unavailable_ranges || [],
       price_amount: pkg.price_amount ?? '',
       price_usd: pkg.price_usd ?? '',
+      // A package with no price shows no rows ("On request") rather than a blank one.
+      price_rows: pkg.price_options?.length ? optionsToRows(pkg.price_options) : [],
       duration_minutes: pkg.duration_minutes ?? '',
       max_participants: pkg.max_participants ?? '',
       booking_window_days: pkg.booking_window_days ?? '',
@@ -447,8 +453,11 @@ export default function Experiences() {
       notify('Pick the meeting point on the map, or use the vendor address.', 'error');
       return;
     }
+    const { price_rows: priceRows, ...form } = packageForm;
     const payload = {
-      ...packageForm,
+      ...form,
+      // The server stores these and mirrors the first into the single fields.
+      price_options: rowsToOptions(priceRows, true),
       price_amount: packageForm.price_amount === '' ? null : Number(packageForm.price_amount),
       price_usd: packageForm.price_usd === '' ? null : Number(packageForm.price_usd),
       duration_minutes: packageForm.duration_minutes === '' ? null : Number(packageForm.duration_minutes),
@@ -1377,18 +1386,12 @@ export default function Experiences() {
           <div className="xp-section">
             <div className="xp-section-title">Price & capacity</div>
             <div className="xp-section-hint">
-              Leave the price empty to show “On request”. Both prices are shown as typed, never converted:
-              “QAR 499 ($137) / group”. Leave Price in USD empty to show no dollars.
+              The main price shows on the card; travellers choose between all of them when they ask to book.
+              Both prices are shown as typed, never converted: “QAR 499 ($137) / group”. Leave Price in USD
+              empty to show no dollars, and remove every price to show “On request”. A blank Min people is 1,
+              a blank Max people is Max participants.
             </div>
             <div className="form-grid-2">
-              <div className="form-group">
-                <label className="form-label">Vendor price</label>
-                <input
-                  type="number" step="0.01" min="0" className="form-input" placeholder="7500"
-                  value={packageForm.price_amount}
-                  onChange={(e) => patchPackage({ price_amount: e.target.value })}
-                />
-              </div>
               <div className="form-group">
                 <label className="form-label">Currency</label>
                 <select
@@ -1403,27 +1406,12 @@ export default function Experiences() {
                 </select>
               </div>
             </div>
-            <div className="form-grid-2">
-              <div className="form-group">
-                <label className="form-label">Price in USD</label>
-                <input
-                  type="number" step="0.01" min="0" className="form-input" placeholder="137"
-                  value={packageForm.price_usd}
-                  disabled={packageForm.price_currency === 'USD'}
-                  title={packageForm.price_currency === 'USD' ? 'The vendor price is in dollars already' : undefined}
-                  onChange={(e) => patchPackage({ price_usd: e.target.value })}
-                />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Basis</label>
-                <select
-                  className="form-select" value={packageForm.price_basis}
-                  onChange={(e) => patchPackage({ price_basis: e.target.value })}
-                >
-                  {PRICE_BASES.map((b) => <option key={b.value} value={b.value}>{b.label}</option>)}
-                </select>
-              </div>
-            </div>
+            <PriceOptionsEditor
+              rows={packageForm.price_rows} withUsd
+              currency={packageForm.price_currency || 'LKR'}
+              packageMax={packageForm.max_participants === '' ? null : Number(packageForm.max_participants)}
+              onChange={(rows) => patchPackage({ price_rows: rows })}
+            />
             <div className="form-grid-3">
               <div className="form-group">
                 <label className="form-label">Duration (minutes)</label>

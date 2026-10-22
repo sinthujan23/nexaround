@@ -8,6 +8,7 @@ than inline in a router.
 """
 
 import re
+import uuid
 from datetime import date, timedelta
 from typing import Optional
 
@@ -114,14 +115,16 @@ def format_price(
     basis: str = "per_person",
     max_participants: Optional[int] = None,
     usd: Optional[float] = None,
+    min_people: Optional[int] = None,
 ) -> str:
     """Human price for a card. `None` means the vendor quotes on request.
 
     A group price carries the group size from the package's "Max
     participants" field: "QAR 499 / group (max 4)". The admin's typed dollar
     price follows in brackets: "QAR 499 ($137) / group (max 4)", none when the
-    price is in dollars already. Nothing is typed into the label itself;
-    Price, Currency, Price in USD, Basis and Max participants make it.
+    price is in dollars already. A price option's minimum shows when it is
+    more than one: "LKR 8,000 ($24) / person (min 3)". Nothing is typed into
+    the label itself; the price fields make it.
     """
     if amount is None or basis == "on_request":
         return "Price on request"
@@ -139,15 +142,150 @@ def format_price(
     if usd is not None and code != "USD":
         price = f"{price} (${rendered(usd)})"
 
+    least = f"min {min_people}" if min_people and min_people > 1 else None
     if basis == "per_person":
-        return f"{price} / person"
+        return f"{price} / person" + (f" ({least})" if least else "")
     if basis == "per_group":
-        if max_participants:
-            return f"{price} / group (max {max_participants})"
-        return f"{price} / group"
+        size = ", ".join(
+            p for p in (least, f"max {max_participants}" if max_participants else None) if p
+        )
+        return f"{price} / group" + (f" ({size})" if size else "")
     if basis == "from":
-        return f"From {price}"
+        return f"From {price}" + (f" ({least})" if least else "")
     return price
+
+
+# --- Price options -----------------------------------------------------------
+#
+# A package may be sold at several prices ("LKR 30,000 per trip, max 7" or
+# "LKR 8,000 per person, min 3"). They live in `price_options`, first one first;
+# the first is mirrored into price_amount / price_usd / price_basis, which
+# older apps, share text and emails read.
+
+PRICE_BASES = ("per_person", "per_group", "from")
+MAX_PRICE_OPTIONS = 6
+
+
+def _new_option_id() -> str:
+    return uuid.uuid4().hex[:8]
+
+
+def _num(value) -> Optional[float]:
+    return None if value is None else float(value)
+
+
+def option_bounds(option: dict, package_max: Optional[int]) -> tuple[int, Optional[int]]:
+    """Guests an option allows: a blank min is 1, a blank max the package's."""
+    return int(option.get("min_people") or 1), option.get("max_people") or package_max
+
+
+def option_label(option: dict, currency: str, package_max: Optional[int]) -> str:
+    """ "LKR 30,000 ($90) / group (max 7)", "LKR 8,000 ($24) / person (min 3)"."""
+    least, most = option_bounds(option, package_max)
+    return format_price(
+        option.get("amount"), currency, option.get("basis") or "per_person",
+        most, option.get("usd"), least,
+    )
+
+
+def normalize_price_options(
+    incoming: list[dict], existing: Optional[list[dict]], *, keep_usd: bool = False,
+) -> list[dict]:
+    """Clean options from a form, keeping ids the package already has.
+
+    An unknown or missing id gets a new one, so a request can name the option
+    it was made for. With `keep_usd` (a vendor's save, who may not set dollars)
+    each option keeps the dollar price it had, by id; a new one has none.
+    """
+    old = {o.get("id"): o for o in existing or [] if o.get("id")}
+    out, seen = [], set()
+    for raw in incoming:
+        option_id = raw.get("id")
+        if option_id not in old or option_id in seen:
+            option_id = _new_option_id()
+        seen.add(option_id)
+        usd = old.get(option_id, {}).get("usd") if keep_usd else raw.get("usd")
+        out.append({
+            "id": option_id,
+            "amount": _num(raw.get("amount")),
+            "usd": _num(usd),
+            "basis": raw.get("basis") or "per_person",
+            "min_people": raw.get("min_people") or None,
+            "max_people": raw.get("max_people") or None,
+        })
+    return out
+
+
+def legacy_price_options(
+    existing: Optional[list[dict]], amount, usd, basis,
+) -> list[dict]:
+    """Options for a save that sent only the single price fields (an older
+    form): the first option becomes that price and the others stay."""
+    if amount is None or basis == "on_request":
+        return []
+    rest = list(existing or [])
+    first = dict(rest.pop(0)) if rest else {"id": _new_option_id(), "min_people": None, "max_people": None}
+    first.update(amount=_num(amount), usd=_num(usd), basis=basis or "per_person")
+    return [first, *rest]
+
+
+def price_options_for_save(data, existing: Optional[list[dict]], *, vendor: bool = False) -> list[dict]:
+    """The options a package save stores. `data` is the validated payload.
+
+    A vendor never sets dollars: their options keep the ones the admin typed.
+    """
+    if data.price_options is None:
+        usd = (existing or [{}])[0].get("usd") if vendor else getattr(data, "price_usd", None)
+        return legacy_price_options(existing, data.price_amount, usd, data.price_basis)
+    return normalize_price_options(
+        [o.model_dump() for o in data.price_options], existing, keep_usd=vendor,
+    )
+
+
+def apply_price_options(package, options: list[dict]) -> None:
+    """Store the options and mirror the first into the single price fields."""
+    package.price_options = options
+    if options:
+        first = options[0]
+        package.price_amount = first["amount"]
+        package.price_usd = first["usd"]
+        package.price_basis = first["basis"]
+    else:
+        package.price_amount = None
+        package.price_usd = None
+
+
+def pick_price_option(
+    options: Optional[list[dict]], option_id: Optional[str], party_size: Optional[int],
+    currency: str, package_max: Optional[int],
+) -> tuple[Optional[dict], Optional[str]]:
+    """The option a request is for, as a snapshot, or the reason it can't be.
+
+    No id means the first option: an app from before price options showed
+    only that one. A price-on-request package has no option to pick.
+    """
+    if not options:
+        return None, None
+    if option_id:
+        option = next((o for o in options if o.get("id") == option_id), None)
+        if option is None:
+            return None, (
+                "The prices for this experience have changed. "
+                "Please go back and choose a price again."
+            )
+    else:
+        option = options[0]
+    least, most = option_bounds(option, package_max)
+    if party_size is not None and party_size < least:
+        return None, f"This price is for at least {least} guests."
+    if party_size is not None and most and party_size > most:
+        return None, f"This price is for up to {most} guests."
+    snapshot = {
+        **option,
+        "currency": currency,
+        "label": option_label(option, currency, package_max),
+    }
+    return snapshot, None
 
 
 def format_duration(minutes: Optional[int]) -> str:

@@ -59,7 +59,13 @@ class _ExperienceRequestPageState extends State<ExperienceRequestPage> {
   int _pickupQuery = 0;
 
   DateTime? _preferredDate;
-  int _partySize = 2;
+  // The price asked about: the first until the traveller picks another. Null
+  // for "Price on request".
+  late ExperiencePriceOption? _option =
+      widget.package.priceOptions.isEmpty ? null : widget.package.priceOptions.first;
+  late int _partySize;
+  // What the guests start at, so closing asks only after a change.
+  late final int _initialPartySize;
   bool _sending = false;
   bool _sent = false;
   String? _error;
@@ -81,6 +87,8 @@ class _ExperienceRequestPageState extends State<ExperienceRequestPage> {
   @override
   void initState() {
     super.initState();
+    _partySize = _fitGuests(2);
+    _initialPartySize = _partySize;
     _loadTerms();
     try {
       final authState = context.read<AuthBloc>().state;
@@ -103,13 +111,37 @@ class _ExperienceRequestPageState extends State<ExperienceRequestPage> {
     _initialContact = _contact;
   }
 
+  // The guests the chosen price allows; the server checks the same.
+  int get _minGuests => _option?.minPeople ?? 1;
+  int get _maxGuests {
+    final most = _option?.maxPeople ?? 100;
+    return most < _minGuests ? _minGuests : (most > 100 ? 100 : most);
+  }
+
+  int _fitGuests(int n) => n.clamp(_minGuests, _maxGuests);
+
+  void _pickOption(ExperiencePriceOption option) => setState(() {
+        _option = option;
+        _partySize = _fitGuests(_partySize);
+      });
+
+  String get _guestsHint {
+    final least = _minGuests;
+    final most = _option?.maxPeople;
+    if (least > 1 && most != null) return '$least–$most guests for this price';
+    if (least > 1) return 'At least $least guests for this price';
+    if (most != null) return 'Up to $most guests';
+    return 'Everyone in your group';
+  }
+
   String get _contact =>
       '${_nameController.text}|${_phoneController.text}|${_emailController.text}';
 
   bool get _hasInput =>
       _contact != _initialContact ||
       _preferredDate != null ||
-      _partySize != 2 ||
+      _partySize != _initialPartySize ||
+      _option != (widget.package.priceOptions.isEmpty ? null : widget.package.priceOptions.first) ||
       _pickupController.text.trim().isNotEmpty ||
       _messageController.text.trim().isNotEmpty;
 
@@ -253,6 +285,7 @@ class _ExperienceRequestPageState extends State<ExperienceRequestPage> {
       partySize: _partySize,
       pickupLocation: _pickupController.text.trim(),
       message: _messageController.text.trim(),
+      priceOptionId: _option?.id,
     );
 
     if (!mounted) return;
@@ -419,10 +452,15 @@ class _ExperienceRequestPageState extends State<ExperienceRequestPage> {
           _field(_emailController, 'Email (optional)', TextInputType.emailAddress),
           const SizedBox(height: 6),
           const Text(
-            'The provider uses these to contact you about this request.',
+            'NexAround uses these to contact you about this request.',
             style: TextStyle(fontSize: 12, color: AppColors.textTertiary),
           ),
         ]),
+
+        if (widget.package.priceOptions.length > 1)
+          _section('Price', [
+            for (final option in widget.package.priceOptions) _buildOption(option),
+          ]),
 
         _section('Your trip', [
           _buildGuests(),
@@ -554,10 +592,10 @@ class _ExperienceRequestPageState extends State<ExperienceRequestPage> {
                   style: const TextStyle(
                       fontSize: 12.5, color: AppColors.textSecondary),
                 ),
-                if (factsWith(package.priceLabel).isNotEmpty) ...[
+                if (factsWith(_option?.label ?? package.priceLabel).isNotEmpty) ...[
                   const SizedBox(height: 2),
                   Text(
-                    factsWith(package.priceLabel),
+                    factsWith(_option?.label ?? package.priceLabel),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
@@ -600,23 +638,23 @@ class _ExperienceRequestPageState extends State<ExperienceRequestPage> {
         children: [
           const Icon(Icons.group_rounded, size: 20, color: AppColors.brandGreen),
           const SizedBox(width: 12),
-          const Expanded(
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Guests',
+                const Text('Guests',
                     style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600)),
-                Text('Everyone in your group',
-                    style: TextStyle(fontSize: 12, color: AppColors.textTertiary)),
+                Text(_guestsHint,
+                    style: const TextStyle(fontSize: 12, color: AppColors.textTertiary)),
               ],
             ),
           ),
           _stepper(
             Icons.remove_rounded,
             () => setState(() {
-              if (_partySize > 1) _partySize--;
+              if (_partySize > _minGuests) _partySize--;
             }),
-            enabled: _partySize > 1,
+            enabled: _partySize > _minGuests,
           ),
           SizedBox(
             width: 40,
@@ -633,11 +671,56 @@ class _ExperienceRequestPageState extends State<ExperienceRequestPage> {
           _stepper(
             Icons.add_rounded,
             () => setState(() {
-              if (_partySize < 100) _partySize++;
+              if (_partySize < _maxGuests) _partySize++;
             }),
-            enabled: _partySize < 100,
+            enabled: _partySize < _maxGuests,
           ),
         ],
+      ),
+    );
+  }
+
+  /// One price to choose, like a radio button.
+  Widget _buildOption(ExperiencePriceOption option) {
+    final selected = option.id == _option?.id;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: InkWell(
+        onTap: () => _pickOption(option),
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: selected ? AppColors.brandGreenLight : null,
+            border: Border.all(
+              color: selected ? AppColors.brandGreen : AppColors.border,
+              width: selected ? 1.5 : 1,
+            ),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                selected
+                    ? Icons.radio_button_checked_rounded
+                    : Icons.radio_button_unchecked_rounded,
+                size: 20,
+                color: selected ? AppColors.brandGreen : AppColors.textTertiary,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  option.label,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

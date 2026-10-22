@@ -12,6 +12,26 @@ class ExperienceDateRange {
   }
 }
 
+/// One price a package is sold at, labelled by the server like
+/// [ExperiencePackageEntity.priceLabel]: "LKR 8,000 (\$24) / person (min 3)".
+/// The guests it allows come filled in: a blank min is 1, a blank max the
+/// package's Max participants (null when that is blank too).
+class ExperiencePriceOption {
+  final String id;
+  final String label;
+  final String basis;
+  final int minPeople;
+  final int? maxPeople;
+
+  const ExperiencePriceOption({
+    required this.id,
+    required this.label,
+    this.basis = 'per_person',
+    this.minPeople = 1,
+    this.maxPeople,
+  });
+}
+
 /// A vendor agency selling experiences: boat rides, guided tours, water sports.
 ///
 /// Note there is no email field. The backend deliberately never serialises the
@@ -83,8 +103,12 @@ class ExperiencePackageEntity {
   final String priceBasis;
 
   /// Rendered server-side, so the app, the admin panel and any future surface
-  /// cannot disagree about how a price reads.
+  /// cannot disagree about how a price reads. The first of [priceOptions].
   final String priceLabel;
+
+  /// Every price, first one first; the traveller picks one when they ask to
+  /// book. Empty for "Price on request" and from a server before options.
+  final List<ExperiencePriceOption> priceOptions;
   final int? durationMinutes;
   final String durationLabel;
   final double latitude;
@@ -146,6 +170,7 @@ class ExperiencePackageEntity {
     this.priceCurrency = 'USD',
     this.priceBasis = 'per_person',
     this.priceLabel = '',
+    this.priceOptions = const [],
     this.durationMinutes,
     this.durationLabel = '',
     required this.latitude,

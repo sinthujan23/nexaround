@@ -140,6 +140,21 @@ class ExperiencePackage(Base):
     price_usd: Mapped[float] = mapped_column(Numeric(12, 2), nullable=True)
     # per_person | per_group | from
     price_basis: Mapped[str] = mapped_column(String(20), default="per_person")
+    # Every price the package is sold at, first one first, in `price_currency`:
+    # [{"id": "3f9a1c2e", "amount": 30000, "usd": 90, "basis": "per_group",
+    #   "min_people": null, "max_people": 7}]. A blank min is 1 and a blank
+    # max is `max_participants`. The first option is mirrored into the three
+    # fields above, which older apps, share text and emails read. Empty means
+    # "Price on request". See experience_format.apply_price_options.
+    price_options: Mapped[list] = mapped_column(
+        JSONB, default=list, server_default="[]"
+    )
+
+    @property
+    def vendor_price_options(self) -> list:
+        """The options as a vendor sees them: no dollar price. For deciding
+        whether a save changed something the vendor's feed should mention."""
+        return [{k: v for k, v in o.items() if k != "usd"} for o in self.price_options or []]
 
     duration_minutes: Mapped[int] = mapped_column(Integer, nullable=True)
     max_participants: Mapped[int] = mapped_column(Integer, nullable=True)
@@ -227,6 +242,10 @@ class ExperienceEnquiry(Base):
     # ("Name, address") or whatever they typed. Optional.
     pickup_location: Mapped[str] = mapped_column(String(500), nullable=True)
     message: Mapped[str] = mapped_column(Text, nullable=True)
+    # The price option the traveller chose, copied as it read then (id, label,
+    # amount, usd, basis, currency, min_people, max_people): the package's
+    # prices may change later. NULL for a price-on-request package.
+    price_option: Mapped[dict] = mapped_column(JSONB, nullable=True)
 
     # The Experience Booking Terms version the traveller accepted with this
     # request, and when. NULL on requests from before the terms, or from an
