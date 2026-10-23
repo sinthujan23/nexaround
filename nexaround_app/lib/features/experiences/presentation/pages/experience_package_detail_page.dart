@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/utils/contact_launcher.dart';
@@ -169,8 +170,33 @@ class _ExperiencePackageDetailPageState
     _package = saved ?? widget.package;
     _loading = saved == null;
     _scroll.addListener(_onScroll);
+    if (saved != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _prefetchPhotos());
+    }
     _loadDetail();
   }
+
+  /// Starts every gallery photo downloading now, into the same memory and disk
+  /// cache the gallery reads, so swiping shows each photo at once instead of
+  /// its loading preview, and the next visit needs no download at all.
+  void _prefetchPhotos() {
+    if (!mounted) return;
+    for (final path in _package.galleryUrls.take(_prefetchLimit)) {
+      final url = PlaceImageHelper.resolveUrl(path);
+      if (url == null) continue;
+      precacheImage(
+        CachedNetworkImageProvider(
+          url,
+          headers: PlaceImageHelper.headersFor(url),
+        ),
+        context,
+        // A photo that fails here just loads (or fails) again in the slider.
+        onError: (_, __) {},
+      );
+    }
+  }
+
+  static const int _prefetchLimit = 12;
 
   @override
   void dispose() {
@@ -207,6 +233,7 @@ class _ExperiencePackageDetailPageState
       if (full != null) _package = full;
       _loading = false;
     });
+    if (full != null) _prefetchPhotos();
   }
 
   @override
@@ -321,6 +348,9 @@ class _ExperiencePackageDetailPageState
                                 posterUrl: photos.isEmpty
                                     ? null
                                     : PlaceImageHelper.resolveUrl(photos.first),
+                                posterPreview: photos.isEmpty
+                                    ? null
+                                    : _package.imagePreviews[photos.first],
                               );
                       }
                       final photoIndex = index - videos.length;
@@ -341,6 +371,8 @@ class _ExperiencePackageDetailPageState
                             : ExperienceFittedPhoto(
                                 url: url,
                                 headers: PlaceImageHelper.headersFor(url),
+                                // Keyed by the photo's path as the API sent it.
+                                preview: _package.imagePreviews[photos[photoIndex]],
                               ),
                       );
                     },

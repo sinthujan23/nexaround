@@ -163,6 +163,10 @@ class ExperiencePackageDetail(ExperiencePackageCard):
     languages: list[str] = []
     meeting_point_address: Optional[str] = None
     vendor: ExperienceVendorPublic
+    # {photo url: tiny base64 WebP}, drawn blurred in the gallery while each
+    # photo loads (app/services/image_preview.py). Photos without one are
+    # left out.
+    image_previews: dict[str, str] = {}
 
 
 class ExperienceNearbyResponse(BaseModel):

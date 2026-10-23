@@ -43,11 +43,15 @@ class ExperienceVideoSlide extends StatefulWidget {
   /// photo), so the slide is never a black box while the video starts.
   final String? posterUrl;
 
+  /// The poster's blurred stand-in while the poster itself loads.
+  final String? posterPreview;
+
   const ExperienceVideoSlide({
     super.key,
     required this.url,
     required this.active,
     this.posterUrl,
+    this.posterPreview,
   });
 
   @override
@@ -202,6 +206,7 @@ class _ExperienceVideoSlideState extends State<ExperienceVideoSlide>
         : ExperienceFittedPhoto(
             url: widget.posterUrl!,
             headers: PlaceImageHelper.headersFor(widget.posterUrl),
+            preview: widget.posterPreview,
           );
 
     if (_failed) {
@@ -247,15 +252,13 @@ class _ExperienceVideoSlideState extends State<ExperienceVideoSlide>
                 child: poster,
               ),
             ),
-          // Once the video shows: a spinner when playback stalls waiting for
-          // more of the stream, and the play icon only while paused, so a
-          // tap-to-pause is visibly a pause.
+          // Once the video shows, the play icon only while the viewer has
+          // paused it, so a tap-to-pause is visibly a pause. No spinner: a
+          // stall waiting for more of the stream just holds the last frame.
           if (ready != null && _showVideo)
             ValueListenableBuilder<VideoPlayerValue>(
               valueListenable: ready,
-              builder: (_, value, __) => value.isBuffering
-                  ? const Center(child: _SlideSpinner())
-                  : value.isPlaying
+              builder: (_, value, __) => value.isPlaying || !_userPaused
                   ? const SizedBox.shrink()
                   : Center(
                       child: Container(
@@ -293,19 +296,6 @@ class _ExperienceVideoSlideState extends State<ExperienceVideoSlide>
             ),
         ],
       ),
-    );
-  }
-}
-
-class _SlideSpinner extends StatelessWidget {
-  const _SlideSpinner();
-
-  @override
-  Widget build(BuildContext context) {
-    return const SizedBox(
-      width: 28,
-      height: 28,
-      child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
     );
   }
 }

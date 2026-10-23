@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
@@ -100,8 +101,14 @@ class _PhotoEditorState extends State<PhotoEditor> {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          Image.network(mediaUrl(url), fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => Container(color: AppColors.surfaceVariant)),
+          // Cached on the device, like every other photo in the app.
+          CachedNetworkImage(
+            imageUrl: mediaUrl(url),
+            fit: BoxFit.cover,
+            memCacheWidth: 400,
+            placeholder: (_, _) => Container(color: AppColors.surface),
+            errorWidget: (_, _, _) => Container(color: AppColors.surfaceVariant),
+          ),
           if (i == 0)
             Positioned(
               left: 6,

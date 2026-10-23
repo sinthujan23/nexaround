@@ -83,6 +83,7 @@ class ExperiencePackageModel extends ExperiencePackageEntity {
     super.ratingCount,
     super.description,
     super.descriptionMd,
+    super.imagePreviews,
     super.photoUrls,
     super.videoUrls,
     super.unavailableRanges,
@@ -128,6 +129,7 @@ class ExperiencePackageModel extends ExperiencePackageEntity {
       description: json['description'] as String?,
       descriptionMd: json['description_md'] as String?,
       photoUrls: _stringList(json['photo_urls']),
+      imagePreviews: _stringMap(json['image_previews']),
       videoUrls: _stringList(json['video_urls']),
       unavailableRanges: _dateRanges(json['unavailable_ranges']),
       maxParticipants: (json['max_participants'] as num?)?.toInt(),
@@ -186,4 +188,15 @@ List<String> _stringList(dynamic value) {
     return value.map((e) => e.toString()).toList();
   }
   return const [];
+}
+
+/// `{"url": "preview"}` from the API; anything that is not a string pair is
+/// skipped rather than failing the whole package.
+Map<String, String> _stringMap(dynamic value) {
+  if (value is! Map) return const {};
+  final out = <String, String>{};
+  value.forEach((key, v) {
+    if (key is String && v is String && v.isNotEmpty) out[key] = v;
+  });
+  return out;
 }

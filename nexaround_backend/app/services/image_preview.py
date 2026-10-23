@@ -1,4 +1,5 @@
-"""Tiny stand-ins for story photos, shown blurred while the real ones load.
+"""Tiny stand-ins for story and experience photos, shown blurred while the real
+ones load.
 
 Each preview is the photo shrunk to PREVIEW_SIDE px on its long side and saved
 as a low-quality WebP, base64 encoded: about 300 characters, small enough to

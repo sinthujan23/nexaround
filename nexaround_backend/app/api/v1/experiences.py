@@ -43,7 +43,7 @@ from app.services.experience_service import (
     NO_REVIEWS, package_to_card, package_to_detail, review_summary_out,
     review_to_mine, review_to_public, vendor_to_public,
 )
-from app.services import experience_reviews
+from app.services import experience_reviews, image_preview
 from app.services import (
     audit, enquiry_lifecycle, enquiry_notifications, legal_service,
     partner_activity, partner_events,
@@ -242,7 +242,10 @@ async def get_experience_package(
     vendor_rating = (
         await repo.vendor_rating_summaries([package.vendor_id])
     ).get(package.vendor_id, NO_REVIEWS)
-    return package_to_detail(package, distance, rating, vendor_rating)
+    detail = package_to_detail(package, distance, rating, vendor_rating)
+    # The gallery shows each photo's colours, blurred, while it loads.
+    detail.image_previews = await image_preview.previews_for(detail.photo_urls)
+    return detail
 
 
 @router.get("/packages/{package_id}/reviews", response_model=ReviewListResponse)

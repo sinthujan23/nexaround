@@ -194,6 +194,10 @@ class VendorPackage {
   final String category;
   final List<String> tags;
   final List<String> photoUrls;
+
+  /// {photo url: tiny base64 WebP} from the server, drawn blurred while each
+  /// photo loads. Read-only: never sent back in [toJson].
+  final Map<String, String> imagePreviews;
   final List<BlockedRange> unavailableRanges;
   final double? priceAmount;
   final String priceCurrency;
@@ -235,6 +239,7 @@ class VendorPackage {
     this.category = 'boat',
     this.tags = const [],
     this.photoUrls = const [],
+    this.imagePreviews = const {},
     this.unavailableRanges = const [],
     this.priceAmount,
     this.priceCurrency = 'LKR',
@@ -263,6 +268,7 @@ class VendorPackage {
         category: (json['category'] ?? 'other').toString(),
         tags: _strings(json['tags']),
         photoUrls: _strings(json['photo_urls']),
+        imagePreviews: _stringMap(json['image_previews']),
         unavailableRanges: ((json['unavailable_ranges'] as List?) ?? const [])
             .map((r) => BlockedRange.fromJson(Map<String, dynamic>.from(r as Map)))
             .toList(),
@@ -759,4 +765,14 @@ class PartnerAgreement {
       mustAccept: json['required'] == true,
     );
   }
+}
+
+/// `{"url": "preview"}` from the API; anything else is skipped.
+Map<String, String> _stringMap(dynamic value) {
+  if (value is! Map) return const {};
+  final out = <String, String>{};
+  value.forEach((key, v) {
+    if (key is String && v is String && v.isNotEmpty) out[key] = v;
+  });
+  return out;
 }

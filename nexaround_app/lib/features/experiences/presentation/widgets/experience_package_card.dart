@@ -439,10 +439,12 @@ class ExperiencePackageCard extends StatelessWidget {
             small,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
+            // Dark grey and semibold like the card's other small text (the
+            // duration chip); the light grey was hard to read.
             style: const TextStyle(
               fontSize: 9.5,
-              fontWeight: FontWeight.w500,
-              color: AppColors.textTertiary,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textSecondary,
               height: 1.15,
             ),
           ),

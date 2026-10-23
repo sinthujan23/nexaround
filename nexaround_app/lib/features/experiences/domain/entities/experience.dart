@@ -137,6 +137,11 @@ class ExperiencePackageEntity {
   final String? descriptionMd;
   final List<String> photoUrls;
 
+  /// {photo url: tiny base64 WebP} from the server, drawn blurred in the
+  /// gallery while each photo loads. Detail-only; photos without one are left
+  /// out, and an older server sends none.
+  final Map<String, String> imagePreviews;
+
   /// Uploaded clips, as API paths (like photos). Detail-only.
   final List<String> videoUrls;
 
@@ -185,6 +190,7 @@ class ExperiencePackageEntity {
     this.description,
     this.descriptionMd,
     this.photoUrls = const [],
+    this.imagePreviews = const {},
     this.videoUrls = const [],
     this.unavailableRanges = const [],
     this.maxParticipants,

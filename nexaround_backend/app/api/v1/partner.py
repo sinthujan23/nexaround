@@ -53,7 +53,7 @@ from app.services import (
     partner_events, vendor_review,
 )
 from app.services.email_service import send_vendor_invite_email
-from app.services import experience_reviews
+from app.services import experience_reviews, image_preview
 from app.services.experience_format import package_field_value, vendor_option_label
 from app.services.experience_upload import save_experience_images
 from app.services.settings_service import SettingsService
@@ -747,7 +747,12 @@ async def list_partner_packages(
     principal: VendorPrincipal = Depends(get_current_vendor),
 ):
     rows = await ExperienceRepository(db).list_packages_for_vendor(principal.vendor.id)
-    return PartnerPackageListResponse(packages=[_package_out(p) for p in rows])
+    packages = [_package_out(p) for p in rows]
+    # One lookup for every photo on the page; each package keeps its own.
+    previews = await image_preview.previews_for(u for p in packages for u in p.photo_urls)
+    for p in packages:
+        p.image_previews = {u: previews[u] for u in p.photo_urls if u in previews}
+    return PartnerPackageListResponse(packages=packages)
 
 
 @router.post(
@@ -799,7 +804,9 @@ async def get_partner_package(
         # 404, not 403: a 403 would confirm the id exists and belongs to
         # someone else, which is an enumeration oracle over the marketplace.
         raise HTTPException(status_code=404, detail="Package not found")
-    return _package_out(package)
+    out = _package_out(package)
+    out.image_previews = await image_preview.previews_for(out.photo_urls)
+    return out
 
 
 @router.put("/packages/{package_id}", response_model=PartnerPackageResponse)

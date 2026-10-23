@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/app/theme/app_dimensions.dart';
@@ -6,6 +7,7 @@ import 'package:nexaround_app/core/services/currency_service.dart';
 import 'package:nexaround_app/core/widgets/glass_card.dart';
 import 'package:nexaround_app/core/widgets/premium_widgets.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_category.dart';
+import 'package:nexaround_app/features/travel_stories/presentation/widgets/story_photo_preview.dart';
 import 'package:nexaround_app/features/vendor_portal/data/vendor_portal_models.dart';
 
 /// The pieces every vendor screen shares: the option lists the web portal
@@ -633,11 +635,20 @@ class VendorActionBar extends StatelessWidget {
 }
 
 /// A tile with a square photo (or a placeholder), for package lists.
+///
+/// Cached on the device like the traveller side, and while it loads it shows
+/// the photo's blurred preview from [previews] when the server sent one.
 class PackageThumb extends StatelessWidget {
   final List<String> photoUrls;
+  final Map<String, String> previews;
   final double size;
 
-  const PackageThumb(this.photoUrls, {super.key, this.size = 64});
+  const PackageThumb(
+    this.photoUrls, {
+    super.key,
+    this.previews = const {},
+    this.size = 64,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -652,10 +663,17 @@ class PackageThumb extends StatelessWidget {
         height: size,
         child: photoUrls.isEmpty
             ? placeholder
-            : Image.network(
-                mediaUrl(photoUrls.first),
+            : CachedNetworkImage(
+                imageUrl: mediaUrl(photoUrls.first),
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => placeholder,
+                memCacheWidth: (size * 3).round(),
+                placeholder: (_, _) {
+                  final preview = previews[photoUrls.first];
+                  return preview == null
+                      ? Container(color: AppColors.surface)
+                      : StoryPhotoPreview(preview: preview);
+                },
+                errorWidget: (_, _, _) => placeholder,
               ),
       ),
     );

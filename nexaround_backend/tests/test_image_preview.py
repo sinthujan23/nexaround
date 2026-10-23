@@ -78,3 +78,15 @@ def test_previews_for_skips_photos_without_one(tmp_path, monkeypatch):
         "/static/uploads/ok.jpg",
     ]))
     assert list(previews) == ["/static/uploads/ok.jpg"]
+
+
+def test_experience_details_carry_photo_previews():
+    from app.schemas.experience import ExperiencePackageDetail
+
+    assert "image_previews" in ExperiencePackageDetail.model_fields
+
+
+def test_vendor_package_responses_carry_photo_previews():
+    from app.schemas.partner import PartnerPackageResponse
+
+    assert "image_previews" in PartnerPackageResponse.model_fields

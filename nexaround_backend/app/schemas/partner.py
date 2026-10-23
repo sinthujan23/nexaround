@@ -249,6 +249,9 @@ class PartnerPackageResponse(PartnerPackageBase, PartnerReviewState):
     longitude: Optional[float] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+    # {photo url: tiny base64 WebP}, drawn blurred while each photo loads in
+    # the app (app/services/image_preview.py). Read-only, like the app's.
+    image_previews: dict[str, str] = {}
 
 
 class PartnerPackageListResponse(BaseModel):

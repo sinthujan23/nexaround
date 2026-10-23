@@ -43,8 +43,8 @@ class VendorDashboardTab extends StatefulWidget {
 
 class _VendorDashboardTabState extends State<VendorDashboardTab> {
   static const _preview = 3;
-  // Requests answered from Home; the rest are one tap away.
-  static const _requestPreview = 2;
+  // Requests listed on Home, one line each; the rest are one tap away.
+  static const _requestPreview = 3;
   // What the device kept, until the server answers.
   late VendorStats? _stats = widget.api.cachedStats();
   late List<VendorPackage>? _packages = widget.api.cachedPackages();
@@ -106,18 +106,47 @@ class _VendorDashboardTabState extends State<VendorDashboardTab> {
     if (saved == true) widget.changed.value++;
   }
 
-  /// "Requests to answer", with the first few answerable right here.
+  /// One request, with Confirm and "Can't do this date", over Home.
+  Future<void> _openRequest(VendorRequest request) => showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        showDragHandle: true,
+        builder: (ctx) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(vendorGutter, 0, vendorGutter, 12),
+            child: RequestCard(
+              request: request,
+              api: widget.api,
+              margin: EdgeInsets.zero,
+              onAnswered: (_) {
+                Navigator.pop(ctx);
+                widget.onAnswered();
+              },
+            ),
+          ),
+        ),
+      );
+
+  /// "Requests to answer": one compact line each, in one card, like an
+  /// inbox; a tap opens the request to answer it.
   List<Widget> _waitingRequests() {
     final waiting = (_requests?.requests ?? const <VendorRequest>[]).where((r) => r.waiting).toList();
     if (waiting.isEmpty) return const [];
     final count = _requests!.waiting > waiting.length ? _requests!.waiting : waiting.length;
+    final shown = waiting.take(_requestPreview).toList();
     return [
       Row(
         children: [
-          Expanded(
-            child: Text('$count ${count == 1 ? 'request' : 'requests'} to answer',
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, letterSpacing: -0.2)),
+          const Text('Requests to answer',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, letterSpacing: -0.2)),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            decoration: BoxDecoration(color: AppColors.error, borderRadius: BorderRadius.circular(AppRadii.pill)),
+            child: Text('$count',
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white)),
           ),
+          const Spacer(),
           TextButton(
             onPressed: () => widget.onOpenTab(1),
             style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8)),
@@ -126,9 +155,18 @@ class _VendorDashboardTabState extends State<VendorDashboardTab> {
         ],
       ),
       const SizedBox(height: 8),
-      for (final r in waiting.take(_requestPreview))
-        RequestCard(key: ValueKey(r.id), request: r, api: widget.api, onAnswered: (_) => widget.onAnswered()),
-      const SizedBox(height: 8),
+      VendorCard(
+        padding: EdgeInsets.zero,
+        child: Column(
+          children: [
+            for (var i = 0; i < shown.length; i++) ...[
+              if (i > 0) const Divider(height: 1, indent: 72),
+              _RequestLine(request: shown[i], onTap: () => _openRequest(shown[i])),
+            ],
+          ],
+        ),
+      ),
+      const SizedBox(height: 12),
     ];
   }
 
@@ -143,7 +181,6 @@ class _VendorDashboardTabState extends State<VendorDashboardTab> {
         padding: const EdgeInsets.fromLTRB(vendorGutter, 4, vendorGutter, 24),
         children: [
           if (_error != null && _packages != null) const VendorSavedNote(),
-          ..._waitingRequests(),
           _ListingStatus(live: live),
           const SizedBox(height: 12),
           Row(
@@ -188,6 +225,7 @@ class _VendorDashboardTabState extends State<VendorDashboardTab> {
             onPressed: () => _edit(),
           ),
           const SizedBox(height: 24),
+          ..._waitingRequests(),
           Row(
             children: [
               const Expanded(
@@ -226,6 +264,71 @@ class _VendorDashboardTabState extends State<VendorDashboardTab> {
             for (final pkg in _packages!.take(_preview))
               PackageRow(pkg: pkg, onTap: () => _edit(pkg)),
         ],
+      ),
+    );
+  }
+}
+
+/// One request on Home: a date tile, the package, guests and price.
+class _RequestLine extends StatelessWidget {
+  final VendorRequest request;
+  final VoidCallback onTap;
+
+  const _RequestLine({required this.request, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+    final day = request.preferredDate;
+    final facts = [
+      if (request.partySize != null) '${request.partySize} ${request.partySize == 1 ? 'guest' : 'guests'}',
+      request.priceLabel ?? 'Price on request',
+    ].join(' · ');
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+        child: Row(
+          children: [
+            Container(
+              width: 46,
+              height: 48,
+              decoration: BoxDecoration(color: AppColors.brandGreenLight, borderRadius: AppRadii.brSm),
+              child: day == null
+                  ? const Icon(Icons.event_available_outlined, color: AppColors.brandGreen, size: 22)
+                  : Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(months[day.month - 1],
+                            style: const TextStyle(
+                                fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 0.6, color: AppColors.brandGreen)),
+                        Text('${day.day}',
+                            style: const TextStyle(
+                                fontSize: 18, fontWeight: FontWeight.w800, height: 1.1, color: AppColors.brandGreen)),
+                      ],
+                    ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(request.packageTitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 2),
+                  Text(day == null ? 'Flexible date · $facts' : facts,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 12.5, color: AppColors.textSecondary)),
+                ],
+              ),
+            ),
+            const SizedBox(width: 6),
+            const Icon(Icons.chevron_right_rounded, color: AppColors.textTertiary),
+          ],
+        ),
       ),
     );
   }
@@ -482,7 +585,7 @@ class PackageRow extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              PackageThumb(pkg.photoUrls),
+              PackageThumb(pkg.photoUrls, previews: pkg.imagePreviews),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(

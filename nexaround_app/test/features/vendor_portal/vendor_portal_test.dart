@@ -472,18 +472,21 @@ void main() {
 
     testWidgets('Home shows the request to answer, and the Requests tab counts it', (tester) async {
       await pumpPortal(tester);
-      expect(find.text('1 request to answer'), findsOneWidget);
+      expect(find.text('Requests to answer'), findsOneWidget);
       expect(find.descendant(of: find.byType(Badge), matching: find.text('1')), findsOneWidget);
 
-      // Answered from Home: the card and the count go.
-      await tester.tap(find.text('Confirm').first);
+      // One line on Home; a tap opens it to answer.
+      await tester.ensureVisible(find.text('Requests to answer'));
+      await tester.tap(find.text('4 guests · QAR 499 / group (max 7)'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Confirm').last);
       await tester.pump();
       await tester.tap(find.text('Confirm booking'));
       for (var i = 0; i < 12; i++) {
         await tester.pump(const Duration(milliseconds: 50));
       }
       expect(server.requests.where((r) => r.path == '/requests/r1/answer'), hasLength(1));
-      expect(find.text('1 request to answer'), findsNothing);
+      expect(find.text('Requests to answer'), findsNothing);
       expect(find.descendant(of: find.byType(Badge), matching: find.text('1')), findsNothing);
       await closePortal(tester);
     });
