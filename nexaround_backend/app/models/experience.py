@@ -308,12 +308,28 @@ class ExperienceEnquiry(Base):
     # - and two sides writing one textarea silently clobber each other.
     vendor_notes: Mapped[str] = mapped_column(Text, nullable=True)
 
+    # The vendor's answer from the portal (enquiry_lifecycle.vendor_respond):
+    # "confirmed", "other_date" (with `vendor_offered_date`; NexAround takes
+    # it to the traveller) or "cancelled". The reason is one of
+    # enquiry_lifecycle.DECLINE_REASONS; the note is for NexAround only and
+    # never reaches the traveller.
+    vendor_response: Mapped[str] = mapped_column(String(20), nullable=True)
+    vendor_offered_date: Mapped[date] = mapped_column(Date, nullable=True)
+    vendor_response_reason: Mapped[str] = mapped_column(String(30), nullable=True)
+    vendor_response_note: Mapped[str] = mapped_column(Text, nullable=True)
+    vendor_responded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, index=True
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
     )
+
+    @property
+    def reference(self) -> str:
+        """"#3F9A1C": how the vendor and NexAround name a request to each other."""
+        return f"#{self.id.hex[:6].upper()}" if self.id else ""
 
     @property
     def free_cancellation_last_day(self) -> Optional[date]:

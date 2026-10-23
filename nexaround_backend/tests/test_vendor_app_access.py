@@ -45,7 +45,7 @@ def leaked(text: str) -> list:
 def test_the_request_line_says_what_was_asked_for_and_nothing_of_who():
     title, body = partner_activity.request_text(enquiry(), today=TODAY)
     assert title == "New request: Desert Safari"
-    assert body == "Sun 25 Oct · 4 guests. NexAround will contact you to arrange it."
+    assert body == "Sun 25 Oct · 4 guests. Confirm it or offer another date in the vendor portal."
     assert leaked(title + body) == []
 
 
@@ -63,9 +63,9 @@ def test_the_feed_line_carries_no_traveller_detail_in_any_field():
 
 def test_a_flexible_request_for_one_guest():
     _, body = partner_activity.request_text(enquiry(preferred_date=None, party_size=1), today=TODAY)
-    assert body == "Flexible date · 1 guest. NexAround will contact you to arrange it."
+    assert body == "Flexible date · 1 guest. Confirm it or offer another date in the vendor portal."
     _, body = partner_activity.request_text(enquiry(preferred_date=None, party_size=None), today=TODAY)
-    assert body == "Flexible date. NexAround will contact you to arrange it."
+    assert body == "Flexible date. Confirm it or offer another date in the vendor portal."
 
 
 def test_a_date_in_another_year_says_the_year():

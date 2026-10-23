@@ -193,6 +193,15 @@ def option_label(option: dict, currency: str, package_max: Optional[int]) -> str
     )
 
 
+def vendor_option_label(snapshot: Optional[dict]) -> Optional[str]:
+    """A request's chosen price as the vendor reads it: their own amount,
+    never NexAround's dollar price (it carries the commission).
+    "LKR 8,000 / person (min 3)"; None for a price-on-request package."""
+    if not snapshot or snapshot.get("amount") is None:
+        return None
+    return option_label({**snapshot, "usd": None}, snapshot.get("currency") or "USD", None)
+
+
 def normalize_price_options(
     incoming: list[dict], existing: Optional[list[dict]], *, keep_usd: bool = False,
 ) -> list[dict]:

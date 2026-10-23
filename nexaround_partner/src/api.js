@@ -130,6 +130,12 @@ export function useApi(endpoint, options = {}) {
   const refetch = () => setRefreshTrigger(prev => prev + 1);
 
   React.useEffect(() => {
+    // No endpoint: nothing to load (a page that only sometimes needs it).
+    if (!endpoint) {
+      setData(null);
+      setLoading(false);
+      return undefined;
+    }
     let active = true;
     apiFetch(endpoint, options)
       .then(res => {

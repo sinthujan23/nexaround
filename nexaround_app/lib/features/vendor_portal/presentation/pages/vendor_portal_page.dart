@@ -12,15 +12,17 @@ import '../vendor_ui.dart';
 import 'vendor_home_tabs.dart';
 import 'vendor_notifications_page.dart';
 import 'vendor_profile_tab.dart';
+import 'vendor_requests_tab.dart';
 import 'vendor_reviews_tab.dart';
 
 /// Opens the vendor screens for one of the businesses the traveller was
-/// given; with several, asks which first. [toNotifications] lands on the
-/// notifications (a push about a request was tapped).
+/// given; with several, asks which first. [requestId] opens that request (a
+/// push about it was tapped); [toNotifications] lands on the notifications.
 Future<void> openVendorPortal(
   BuildContext context, {
   List<VendorAccess>? access,
   String? vendorId,
+  String? requestId,
   bool toNotifications = false,
 }) async {
   var list = access;
@@ -92,7 +94,11 @@ Future<void> openVendorPortal(
   await Navigator.push(
     context,
     MaterialPageRoute(
-      builder: (_) => VendorPortalPage(access: chosen!, toNotifications: toNotifications),
+      builder: (_) => VendorPortalPage(
+        access: chosen!,
+        requestId: requestId,
+        toNotifications: toNotifications,
+      ),
     ),
   );
 }
@@ -132,10 +138,19 @@ class VendorPortalPage extends StatefulWidget {
   final VendorAccess access;
   final bool toNotifications;
 
+  /// A request to open over the Requests tab.
+  final String? requestId;
+
   /// For tests: an API whose answers they control.
   final VendorPortalApi? api;
 
-  const VendorPortalPage({super.key, required this.access, this.toNotifications = false, this.api});
+  const VendorPortalPage({
+    super.key,
+    required this.access,
+    this.toNotifications = false,
+    this.requestId,
+    this.api,
+  });
 
   @override
   State<VendorPortalPage> createState() => _VendorPortalPageState();
@@ -211,6 +226,7 @@ class _VendorPortalPageState extends State<VendorPortalPage> {
       api: _api,
       vendorName: _api.me?.vendorName ?? widget.access.vendorName,
       toNotifications: widget.toNotifications,
+      requestId: widget.requestId,
     );
   }
 
@@ -340,12 +356,14 @@ class VendorShell extends StatefulWidget {
   final VendorPortalApi api;
   final String vendorName;
   final bool toNotifications;
+  final String? requestId;
 
   const VendorShell({
     super.key,
     required this.api,
     required this.vendorName,
     this.toNotifications = false,
+    this.requestId,
   });
 
   @override
@@ -355,6 +373,7 @@ class VendorShell extends StatefulWidget {
 class _VendorShellState extends State<VendorShell> {
   static const _tabs = [
     (Icons.space_dashboard_outlined, Icons.space_dashboard_rounded, 'Home'),
+    (Icons.inbox_outlined, Icons.inbox_rounded, 'Requests'),
     (Icons.confirmation_number_outlined, Icons.confirmation_number_rounded, 'Packages'),
     (Icons.star_outline_rounded, Icons.star_rounded, 'Reviews'),
     (Icons.storefront_outlined, Icons.storefront_rounded, 'Profile'),
@@ -370,12 +389,17 @@ class _VendorShellState extends State<VendorShell> {
   final ValueNotifier<int> _packagesChanged = ValueNotifier(0);
   // Bumped when a reply is posted, so Home's "To reply" count follows.
   final ValueNotifier<int> _reviewsChanged = ValueNotifier(0);
+  // Bumped to make the Requests tab reload.
+  final ValueNotifier<int> _requestsChanged = ValueNotifier(0);
+  final _requestsTab = GlobalKey<VendorRequestsTabState>();
 
   @override
   void initState() {
     super.initState();
     _refreshUnread();
-    if (widget.toNotifications) {
+    if (widget.requestId != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _openRequest(widget.requestId!));
+    } else if (widget.toNotifications) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _openNotifications());
     }
   }
@@ -384,7 +408,15 @@ class _VendorShellState extends State<VendorShell> {
   void dispose() {
     _packagesChanged.dispose();
     _reviewsChanged.dispose();
+    _requestsChanged.dispose();
     super.dispose();
+  }
+
+  /// The Requests tab, with that request open over it.
+  void _openRequest(String id) {
+    _goTo(1);
+    _requestsChanged.value++;
+    _requestsTab.currentState?.openRequest(id);
   }
 
   Future<void> _refreshUnread() async {
@@ -395,11 +427,13 @@ class _VendorShellState extends State<VendorShell> {
   }
 
   Future<void> _openNotifications() async {
-    await Navigator.push(
+    // A tap on a request's line comes back as its id.
+    final requestId = await Navigator.push<String>(
       context,
       MaterialPageRoute(builder: (_) => VendorNotificationsPage(api: widget.api)),
     );
     _refreshUnread();
+    if (requestId != null && mounted) _openRequest(requestId);
   }
 
   void _goTo(int tab) => setState(() => _tab = tab);
@@ -434,6 +468,13 @@ class _VendorShellState extends State<VendorShell> {
         changed: _packagesChanged,
         reviewsChanged: _reviewsChanged,
         onOpenTab: _goTo,
+      ),
+      VendorRequestsTab(
+        key: _requestsTab,
+        api: widget.api,
+        changed: _requestsChanged,
+        // Home's "to answer" count follows.
+        onAnswered: () => _packagesChanged.value++,
       ),
       VendorPackagesTab(api: widget.api, changed: _packagesChanged),
       VendorReviewsTab(api: widget.api, onReplied: () => _reviewsChanged.value++),

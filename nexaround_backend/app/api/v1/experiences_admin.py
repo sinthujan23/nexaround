@@ -619,6 +619,61 @@ async def list_enquiries(
     )
 
 
+@router.get("/enquiries/alerts")
+async def enquiry_alerts(
+    since: Optional[datetime] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    _=Depends(verify_admin_token),
+):
+    """For the admin panel's Enquiries badge and pop-ups: how many requests
+    are still open ("new": the vendor has not confirmed or cancelled, or
+    offered another date to settle), and what happened after `since` - new
+    requests and vendors' answers, newest first."""
+    from sqlalchemy import func
+
+    from app.models.experience import ExperienceEnquiry
+
+    now = datetime.now(timezone.utc)
+    open_count = await db.scalar(
+        select(func.count()).select_from(ExperienceEnquiry)
+        .where(ExperienceEnquiry.status == enquiry_lifecycle.NEW)
+    )
+    events = []
+    if since is not None:
+        if since.tzinfo is None:
+            since = since.replace(tzinfo=timezone.utc)
+        fresh = (await db.execute(
+            select(ExperienceEnquiry).where(ExperienceEnquiry.created_at > since)
+            .order_by(ExperienceEnquiry.created_at.desc()).limit(20)
+        )).scalars().all()
+        answered = (await db.execute(
+            select(ExperienceEnquiry).where(ExperienceEnquiry.vendor_responded_at > since)
+            .order_by(ExperienceEnquiry.vendor_responded_at.desc()).limit(20)
+        )).scalars().all()
+        for e in fresh:
+            events.append({
+                "id": str(e.id), "kind": "new", "at": e.created_at.isoformat(),
+                "title": f"New request: {e.package_title_snapshot or 'experience'}",
+                "body": f"{e.contact_name} · {e.vendor_name_snapshot or ''}".strip(" ·"),
+            })
+        wording = {
+            enquiry_lifecycle.VENDOR_CONFIRMED: "confirmed",
+            enquiry_lifecycle.VENDOR_OTHER_DATE: "offered another date for",
+            enquiry_lifecycle.VENDOR_CANCELLED: "cancelled",
+        }
+        for e in answered:
+            events.append({
+                "id": str(e.id), "kind": f"vendor_{e.vendor_response}",
+                "at": e.vendor_responded_at.isoformat(),
+                "title": f"{e.vendor_name_snapshot or 'The provider'} "
+                         f"{wording.get(e.vendor_response, 'answered')} "
+                         f"{e.package_title_snapshot or 'a request'}",
+                "body": e.reference,
+            })
+        events.sort(key=lambda ev: ev["at"], reverse=True)
+    return {"open": open_count or 0, "events": events[:20], "now": now.isoformat()}
+
+
 @router.patch(
     "/enquiries/{enquiry_id}", response_model=ExperienceEnquiryAdminResponse
 )
@@ -666,6 +721,9 @@ async def update_enquiry(
         background_tasks.add_task(enquiry_notifications.customer_cancelled, enquiry.id)
     if activity:
         background_tasks.add_task(partner_activity.announce, activity)
+        background_tasks.add_task(
+            partner_events.publish, enquiry.vendor_id, partner_events.REQUESTS_CHANGED,
+        )
         background_tasks.add_task(enquiry_notifications.vendor_update_alert, enquiry.id, event)
     return ExperienceEnquiryAdminResponse.model_validate(enquiry)
 

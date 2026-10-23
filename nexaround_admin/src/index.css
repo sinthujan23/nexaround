@@ -3669,3 +3669,38 @@ a.btn { text-decoration: none; }
   .vc-row, .vc-row.vc-new { grid-template-columns: 1fr; gap: 6px; }
   .vc-head { display: none; }
 }
+
+
+/* ── Enquiry pop-ups (enquiryAlerts.js): new requests, vendors' answers ── */
+.enquiry-popups {
+  position: fixed; right: 20px; bottom: 20px; z-index: 300;
+  display: flex; flex-direction: column; gap: 10px; width: min(360px, calc(100vw - 40px));
+}
+.enquiry-popup {
+  display: flex; align-items: flex-start; gap: 10px;
+  background: #fff; border: 1px solid var(--border); border-left: 4px solid var(--accent);
+  border-radius: 12px; padding: 12px 10px 12px 12px;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.16);
+  animation: enquiry-pop-in 0.25s ease-out;
+}
+.enquiry-popup.kind-vendor_other_date { border-left-color: #f59e0b; }
+.enquiry-popup.kind-vendor_cancelled { border-left-color: var(--danger); }
+.enquiry-popup-icon { color: var(--accent); margin-top: 2px; }
+.enquiry-popup-main {
+  flex: 1; min-width: 0; text-align: left; background: none; border: 0; padding: 0; cursor: pointer;
+  display: flex; flex-direction: column; gap: 2px; font: inherit; color: var(--text-primary);
+}
+.enquiry-popup-main strong { font-size: 13.5px; }
+.enquiry-popup-main span { font-size: 12.5px; color: var(--text-secondary); }
+.enquiry-popup-close { background: none; border: 0; color: var(--text-muted); cursor: pointer; padding: 2px; }
+@keyframes enquiry-pop-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+/* The vendor's answer on an enquiry. */
+.vendor-answer {
+  border-radius: 10px; padding: 12px 14px; font-size: 13.5px; line-height: 1.5;
+  background: var(--bg-dark); border: 1px solid var(--border);
+}
+.vendor-answer.answer-confirmed { background: rgba(4, 120, 87, 0.06); border-color: rgba(4, 120, 87, 0.25); }
+.vendor-answer.answer-other_date { background: rgba(245, 158, 11, 0.08); border-color: rgba(245, 158, 11, 0.35); }
+.vendor-answer.answer-cancelled { background: rgba(229, 57, 53, 0.06); border-color: rgba(229, 57, 53, 0.25); }
+.vendor-answer strong { display: block; margin-bottom: 2px; }

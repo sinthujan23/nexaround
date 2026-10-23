@@ -13,6 +13,7 @@ import Dashboard from './pages/Dashboard';
 import Packages from './pages/Packages';
 import PackageEditor from './pages/PackageEditor';
 import Reviews from './pages/Reviews';
+import Requests from './pages/Requests';
 import ProfileLayout from './pages/profile/Layout';
 import ProfileDetails from './pages/profile/Details';
 import ProfileLocation from './pages/profile/Location';
@@ -57,6 +58,8 @@ const router = createBrowserRouter(createRoutesFromElements(
       <Route path="/packages/:packageId" element={<PackageEditor />} />
 
       <Route path="/reviews" element={<Reviews />} />
+      <Route path="/requests" element={<Requests />} />
+      <Route path="/requests/:requestId" element={<Requests />} />
 
       <Route path="/profile" element={<ProfileLayout />}>
         <Route index element={<Navigate to="details" replace />} />

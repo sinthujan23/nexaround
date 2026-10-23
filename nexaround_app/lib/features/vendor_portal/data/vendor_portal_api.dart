@@ -217,6 +217,33 @@ class VendorPortalApi {
     return ((res.data as Map)['urls'] as List? ?? const []).map((u) => u.toString()).toList();
   }
 
+  // ── Requests ──────────────────────────────────────────────────────────────
+
+  /// "open" (to answer, oldest first; its first page is kept) or "all".
+  Future<VendorRequestPage> requests({String scope = 'open', int page = 1}) async =>
+      VendorRequestPage.fromJson(await _get('/requests',
+          query: {'scope': scope, 'page': page, 'page_size': 25},
+          keepAs: scope == 'open' && page == 1 ? 'requests' : null));
+
+  VendorRequestPage? cachedRequests() => _cachedAs('requests', VendorRequestPage.fromJson);
+
+  Future<VendorRequest> request(String id) async =>
+      VendorRequest.fromJson(await _get('/requests/$id'));
+
+  /// [action]: "confirmed" (for [day] when the traveller is flexible),
+  /// "other_date" (offer [day]) or "cancelled". [reason] is one of
+  /// [declineReasons]; [note] reaches NexAround only.
+  Future<VendorRequest> answer(String id, String action,
+          {DateTime? day, String? reason, String? note}) async =>
+      VendorRequest.fromJson(await _post('/requests/$id/answer', {
+        'action': action,
+        'day': day == null
+            ? null
+            : '${day.year.toString().padLeft(4, '0')}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}',
+        'reason': reason,
+        'note': note,
+      }));
+
   // ── Reviews ───────────────────────────────────────────────────────────────
 
   /// The first page is kept, one per filter.

@@ -307,8 +307,11 @@ class ExperienceRepository:
         return (await self.db.execute(query)).scalar_one_or_none()
 
     async def vendor_stats(self, vendor_id: uuid.UUID) -> dict:
-        """Counts for the portal's dashboard, scoped to one vendor. Enquiries
-        are not among them: vendors do not see requests."""
+        """Counts for the portal's dashboard, scoped to one vendor: packages,
+        and requests still waiting for the vendor's answer."""
+        from app.models.experience import ExperienceEnquiry
+        from app.services import enquiry_lifecycle
+
         pkg = select(
             func.count().label("total"),
             func.count().filter(ExperiencePackage.is_published.is_(True)).label("live"),
@@ -316,10 +319,18 @@ class ExperienceRepository:
             ExperiencePackage.vendor_id == vendor_id
         )
         pkg_row = (await self.db.execute(pkg)).one()
+        waiting = await self.db.scalar(
+            select(func.count()).select_from(ExperienceEnquiry).where(
+                ExperienceEnquiry.vendor_id == vendor_id,
+                ExperienceEnquiry.status.in_(enquiry_lifecycle.VENDOR_CAN_RESPOND),
+                ExperienceEnquiry.vendor_response.is_(None),
+            )
+        )
 
         return {
             "packages_total": int(pkg_row.total or 0),
             "packages_published": int(pkg_row.live or 0),
+            "requests_waiting": int(waiting or 0),
         }
 
 

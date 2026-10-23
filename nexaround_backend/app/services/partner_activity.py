@@ -162,7 +162,7 @@ def request_text(enquiry, today: Optional[date] = None) -> tuple[str, str]:
     return (
         f"New request: {_package(enquiry)}",
         f"{_facts(enquiry, enquiry.preferred_date, today)}. "
-        "NexAround will contact you to arrange it.",
+        "Confirm it or offer another date in the vendor portal.",
     )
 
 
@@ -201,16 +201,49 @@ def request_received(db, enquiry) -> dict:
     )
 
 
-def request_updated(db, enquiry, event: str) -> Optional[dict]:
-    """NexAround confirmed or cancelled one of the vendor's requests; None for
-    a status change the vendor is not told about."""
+def request_updated(db, enquiry, event: str, *, actor: str = ADMIN) -> Optional[dict]:
+    """NexAround confirmed or cancelled one of the vendor's requests, or the
+    traveller cancelled it ([actor]); None for a status change the vendor is
+    not told about."""
     kind = UPDATE_KINDS.get(event)
     if kind is None:
         return None
     title, body = update_text(enquiry, event)
     return record(
         db, enquiry.vendor_id, kind, title,
-        body=body, actor=ADMIN,
+        body=body, actor=actor,
+        enquiry_id=enquiry.id, package_id=enquiry.package_id,
+    )
+
+
+def answer_text(enquiry, today: Optional[date] = None) -> tuple[str, str]:
+    """Title and body for the vendor's own answer to a request."""
+    package = _package(enquiry)
+    if enquiry.vendor_response == enquiry_lifecycle.VENDOR_CONFIRMED:
+        return (f"You confirmed: {package}",
+                f"{_facts(enquiry, enquiry.confirmed_date, today)}. The traveller has been told.")
+    if enquiry.vendor_response == enquiry_lifecycle.VENDOR_OTHER_DATE:
+        return (f"You offered another date: {package}",
+                f"{_facts(enquiry, enquiry.vendor_offered_date, today)}. "
+                "NexAround will check it with the traveller.")
+    return (f"You cancelled: {package}",
+            f"{_facts(enquiry, enquiry.confirmed_date or enquiry.preferred_date, today)}. "
+            "The traveller has been told.")
+
+
+ANSWER_KINDS = {
+    enquiry_lifecycle.VENDOR_CONFIRMED: "request.confirmed",
+    enquiry_lifecycle.VENDOR_OTHER_DATE: "request.other_date",
+    enquiry_lifecycle.VENDOR_CANCELLED: "request.cancelled",
+}
+
+
+def request_answered(db, enquiry, *, login=None) -> dict:
+    """The vendor answered one of their requests from the portal."""
+    title, body = answer_text(enquiry)
+    return record(
+        db, enquiry.vendor_id, ANSWER_KINDS[enquiry.vendor_response], title,
+        body=body, actor=VENDOR, login=login,
         enquiry_id=enquiry.id, package_id=enquiry.package_id,
     )
 

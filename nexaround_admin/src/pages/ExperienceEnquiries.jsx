@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useApi, apiGet, apiPatch } from '../api';
+import { notifyEnquiriesChanged } from '../enquiryAlerts';
 import {
   InboxIcon, PhoneIcon, MailIcon, WhatsAppIcon, RefreshIcon,
 } from '../components/Icons';
@@ -21,6 +23,14 @@ const STATUS_LABELS = {
   customer_cancelled: 'Cancelled by traveller',
   provider_cancelled: 'Cancelled by provider',
   spam: 'Spam',
+};
+
+// Why a provider could not do the date asked (enquiry_lifecycle.DECLINE_REASONS).
+const DECLINE_REASONS = {
+  fully_booked: 'Fully booked that day',
+  weather: 'Weather or sea conditions',
+  not_running: 'Not running that day',
+  other: 'Other reason',
 };
 
 const TZ = 'Asia/Colombo';
@@ -70,6 +80,9 @@ export default function ExperienceEnquiries() {
   const [counts, setCounts] = useState({});
   const [countsVersion, setCountsVersion] = useState(0);
   const [toast, notify] = useToast();
+  // ?id= from a pop-up or a link: open that request once the list has it.
+  const [params, setParams] = useSearchParams();
+  const wanted = params.get('id');
 
   const { data, error, refetch } = useApi(
     `/admin/experiences/enquiries?page=${page}&page_size=${PAGE_SIZE}`
@@ -97,7 +110,23 @@ export default function ExperienceEnquiries() {
   const refresh = () => {
     refetch();
     setCountsVersion((n) => n + 1);
+    notifyEnquiriesChanged();
   };
+
+  useEffect(() => {
+    if (!wanted || !data) return;
+    const found = (data.enquiries || []).find((e) => e.id === wanted);
+    if (found) {
+      setSelected(found);
+      setNotes(found.admin_notes || '');
+    } else if (statusFilter || page !== 1) {
+      // Not on this page: look again in the newest of all.
+      setStatusFilter('');
+      setPage(1);
+      return;
+    }
+    setParams({}, { replace: true });
+  }, [wanted, data]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Search only narrows the page already loaded.
   const q = search.trim().toLowerCase();
@@ -203,6 +232,11 @@ export default function ExperienceEnquiries() {
                       e.preferred_date ? formatDay(e.preferred_date) : null,
                     ].filter(Boolean).join(' · ')}
                   </div>
+                  {e.status === 'new' && e.vendor_response === 'other_date' && (
+                    <div className="xp-row-sub" style={{ color: '#b45309', fontWeight: 600 }}>
+                      Provider offered {formatDay(e.vendor_offered_date)}
+                    </div>
+                  )}
                 </div>
                 <div className="xp-row-side" title={formatDateTime(e.created_at)}>{formatAge(e.created_at)}</div>
               </button>
@@ -237,7 +271,10 @@ export default function ExperienceEnquiries() {
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <button className="xp-back" onClick={close}>← All enquiries</button>
                   <div className="xp-detail-title">{selected.contact_name}</div>
-                  <div className="xp-detail-sub">Received {formatDateTime(selected.created_at)}</div>
+                  <div className="xp-detail-sub">
+                    Received {formatDateTime(selected.created_at)}
+                    {selected.reference && ` · ${selected.reference}`}
+                  </div>
                 </div>
                 <span className="status-label">
                   <span className={`dot dot-${selected.status}`} /> {STATUS_LABELS[selected.status] || selected.status}
@@ -341,6 +378,79 @@ export default function ExperienceEnquiries() {
                       <div className="dl-label">Message</div>
                       <div className="quote">{selected.message}</div>
                     </div>
+                  )}
+                </div>
+
+                <div className="xp-section">
+                  <div className="xp-section-title">Provider’s answer</div>
+                  {!selected.vendor_response && (
+                    <div className="xp-section-hint" style={{ marginBottom: 0 }}>
+                      {['new', 'contacted'].includes(selected.status)
+                        ? `Waiting for ${selected.vendor_name_snapshot || 'the provider'} to answer in the vendor portal. They were sent the package, date, guests and price only (${selected.reference}).`
+                        : 'Not answered in the vendor portal.'}
+                    </div>
+                  )}
+                  {selected.vendor_response && (
+                    <div className={`vendor-answer answer-${selected.vendor_response}`}>
+                      {selected.vendor_response === 'confirmed' && (
+                        <>
+                          <strong>Confirmed for {formatDay(selected.confirmed_date)}</strong>
+                          In the vendor portal, {formatDateTime(selected.vendor_responded_at)}. The traveller was told by push and email.
+                        </>
+                      )}
+                      {selected.vendor_response === 'other_date' && (
+                        <>
+                          <strong>
+                            Can’t do {formatDay(selected.preferred_date) || 'the date asked'}; offered {formatDay(selected.vendor_offered_date)}
+                          </strong>
+                          {DECLINE_REASONS[selected.vendor_response_reason] || 'No reason given'}
+                          {' · '}{formatDateTime(selected.vendor_responded_at)}
+                        </>
+                      )}
+                      {selected.vendor_response === 'cancelled' && (
+                        <>
+                          <strong>Cancelled by the provider</strong>
+                          {DECLINE_REASONS[selected.vendor_response_reason] || 'No reason given'}
+                          {' · '}{formatDateTime(selected.vendor_responded_at)}. The traveller was told.
+                        </>
+                      )}
+                      {selected.vendor_response_note && (
+                        <div className="quote" style={{ marginTop: 8 }}>{selected.vendor_response_note}</div>
+                      )}
+                    </div>
+                  )}
+                  {selected.vendor_response === 'other_date' && ['new', 'contacted'].includes(selected.status) && (
+                    <>
+                      <div className="xp-section-hint" style={{ marginTop: 10 }}>
+                        Check {formatDay(selected.vendor_offered_date)} with the traveller (WhatsApp or call above). If it
+                        suits them, confirm it; if not, cancel the request as the provider’s.
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                        <button
+                          className="btn btn-danger-ghost btn-sm" disabled={saving}
+                          onClick={() => {
+                            if (confirm('Cancel this request? The traveller and the provider are told.')) {
+                              update({
+                                status: 'provider_cancelled',
+                                cancellation_reason: DECLINE_REASONS[selected.vendor_response_reason] || null,
+                              }, 'Cancelled');
+                            }
+                          }}
+                        >
+                          Cancel request
+                        </button>
+                        <button
+                          className="btn btn-primary btn-sm" disabled={saving}
+                          onClick={() => {
+                            if (confirm(`Confirm for ${formatDay(selected.vendor_offered_date)}? The traveller and the provider are told.`)) {
+                              update({ status: 'confirmed', confirmed_date: selected.vendor_offered_date }, 'Confirmed');
+                            }
+                          }}
+                        >
+                          {saving ? 'Saving…' : `Confirm for ${formatDay(selected.vendor_offered_date)}`}
+                        </button>
+                      </div>
+                    </>
                   )}
                 </div>
 

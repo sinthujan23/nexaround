@@ -9,7 +9,7 @@ every save. These are declared from scratch, and a test asserts the forbidden
 names appear in none of them.
 """
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
@@ -297,6 +297,54 @@ class PartnerReviewReply(BaseModel):
 class PartnerStatsResponse(BaseModel):
     packages_total: int = 0
     packages_published: int = 0
+    # Requests the vendor has not answered yet.
+    requests_waiting: int = 0
+
+
+# --- Partner-side: requests -------------------------------------------------
+
+class PartnerRequest(BaseModel):
+    """A traveller's request as the vendor sees it: what, when, how many and
+    at which price. Never who asked, how to reach them, where to pick them up
+    or what they wrote: NexAround arranges the booking with the traveller."""
+
+    id: uuid.UUID
+    # "#3F9A1C", to name the request to NexAround.
+    reference: str
+    package_id: Optional[uuid.UUID] = None
+    package_title: str
+    # None for a traveller who is flexible about the day.
+    preferred_date: Optional[date] = None
+    confirmed_date: Optional[date] = None
+    party_size: Optional[int] = None
+    price_label: Optional[str] = None
+    # new | contacted | confirmed | closed | customer_cancelled | provider_cancelled
+    status: str
+    # The vendor's own answer: confirmed | other_date | cancelled.
+    vendor_response: Optional[str] = None
+    vendor_offered_date: Optional[date] = None
+    vendor_response_reason: Optional[str] = None
+    vendor_responded_at: Optional[datetime] = None
+    can_answer: bool = False
+    created_at: datetime
+
+
+class PartnerRequestListResponse(BaseModel):
+    requests: list[PartnerRequest]
+    total: int
+    # Open and not answered yet.
+    waiting: int = 0
+
+
+class PartnerRequestAnswer(BaseModel):
+    """Confirm (for `day`, required when the traveller is flexible), offer
+    another `day`, or cancel when no other day works. `reason` is a key of
+    enquiry_lifecycle.DECLINE_REASONS; `note` reaches NexAround only."""
+
+    action: str = Field(..., pattern="^(confirmed|other_date|cancelled)$")
+    day: Optional[date] = None
+    reason: Optional[str] = Field(None, max_length=30)
+    note: Optional[str] = Field(None, max_length=1000)
 
 
 # --- Activity feed (the portal's bell) --------------------------------------

@@ -71,7 +71,8 @@ class _VendorNotificationsPageState extends State<VendorNotificationsPage> {
   }
 
   static (IconData, Color) _look(String kind) => switch (kind) {
-        'request.received' => (Icons.confirmation_number_rounded, AppColors.brandGreen),
+        'request.received' => (Icons.inbox_rounded, AppColors.brandGreen),
+        'request.other_date' => (Icons.event_repeat_rounded, const Color(0xFFB7791F)),
         'request.confirmed' => (Icons.check_circle_rounded, AppColors.success),
         'request.cancelled' => (Icons.cancel_rounded, AppColors.error),
         'review.created' => (Icons.star_rounded, AppColors.ratingGold),
@@ -190,14 +191,22 @@ class _VendorNotificationsPageState extends State<VendorNotificationsPage> {
             ],
           ),
         );
-        if (!isNew) return card;
+        // A request's line opens the request (the portal does, on return).
+        final tappable = item.enquiryId == null
+            ? card
+            : GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => Navigator.pop(context, item.enquiryId),
+                child: card,
+              );
+        if (!isNew) return tappable;
         // New lines get a teal edge, like an unread message.
         return DecoratedBox(
           decoration: BoxDecoration(
             borderRadius: AppRadii.brLg,
             border: Border.all(color: AppColors.brandGreen.withValues(alpha: 0.35)),
           ),
-          child: card,
+          child: tappable,
         );
       },
     );

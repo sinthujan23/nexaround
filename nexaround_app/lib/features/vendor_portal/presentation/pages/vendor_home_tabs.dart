@@ -16,7 +16,7 @@ class VendorDashboardTab extends StatefulWidget {
   final ValueNotifier<int> changed;
   final ValueNotifier<int> reviewsChanged;
 
-  /// Switches the portal to a tab: 1 Packages, 2 Reviews, 3 Profile.
+  /// Switches the portal to a tab: 1 Requests, 2 Packages, 3 Reviews, 4 Profile.
   final ValueChanged<int> onOpenTab;
 
   const VendorDashboardTab({
@@ -93,6 +93,10 @@ class _VendorDashboardTabState extends State<VendorDashboardTab> {
         padding: const EdgeInsets.fromLTRB(vendorGutter, 4, vendorGutter, 24),
         children: [
           if (_error != null && _packages != null) const VendorSavedNote(),
+          if ((stats?.requestsWaiting ?? 0) > 0) ...[
+            _RequestsWaiting(count: stats!.requestsWaiting, onTap: () => widget.onOpenTab(1)),
+            const SizedBox(height: 12),
+          ],
           _ListingStatus(live: live),
           const SizedBox(height: 12),
           Row(
@@ -103,7 +107,7 @@ class _VendorDashboardTabState extends State<VendorDashboardTab> {
                   color: AppColors.brandGreen,
                   value: stats == null ? '–' : '${stats.packagesPublished}/${stats.packagesTotal}',
                   label: 'Packages live',
-                  onTap: () => widget.onOpenTab(1),
+                  onTap: () => widget.onOpenTab(2),
                 ),
               ),
               const SizedBox(width: 10),
@@ -115,7 +119,7 @@ class _VendorDashboardTabState extends State<VendorDashboardTab> {
                   label: reviews == null
                       ? 'Rating'
                       : '${reviews.reviewCount} review${reviews.reviewCount == 1 ? '' : 's'}',
-                  onTap: () => widget.onOpenTab(2),
+                  onTap: () => widget.onOpenTab(3),
                 ),
               ),
               const SizedBox(width: 10),
@@ -125,7 +129,7 @@ class _VendorDashboardTabState extends State<VendorDashboardTab> {
                   color: (reviews?.unanswered ?? 0) > 0 ? AppColors.error : AppColors.textTertiary,
                   value: '${reviews?.unanswered ?? '–'}',
                   label: 'To reply',
-                  onTap: () => widget.onOpenTab(2),
+                  onTap: () => widget.onOpenTab(3),
                 ),
               ),
             ],
@@ -145,7 +149,7 @@ class _VendorDashboardTabState extends State<VendorDashboardTab> {
               ),
               if ((_packages?.length ?? 0) > 0)
                 TextButton(
-                  onPressed: () => widget.onOpenTab(1),
+                  onPressed: () => widget.onOpenTab(2),
                   style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8)),
                   child: Text((_packages!.length > _preview) ? 'See all ${_packages!.length}' : 'Manage'),
                 ),
@@ -175,6 +179,51 @@ class _VendorDashboardTabState extends State<VendorDashboardTab> {
             for (final pkg in _packages!.take(_preview))
               PackageRow(pkg: pkg, onTap: () => _edit(pkg)),
         ],
+      ),
+    );
+  }
+}
+
+/// "2 requests to answer", over everything else on Home while any wait.
+class _RequestsWaiting extends StatelessWidget {
+  final int count;
+  final VoidCallback onTap;
+
+  const _RequestsWaiting({required this.count, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: AppRadii.brMd,
+        onTap: onTap,
+        child: Ink(
+          padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+          decoration: BoxDecoration(
+            gradient: AppColors.brandGradient,
+            borderRadius: AppRadii.brMd,
+            boxShadow: AppShadows.glow(AppColors.brandGreen),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.inbox_rounded, color: Colors.white, size: 22),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('$count ${count == 1 ? 'request' : 'requests'} to answer',
+                        style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w700)),
+                    const Text('Confirm, or offer another date',
+                        style: TextStyle(color: Colors.white70, fontSize: 12.5)),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right_rounded, color: Colors.white),
+            ],
+          ),
+        ),
       ),
     );
   }

@@ -37,6 +37,15 @@ class _Server implements HttpClientAdapter {
   /// Where the vendor's edits to package p1 stand.
   Map<String, dynamic> p1Review = {};
 
+  /// The one request the vendor has, as the partner API sends it.
+  Map<String, dynamic> request = {
+    'id': 'r1', 'reference': '#BBCB96', 'package_id': 'p1', 'package_title': 'Desert Safari',
+    'preferred_date': '2030-11-02', 'confirmed_date': null, 'party_size': 4,
+    'price_label': 'QAR 499 / group (max 7)', 'status': 'new', 'vendor_response': null,
+    'vendor_offered_date': null, 'vendor_response_reason': null, 'vendor_responded_at': null,
+    'can_answer': true, 'created_at': '2026-10-22T08:10:00Z',
+  };
+
   /// Partner tokens the server no longer accepts (expired).
   final Set<String> expired = {};
 
@@ -107,6 +116,25 @@ class _Server implements HttpClientAdapter {
               ...p1Review};
     } else if (path == '/packages' && options.method == 'POST') {
       body = {...Map<String, dynamic>.from(options.data as Map), 'id': 'p2', 'vendor_id': 'v1'};
+    } else if (path == '/requests') {
+      body = {'requests': [request], 'total': 1, 'waiting': request['vendor_response'] == null ? 1 : 0};
+    } else if (path == '/requests/r1') {
+      body = request;
+    } else if (path == '/requests/r1/answer') {
+      final answer = Map<String, dynamic>.from(options.data as Map);
+      request = {
+        ...request,
+        'vendor_response': answer['action'],
+        'status': switch (answer['action']) {
+          'confirmed' => 'confirmed',
+          'cancelled' => 'provider_cancelled',
+          _ => 'new',
+        },
+        'confirmed_date': answer['action'] == 'confirmed' ? request['preferred_date'] : null,
+        'vendor_offered_date': answer['day'],
+        'can_answer': answer['action'] == 'other_date',
+      };
+      body = request;
     } else if (path == '/reviews') {
       body = {'reviews': [], 'total': 0, 'review_count': 0, 'unanswered': 0};
     } else if (path == '/profile') {
@@ -387,6 +415,67 @@ void main() {
       expect(find.widgetWithText(TextFormField, 'Website'), findsNothing);
       expect(find.widgetWithText(TextFormField, 'Address'), findsNothing);
       expect(find.text('Doha'), findsOneWidget);
+      await closePortal(tester);
+    });
+  });
+
+  group('requests', () {
+    Future<void> openRequests(WidgetTester tester) async {
+      await pumpPortal(tester);
+      await tester.tap(find.text('Requests'));
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+    }
+
+    testWidgets('a request shows package, date, guests and price, and is confirmed in one tap', (tester) async {
+      await openRequests(tester);
+      expect(find.text('Desert Safari'), findsWidgets);
+      expect(find.text('Sat 2 Nov 2030'), findsOneWidget);
+      expect(find.text('QAR 499 / group (max 7)'), findsOneWidget);
+      expect(find.text('Waiting for your answer'), findsOneWidget);
+
+      await tester.tap(find.text('Confirm'));
+      await tester.pump();
+      await tester.tap(find.text('Confirm booking'));
+      for (var i = 0; i < 8; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      final answer = server.requests.singleWhere((r) => r.path == '/requests/r1/answer');
+      expect(Map<String, dynamic>.from(answer.body as Map)['action'], 'confirmed');
+      await closePortal(tester);
+    });
+
+    testWidgets('with no other date the vendor cancels, giving a reason', (tester) async {
+      await openRequests(tester);
+      await tester.tap(find.text('Can’t do this date'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('No other date'));
+      await tester.pump();
+      await tester.tap(find.text('Why not the date asked?'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Fully booked that day').last);
+      await tester.pumpAndSettle();
+      await tester.enterText(find.widgetWithText(TextField, 'Note to NexAround (optional)'), 'Busy week');
+      await tester.tap(find.text('Cancel request'));
+      for (var i = 0; i < 8; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      final body = Map<String, dynamic>.from(
+          server.requests.singleWhere((r) => r.path == '/requests/r1/answer').body as Map);
+      expect(body['action'], 'cancelled');
+      expect(body['reason'], 'fully_booked');
+      expect(body['note'], 'Busy week');
+      await closePortal(tester);
+    });
+
+    testWidgets('a push about a request opens it', (tester) async {
+      await tester.pumpWidget(const MaterialApp(home: VendorPortalPage(access: _access, requestId: 'r1')));
+      for (var i = 0; i < 14; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(server.requests.where((r) => r.path == '/requests/r1'), isNotEmpty);
+      expect(find.byType(BottomSheet), findsOneWidget);
       await closePortal(tester);
     });
   });

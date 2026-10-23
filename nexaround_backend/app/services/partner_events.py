@@ -32,6 +32,8 @@ HEARTBEAT_SECONDS = 20
 RECHECK_SECONDS = 300
 
 PACKAGES_CHANGED = "packages.changed"
+# A request came in, or its status or the vendor's answer changed.
+REQUESTS_CHANGED = "requests.changed"
 # The vendor record or one of its logins changed. Carries no data; its job is
 # to make every open stream re-check its session at once, so a suspension or a
 # disabled login takes effect in seconds rather than at the next recheck.

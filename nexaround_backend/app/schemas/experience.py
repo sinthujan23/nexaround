@@ -346,6 +346,16 @@ class ExperienceEnquiryAdminResponse(BaseModel):
     # The price chosen, as it read then; `label` is what to show.
     price_option: Optional[dict] = None
     status: str
+    # "#3F9A1C", the name the vendor sees for it.
+    reference: str = ""
+    # The vendor's answer from the portal: confirmed | other_date | cancelled,
+    # the date offered instead, why (enquiry_lifecycle.DECLINE_REASONS) and
+    # their note to NexAround.
+    vendor_response: Optional[str] = None
+    vendor_offered_date: Optional[date] = None
+    vendor_response_reason: Optional[str] = None
+    vendor_response_note: Optional[str] = None
+    vendor_responded_at: Optional[datetime] = None
     admin_notes: Optional[str] = None
     terms_version: Optional[int] = None
     terms_accepted_at: Optional[datetime] = None

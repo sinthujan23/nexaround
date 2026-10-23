@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 import { useApi, mediaUrl } from '../api';
 import { useAuth } from '../auth';
 import { RESYNC, useLiveEvent } from '../live';
-import { TicketIcon, CheckIcon, PlusIcon, EditIcon } from '../components/Icons';
+import { TicketIcon, CheckIcon, PlusIcon, EditIcon, InboxIcon } from '../components/Icons';
 import { EmptyState, ListRow, Loader, StatusPill } from '../components/Lists';
 import { formatPrice, basisLabel, reviewState, visibility, visibilityTone } from '../format';
 
@@ -14,14 +14,16 @@ export default function Dashboard() {
   const { data: stats, refetch: refetchStats } = useApi('/partner/stats');
   const { data: packageData, refetch: refetchPackages } = useApi('/partner/packages');
 
-  // No enquiries here: travellers' requests go to NexAround, not the vendor.
-  useLiveEvent(['packages.changed', 'account.changed', RESYNC], () => {
+  // Requests show as a count only: package, date and guests are on Requests.
+  useLiveEvent(['packages.changed', 'account.changed', 'requests.changed', RESYNC], () => {
     refetchStats();
     refetchPackages();
   });
   const packages = packageData?.packages || [];
 
   const tiles = [
+    { label: 'Requests to answer', value: stats?.requests_waiting, Icon: InboxIcon,
+      sub: 'Confirm or offer another date', to: '/requests', warm: (stats?.requests_waiting || 0) > 0 },
     { label: 'Packages live', value: stats?.packages_published, Icon: CheckIcon,
       sub: `${stats?.packages_total ?? 0} in total`, to: '/packages' },
   ];

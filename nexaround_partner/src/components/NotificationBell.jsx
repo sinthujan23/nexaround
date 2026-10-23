@@ -93,7 +93,8 @@ export default function NotificationBell({ loginId }) {
 
   const pick = (item) => {
     setOpen(false);
-    if (item.kind === 'review.created') navigate('/reviews');
+    if (item.enquiry_id) navigate(`/requests/${item.enquiry_id}`);
+    else if (item.kind === 'review.created') navigate('/reviews');
     else if (item.package_id) navigate(`/packages/${item.package_id}`);
     else if (item.kind.startsWith('package.')) navigate('/packages');
     else navigate('/profile');

@@ -37,6 +37,10 @@ class _Capture:
                 return _Row()
         return _R()
 
+    async def scalar(self, stmt):
+        self.statements.append(stmt)
+        return 0
+
 
 def _sql(stmt) -> str:
     return str(stmt.compile(compile_kwargs={"literal_binds": True}))
@@ -118,11 +122,24 @@ def test_stats_are_counted_per_vendor_not_platform_wide():
         assert "count(" in sql.lower()
 
 
-def test_vendors_have_no_enquiry_endpoints():
-    """Requests come only to Nexaround, which contacts both sides itself, so
-    a vendor cannot reach a traveller around the platform's commission."""
-    paths = [r.path for r in P.router.routes]
-    assert not [p for p in paths if "enquir" in p], paths
+def test_the_request_endpoints_take_no_vendor_from_the_caller():
+    """Vendors see their requests (package, date, guests, price) and answer
+    them, but which vendor is the token's alone: a vendor_id parameter would
+    hand vendor A vendor B's requests through a query string."""
+    import inspect
+
+    routes = [r for r in P.router.routes if "/requests" in r.path]
+    assert routes, "the request endpoints are missing"
+    for route in routes:
+        params = inspect.signature(route.endpoint).parameters
+        assert "vendor_id" not in params, route.path
+    # The old traveller-detail endpoints stay gone.
+    assert not [r.path for r in P.router.routes if "enquir" in r.path]
+
+
+def test_a_request_is_looked_up_within_the_vendor():
+    sql = _sql(P._vendor_requests(VENDOR))
+    assert "vendor_id" in sql and _in_sql(VENDOR, sql)
 
 
 def test_package_creation_cannot_be_filed_under_another_vendor():

@@ -3,10 +3,12 @@
 * The traveller hears when their request is received (email), and when it
   is confirmed or cancelled (push and email).
 * The platform inbox hears when the traveller cancels (email).
-* The vendor's app logins hear that a request came in, and when Nexaround
-  confirms or cancels it (push): the package, the date and the number of
-  guests, never who asked or where to pick them up. Nexaround contacts both
-  sides itself.
+* The vendor hears that a request came in, and when NexAround or the
+  traveller confirms or cancels it (push to the app logins, email to every
+  login, a line in the bell): the package, the date, the guests and the
+  price chosen, never who asked or where to pick them up. The vendor answers
+  in the portal; NexAround contacts the traveller itself.
+* The platform inbox hears the vendor's answer, with the traveller's details.
 
 Each function runs after the response as a background task, in its own
 session, and never raises: a failed email or push must not undo a booking.
@@ -22,6 +24,7 @@ from sqlalchemy import select
 from app.models.experience import ExperienceEnquiry, ExperienceVendor, VendorUser
 from app.models.user import User
 from app.services import email_service, legal_service, partner_activity
+from app.services.experience_format import vendor_option_label
 from app.services import enquiry_lifecycle as lifecycle
 from app.services.settings_service import SettingsService
 
@@ -30,8 +33,14 @@ logger = logging.getLogger(__name__)
 TERMS_URL = "https://nexaround.com/experience-terms"
 # The app routes a tap on this push to My requests.
 PUSH_TYPE = "experience_request"
-# ...and a tap on this one to the vendor portal's notifications.
+# ...and a tap on this one to the request in the vendor portal.
 VENDOR_PUSH_TYPE = "vendor_request"
+PORTAL_URL = "https://partner.nexaround.com"
+
+
+def request_ref(enquiry) -> str:
+    """"#3F9A1C": how the vendor and NexAround name a request to each other."""
+    return enquiry.reference
 
 
 def day(value: Optional[date]) -> str:
@@ -84,46 +93,81 @@ async def _push_data(db, user_id, title: str, body: str, data: dict) -> None:
         await db.commit()
 
 
-async def _push_vendor(db, enquiry, title: str, body: str) -> None:
-    """To every device of the vendor's active app logins."""
+async def _tell_vendor(db, enquiry, title: str, body: str) -> None:
+    """Push to the vendor's app logins and email every login: the package,
+    date, guests and price only (partner_activity reads nothing else)."""
     vendor = await db.get(ExperienceVendor, enquiry.vendor_id)
     if not vendor or not vendor.is_active:
         return
     logins = (await db.execute(
         select(VendorUser).where(
             VendorUser.vendor_id == enquiry.vendor_id,
-            VendorUser.app_user_id.is_not(None),
             VendorUser.is_active.is_(True),
         )
     )).scalars().all()
-    data = {"type": VENDOR_PUSH_TYPE, "vendor_id": str(enquiry.vendor_id)}
+    data = {
+        "type": VENDOR_PUSH_TYPE, "vendor_id": str(enquiry.vendor_id),
+        "enquiry_id": str(enquiry.id),
+    }
+    # address -> whether it signs in at the web portal (else the app).
+    recipients: dict[str, bool] = {}
     for login in logins:
-        await _push_data(db, login.app_user_id, title, body, data)
+        if login.app_user_id:
+            await _push_data(db, login.app_user_id, title, body, data)
+            user = await db.get(User, login.app_user_id)
+            if user and user.is_active and user.email:
+                recipients.setdefault(user.email.lower(), False)
+        if login.email:
+            recipients[login.email.lower()] = True
+
+    when = enquiry.confirmed_date or enquiry.preferred_date
+    rows = (
+        ("Request", request_ref(enquiry)),
+        ("Experience", enquiry.package_title_snapshot),
+        ("Date", day(when) if when else "Flexible"),
+        ("Guests", _guests(enquiry.party_size)),
+        # The vendor's own price, never NexAround's dollar figure.
+        ("Price", vendor_option_label(enquiry.price_option)),
+    )
+    for address, web in sorted(recipients.items()):
+        await email_service.send_experience_update_email(
+            address,
+            subject=f"{title} · NexAround",
+            heading=title,
+            intro=body,
+            rows=rows,
+            notes=() if web else (
+                "Open the NexAround app, go to Experiences, tap Vendor portal and then Requests.",
+            ),
+            link_label="Open the request" if web else "",
+            link_url=f"{PORTAL_URL}/requests/{enquiry.id}" if web else "",
+        )
 
 
 async def vendor_request_alert(enquiry_id: uuid.UUID) -> None:
-    """Tell the vendor's app logins a request came in.
+    """Tell the vendor a request came in, by push and email.
 
     Only what partner_activity.request_text reads - package, date, guests -
-    so the vendor cannot reach the traveller around Nexaround.
+    and the price chosen, so the vendor cannot reach the traveller around
+    Nexaround.
     """
     try:
         async with async_session() as db:
             enquiry = await db.get(ExperienceEnquiry, enquiry_id)
             if enquiry:
-                await _push_vendor(db, enquiry, *partner_activity.request_text(enquiry))
+                await _tell_vendor(db, enquiry, *partner_activity.request_text(enquiry))
     except Exception:
         logger.exception("vendor request push failed for enquiry %s", enquiry_id)
 
 
 async def vendor_update_alert(enquiry_id: uuid.UUID, event: str) -> None:
-    """Tell the vendor's app logins NexAround confirmed or cancelled a
-    request: the same three facts (partner_activity.update_text)."""
+    """Tell the vendor NexAround or the traveller confirmed or cancelled a
+    request: the same facts (partner_activity.update_text)."""
     try:
         async with async_session() as db:
             enquiry = await db.get(ExperienceEnquiry, enquiry_id)
             if enquiry and event in partner_activity.UPDATE_KINDS:
-                await _push_vendor(db, enquiry, *partner_activity.update_text(enquiry, event))
+                await _tell_vendor(db, enquiry, *partner_activity.update_text(enquiry, event))
     except Exception:
         logger.exception("vendor update push failed for enquiry %s", enquiry_id)
 
@@ -264,3 +308,50 @@ async def customer_cancelled(enquiry_id: uuid.UUID) -> None:
                 )
     except Exception:
         logger.exception("customer-cancelled email failed for enquiry %s", enquiry_id)
+
+
+async def vendor_answered(enquiry_id: uuid.UUID) -> None:
+    """Email the platform inbox the vendor's answer, with the traveller's
+    details: a confirmation (the traveller has been told), a cancellation
+    (likewise), or another date to take to the traveller."""
+    try:
+        async with async_session() as db:
+            enquiry = await db.get(ExperienceEnquiry, enquiry_id)
+            platform = await SettingsService(db).get_setting("contact_email")
+            if not enquiry or not platform:
+                return
+            vendor = enquiry.vendor_name_snapshot or "The provider"
+            experience = enquiry.package_title_snapshot or "an experience"
+            answer = enquiry.vendor_response
+            if answer == lifecycle.VENDOR_CONFIRMED:
+                subject = f"Confirmed by the provider: {experience}"
+                heading = f"{vendor} confirmed"
+                intro = "The traveller has been told by push and email."
+            elif answer == lifecycle.VENDOR_OTHER_DATE:
+                subject = f"Another date offered: {experience}"
+                heading = f"{vendor} offered {day(enquiry.vendor_offered_date)}"
+                intro = ("The provider cannot do the date asked. Check the offered date with "
+                         "the traveller, then confirm or cancel the request in the admin panel.")
+            else:
+                subject = f"Cancelled by the provider: {experience}"
+                heading = f"{vendor} cancelled"
+                intro = "The provider cannot do it and had no other date. The traveller has been told."
+            await email_service.send_experience_update_email(
+                platform,
+                subject=subject, heading=heading, intro=intro,
+                rows=(
+                    ("Request", request_ref(enquiry)),
+                    ("Experience", enquiry.package_title_snapshot),
+                    ("Asked for", day(enquiry.preferred_date) if enquiry.preferred_date else "Flexible"),
+                    ("Confirmed for", day(enquiry.confirmed_date) if answer == lifecycle.VENDOR_CONFIRMED else None),
+                    ("Offered instead", day(enquiry.vendor_offered_date) if enquiry.vendor_offered_date else None),
+                    ("Reason", lifecycle.DECLINE_REASONS.get(enquiry.vendor_response_reason or "")),
+                    ("Provider's note", enquiry.vendor_response_note),
+                    ("Guests", _guests(enquiry.party_size)),
+                    ("Traveller", enquiry.contact_name),
+                    ("Phone", enquiry.contact_phone),
+                    ("Email", enquiry.contact_email),
+                ),
+            )
+    except Exception:
+        logger.exception("vendor answer email failed for enquiry %s", enquiry_id)

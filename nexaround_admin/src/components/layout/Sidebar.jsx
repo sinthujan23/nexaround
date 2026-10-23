@@ -5,10 +5,10 @@ import { compactCount, usePlaceCounts } from '../../places';
 import { useVendorChangeCount } from '../../vendorChanges';
 import { LogOutIcon } from '../Icons';
 
-export default function Sidebar({ onLogout }) {
+export default function Sidebar({ onLogout, extraCounts }) {
   const placeCounts = usePlaceCounts();
   const vendorChanges = useVendorChangeCount();
-  const counts = { ...placeCounts, vendor_changes: vendorChanges };
+  const counts = { ...placeCounts, vendor_changes: vendorChanges, ...extraCounts };
   return (
     <aside className="sidebar">
       <div className="sidebar-logo">

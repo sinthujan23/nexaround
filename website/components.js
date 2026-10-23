@@ -10,6 +10,9 @@
     return '/' + filename.replace(/\.html$/, '');
   }
 
+  // Small up-right arrow marking links to our other sites (app.*, guides.*)
+  var EXT_ICON = ' <svg class="ext-icon" width="10" height="10" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M3 11L11 3M11 3H4.5M11 3V9.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
   function renderComponents() {
     var path = getCurrentPath();
 
@@ -73,6 +76,8 @@
             '<a href="/technology">Technology Expertise</a>' +
             '<a href="https://apps.apple.com/lk/app/nexaround/id6806252363" target="_blank" rel="noopener noreferrer">Download on App Store</a>' +
             '<a href="https://play.google.com/store/apps/details?id=com.nexaround.app&pli=1" target="_blank" rel="noopener noreferrer">Get on Google Play</a>' +
+            '<a href="https://app.nexaround.com">nexARound App Website' + EXT_ICON + '</a>' +
+            '<a href="https://guides.nexaround.com">Travel Guides' + EXT_ICON + '</a>' +
             '<a href="/about#process">Engagement Process</a>' +
             '<a href="/about#models">Engagement Models</a>' +
           '</div>' +
@@ -104,6 +109,8 @@
           '<div class="footer__col">' +
             '<h4>Products &amp; Solutions</h4>' +
             '<a href="/app">nexARound App</a>' +
+            '<a href="https://app.nexaround.com">nexARound App Website' + EXT_ICON + '</a>' +
+            '<a href="https://guides.nexaround.com">Travel Guides' + EXT_ICON + '</a>' +
             '<a href="https://apps.apple.com/lk/app/nexaround/id6806252363" target="_blank" rel="noopener noreferrer">App Store (iOS)</a>' +
             '<a href="https://play.google.com/store/apps/details?id=com.nexaround.app&pli=1" target="_blank" rel="noopener noreferrer">Google Play (Android)</a>' +
             '<a href="/erp">ERP &amp; Business Solutions</a>' +
@@ -124,6 +131,8 @@
             '<a href="mailto:support@nexaround.com">support@nexaround.com</a>' +
             '<a href="/privacy">Privacy Statement</a>' +
             '<a href="/terms">Terms of Use</a>' +
+            '<a href="https://app.nexaround.com/experience-terms">Experience Booking Terms' + EXT_ICON + '</a>' +
+            '<a href="https://app.nexaround.com/provider-agreement">Provider Agreement' + EXT_ICON + '</a>' +
           '</div>' +
         '</div>' +
         '<div class="footer__brand">' +

@@ -387,11 +387,95 @@ class VendorStats {
   final int packagesTotal;
   final int packagesPublished;
 
-  const VendorStats({this.packagesTotal = 0, this.packagesPublished = 0});
+  /// Requests the vendor has not answered yet.
+  final int requestsWaiting;
+
+  const VendorStats({this.packagesTotal = 0, this.packagesPublished = 0, this.requestsWaiting = 0});
 
   factory VendorStats.fromJson(Map<String, dynamic> json) => VendorStats(
         packagesTotal: _int(json['packages_total']) ?? 0,
         packagesPublished: _int(json['packages_published']) ?? 0,
+        requestsWaiting: _int(json['requests_waiting']) ?? 0,
+      );
+}
+
+/// A traveller's request as the vendor sees it: the package, the date, the
+/// guests and the price chosen. Never who asked, how to reach them, where to
+/// pick them up or what they wrote: NexAround arranges the booking.
+class VendorRequest {
+  final String id;
+
+  /// "#3F9A1C", to name the request to NexAround.
+  final String reference;
+  final String packageTitle;
+
+  /// Null when the traveller is flexible about the day.
+  final DateTime? preferredDate;
+  final DateTime? confirmedDate;
+  final int? partySize;
+  final String? priceLabel;
+
+  /// new | contacted | confirmed | closed | customer_cancelled | provider_cancelled
+  final String status;
+
+  /// The vendor's own answer: confirmed | other_date | cancelled.
+  final String? answer;
+  final DateTime? offeredDate;
+  final String? reason;
+  final bool canAnswer;
+  final DateTime createdAt;
+
+  const VendorRequest({
+    required this.id,
+    required this.reference,
+    required this.packageTitle,
+    this.preferredDate,
+    this.confirmedDate,
+    this.partySize,
+    this.priceLabel,
+    required this.status,
+    this.answer,
+    this.offeredDate,
+    this.reason,
+    this.canAnswer = false,
+    required this.createdAt,
+  });
+
+  factory VendorRequest.fromJson(Map<String, dynamic> json) => VendorRequest(
+        id: json['id'].toString(),
+        reference: (json['reference'] ?? '').toString(),
+        packageTitle: (json['package_title'] ?? 'Experience').toString(),
+        preferredDate: _date(json['preferred_date']),
+        confirmedDate: _date(json['confirmed_date']),
+        partySize: _int(json['party_size']),
+        priceLabel: json['price_label'] as String?,
+        status: (json['status'] ?? 'new').toString(),
+        answer: json['vendor_response'] as String?,
+        offeredDate: _date(json['vendor_offered_date']),
+        reason: json['vendor_response_reason'] as String?,
+        canAnswer: json['can_answer'] == true,
+        createdAt: _date(json['created_at']) ?? DateTime.now(),
+      );
+
+  bool get flexible => preferredDate == null;
+
+  /// Open and not answered yet: the vendor's to-do.
+  bool get waiting => canAnswer && answer == null;
+}
+
+class VendorRequestPage {
+  final List<VendorRequest> requests;
+  final int total;
+  final int waiting;
+
+  const VendorRequestPage({this.requests = const [], this.total = 0, this.waiting = 0});
+
+  factory VendorRequestPage.fromJson(Map<String, dynamic> json) => VendorRequestPage(
+        requests: ((json['requests'] as List?) ?? const [])
+            .map((r) => VendorRequest.fromJson(Map<String, dynamic>.from(r as Map)))
+            .toList(),
+        total: _int(json['total']) ?? 0,
+        waiting: _int(json['waiting']) ?? 0,
       );
 }
 
@@ -586,6 +670,9 @@ class VendorActivityItem {
   final String actor;
   final String? actorName;
   final String? packageId;
+
+  /// The request a line is about, which a tap opens.
+  final String? enquiryId;
   final DateTime createdAt;
 
   const VendorActivityItem({
@@ -596,6 +683,7 @@ class VendorActivityItem {
     required this.actor,
     this.actorName,
     this.packageId,
+    this.enquiryId,
     required this.createdAt,
   });
 
@@ -607,6 +695,7 @@ class VendorActivityItem {
         actor: (json['actor'] ?? '').toString(),
         actorName: json['actor_name'] as String?,
         packageId: json['package_id']?.toString(),
+        enquiryId: json['enquiry_id']?.toString(),
         createdAt: _date(json['created_at']) ?? DateTime.now(),
       );
 }

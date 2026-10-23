@@ -16,7 +16,7 @@ from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 from fastapi import (
-    APIRouter, Depends, File, Header, HTTPException, Query, Request,
+    APIRouter, BackgroundTasks, Depends, File, Header, HTTPException, Query, Request,
     UploadFile, status,
 )
 from fastapi.responses import StreamingResponse
@@ -42,17 +42,19 @@ from app.schemas.partner import (
     PartnerAppAccessResponse, PartnerAppSessionRequest, PartnerAppVendor,
     PartnerForgotPasswordRequest, PartnerLoginRequest, PartnerMe,
     PartnerMessageResponse, PartnerPackageCreate, PartnerPackageListResponse,
-    PartnerPackageResponse, PartnerPackageUpdate, PartnerReviewListResponse,
+    PartnerPackageResponse, PartnerPackageUpdate, PartnerRequest, PartnerRequestAnswer,
+    PartnerRequestListResponse, PartnerReviewListResponse,
     PartnerReviewReply, PartnerReviewResponse, PartnerSetPasswordRequest,
     PartnerTokenResponse, PartnerStatsResponse, PartnerVendorProfileResponse,
     PartnerVendorProfileUpdate,
 )
 from app.services import (
-    audit, google_places_client, partner_activity, partner_events, vendor_review,
+    audit, enquiry_lifecycle, enquiry_notifications, google_places_client, partner_activity,
+    partner_events, vendor_review,
 )
 from app.services.email_service import send_vendor_invite_email
 from app.services import experience_reviews
-from app.services.experience_format import package_field_value
+from app.services.experience_format import package_field_value, vendor_option_label
 from app.services.experience_upload import save_experience_images
 from app.services.settings_service import SettingsService
 from app.utils.geo_utils import get_lat_lng
@@ -857,6 +859,130 @@ async def delete_partner_package(
     await partner_events.publish(principal.vendor.id, partner_events.PACKAGES_CHANGED)
     await partner_activity.announce(activity)
     return {"status": "deleted"}
+
+
+# ── Requests ────────────────────────────────────────────────────────────────
+#
+# A traveller's request, as the vendor sees and answers it: the package, the
+# date, the guests and the price chosen - never who asked, how to reach them,
+# where to pick them up or what they wrote. Scoped by the token's vendor in
+# the query, and a miss is a 404, as everywhere here.
+
+def _request_out(enquiry) -> PartnerRequest:
+    return PartnerRequest(
+        id=enquiry.id,
+        reference=enquiry_notifications.request_ref(enquiry),
+        package_id=enquiry.package_id,
+        package_title=enquiry.package_title_snapshot or "Experience",
+        preferred_date=enquiry.preferred_date,
+        confirmed_date=enquiry.confirmed_date,
+        party_size=enquiry.party_size,
+        price_label=vendor_option_label(enquiry.price_option),
+        status=enquiry.status,
+        vendor_response=enquiry.vendor_response,
+        vendor_offered_date=enquiry.vendor_offered_date,
+        vendor_response_reason=enquiry.vendor_response_reason,
+        vendor_responded_at=enquiry.vendor_responded_at,
+        can_answer=enquiry.status in enquiry_lifecycle.VENDOR_CAN_RESPOND,
+        created_at=enquiry.created_at,
+    )
+
+
+def _vendor_requests(vendor_id):
+    """The vendor's requests; spam an admin set aside never shows."""
+    from sqlalchemy import select
+    from app.models.experience import ExperienceEnquiry
+
+    return select(ExperienceEnquiry).where(
+        ExperienceEnquiry.vendor_id == vendor_id,
+        ExperienceEnquiry.status.in_(enquiry_lifecycle.ALL_STATUSES),
+    )
+
+
+async def _vendor_request(db, request_id: uuid.UUID, vendor_id):
+    from app.models.experience import ExperienceEnquiry
+
+    enquiry = (await db.execute(
+        _vendor_requests(vendor_id).where(ExperienceEnquiry.id == request_id)
+    )).scalar_one_or_none()
+    if enquiry is None:
+        raise HTTPException(status_code=404, detail="Request not found")
+    return enquiry
+
+
+@router.get("/requests", response_model=PartnerRequestListResponse)
+async def list_partner_requests(
+    scope: str = Query("open", pattern="^(open|all)$"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(25, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+    principal: VendorPrincipal = Depends(get_current_vendor),
+):
+    """"open": still to be answered or settled with the traveller, oldest
+    first, as a to-do list; "all": everything, newest first."""
+    from sqlalchemy import func, select
+    from app.models.experience import ExperienceEnquiry
+
+    base = _vendor_requests(principal.vendor.id)
+    if scope == "open":
+        base = base.where(ExperienceEnquiry.status.in_(enquiry_lifecycle.VENDOR_CAN_RESPOND))
+        order = ExperienceEnquiry.created_at.asc()
+    else:
+        order = ExperienceEnquiry.created_at.desc()
+    total = await db.scalar(select(func.count()).select_from(base.subquery()))
+    rows = (await db.execute(
+        base.order_by(order).offset((page - 1) * page_size).limit(page_size)
+    )).scalars().all()
+    stats = await ExperienceRepository(db).vendor_stats(principal.vendor.id)
+    return PartnerRequestListResponse(
+        requests=[_request_out(e) for e in rows],
+        total=total or 0,
+        waiting=stats["requests_waiting"],
+    )
+
+
+@router.get("/requests/{request_id}", response_model=PartnerRequest)
+async def get_partner_request(
+    request_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    principal: VendorPrincipal = Depends(get_current_vendor),
+):
+    return _request_out(await _vendor_request(db, request_id, principal.vendor.id))
+
+
+@router.post("/requests/{request_id}/answer", response_model=PartnerRequest)
+async def answer_partner_request(
+    request_id: uuid.UUID,
+    data: PartnerRequestAnswer,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+    principal: VendorPrincipal = Depends(get_current_vendor),
+):
+    """Confirm, offer another date, or cancel when no other date works.
+
+    Confirming or cancelling tells the traveller at once (push and email), as
+    an admin's would; another date goes to NexAround, who takes it to the
+    traveller. NexAround hears every answer by email, with who asked.
+    """
+    enquiry = await _vendor_request(db, request_id, principal.vendor.id)
+    now = datetime.now(timezone.utc)
+    error = enquiry_lifecycle.vendor_response_error(
+        enquiry, data.action, data.day, data.reason, now.date(),
+    )
+    if error:
+        raise HTTPException(status_code=409, detail=error)
+    event = enquiry_lifecycle.vendor_respond(
+        enquiry, data.action, now=now, when=data.day, reason=data.reason, note=data.note,
+    )
+    activity = partner_activity.request_answered(db, enquiry, login=principal.login)
+    await db.commit()
+    await db.refresh(enquiry)
+    await partner_events.publish(principal.vendor.id, partner_events.REQUESTS_CHANGED)
+    await partner_activity.announce(activity)
+    if event in (enquiry_lifecycle.CONFIRMED, enquiry_lifecycle.PROVIDER_CANCELLED):
+        background_tasks.add_task(enquiry_notifications.booking_update, enquiry.id, event)
+    background_tasks.add_task(enquiry_notifications.vendor_answered, enquiry.id)
+    return _request_out(enquiry)
 
 
 # ── Reviews ─────────────────────────────────────────────────────────────────

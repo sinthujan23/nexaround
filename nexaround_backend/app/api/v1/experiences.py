@@ -46,7 +46,7 @@ from app.services.experience_service import (
 from app.services import experience_reviews
 from app.services import (
     audit, enquiry_lifecycle, enquiry_notifications, legal_service,
-    partner_activity,
+    partner_activity, partner_events,
 )
 from app.services.settings_service import SettingsService
 
@@ -421,9 +421,13 @@ async def create_experience_enquiry(
     await db.refresh(enquiry)
 
     # The details go to Nexaround only (email to the inbox); the vendor gets
-    # the feed line and, on the app, a push with the same three facts.
+    # the feed line, a push and an email with the same facts, and answers in
+    # the portal's Requests.
     background_tasks.add_task(_dispatch_enquiry_email, enquiry.id)
     background_tasks.add_task(partner_activity.announce, activity)
+    background_tasks.add_task(
+        partner_events.publish, enquiry.vendor_id, partner_events.REQUESTS_CHANGED,
+    )
     background_tasks.add_task(enquiry_notifications.vendor_request_alert, enquiry.id)
     # The traveller's copy: what they asked for and the terms they accepted.
     background_tasks.add_task(enquiry_notifications.request_received, enquiry.id)
@@ -553,14 +557,24 @@ async def cancel_my_enquiry(
     if error:
         raise HTTPException(status_code=409, detail=error)
 
-    enquiry_lifecycle.apply_status(
+    event = enquiry_lifecycle.apply_status(
         enquiry, enquiry_lifecycle.CUSTOMER_CANCELLED,
         now=datetime.now(timezone.utc), reason=data.reason,
     )
+    # The vendor hears it too: package, date and guests, never who.
+    activity = partner_activity.request_updated(
+        db, enquiry, event, actor=partner_activity.TRAVELLER,
+    ) if event else None
     await db.commit()
     await db.refresh(enquiry)
 
     background_tasks.add_task(enquiry_notifications.customer_cancelled, enquiry.id)
+    if activity:
+        background_tasks.add_task(partner_activity.announce, activity)
+        background_tasks.add_task(
+            partner_events.publish, enquiry.vendor_id, partner_events.REQUESTS_CHANGED,
+        )
+        background_tasks.add_task(enquiry_notifications.vendor_update_alert, enquiry.id, event)
 
     return (await _my_enquiries_out(db, [enquiry]))[0]
 

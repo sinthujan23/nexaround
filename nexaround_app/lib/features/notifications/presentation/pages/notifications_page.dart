@@ -69,7 +69,9 @@ class _NotificationsPageState extends State<NotificationsPage> {
       await showMyExperienceRequests(context, openRequestId: requestId);
     } else if (type == 'vendor_request' || type == 'vendor_review') {
       await openVendorPortal(context,
-          vendorId: (data['vendor_id'] ?? n['vendor_id'])?.toString(), toNotifications: true);
+          vendorId: (data['vendor_id'] ?? n['vendor_id'])?.toString(),
+          requestId: (data['enquiry_id'] ?? n['enquiry_id'])?.toString(),
+          toNotifications: true);
     } else if (type == 'discovery_ready' || type.contains('discovery')) {
       Navigator.pop(context);
       final discoveryId = (data['discovery_id'] ?? data['id'] ?? n['discovery_id'] ?? n['id'])?.toString();

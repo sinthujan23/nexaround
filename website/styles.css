@@ -564,6 +564,7 @@ section{position:relative; padding:96px 40px;}
 @media (max-width:860px){ .footer__cols{grid-template-columns:1fr 1fr;} }
 @media (max-width:640px){ .footer{padding:20px 20px 0;} .footer__cols{padding-bottom:24px;} }
 .featured{background:var(--paper); display:flex; justify-content:center; padding:4px 20px 28px;}
+.ext-icon{display:inline-block; margin-left:3px; opacity:.65;}
 
 /* back to top */
 .totop{

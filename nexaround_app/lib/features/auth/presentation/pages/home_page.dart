@@ -87,7 +87,9 @@ class HomePageState extends State<HomePage> with WidgetsBindingObserver {
       // check of its changes: its notifications.
       if ((type == 'vendor_request' || type == 'vendor_review') && mounted) {
         openVendorPortal(context,
-            vendorId: data['vendor_id']?.toString(), toNotifications: true);
+            vendorId: data['vendor_id']?.toString(),
+            requestId: data['enquiry_id']?.toString(),
+            toNotifications: true);
       }
       if (type == 'discovery_ready' || data['type'] == 'discovery_ready') {
         final discoveryId = (data['discovery_id'] ?? data['id'])?.toString();

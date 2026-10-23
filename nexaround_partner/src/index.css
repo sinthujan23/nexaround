@@ -2610,3 +2610,23 @@ a.nav-item, a.dash-row, a.xp-row, a.sec-row, a.kpi, a.link-btn, a.xp-tab { text-
   border: 1px solid var(--tone-border); white-space: pre-wrap; font-weight: 600;
 }
 .xp-body > .review-notice { margin: 0 0 16px; }
+
+
+/* Requests (pages/Requests.jsx): package, date, guests and price only. */
+.rq-card { gap: 14px; }
+.rq-highlight { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+.rq-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.rq-title { font-size: 15.5px; display: block; }
+.rq-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 0; }
+.rq-facts dt { font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.7px; }
+.rq-facts dd { margin: 2px 0 0; font-size: 14px; font-weight: 600; color: var(--text-primary); }
+.rq-form { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: 1px solid var(--border); }
+.rq-form .form-label { margin: 6px 0 0; }
+.rq-form .form-input, .rq-form .form-select { max-width: 280px; }
+.rq-choice { display: flex; gap: 18px; flex-wrap: wrap; font-size: 14px; font-weight: 600; }
+.rq-choice label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+@media (max-width: 640px) { .rq-facts { grid-template-columns: 1fr 1fr; } }
+.rq-card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px;
+  padding: 18px 20px;
+}

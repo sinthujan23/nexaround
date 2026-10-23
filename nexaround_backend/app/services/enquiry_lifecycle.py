@@ -150,3 +150,74 @@ def vendor_status_error(
     if new == CONFIRMED and booked is None:
         return "Choose the date you confirmed with the traveller."
     return None
+
+
+# --- The vendor's answer ------------------------------------------------------
+#
+# The vendor sees a request as package, date, guests and price only, and
+# answers it from the portal. Confirming and cancelling move the status as an
+# admin's would (and tell everyone); offering another date leaves the request
+# open for NexAround to take that date to the traveller. No other vendor is
+# offered: if no other date works, the vendor cancels.
+
+VENDOR_CONFIRMED = "confirmed"
+VENDOR_OTHER_DATE = "other_date"
+VENDOR_CANCELLED = "cancelled"
+VENDOR_RESPONSES = (VENDOR_CONFIRMED, VENDOR_OTHER_DATE, VENDOR_CANCELLED)
+
+# A request the vendor can still answer.
+VENDOR_CAN_RESPOND = (NEW, CONTACTED)
+
+# Why the vendor cannot do the date asked. Only this label reaches the
+# traveller (as a cancellation reason); the vendor's free note goes to
+# NexAround alone, since free text can carry a phone number.
+DECLINE_REASONS = {
+    "fully_booked": "Fully booked that day",
+    "weather": "Weather or sea conditions",
+    "not_running": "Not running that day",
+    "other": "Other reason",
+}
+
+
+def vendor_response_error(
+    enquiry, action: str, when: Optional[date], reason: Optional[str], today: date,
+) -> Optional[str]:
+    """None if the vendor may answer `enquiry` this way."""
+    if action not in VENDOR_RESPONSES:
+        return f"Answer must be one of: {', '.join(VENDOR_RESPONSES)}"
+    if enquiry.status not in VENDOR_CAN_RESPOND:
+        return "This request has already been answered."
+    if action == VENDOR_CONFIRMED and booked_date(enquiry, when) is None:
+        return "Choose the date you can do."
+    if action == VENDOR_OTHER_DATE:
+        if when is None:
+            return "Choose the date you can offer instead."
+        if when < today:
+            return "Choose a date from today on."
+        if when == enquiry.preferred_date:
+            return "That is the date the traveller asked for: confirm it instead."
+    if action in (VENDOR_OTHER_DATE, VENDOR_CANCELLED) and reason not in DECLINE_REASONS:
+        return "Choose why you cannot do the date asked."
+    return None
+
+
+def vendor_respond(
+    enquiry, action: str, *, now: datetime, when: Optional[date] = None,
+    reason: Optional[str] = None, note: Optional[str] = None,
+) -> Optional[str]:
+    """Record the vendor's answer (checked by `vendor_response_error`).
+
+    Returns the event everyone must hear about, as `apply_status` does:
+    CONFIRMED, PROVIDER_CANCELLED, or None for another date offered (only
+    NexAround hears of that, and arranges it with the traveller).
+    """
+    enquiry.vendor_response = action
+    enquiry.vendor_responded_at = now
+    enquiry.vendor_response_reason = reason if action != VENDOR_CONFIRMED else None
+    enquiry.vendor_response_note = (note or "").strip() or None
+    enquiry.vendor_offered_date = when if action == VENDOR_OTHER_DATE else None
+    if action == VENDOR_CONFIRMED:
+        return apply_status(enquiry, CONFIRMED, now=now, confirmed_date=when)
+    if action == VENDOR_CANCELLED:
+        return apply_status(enquiry, PROVIDER_CANCELLED, now=now, reason=DECLINE_REASONS[reason])
+    return None
