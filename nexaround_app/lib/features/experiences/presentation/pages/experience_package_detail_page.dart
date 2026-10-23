@@ -506,7 +506,8 @@ class _ExperiencePackageDetailPageState
             children: [
               // With several prices they are listed below instead.
               if (_package.priceLabel.isNotEmpty && _package.priceOptions.length < 2)
-                _chip(Icons.sell_rounded, _package.priceLabel, highlight: true),
+                _chip(Icons.sell_rounded, _package.displayLabel ?? _package.priceLabel,
+                    highlight: true),
               if (_package.formattedDuration.isNotEmpty)
                 _chip(Icons.schedule_rounded, _package.formattedDuration),
               if (_package.distanceM != null)
@@ -532,7 +533,7 @@ class _ExperiencePackageDetailPageState
                         size: 16, color: AppColors.brandGreen),
                     const SizedBox(width: 8),
                     Expanded(
-                      child: Text(option.label,
+                      child: Text(option.displayLabel ?? option.label,
                           style: const TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w600,

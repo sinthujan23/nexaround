@@ -19,6 +19,10 @@ class ExperienceDateRange {
 class ExperiencePriceOption {
   final String id;
   final String label;
+
+  /// [label] in the currency the traveller picked ("≈ INR 2,040 / person
+  /// (min 3)"), or null when they picked none. Display only.
+  final String? displayLabel;
   final String basis;
   final int minPeople;
   final int? maxPeople;
@@ -26,6 +30,7 @@ class ExperiencePriceOption {
   const ExperiencePriceOption({
     required this.id,
     required this.label,
+    this.displayLabel,
     this.basis = 'per_person',
     this.minPeople = 1,
     this.maxPeople,
@@ -109,6 +114,10 @@ class ExperiencePackageEntity {
   /// Every price, first one first; the traveller picks one when they ask to
   /// book. Empty for "Price on request" and from a server before options.
   final List<ExperiencePriceOption> priceOptions;
+
+  /// [priceLabel] in the currency the traveller picked, or null when they
+  /// picked none (or there is no rate for it). Display only.
+  final String? displayLabel;
   final int? durationMinutes;
   final String durationLabel;
   final double latitude;
@@ -176,6 +185,7 @@ class ExperiencePackageEntity {
     this.priceBasis = 'per_person',
     this.priceLabel = '',
     this.priceOptions = const [],
+    this.displayLabel,
     this.durationMinutes,
     this.durationLabel = '',
     required this.latitude,

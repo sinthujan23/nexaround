@@ -26,7 +26,7 @@ from app.schemas.experience import (
 )
 from app.services.experience_format import (
     DEFAULT_BOOKING_WINDOW_DAYS, format_duration, format_price, is_published,
-    option_bounds, option_label,
+    display_label, option_bounds, option_label,
     resolve_package_point, strip_markdown,
 )
 from app.services.ride_apps_service import COUNTRY_NAMES
@@ -104,11 +104,14 @@ def review_summary_out(summary: dict) -> ReviewSummary:
     )
 
 
-def _option_out(option: dict, currency: str, package_max: Optional[int]) -> PriceOptionOut:
+def _option_out(
+    option: dict, currency: str, package_max: Optional[int], shown: Optional[str], per_usd: dict,
+) -> PriceOptionOut:
     least, most = option_bounds(option, package_max)
     return PriceOptionOut(
         id=option["id"],
         label=option_label(option, currency, package_max),
+        display_label=display_label(option, currency, package_max, shown, per_usd),
         basis=option.get("basis") or "per_person",
         min_people=least,
         max_people=most,
@@ -119,7 +122,11 @@ def package_to_card(
     package: ExperiencePackage,
     distance_m: Optional[float] = None,
     rating: RatingSummary = NO_REVIEWS,
+    shown: Optional[str] = None,
+    per_usd: Optional[dict] = None,
 ) -> ExperiencePackageCard:
+    """`shown`: the currency the traveller picked in the app, with today's
+    `per_usd` rates; it adds `display_label`s and changes nothing else."""
     lat, lng = get_lat_lng(package.location)
     amount = float(package.price_amount) if package.price_amount is not None else None
     usd = float(package.price_usd) if package.price_usd is not None else None
@@ -160,7 +167,14 @@ def package_to_card(
                 package.max_participants, usd,
             )
         ),
-        price_options=[_option_out(o, currency, package.max_participants) for o in options],
+        price_options=[
+            _option_out(o, currency, package.max_participants, shown, per_usd or {})
+            for o in options
+        ],
+        display_label=(
+            display_label(options[0], currency, package.max_participants, shown, per_usd or {})
+            if options else None
+        ),
         max_participants=package.max_participants,
         duration_minutes=package.duration_minutes,
         duration_label=format_duration(package.duration_minutes),
@@ -181,8 +195,10 @@ def package_to_detail(
     distance_m: Optional[float] = None,
     rating: RatingSummary = NO_REVIEWS,
     vendor_rating: RatingSummary = NO_REVIEWS,
+    shown: Optional[str] = None,
+    per_usd: Optional[dict] = None,
 ) -> ExperiencePackageDetail:
-    card = package_to_card(package, distance_m, rating)
+    card = package_to_card(package, distance_m, rating, shown, per_usd)
     return ExperiencePackageDetail(
         **card.model_dump(),
         description=strip_markdown(package.description),

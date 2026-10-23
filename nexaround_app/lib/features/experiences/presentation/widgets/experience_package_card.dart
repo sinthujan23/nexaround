@@ -400,7 +400,8 @@ class ExperiencePackageCard extends StatelessWidget {
   /// Price display: amount, then a small line with the dollar amount and the
   /// per-unit text ("($137) per group (max 4)").
   Widget _buildPrice() {
-    final label = package.priceLabel.trim();
+    // In the currency the traveller picked, when they picked one.
+    final label = (package.displayLabel ?? package.priceLabel).trim();
     if (label.isEmpty) return const SizedBox.shrink();
 
     final parts = label.split(' / ');

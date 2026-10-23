@@ -59,6 +59,9 @@ class PriceOptionOut(BaseModel):
     id: str
     # "LKR 8,000 ($24) / person (min 3)", made like `price_label`.
     label: str
+    # The same in the currency the traveller picked ("≈ INR 2,040 / person
+    # (min 3)"); None when they picked none or there is no rate. Display only.
+    display_label: Optional[str] = None
     basis: str
     # The guests the option allows, blanks already filled in.
     min_people: int = 1
@@ -137,6 +140,8 @@ class ExperiencePackageCard(BaseModel):
     # Every price, first one first; `price_label` is the first. Empty when the
     # price is on request.
     price_options: list[PriceOptionOut] = []
+    # `price_label` in the currency the traveller picked, else None.
+    display_label: Optional[str] = None
     # Admin's free-text region, e.g. "Kerala State · Munnar region".
     region_label: Optional[str] = None
     # The vendor's country, ISO 3166-1 alpha-2 and its English name. The app
@@ -571,3 +576,81 @@ class VendorChangeDecision(BaseModel):
     decision: str = Field(..., pattern="^(approve|request_changes)$")
     # What the vendor should change; required to send it back.
     note: Optional[str] = Field(None, max_length=2000)
+
+
+# --- "List your experience": businesses asking to join ----------------------
+
+PROVIDER_APPLICATION_STATUSES = ("new", "contacted", "added", "rejected")
+
+
+class ProviderApplicationCreate(BaseModel):
+    business_name: str = Field(..., min_length=2, max_length=255)
+    contact_name: str = Field(..., min_length=2, max_length=120)
+    contact_phone: str = Field(..., min_length=6, max_length=32)
+    contact_email: str = Field(..., min_length=5, max_length=255)
+    country_code: str = Field(..., min_length=2, max_length=2)
+    city: Optional[str] = Field(None, max_length=120)
+    offering: str = Field(..., min_length=10, max_length=3000)
+    links: Optional[str] = Field(None, max_length=1000)
+
+    @field_validator("contact_email")
+    @classmethod
+    def _looks_like_email(cls, value):
+        value = value.strip()
+        if "@" not in value or "." not in value.split("@")[-1]:
+            raise ValueError("Please enter a valid email address.")
+        return value
+
+    @field_validator("contact_phone")
+    @classmethod
+    def _has_digits(cls, value):
+        if sum(ch.isdigit() for ch in value) < 6:
+            raise ValueError("Please enter a valid phone number, with the country code.")
+        return value.strip()
+
+    @field_validator("country_code")
+    @classmethod
+    def _upper(cls, value):
+        return value.strip().upper()
+
+
+class ProviderApplicationCreated(BaseModel):
+    id: uuid.UUID
+    status: str
+
+
+class ProviderApplicationAdminResponse(BaseModel):
+    id: uuid.UUID
+    user_id: Optional[uuid.UUID] = None
+    business_name: str
+    contact_name: str
+    contact_phone: str
+    contact_email: str
+    country_code: str
+    city: Optional[str] = None
+    offering: str
+    links: Optional[str] = None
+    status: str
+    admin_notes: Optional[str] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
+
+
+class ProviderApplicationListResponse(BaseModel):
+    applications: list[ProviderApplicationAdminResponse]
+    total: int
+    new_count: int = 0
+
+
+class ProviderApplicationUpdate(BaseModel):
+    status: Optional[str] = None
+    admin_notes: Optional[str] = None
+
+    @field_validator("status")
+    @classmethod
+    def _known_status(cls, value):
+        if value is not None and value not in PROVIDER_APPLICATION_STATUSES:
+            raise ValueError(f"status must be one of {', '.join(PROVIDER_APPLICATION_STATUSES)}")
+        return value

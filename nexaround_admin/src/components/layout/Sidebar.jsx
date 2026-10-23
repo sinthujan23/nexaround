@@ -3,12 +3,16 @@ import { NavLink } from 'react-router-dom';
 import { NAV_SECTIONS } from '../../nav';
 import { compactCount, usePlaceCounts } from '../../places';
 import { useVendorChangeCount } from '../../vendorChanges';
+import { useProviderApplicationCount } from '../../providerApplications';
 import { LogOutIcon } from '../Icons';
 
 export default function Sidebar({ onLogout, extraCounts }) {
   const placeCounts = usePlaceCounts();
   const vendorChanges = useVendorChangeCount();
-  const counts = { ...placeCounts, vendor_changes: vendorChanges, ...extraCounts };
+  const applications = useProviderApplicationCount();
+  const counts = {
+    ...placeCounts, vendor_changes: vendorChanges, provider_applications: applications, ...extraCounts,
+  };
   return (
     <aside className="sidebar">
       <div className="sidebar-logo">

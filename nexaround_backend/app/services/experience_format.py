@@ -202,6 +202,53 @@ def vendor_option_label(snapshot: Optional[dict]) -> Optional[str]:
     return option_label({**snapshot, "usd": None}, snapshot.get("currency") or "USD", None)
 
 
+def convert_price(
+    amount: Optional[float], currency: str, usd: Optional[float],
+    target: str, per_usd: dict,
+) -> tuple[Optional[float], bool]:
+    """A price in the traveller's chosen currency, and whether it is approximate.
+
+    Display only: the booking stays at the vendor's price. Dollars use the
+    admin's typed price when there is one (it is what the bracket shows), and
+    other currencies go through it too, so every view agrees. (None, False)
+    when there is no rate.
+    """
+    code, target = (currency or "USD").upper(), target.upper()
+    if amount is None:
+        return None, False
+    if target == code:
+        return float(amount), False
+    if target == "USD" and usd is not None:
+        return float(usd), False
+    from_rate = 1.0 if code == "USD" else per_usd.get(code)
+    base = float(usd) if usd is not None else (float(amount) / from_rate if from_rate else None)
+    to_rate = 1.0 if target == "USD" else per_usd.get(target)
+    if base is None or not to_rate:
+        return None, False
+    return base * float(to_rate), True
+
+
+def display_label(
+    option: dict, currency: str, package_max: Optional[int],
+    target: Optional[str], per_usd: dict,
+) -> Optional[str]:
+    """ "≈ INR 10,850 / group (max 6)" for a traveller who picked INR; None
+    when they picked nothing, or there is no rate for it."""
+    if not target:
+        return None
+    value, approximate = convert_price(
+        option.get("amount"), currency, option.get("usd"), target, per_usd,
+    )
+    if value is None:
+        return None
+    # Whole units read better; cents only for a small amount.
+    value = round(value) if value >= 20 else round(value, 2)
+    least, most = option_bounds(option, package_max)
+    code = target.upper()
+    label = format_price(value, code, option.get("basis") or "per_person", most, None, least)
+    return label.replace(f"{code} ", f"≈ {code} ", 1) if approximate else label
+
+
 def normalize_price_options(
     incoming: list[dict], existing: Optional[list[dict]], *, keep_usd: bool = False,
 ) -> list[dict]:

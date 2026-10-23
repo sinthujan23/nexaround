@@ -121,3 +121,41 @@ def test_min_above_max_is_refused():
 def test_an_unknown_basis_is_refused():
     with pytest.raises(ValidationError):
         PriceOption(amount=1, basis="per_day")
+
+
+# --- The currency the traveller picks in the app (display only) --------------
+
+from app.services.experience_format import convert_price, display_label  # noqa: E402
+
+RATES = {"LKR": 331.7, "INR": 95.0, "QAR": 3.64}
+DOHA = {"id": "dddd4444", "amount": 475.0, "usd": 130.0, "basis": "per_group",
+        "min_people": None, "max_people": None}
+
+
+def test_dollars_use_the_typed_price_exactly():
+    assert display_label(DOHA, "QAR", 6, "USD", RATES) == "USD 130 / group (max 6)"
+
+
+def test_other_currencies_go_through_the_typed_dollars_and_say_approximately():
+    assert display_label(DOHA, "QAR", 6, "INR", RATES) == "≈ INR 12,350 / group (max 6)"
+
+
+def test_the_vendors_own_currency_is_exact():
+    assert display_label(PER_HEAD, "LKR", 7, "LKR", RATES) == "LKR 8,000 / person (min 3)"
+
+
+def test_without_typed_dollars_the_daily_rate_is_used():
+    no_usd = {**PER_HEAD, "usd": None}
+    value, approximate = convert_price(8000, "LKR", None, "USD", RATES)
+    assert approximate and round(value, 2) == round(8000 / 331.7, 2)
+    assert display_label(no_usd, "LKR", 7, "USD", RATES) == "≈ USD 24 / person (min 3)"
+
+
+def test_a_starting_price_keeps_from_in_front():
+    option = {**PER_HEAD, "basis": "from", "min_people": None}
+    assert display_label(option, "LKR", 7, "INR", RATES) == "From ≈ INR 2,280"
+
+
+def test_no_choice_or_no_rate_means_no_display_label():
+    assert display_label(DOHA, "QAR", 6, None, RATES) is None
+    assert display_label(DOHA, "QAR", 6, "EUR", RATES) is None

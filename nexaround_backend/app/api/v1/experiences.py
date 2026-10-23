@@ -13,8 +13,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_current_user_optional
 from app.core.database import async_session, get_db
+from app.core.rate_limiter import RateLimiter, get_client_ip, get_redis_client
 from app.models.experience import (
     ExperienceEnquiry, ExperiencePackage, ExperienceReview, ExperienceVendor,
+    ProviderApplication,
 )
 from app.models.user import User
 from app.repositories.experience_repository import ExperienceRepository
@@ -28,6 +30,8 @@ from app.schemas.experience import (
     MyEnquiryListResponse,
     MyEnquiryOut,
     MyReviewOut,
+    ProviderApplicationCreate,
+    ProviderApplicationCreated,
     ReviewCreate,
     ReviewListResponse,
 )
@@ -46,8 +50,9 @@ from app.services.experience_service import (
 from app.services import experience_reviews, image_preview
 from app.services import (
     audit, enquiry_lifecycle, enquiry_notifications, legal_service,
-    partner_activity, partner_events,
+    fx_service, partner_activity, partner_events,
 )
+from app.services.currencies import PRICE_CURRENCIES
 from app.services.settings_service import SettingsService
 
 router = APIRouter(prefix="/experiences", tags=["Experiences"])
@@ -134,6 +139,15 @@ async def get_experience_video(name: str, request: Request):
     )
 
 
+async def _shown_currency(db: AsyncSession, currency: Optional[str]) -> tuple[Optional[str], dict]:
+    """The traveller's picked currency, if it is one we price in, and today's
+    rates. Nothing to do for none or an unknown code."""
+    code = (currency or "").strip().upper()
+    if code not in PRICE_CURRENCIES:
+        return None, {}
+    return code, await fx_service.usd_rates(db)
+
+
 @router.get("/nearby", response_model=ExperienceNearbyResponse)
 async def nearby_experiences(
     lat: Optional[float] = Query(None, ge=-90.0, le=90.0),
@@ -142,10 +156,14 @@ async def nearby_experiences(
     country_code: Optional[str] = Query(None, max_length=2),
     limit: int = Query(20, ge=1, le=50),
     offset: int = Query(0, ge=0),
+    currency: Optional[str] = Query(None, max_length=3),
     db: AsyncSession = Depends(get_db),
     _user: Optional[User] = Depends(get_current_user_optional),
 ):
     """Vendor packages, by country or nearest first, depending on the switch.
+
+    `currency`: the one the traveller picked in the app; every card then also
+    carries its price in it (`display_label`). Display only.
 
     `experiences_country_mode` (Admin > Settings) is on by default: the list is
     filtered by `country_code` (every country when absent), ordered by the
@@ -158,6 +176,7 @@ async def nearby_experiences(
     tunable server-side.
     """
     repo = await _public_repo(db)
+    shown, per_usd = await _shown_currency(db, currency)
     country_mode = parse_country_mode(
         await SettingsService(db).get_setting_fresh(COUNTRY_MODE_KEY, "")
     )
@@ -173,7 +192,9 @@ async def nearby_experiences(
         # `has_nearby` true keeps the app's "showing the nearest" banner away.
         return ExperienceNearbyResponse(
             packages=[
-                package_to_card(pkg, rating=ratings.get(pkg.id, NO_REVIEWS))
+                package_to_card(
+                    pkg, rating=ratings.get(pkg.id, NO_REVIEWS), shown=shown, per_usd=per_usd,
+                )
                 for pkg in found
             ],
             total=total,
@@ -205,7 +226,7 @@ async def nearby_experiences(
 
     ratings = await repo.rating_summaries([pkg.id for pkg, _ in rows])
     packages = [
-        package_to_card(pkg, distance, ratings.get(pkg.id, NO_REVIEWS))
+        package_to_card(pkg, distance, ratings.get(pkg.id, NO_REVIEWS), shown, per_usd)
         for pkg, distance in rows
     ]
     nearest = rows[0][1] if rows else None
@@ -226,10 +247,12 @@ async def get_experience_package(
     package_id: uuid.UUID,
     lat: Optional[float] = Query(None, ge=-90.0, le=90.0),
     lng: Optional[float] = Query(None, ge=-180.0, le=180.0),
+    currency: Optional[str] = Query(None, max_length=3),
     db: AsyncSession = Depends(get_db),
     _user: Optional[User] = Depends(get_current_user_optional),
 ):
     repo = await _public_repo(db)
+    shown, per_usd = await _shown_currency(db, currency)
     package = await repo.get_package(package_id)
     if not package:
         raise HTTPException(status_code=404, detail="Experience not found")
@@ -242,7 +265,7 @@ async def get_experience_package(
     vendor_rating = (
         await repo.vendor_rating_summaries([package.vendor_id])
     ).get(package.vendor_id, NO_REVIEWS)
-    detail = package_to_detail(package, distance, rating, vendor_rating)
+    detail = package_to_detail(package, distance, rating, vendor_rating, shown, per_usd)
     # The gallery shows each photo's colours, blurred, while it loads.
     detail.image_previews = await image_preview.previews_for(detail.photo_urls)
     return detail
@@ -723,3 +746,94 @@ async def delete_package_review(
     await db.commit()
     return None
 
+
+# ── "List your experience": businesses asking to join ───────────────────────
+
+# Anyone may send one, signed in or not; a script must not flood the inbox.
+_application_limiter = RateLimiter(requests_per_minute=3, window_seconds=600)
+
+
+async def _too_many_applications(ip: str) -> bool:
+    key = f"rate_limit:provider_application:ip:{ip}"
+    try:
+        return await _application_limiter._check_rate_limit(key, await get_redis_client())
+    except Exception:
+        return await _application_limiter._check_rate_limit(key, None)
+
+
+async def _email_application(application_id: uuid.UUID) -> None:
+    """Tell the platform inbox, on its own session. Never raises."""
+    from app.services import email_service
+    from app.services.ride_apps_service import COUNTRY_NAMES
+
+    try:
+        async with async_session() as db:
+            app_row = await db.get(ProviderApplication, application_id)
+            inbox = await SettingsService(db).get_setting("contact_email")
+            if not app_row or not inbox:
+                return
+            place = ", ".join(
+                p for p in (app_row.city, COUNTRY_NAMES.get(app_row.country_code, app_row.country_code)) if p
+            )
+            await email_service.send_experience_update_email(
+                inbox,
+                subject=f"New provider application: {app_row.business_name}",
+                heading="A business wants to list its experiences",
+                intro="Sent from the app's List your experience form. "
+                      "Review it in Admin > Provider applications.",
+                rows=(
+                    ("Business", app_row.business_name),
+                    ("Contact", app_row.contact_name),
+                    ("Phone", app_row.contact_phone),
+                    ("Email", app_row.contact_email),
+                    ("Location", place),
+                    ("Offers", app_row.offering),
+                    ("Links", app_row.links),
+                ),
+            )
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("provider application email failed for %s", application_id)
+
+
+@router.post(
+    "/provider-applications",
+    response_model=ProviderApplicationCreated,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_provider_application(
+    data: ProviderApplicationCreate,
+    background_tasks: BackgroundTasks,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_optional),
+):
+    """The app's "List your experience" form. Stored for Admin > Provider
+    applications and emailed to the platform inbox; nothing is published."""
+    from app.services.ride_apps_service import COUNTRY_NAMES
+
+    if await _too_many_applications(get_client_ip(request)):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many applications from here. Please try again later.",
+        )
+    if data.country_code not in COUNTRY_NAMES:
+        raise HTTPException(status_code=400, detail="Please choose your country.")
+
+    row = ProviderApplication(
+        user_id=current_user.id if current_user else None,
+        business_name=data.business_name.strip(),
+        contact_name=data.contact_name.strip(),
+        contact_phone=data.contact_phone,
+        contact_email=data.contact_email,
+        country_code=data.country_code,
+        city=(data.city or "").strip() or None,
+        offering=data.offering.strip(),
+        links=(data.links or "").strip() or None,
+        status="new",
+    )
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    background_tasks.add_task(_email_application, row.id)
+    return ProviderApplicationCreated(id=row.id, status=row.status)

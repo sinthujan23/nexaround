@@ -70,6 +70,7 @@ class ExperiencePackageModel extends ExperiencePackageEntity {
     super.priceBasis,
     super.priceLabel,
     super.priceOptions,
+    super.displayLabel,
     super.durationMinutes,
     super.durationLabel,
     required super.latitude,
@@ -115,6 +116,7 @@ class ExperiencePackageModel extends ExperiencePackageEntity {
       priceBasis: json['price_basis'] as String? ?? 'per_person',
       priceLabel: json['price_label'] as String? ?? '',
       priceOptions: _priceOptions(json['price_options']),
+      displayLabel: json['display_label'] as String?,
       durationMinutes: (json['duration_minutes'] as num?)?.toInt(),
       durationLabel: json['duration_label'] as String? ?? '',
       latitude: (json['latitude'] as num?)?.toDouble() ?? 0.0,
@@ -175,6 +177,7 @@ List<ExperiencePriceOption> _priceOptions(dynamic value) {
     options.add(ExperiencePriceOption(
       id: id,
       label: label,
+      displayLabel: item['display_label'] as String?,
       basis: item['basis']?.toString() ?? 'per_person',
       minPeople: (item['min_people'] as num?)?.toInt() ?? 1,
       maxPeople: (item['max_people'] as num?)?.toInt(),

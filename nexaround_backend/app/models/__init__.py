@@ -18,7 +18,7 @@ from app.models.excluded_keyword import ExcludedKeyword
 from app.models.country_city import CountryCity
 from app.models.experience import (
     ExperienceVendor, ExperiencePackage, ExperienceEnquiry, VendorUser,
-    VendorActivity, ExperienceReview,
+    VendorActivity, ExperienceReview, ProviderApplication,
 )
 
 from app.models.audit import AuthSession, AuditEvent

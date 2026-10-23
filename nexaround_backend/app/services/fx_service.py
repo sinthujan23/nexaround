@@ -195,6 +195,14 @@ def cached_usd_rates() -> dict:
     return _memo["rates"] if _memo["rates"] else {}
 
 
+async def usd_rates(db: AsyncSession) -> dict:
+    """Today's USD rates for a request handler. Only the worker refreshes the
+    memo, so an API process reads the stored row, at most once an hour."""
+    if not _memo["rates"] or time.time() - _memo["at"] > 3600:
+        await load_memo(db)
+    return cached_usd_rates()
+
+
 async def load_memo(db: AsyncSession) -> None:
     row = await get_row(db)
     if row is not None and row.rates:

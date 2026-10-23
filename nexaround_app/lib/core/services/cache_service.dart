@@ -190,6 +190,28 @@ class CacheService {
     useSocialAvatarNotifier.value = useSocial;
   }
 
+  // ── Experiences: the currency the traveller picked for prices ─────────
+  static const String _keyExperienceCurrency = 'experience_display_currency';
+
+  /// Changes when the traveller picks another currency, so lists reload.
+  static final ValueNotifier<String?> experienceCurrencyNotifier =
+      ValueNotifier(null);
+
+  /// Null: the providers' own prices, the default. Display only: a request
+  /// is always for the provider's price.
+  static String? getExperienceCurrency() =>
+      _prefsOrNull?.getString(_keyExperienceCurrency);
+
+  static Future<void> setExperienceCurrency(String? code) async {
+    if (_prefsOrNull == null) return;
+    if (code == null) {
+      await _prefs.remove(_keyExperienceCurrency);
+    } else {
+      await _prefs.setString(_keyExperienceCurrency, code);
+    }
+    experienceCurrencyNotifier.value = code;
+  }
+
   // Onboarding
   static bool isFirstTime() {
     return _prefs.getBool('first_time') ?? true;

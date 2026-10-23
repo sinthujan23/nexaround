@@ -271,7 +271,7 @@ PACKAGE_CARD_KEYS = {
     "price_basis", "price_label", "duration_minutes", "duration_label",
     "latitude", "longitude", "distance_m", "tags", "region_label",
     "rating_avg", "rating_count", "max_participants", "country_code",
-    "country_name", "price_options",
+    "country_name", "price_options", "display_label",
 }
 
 NEARBY_RESPONSE_KEYS = {

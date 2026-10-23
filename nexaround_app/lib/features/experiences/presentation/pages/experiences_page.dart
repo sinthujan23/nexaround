@@ -3,6 +3,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/features/experiences/presentation/pages/my_experience_requests_page.dart';
+import 'package:nexaround_app/features/experiences/presentation/widgets/experience_currency_picker.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experiences_tab.dart';
 import 'package:nexaround_app/features/vendor_portal/presentation/widgets/vendor_portal_banner.dart';
 
@@ -93,6 +94,7 @@ class _ExperiencesPageState extends State<ExperiencesPage> {
           ),
         ),
         actions: [
+          if (!ExperiencesPage.isComingSoon) const ExperienceCurrencyChip(),
           if (!ExperiencesPage.isComingSoon)
             IconButton(
               tooltip: 'My requests',

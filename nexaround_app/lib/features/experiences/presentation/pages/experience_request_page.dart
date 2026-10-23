@@ -145,6 +145,12 @@ class _ExperienceRequestPageState extends State<ExperienceRequestPage> {
         _partySize = _fitGuests(_partySize);
       });
 
+  /// The chosen price in the traveller's picked currency, shown under the
+  /// provider's own; null when they picked none.
+  String? get _shownPrice => _option != null
+      ? _option!.displayLabel
+      : widget.package.displayLabel;
+
   String get _guestsHint {
     final least = _minGuests;
     final most = _option?.maxPeople;
@@ -646,6 +652,7 @@ class _ExperienceRequestPageState extends State<ExperienceRequestPage> {
                 ),
                 if (factsWith(_option?.label ?? package.priceLabel).isNotEmpty) ...[
                   const SizedBox(height: 2),
+                  // The provider's price: what the request is for.
                   Text(
                     factsWith(_option?.label ?? package.priceLabel),
                     maxLines: 1,
@@ -656,6 +663,14 @@ class _ExperienceRequestPageState extends State<ExperienceRequestPage> {
                         color: AppColors.brandGreen),
                   ),
                 ],
+                if (_shownPrice != null)
+                  Text(
+                    _shownPrice!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 12, color: AppColors.textTertiary),
+                  ),
               ],
             ),
           ),
@@ -761,13 +776,24 @@ class _ExperienceRequestPageState extends State<ExperienceRequestPage> {
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: Text(
-                  option.label,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                    color: AppColors.textPrimary,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      option.label,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    if (option.displayLabel != null)
+                      Text(
+                        option.displayLabel!,
+                        style: const TextStyle(
+                            fontSize: 12, color: AppColors.textTertiary),
+                      ),
+                  ],
                 ),
               ),
             ],

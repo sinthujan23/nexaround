@@ -571,3 +571,39 @@ class VendorActivity(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
+
+
+class ProviderApplication(Base):
+    """A business asking to list its experiences, from the app's "List your
+    experience" form. The team contacts them and, if it fits, adds the vendor
+    and packages by hand; nothing here publishes anything."""
+
+    __tablename__ = "provider_applications"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    # Who sent it, when signed in. SET NULL: the application outlives the account.
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    business_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    contact_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    contact_phone: Mapped[str] = mapped_column(String(32), nullable=False)
+    contact_email: Mapped[str] = mapped_column(String(255), nullable=False)
+    country_code: Mapped[str] = mapped_column(String(2), nullable=False)
+    city: Mapped[str] = mapped_column(String(120), nullable=True)
+    # What they offer, in their words: activities and rough prices.
+    offering: Mapped[str] = mapped_column(Text, nullable=False)
+    # Google Maps, website, Instagram: free text, one or more.
+    links: Mapped[str] = mapped_column(String(1000), nullable=True)
+    # new | contacted | added | rejected
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="new")
+    admin_notes: Mapped[str] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=True,
+        onupdate=lambda: datetime.now(timezone.utc),
+    )

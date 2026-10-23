@@ -55,6 +55,9 @@ from app.schemas.experience import (
     ExperienceVendorCreate,
     ExperienceVendorListResponse,
     ExperienceVendorUpdate,
+    ProviderApplicationAdminResponse,
+    ProviderApplicationListResponse,
+    ProviderApplicationUpdate,
     VendorChangeDecision,
     VendorChangeItem,
     VendorChangeListResponse,
@@ -1084,3 +1087,55 @@ async def delete_vendor_login(
     )
     await partner_events.publish(vendor_id, partner_events.ACCOUNT_CHANGED)
     return {"status": "deleted"}
+
+
+# --- Provider applications ("List your experience" in the app) ---------------
+
+@router.get("/provider-applications", response_model=ProviderApplicationListResponse)
+async def list_provider_applications(
+    status_filter: Optional[str] = Query(None, alias="status"),
+    db: AsyncSession = Depends(get_db),
+    _=Depends(verify_admin_token),
+):
+    """Newest first. `new_count` feeds the menu badge whatever the filter."""
+    from sqlalchemy import func, select
+
+    from app.models.experience import ProviderApplication
+
+    query = select(ProviderApplication).order_by(ProviderApplication.created_at.desc())
+    if status_filter:
+        query = query.where(ProviderApplication.status == status_filter)
+    rows = (await db.execute(query.limit(500))).scalars().all()
+    new_count = await db.scalar(
+        select(func.count()).select_from(ProviderApplication)
+        .where(ProviderApplication.status == "new")
+    )
+    return ProviderApplicationListResponse(
+        applications=[ProviderApplicationAdminResponse.model_validate(r) for r in rows],
+        total=len(rows),
+        new_count=int(new_count or 0),
+    )
+
+
+@router.patch(
+    "/provider-applications/{application_id}",
+    response_model=ProviderApplicationAdminResponse,
+)
+async def update_provider_application(
+    application_id: uuid.UUID,
+    data: ProviderApplicationUpdate,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(verify_admin_token),
+):
+    from app.models.experience import ProviderApplication
+
+    row = await db.get(ProviderApplication, application_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Application not found")
+    if data.status is not None:
+        row.status = data.status
+    if data.admin_notes is not None:
+        row.admin_notes = data.admin_notes
+    await db.commit()
+    await db.refresh(row)
+    return ProviderApplicationAdminResponse.model_validate(row)

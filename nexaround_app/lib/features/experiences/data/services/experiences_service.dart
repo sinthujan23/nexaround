@@ -186,6 +186,7 @@ class ExperiencesService {
         'offset': offset,
         if (category != null && category.isNotEmpty) 'category': category,
         if (countryCode != null && countryCode.isNotEmpty) 'country_code': countryCode,
+        ...?_currencyParam(),
       },
     );
 
@@ -234,8 +235,16 @@ class ExperiencesService {
     return _parseNearby(data);
   }
 
+  // Per currency too: a saved page carries the prices in the one it was
+  // fetched for.
   static String _nearbyKey(String? category, String? countryCode) =>
-      '${countryCode ?? ''}|${category ?? ''}';
+      '${countryCode ?? ''}|${category ?? ''}|${CacheService.getExperienceCurrency() ?? ''}';
+
+  /// The currency the traveller picked, for the server's `display_label`s.
+  static Map<String, String>? _currencyParam() {
+    final code = CacheService.getExperienceCurrency();
+    return code == null ? null : {'currency': code};
+  }
 
   static bool _isFresh(Map<String, dynamic> entry) {
     final savedAt = (entry['saved_at'] as num?)?.toInt() ?? 0;
@@ -273,6 +282,7 @@ class ExperiencesService {
         queryParameters: {
           if (latitude != null) 'lat': latitude,
           if (longitude != null) 'lng': longitude,
+          ...?_currencyParam(),
         },
       );
       final data = response.data;
@@ -355,6 +365,40 @@ class ExperiencesService {
             'Could not send your request. Please try again.',
         termsChanged: response?.statusCode == 409,
       );
+    }
+  }
+
+  /// "List your experience": a business asking to join. Null when sent,
+  /// otherwise the message to show (the server's own when it has one).
+  static Future<String?> submitProviderApplication({
+    required String businessName,
+    required String contactName,
+    required String contactPhone,
+    required String contactEmail,
+    required String countryCode,
+    String? city,
+    required String offering,
+    String? links,
+  }) async {
+    try {
+      await ApiClient.instance.post(
+        ApiConstants.experienceProviderApplications,
+        data: {
+          'business_name': businessName,
+          'contact_name': contactName,
+          'contact_phone': contactPhone,
+          'contact_email': contactEmail,
+          'country_code': countryCode,
+          if (city != null && city.isNotEmpty) 'city': city,
+          'offering': offering,
+          if (links != null && links.isNotEmpty) 'links': links,
+        },
+      );
+      return null;
+    } catch (e) {
+      debugPrint('❌ Error sending provider application: $e');
+      return (e is DioException ? safeServerDetail(e.response) : null) ??
+          'Could not send your details. Please try again.';
     }
   }
 

@@ -6,6 +6,7 @@ import 'package:nexaround_app/core/utils/distance_format.dart';
 import 'package:nexaround_app/features/experiences/data/services/experiences_service.dart';
 import 'package:nexaround_app/features/experiences/domain/entities/experience.dart';
 import 'package:nexaround_app/features/experiences/presentation/pages/experience_package_detail_page.dart';
+import 'package:nexaround_app/features/experiences/presentation/pages/provider_application_page.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_category.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_package_card.dart';
 
@@ -76,6 +77,7 @@ class ExperiencesTabState extends State<ExperiencesTab> {
     _lat = widget.latitude;
     _lng = widget.longitude;
     _scrollController.addListener(_onScroll);
+    CacheService.experienceCurrencyNotifier.addListener(_onCurrencyChanged);
     final saved = ExperiencesService.cachedCountries();
     _availableCountries = saved.countries;
     _countryMode = saved.countryMode ?? false;
@@ -106,9 +108,15 @@ class ExperiencesTabState extends State<ExperiencesTab> {
 
   @override
   void dispose() {
+    CacheService.experienceCurrencyNotifier.removeListener(_onCurrencyChanged);
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     super.dispose();
+  }
+
+  // The traveller picked another currency for prices: fetch them in it.
+  void _onCurrencyChanged() {
+    if (mounted && _canLoad) _load();
   }
 
   /// Called by discover_page when the tab is opened or the user moves.
@@ -745,6 +753,8 @@ class ExperiencesTabState extends State<ExperiencesTab> {
             bottom: 18,
             child: Text('🛥️', style: TextStyle(fontSize: 54)),
           ),
+          // For businesses: send their details to NexAround to be listed.
+          Positioned(right: 12, top: 14, child: _listYoursButton()),
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 18, 90, 18),
             child: Column(
@@ -809,6 +819,40 @@ class ExperiencesTabState extends State<ExperiencesTab> {
         ],
       ),
     ).animate().fadeIn(duration: 350.ms).slideY(begin: 0.04, end: 0, curve: Curves.easeOutCubic);
+  }
+
+  /// Two short lines, so it fits the column the boat sits in.
+  Widget _listYoursButton() {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(14),
+      elevation: 2,
+      shadowColor: Colors.black26,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () => showProviderApplicationPage(context),
+        child: const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.add_business_rounded, size: 16, color: AppColors.brandGreen),
+              SizedBox(height: 2),
+              Text(
+                'List your\nexperience',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 10.5,
+                  height: 1.15,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.brandGreen,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   static Widget _bubble(double size, double opacity) {
