@@ -12,9 +12,10 @@ List<Map<String, String>> get experienceCurrencies => CurrencyService.supportedC
 // Offered first: the ones travellers on the app use most.
 const _popular = ['USD', 'EUR', 'GBP', 'LKR', 'INR', 'QAR', 'AED', 'SAR'];
 
-/// The chip in the Experiences app bar: "Original" (each provider's own price,
-/// the default) or the currency every price is also shown in, marked "≈".
-/// Display only: a request is always for the provider's price.
+/// The chip in the Experiences filter row, styled like the country one:
+/// "Original" (each provider's own price, the default) or the currency every
+/// price is also shown in, marked "≈", highlighted once picked. Display only:
+/// a request is always for the provider's price.
 class ExperienceCurrencyChip extends StatelessWidget {
   const ExperienceCurrencyChip({super.key});
 
@@ -24,37 +25,47 @@ class ExperienceCurrencyChip extends StatelessWidget {
       valueListenable: CacheService.experienceCurrencyNotifier,
       builder: (context, value, _) {
         final code = value ?? CacheService.getExperienceCurrency();
-        return Padding(
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          child: Material(
-            color: AppColors.surface,
-            shape: StadiumBorder(
-              side: BorderSide(color: AppColors.border.withValues(alpha: 0.8)),
-            ),
-            child: InkWell(
-              customBorder: const StadiumBorder(),
-              onTap: () => showExperienceCurrencyPicker(context, code),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(10, 0, 6, 0),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.currency_exchange_rounded,
-                        size: 15, color: AppColors.brandGreen),
-                    const SizedBox(width: 5),
-                    Text(
-                      code ?? 'Original',
-                      style: const TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    const Icon(Icons.expand_more_rounded,
-                        size: 18, color: AppColors.textSecondary),
-                  ],
-                ),
+        final picked = code != null;
+        return InkWell(
+          onTap: () => showExperienceCurrencyPicker(context, code),
+          borderRadius: BorderRadius.circular(20),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: picked ? AppColors.brandGreenLight : Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: picked ? AppColors.brandGreen : AppColors.border,
+                width: picked ? 1.5 : 1,
               ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.03),
+                  blurRadius: 4,
+                  offset: const Offset(0, 1),
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.currency_exchange_rounded,
+                    size: 15, color: AppColors.brandGreen),
+                const SizedBox(width: 6),
+                Text(
+                  code ?? 'Original',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: picked ? AppColors.brandGreen : AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(width: 3),
+                Icon(Icons.keyboard_arrow_down_rounded,
+                    size: 16,
+                    color: picked ? AppColors.brandGreen : AppColors.textSecondary),
+              ],
             ),
           ),
         );

@@ -8,6 +8,7 @@ import 'package:nexaround_app/features/experiences/domain/entities/experience.da
 import 'package:nexaround_app/features/experiences/presentation/pages/experience_package_detail_page.dart';
 import 'package:nexaround_app/features/experiences/presentation/pages/provider_application_page.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_category.dart';
+import 'package:nexaround_app/features/experiences/presentation/widgets/experience_currency_picker.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_package_card.dart';
 
 /// The Discovery "Experiences" tab: vendor packages, by country or nearest
@@ -412,15 +413,18 @@ class ExperiencesTabState extends State<ExperiencesTab> {
             color: AppColors.border,
           ),
           const SizedBox(width: 6),
-          // Category Chips (Horizontal Scroll)
+          // The currency, then the category chips (horizontal scroll). The
+          // currency scrolls with them: pinned beside the country it would
+          // leave a small phone almost no room for categories.
           Expanded(
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.only(right: 16, left: 4),
-              itemCount: experienceCategories.length,
+              itemCount: experienceCategories.length + 1,
               separatorBuilder: (_, __) => const SizedBox(width: 8),
               itemBuilder: (_, index) {
-                final chip = experienceCategories[index];
+                if (index == 0) return const ExperienceCurrencyChip();
+                final chip = experienceCategories[index - 1];
                 final selected = _category == chip.value;
                 return GestureDetector(
                   onTap: () => _selectCategory(chip.value),
@@ -726,6 +730,11 @@ class ExperiencesTabState extends State<ExperiencesTab> {
         ? 'Explore\n${_selectedCountry!.name}'
         : 'Do something\nunforgettable';
 
+    return LayoutBuilder(builder: (context, box) {
+    // A narrow phone gets the short button text, and the badge always stops
+    // short of the button (a long country name ends in "…").
+    final compact = box.maxWidth < 348;
+    final badgeRoom = box.maxWidth - 20 - (compact ? 106 : 172) - 14 - 10;
     return Container(
       height: 156,
       clipBehavior: Clip.antiAlias,
@@ -753,8 +762,6 @@ class ExperiencesTabState extends State<ExperiencesTab> {
             bottom: 18,
             child: Text('🛥️', style: TextStyle(fontSize: 54)),
           ),
-          // For businesses: send their details to NexAround to be listed.
-          Positioned(right: 12, top: 14, child: _listYoursButton()),
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 18, 90, 18),
             child: Column(
@@ -767,8 +774,11 @@ class ExperiencesTabState extends State<ExperiencesTab> {
                     color: Colors.white.withValues(alpha: 0.18),
                     borderRadius: BorderRadius.circular(20),
                   ),
+                  constraints: BoxConstraints(maxWidth: badgeRoom),
                   child: Text(
                     badgeText,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       fontSize: 10.5,
                       fontWeight: FontWeight.w800,
@@ -816,36 +826,38 @@ class ExperiencesTabState extends State<ExperiencesTab> {
               ],
             ),
           ),
+          // Last, so it sits above the text column for taps.
+          Positioned(right: 14, top: 16, child: _listYoursButton(compact: compact)),
         ],
       ),
     ).animate().fadeIn(duration: 350.ms).slideY(begin: 0.04, end: 0, curve: Curves.easeOutCubic);
+    });
   }
 
-  /// Two short lines, so it fits the column the boat sits in.
-  Widget _listYoursButton() {
+  /// Frosted, like the banner's badge: for businesses to send their details
+  /// to NexAround to be listed.
+  Widget _listYoursButton({required bool compact}) {
     return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(14),
-      elevation: 2,
-      shadowColor: Colors.black26,
+      color: Colors.white.withValues(alpha: 0.18),
+      shape: StadiumBorder(
+        side: BorderSide(color: Colors.white.withValues(alpha: 0.35)),
+      ),
       child: InkWell(
-        borderRadius: BorderRadius.circular(14),
+        customBorder: const StadiumBorder(),
         onTap: () => showProviderApplicationPage(context),
-        child: const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-          child: Column(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(10, 7, 12, 7),
+          child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.add_business_rounded, size: 16, color: AppColors.brandGreen),
-              SizedBox(height: 2),
+              const Icon(Icons.add_business_rounded, size: 15, color: Colors.white),
+              const SizedBox(width: 6),
               Text(
-                'List your\nexperience',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 10.5,
-                  height: 1.15,
-                  fontWeight: FontWeight.w800,
-                  color: AppColors.brandGreen,
+                compact ? 'List yours' : 'List your experience',
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
                 ),
               ),
             ],
