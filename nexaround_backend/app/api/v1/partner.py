@@ -875,12 +875,13 @@ async def delete_partner_package(
 # where to pick them up or what they wrote. Scoped by the token's vendor in
 # the query, and a miss is a 404, as everywhere here.
 
-def _request_out(enquiry) -> PartnerRequest:
+def _request_out(enquiry, photo: Optional[str] = None) -> PartnerRequest:
     return PartnerRequest(
         id=enquiry.id,
         reference=enquiry_notifications.request_ref(enquiry),
         package_id=enquiry.package_id,
         package_title=enquiry.package_title_snapshot or "Experience",
+        package_photo_url=photo,
         preferred_date=enquiry.preferred_date,
         confirmed_date=enquiry.confirmed_date,
         party_size=enquiry.party_size,
@@ -905,6 +906,20 @@ def _vendor_requests(vendor_id):
         ExperienceEnquiry.vendor_id == vendor_id,
         ExperienceEnquiry.status.in_(enquiry_lifecycle.ALL_STATUSES),
     )
+
+
+async def _cover_photos(db, enquiries) -> dict:
+    """{package_id: first photo} for the requests' packages, in one query."""
+    from sqlalchemy import select
+    from app.models.experience import ExperiencePackage
+
+    ids = {e.package_id for e in enquiries if e.package_id}
+    if not ids:
+        return {}
+    rows = (await db.execute(
+        select(ExperiencePackage.id, ExperiencePackage.photo_urls).where(ExperiencePackage.id.in_(ids))
+    )).all()
+    return {pid: (photos or [None])[0] for pid, photos in rows}
 
 
 async def _vendor_request(db, request_id: uuid.UUID, vendor_id):
@@ -942,8 +957,9 @@ async def list_partner_requests(
         base.order_by(order).offset((page - 1) * page_size).limit(page_size)
     )).scalars().all()
     stats = await ExperienceRepository(db).vendor_stats(principal.vendor.id)
+    photos = await _cover_photos(db, rows)
     return PartnerRequestListResponse(
-        requests=[_request_out(e) for e in rows],
+        requests=[_request_out(e, photos.get(e.package_id)) for e in rows],
         total=total or 0,
         waiting=stats["requests_waiting"],
     )
@@ -955,7 +971,9 @@ async def get_partner_request(
     db: AsyncSession = Depends(get_db),
     principal: VendorPrincipal = Depends(get_current_vendor),
 ):
-    return _request_out(await _vendor_request(db, request_id, principal.vendor.id))
+    enquiry = await _vendor_request(db, request_id, principal.vendor.id)
+    photos = await _cover_photos(db, [enquiry])
+    return _request_out(enquiry, photos.get(enquiry.package_id))
 
 
 @router.post("/requests/{request_id}/answer", response_model=PartnerRequest)
@@ -994,7 +1012,8 @@ async def answer_partner_request(
         # The traveller accepts or declines it in the app.
         background_tasks.add_task(enquiry_notifications.date_offered, enquiry.id)
     background_tasks.add_task(enquiry_notifications.vendor_answered, enquiry.id)
-    return _request_out(enquiry)
+    photos = await _cover_photos(db, [enquiry])
+    return _request_out(enquiry, photos.get(enquiry.package_id))
 
 
 # ── Reviews ─────────────────────────────────────────────────────────────────

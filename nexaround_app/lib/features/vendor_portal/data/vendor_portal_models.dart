@@ -415,6 +415,9 @@ class VendorRequest {
   final String reference;
   final String packageTitle;
 
+  /// The package's cover photo (a server path), when it has one.
+  final String? photoUrl;
+
   /// Null when the traveller is flexible about the day.
   final DateTime? preferredDate;
   final DateTime? confirmedDate;
@@ -438,6 +441,7 @@ class VendorRequest {
     required this.id,
     required this.reference,
     required this.packageTitle,
+    this.photoUrl,
     this.preferredDate,
     this.confirmedDate,
     this.partySize,
@@ -455,6 +459,7 @@ class VendorRequest {
         id: json['id'].toString(),
         reference: (json['reference'] ?? '').toString(),
         packageTitle: (json['package_title'] ?? 'Experience').toString(),
+        photoUrl: json['package_photo_url'] as String?,
         preferredDate: _date(json['preferred_date']),
         confirmedDate: _date(json['confirmed_date']),
         partySize: _int(json['party_size']),

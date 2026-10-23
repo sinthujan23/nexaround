@@ -107,25 +107,8 @@ class _VendorDashboardTabState extends State<VendorDashboardTab> {
   }
 
   /// One request, with Confirm and "Can't do this date", over Home.
-  Future<void> _openRequest(VendorRequest request) => showModalBottomSheet<void>(
-        context: context,
-        isScrollControlled: true,
-        showDragHandle: true,
-        builder: (ctx) => SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(vendorGutter, 0, vendorGutter, 12),
-            child: RequestCard(
-              request: request,
-              api: widget.api,
-              margin: EdgeInsets.zero,
-              onAnswered: (_) {
-                Navigator.pop(ctx);
-                widget.onAnswered();
-              },
-            ),
-          ),
-        ),
-      );
+  Future<void> _openRequest(VendorRequest request) =>
+      showRequestSheet(context, request, widget.api, onAnswered: widget.onAnswered);
 
   /// "Requests to answer": one compact line each, in one card, like an
   /// inbox; a tap opens the request to answer it.

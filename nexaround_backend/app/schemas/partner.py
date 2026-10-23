@@ -316,6 +316,8 @@ class PartnerRequest(BaseModel):
     reference: str
     package_id: Optional[uuid.UUID] = None
     package_title: str
+    # The package's cover photo (a path), when it has one.
+    package_photo_url: Optional[str] = None
     # None for a traveller who is flexible about the day.
     preferred_date: Optional[date] = None
     confirmed_date: Optional[date] = None

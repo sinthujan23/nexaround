@@ -23,6 +23,56 @@ String requestDay(DateTime d) {
   return '${days[d.weekday - 1]} ${d.day} ${months[d.month - 1]} ${d.year}';
 }
 
+/// One request in a sheet at the foot of the screen, as tall as it needs:
+/// the package's photo, then the request with its answers. [onAnswered]
+/// runs after the sheet closes on an answer.
+Future<void> showRequestSheet(
+  BuildContext context,
+  VendorRequest request,
+  VendorPortalApi api, {
+  required VoidCallback onAnswered,
+}) {
+  return showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    builder: (ctx) => SafeArea(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(vendorGutter, 0, vendorGutter, 12),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (request.photoUrl != null) ...[
+              ClipRRect(
+                borderRadius: AppRadii.brMd,
+                child: AspectRatio(
+                  aspectRatio: 16 / 9,
+                  child: Image.network(
+                    mediaUrl(request.photoUrl!),
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Container(color: AppColors.surface),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+            RequestCard(
+              request: request,
+              api: api,
+              margin: EdgeInsets.zero,
+              onAnswered: (_) {
+                Navigator.pop(ctx);
+                onAnswered();
+              },
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
 /// Travellers' requests for the vendor's packages: package, date, guests and
 /// price - never who asked. "To answer" is the to-do list, oldest first.
 class VendorRequestsTab extends StatefulWidget {
@@ -97,25 +147,7 @@ class VendorRequestsTabState extends State<VendorRequestsTab> {
     try {
       final request = await widget.api.request(id);
       if (!mounted) return;
-      await showModalBottomSheet<void>(
-        context: context,
-        isScrollControlled: true,
-        showDragHandle: true,
-        builder: (ctx) => SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(vendorGutter, 0, vendorGutter, 12),
-            child: RequestCard(
-              request: request,
-              api: widget.api,
-              margin: EdgeInsets.zero,
-              onAnswered: (_) {
-                Navigator.pop(ctx);
-                _answered();
-              },
-            ),
-          ),
-        ),
-      );
+      await showRequestSheet(context, request, widget.api, onAnswered: _answered);
     } catch (e) {
       if (mounted) showVendorSnack(context, userMessageFor(e, action: 'open the request'), error: true);
     }
@@ -330,6 +362,8 @@ class _RequestCardState extends State<RequestCard> {
       margin: widget.margin,
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
       child: Column(
+        // As tall as its content: in a sheet it must not fill the screen.
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
