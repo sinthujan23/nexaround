@@ -26,6 +26,12 @@ class ExperienceRequest {
   final DateTime? freeCancellationLastDay;
   final bool canCancel;
 
+  /// The provider cannot do the date asked and offers this one instead
+  /// ([offerReason] says why): the traveller accepts it (the booking is
+  /// confirmed for it) or declines it (the request is cancelled).
+  final DateTime? offeredDate;
+  final String? offerReason;
+
   /// The package still exists and the request was not cancelled: the traveller
   /// may rate it from here. [review] is their review of that package, if any.
   final bool canReview;
@@ -51,6 +57,8 @@ class ExperienceRequest {
     this.lateCancellation = false,
     this.freeCancellationLastDay,
     this.canCancel = false,
+    this.offeredDate,
+    this.offerReason,
     this.canReview = false,
     this.review,
   });
@@ -76,6 +84,8 @@ class ExperienceRequest {
         lateCancellation: lateCancellation,
         freeCancellationLastDay: freeCancellationLastDay,
         canCancel: canCancel,
+        offeredDate: offeredDate,
+        offerReason: offerReason,
         canReview: canReview,
         review: review,
       );
@@ -132,6 +142,8 @@ class ExperienceRequest {
       lateCancellation: json['late_cancellation'] as bool? ?? false,
       freeCancellationLastDay: day('free_cancellation_last_day'),
       canCancel: json['can_cancel'] as bool? ?? false,
+      offeredDate: day('offered_date'),
+      offerReason: text('offer_reason'),
       canReview: json['can_review'] as bool? ?? false,
       review: json['review'] is Map<String, dynamic>
           ? MyExperienceReview.fromJson(json['review'] as Map<String, dynamic>)

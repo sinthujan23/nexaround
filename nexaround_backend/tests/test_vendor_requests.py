@@ -39,6 +39,7 @@ def enquiry(**overrides):
         confirmed_date=None, confirmed_at=None, cancelled_at=None, cancellation_reason=None,
         late_cancellation=None, vendor_response=None, vendor_offered_date=None,
         vendor_response_reason=None, vendor_response_note=None, vendor_responded_at=None,
+        offer_response=None, offer_responded_at=None,
         created_at=NOW, **TRAVELLER,
     )
     fields.update(overrides)
@@ -132,3 +133,50 @@ def test_the_vendors_own_lines_name_no_traveller():
         assert leaked(title + body) == []
     title, body = partner_activity.request_text(enquiry(), today=TODAY)
     assert body == "Sun 25 Oct · 4 guests. Confirm it or offer another date in the vendor portal."
+
+
+def _offered(when=date(2026, 10, 27)):
+    e = enquiry()
+    lc.vendor_respond(e, lc.VENDOR_OTHER_DATE, now=NOW, when=when, reason="fully_booked")
+    return e
+
+
+def test_an_offered_date_waits_for_the_traveller():
+    e = _offered()
+    assert lc.pending_offer(e) == date(2026, 10, 27)
+    assert lc.offer_response_error(e, TODAY) is None
+    assert lc.offer_response_error(enquiry(), TODAY), "nothing was offered"
+
+
+def test_accepting_confirms_the_booking_for_the_offered_date():
+    e = _offered()
+    event = lc.respond_to_offer(e, True, now=NOW)
+    assert event == lc.CONFIRMED
+    assert e.status == lc.CONFIRMED and e.confirmed_date == date(2026, 10, 27)
+    assert e.offer_response == lc.OFFER_ACCEPTED and lc.pending_offer(e) is None
+    assert lc.offer_response_error(e, TODAY), "it can only be answered once"
+
+
+def test_declining_cancels_the_request():
+    e = _offered()
+    event = lc.respond_to_offer(e, False, now=NOW)
+    assert event == lc.CUSTOMER_CANCELLED and e.status == lc.CUSTOMER_CANCELLED
+    assert e.cancellation_reason == lc.DECLINED_OFFER_REASON
+    # Never confirmed, so never a late cancellation.
+    assert not e.late_cancellation
+    title, body = partner_activity.update_text(e, lc.CUSTOMER_CANCELLED, today=TODAY)
+    assert title == "Other date declined: Dolphin Watching"
+    assert leaked(title + body) == []
+
+
+def test_a_past_offered_date_cannot_be_accepted():
+    e = _offered(when=date(2026, 10, 23))
+    assert lc.offer_response_error(e, date(2026, 10, 24))
+
+
+def test_a_new_offer_asks_the_traveller_again():
+    e = _offered()
+    e.offer_response = lc.OFFER_ACCEPTED  # as if answered, status left open by an admin
+    e.status = lc.NEW
+    lc.vendor_respond(e, lc.VENDOR_OTHER_DATE, now=NOW, when=date(2026, 10, 29), reason="weather")
+    assert e.offer_response is None and lc.pending_offer(e) == date(2026, 10, 29)

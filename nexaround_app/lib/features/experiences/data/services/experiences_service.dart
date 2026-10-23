@@ -486,6 +486,28 @@ class ExperiencesService {
   }
 
 
+  /// Accepts or declines the date the provider offered instead of the one
+  /// asked: accepting confirms the booking for it, declining cancels the
+  /// request.
+  static Future<OfferAnswer> answerOffer(String requestId, {required bool accept}) async {
+    try {
+      final response = await ApiClient.instance.post(
+        '${ApiConstants.experienceEnquiries}/$requestId/offer',
+        data: {'accept': accept},
+      );
+      final data = response.data;
+      return OfferAnswer(
+        request: data is Map<String, dynamic> ? ExperienceRequest.fromJson(data) : null,
+      );
+    } catch (e) {
+      debugPrint('❌ Error answering an offered date: $e');
+      return OfferAnswer(
+        error: (e is DioException ? safeServerDetail(e.response) : null) ??
+            'Could not send your answer. Please try again.',
+      );
+    }
+  }
+
   /// Cancels one of the traveller's requests. The server stamps the time,
   /// which is what the 72-hour rule is judged on.
   static Future<RequestCancellation> cancelRequest(
@@ -513,6 +535,14 @@ class ExperiencesService {
       );
     }
   }
+}
+
+/// How answering an offered date went: the updated request, or a message.
+class OfferAnswer {
+  final ExperienceRequest? request;
+  final String? error;
+
+  const OfferAnswer({this.request, this.error});
 }
 
 /// How rating a package went: the saved review, or a message to show.

@@ -356,6 +356,9 @@ class ExperienceEnquiryAdminResponse(BaseModel):
     vendor_response_reason: Optional[str] = None
     vendor_response_note: Optional[str] = None
     vendor_responded_at: Optional[datetime] = None
+    # The traveller's answer to that date: accepted | declined.
+    offer_response: Optional[str] = None
+    offer_responded_at: Optional[datetime] = None
     admin_notes: Optional[str] = None
     terms_version: Optional[int] = None
     terms_accepted_at: Optional[datetime] = None
@@ -412,6 +415,10 @@ class MyEnquiryOut(BaseModel):
     late_cancellation: Optional[bool] = None
     free_cancellation_last_day: Optional[date] = None
     can_cancel: bool = False
+    # The provider cannot do the date asked and offers this one instead,
+    # with why (a label): the traveller accepts or declines it in the app.
+    offered_date: Optional[date] = None
+    offer_reason: Optional[str] = None
     # Whether the package still exists to be rated and the request was not
     # cancelled: the app offers "Rate this experience" on the request itself.
     # `review` is the traveller's own review of that package, if any.
@@ -421,6 +428,12 @@ class MyEnquiryOut(BaseModel):
 
 class MyEnquiryListResponse(BaseModel):
     enquiries: list[MyEnquiryOut]
+
+
+class MyEnquiryOfferAnswer(BaseModel):
+    """The traveller's answer to the date the provider offered instead."""
+
+    accept: bool
 
 
 class MyEnquiryCancel(BaseModel):

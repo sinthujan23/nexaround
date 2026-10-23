@@ -236,11 +236,14 @@ String _guests(int? n) => n == null ? '' : '$n ${n == 1 ? 'guest' : 'guests'}';
 class _StatusChip extends StatelessWidget {
   final String status;
 
-  const _StatusChip({required this.status});
+  /// The provider offered another date that waits for the traveller.
+  final bool offered;
+
+  const _StatusChip({required this.status, this.offered = false});
 
   @override
   Widget build(BuildContext context) {
-    final color = requestStatusColor(status);
+    final color = offered ? const Color(0xFFB7791F) : requestStatusColor(status);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
@@ -248,7 +251,7 @@ class _StatusChip extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text(
-        requestStatusLabel(status),
+        offered ? 'New date offered' : requestStatusLabel(status),
         style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: color),
       ),
     );
@@ -337,7 +340,7 @@ class _RequestCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              _StatusChip(status: request.status),
+              _StatusChip(status: request.status, offered: request.offeredDate != null),
             ],
           ),
         ),
@@ -365,6 +368,45 @@ class ExperienceRequestSheet extends StatefulWidget {
 class _ExperienceRequestSheetState extends State<ExperienceRequestSheet> {
   late ExperienceRequest _request = widget.request;
   bool _cancelling = false;
+  bool _answering = false;
+
+  /// Accepts (the booking is confirmed for it) or declines (the request is
+  /// cancelled) the date the provider offered.
+  Future<void> _answerOffer(bool accept) async {
+    final offered = _day(context, _request.offeredDate);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(accept ? 'Book for $offered?' : 'Decline $offered?'),
+        content: Text(accept
+            ? 'Your booking will be confirmed for $offered. Pay the provider at the location.'
+            : 'Your request will be cancelled.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Back')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: accept ? null : TextButton.styleFrom(foregroundColor: AppColors.error),
+            child: Text(accept ? 'Accept' : 'Decline'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+
+    setState(() => _answering = true);
+    final result = await ExperiencesService.answerOffer(_request.id, accept: accept);
+    if (!mounted) return;
+    setState(() => _answering = false);
+    final updated = result.request;
+    if (updated != null) {
+      setState(() => _request = updated);
+      widget.onChanged(updated);
+    }
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(result.error ??
+          (accept ? 'Booked for $offered.' : 'Your request has been cancelled.')),
+    ));
+  }
 
   Future<void> _review() async {
     final packageId = _request.packageId;
@@ -455,7 +497,7 @@ class _ExperienceRequestSheetState extends State<ExperienceRequestSheet> {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  _StatusChip(status: r.status),
+                  _StatusChip(status: r.status, offered: r.offeredDate != null),
                 ],
               ),
               if (r.vendorName != null) ...[
@@ -465,7 +507,10 @@ class _ExperienceRequestSheetState extends State<ExperienceRequestSheet> {
                         fontSize: 13.5, color: AppColors.textSecondary)),
               ],
               const SizedBox(height: 16),
-              _statusBanner(context, r),
+              if (r.offeredDate != null)
+                _offerCard(context, r)
+              else
+                _statusBanner(context, r),
               const SizedBox(height: 16),
               _row(context, Icons.event_rounded,
                   r.isConfirmed ? 'Date' : 'Preferred date',
@@ -629,6 +674,75 @@ class _ExperienceRequestSheetState extends State<ExperienceRequestSheet> {
   }
 
   /// What the status means for the traveller, in a sentence or two.
+  /// The provider's other date, to accept or decline.
+  Widget _offerCard(BuildContext context, ExperienceRequest r) {
+    const amber = Color(0xFFB7791F);
+    final provider = r.vendorName ?? 'The provider';
+    final asked = r.preferredDate == null ? 'your date' : _day(context, r.preferredDate);
+    final offered = _day(context, r.offeredDate);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: amber.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: amber.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text('Another date offered',
+              style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700, color: amber)),
+          const SizedBox(height: 4),
+          Text(
+            '$provider can\'t do $asked'
+            '${r.offerReason == null ? '' : ' (${r.offerReason!.toLowerCase()})'}. '
+            'They can do $offered instead.',
+            style: const TextStyle(fontSize: 13.5, height: 1.4, color: AppColors.textPrimary),
+          ),
+          const SizedBox(height: 4),
+          const Text('Accepting confirms your booking for that date; declining cancels the request.',
+              style: TextStyle(fontSize: 12.5, height: 1.35, color: AppColors.textSecondary)),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: _answering ? null : () => _answerOffer(false),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.error,
+                    side: const BorderSide(color: AppColors.error),
+                    minimumSize: const Size.fromHeight(46),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  ),
+                  child: const Text('Decline'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                flex: 2,
+                child: ElevatedButton(
+                  onPressed: _answering ? null : () => _answerOffer(true),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.brandGreen,
+                    foregroundColor: Colors.white,
+                    minimumSize: const Size.fromHeight(46),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  ),
+                  child: _answering
+                      ? const SizedBox(
+                          width: 18, height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : Text('Accept $offered', maxLines: 1, overflow: TextOverflow.ellipsis),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _statusBanner(BuildContext context, ExperienceRequest r) {
     final provider = r.vendorName ?? 'The provider';
     final lines = <String>[];
@@ -653,7 +767,9 @@ class _ExperienceRequestSheetState extends State<ExperienceRequestSheet> {
         }
         break;
       case ExperienceRequest.statusCustomerCancelled:
-        lines.add('You cancelled this on ${_day(context, r.cancelledAt)}.');
+        lines.add(r.cancellationReason == 'Declined the other date offered'
+            ? 'You declined the other date $provider offered, so the request was cancelled.'
+            : 'You cancelled this on ${_day(context, r.cancelledAt)}.');
         if (r.lateCancellation) {
           lines.add('This was less than 72 hours before the booked day, so the '
               'provider may charge the booking price.');

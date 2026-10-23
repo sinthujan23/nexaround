@@ -24,7 +24,7 @@ from app.schemas.experience import (
     ExperienceNearbyResponse,
     ExperiencePackageDetail,
     ExperienceVendorPublic,
-    MyEnquiryCancel,
+    MyEnquiryCancel, MyEnquiryOfferAnswer,
     MyEnquiryListResponse,
     MyEnquiryOut,
     MyReviewOut,
@@ -471,6 +471,11 @@ def _my_enquiry_out(
         late_cancellation=enquiry.late_cancellation,
         free_cancellation_last_day=enquiry.free_cancellation_last_day,
         can_cancel=enquiry_lifecycle.customer_cancel_error(enquiry.status) is None,
+        offered_date=enquiry_lifecycle.pending_offer(enquiry),
+        offer_reason=(
+            enquiry_lifecycle.DECLINE_REASONS.get(enquiry.vendor_response_reason or "")
+            if enquiry_lifecycle.pending_offer(enquiry) else None
+        ),
         # Offered only while the package still exists to be reviewed, and not
         # on a request that was cancelled.
         can_review=(
@@ -529,6 +534,57 @@ async def my_enquiries(
         .limit(limit)
     )).scalars().all()
     return MyEnquiryListResponse(enquiries=await _my_enquiries_out(db, list(rows)))
+
+
+@router.post("/enquiries/{enquiry_id}/offer", response_model=MyEnquiryOut)
+async def answer_offered_date(
+    enquiry_id: uuid.UUID,
+    data: MyEnquiryOfferAnswer,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """The traveller accepts or declines the date the provider offered.
+
+    Accepting confirms the booking for that date; declining cancels the
+    request. The provider and NexAround hear either way.
+    """
+    from sqlalchemy import select
+
+    # Scoped in the query: another traveller's request is simply not found.
+    enquiry = (await db.execute(
+        select(ExperienceEnquiry).where(
+            ExperienceEnquiry.id == enquiry_id,
+            ExperienceEnquiry.user_id == current_user.id,
+        )
+    )).scalar_one_or_none()
+    if enquiry is None:
+        raise HTTPException(status_code=404, detail="Request not found")
+    now = datetime.now(timezone.utc)
+    error = enquiry_lifecycle.offer_response_error(enquiry, now.date())
+    if error:
+        raise HTTPException(status_code=409, detail=error)
+
+    event = enquiry_lifecycle.respond_to_offer(enquiry, data.accept, now=now)
+    # The vendor hears it too: package, date and guests, never who.
+    activity = partner_activity.request_updated(
+        db, enquiry, event, actor=partner_activity.TRAVELLER,
+    ) if event else None
+    await db.commit()
+    await db.refresh(enquiry)
+
+    if event == enquiry_lifecycle.CONFIRMED:
+        # The traveller's confirmation, with the date and the cancellation rule.
+        background_tasks.add_task(enquiry_notifications.booking_update, enquiry.id, event)
+    background_tasks.add_task(enquiry_notifications.offer_answered, enquiry.id)
+    if activity:
+        background_tasks.add_task(partner_activity.announce, activity)
+        background_tasks.add_task(
+            partner_events.publish, enquiry.vendor_id, partner_events.REQUESTS_CHANGED,
+        )
+        background_tasks.add_task(enquiry_notifications.vendor_update_alert, enquiry.id, event)
+
+    return (await _my_enquiries_out(db, [enquiry]))[0]
 
 
 @router.post("/enquiries/{enquiry_id}/cancel", response_model=MyEnquiryOut)

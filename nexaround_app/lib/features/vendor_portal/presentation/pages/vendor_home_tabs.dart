@@ -8,23 +8,33 @@ import 'package:nexaround_app/features/vendor_portal/data/vendor_portal_models.d
 
 import '../vendor_ui.dart';
 import 'package_editor_page.dart';
+import 'vendor_requests_tab.dart';
 
-/// Whether the listing is live, three numbers that each open their tab, the
-/// New package button and the first few packages.
+/// Requests waiting for an answer (answered right here), whether the
+/// listing is live, three numbers that each open their tab, the New package
+/// button and the first few packages.
 class VendorDashboardTab extends StatefulWidget {
   final VendorPortalApi api;
   final ValueNotifier<int> changed;
   final ValueNotifier<int> reviewsChanged;
 
+  /// Bumped when a request comes in or is answered anywhere.
+  final ValueNotifier<int> requestsChanged;
+
   /// Switches the portal to a tab: 1 Requests, 2 Packages, 3 Reviews, 4 Profile.
   final ValueChanged<int> onOpenTab;
+
+  /// After a request is answered from Home.
+  final VoidCallback onAnswered;
 
   const VendorDashboardTab({
     super.key,
     required this.api,
     required this.changed,
     required this.reviewsChanged,
+    required this.requestsChanged,
     required this.onOpenTab,
+    required this.onAnswered,
   });
 
   @override
@@ -33,10 +43,13 @@ class VendorDashboardTab extends StatefulWidget {
 
 class _VendorDashboardTabState extends State<VendorDashboardTab> {
   static const _preview = 3;
+  // Requests answered from Home; the rest are one tap away.
+  static const _requestPreview = 2;
   // What the device kept, until the server answers.
   late VendorStats? _stats = widget.api.cachedStats();
   late List<VendorPackage>? _packages = widget.api.cachedPackages();
   late VendorReviewPage? _reviews = widget.api.cachedReviews();
+  late VendorRequestPage? _requests = widget.api.cachedRequests();
   Object? _error;
 
   @override
@@ -44,6 +57,7 @@ class _VendorDashboardTabState extends State<VendorDashboardTab> {
     super.initState();
     widget.changed.addListener(_load);
     widget.reviewsChanged.addListener(_loadReviews);
+    widget.requestsChanged.addListener(_load);
     _load();
   }
 
@@ -51,11 +65,21 @@ class _VendorDashboardTabState extends State<VendorDashboardTab> {
   void dispose() {
     widget.changed.removeListener(_load);
     widget.reviewsChanged.removeListener(_loadReviews);
+    widget.requestsChanged.removeListener(_load);
     super.dispose();
+  }
+
+  /// The open requests; a failure keeps what showed.
+  Future<void> _loadRequests() async {
+    try {
+      final page = await widget.api.requests();
+      if (mounted) setState(() => _requests = page);
+    } catch (_) {}
   }
 
   Future<void> _load() async {
     _loadReviews();
+    _loadRequests();
     try {
       final results = await Future.wait([widget.api.stats(), widget.api.packages()]);
       if (!mounted) return;
@@ -82,6 +106,32 @@ class _VendorDashboardTabState extends State<VendorDashboardTab> {
     if (saved == true) widget.changed.value++;
   }
 
+  /// "Requests to answer", with the first few answerable right here.
+  List<Widget> _waitingRequests() {
+    final waiting = (_requests?.requests ?? const <VendorRequest>[]).where((r) => r.waiting).toList();
+    if (waiting.isEmpty) return const [];
+    final count = _requests!.waiting > waiting.length ? _requests!.waiting : waiting.length;
+    return [
+      Row(
+        children: [
+          Expanded(
+            child: Text('$count ${count == 1 ? 'request' : 'requests'} to answer',
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, letterSpacing: -0.2)),
+          ),
+          TextButton(
+            onPressed: () => widget.onOpenTab(1),
+            style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8)),
+            child: Text(count > _requestPreview ? 'See all $count' : 'See all'),
+          ),
+        ],
+      ),
+      const SizedBox(height: 8),
+      for (final r in waiting.take(_requestPreview))
+        RequestCard(key: ValueKey(r.id), request: r, api: widget.api, onAnswered: (_) => widget.onAnswered()),
+      const SizedBox(height: 8),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     final live = widget.api.me?.vendorIsActive ?? true;
@@ -93,10 +143,7 @@ class _VendorDashboardTabState extends State<VendorDashboardTab> {
         padding: const EdgeInsets.fromLTRB(vendorGutter, 4, vendorGutter, 24),
         children: [
           if (_error != null && _packages != null) const VendorSavedNote(),
-          if ((stats?.requestsWaiting ?? 0) > 0) ...[
-            _RequestsWaiting(count: stats!.requestsWaiting, onTap: () => widget.onOpenTab(1)),
-            const SizedBox(height: 12),
-          ],
+          ..._waitingRequests(),
           _ListingStatus(live: live),
           const SizedBox(height: 12),
           Row(
@@ -179,51 +226,6 @@ class _VendorDashboardTabState extends State<VendorDashboardTab> {
             for (final pkg in _packages!.take(_preview))
               PackageRow(pkg: pkg, onTap: () => _edit(pkg)),
         ],
-      ),
-    );
-  }
-}
-
-/// "2 requests to answer", over everything else on Home while any wait.
-class _RequestsWaiting extends StatelessWidget {
-  final int count;
-  final VoidCallback onTap;
-
-  const _RequestsWaiting({required this.count, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: AppRadii.brMd,
-        onTap: onTap,
-        child: Ink(
-          padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
-          decoration: BoxDecoration(
-            gradient: AppColors.brandGradient,
-            borderRadius: AppRadii.brMd,
-            boxShadow: AppShadows.glow(AppColors.brandGreen),
-          ),
-          child: Row(
-            children: [
-              const Icon(Icons.inbox_rounded, color: Colors.white, size: 22),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('$count ${count == 1 ? 'request' : 'requests'} to answer',
-                        style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w700)),
-                    const Text('Confirm, or offer another date',
-                        style: TextStyle(color: Colors.white70, fontSize: 12.5)),
-                  ],
-                ),
-              ),
-              const Icon(Icons.chevron_right_rounded, color: Colors.white),
-            ],
-          ),
-        ),
       ),
     );
   }

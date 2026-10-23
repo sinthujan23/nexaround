@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
@@ -381,6 +383,9 @@ class _VendorShellState extends State<VendorShell> {
 
   int _tab = 0;
   late int _unread = widget.api.cachedUnread() ?? 0;
+  // Requests not answered yet: the badge on the Requests tab.
+  late int _waiting = widget.api.cachedStats()?.requestsWaiting ?? 0;
+  Timer? _poll;
   late String _vendorName = widget.vendorName;
   // Profile edits not saved yet: leaving the portal asks first.
   bool _profileDirty = false;
@@ -397,6 +402,10 @@ class _VendorShellState extends State<VendorShell> {
   void initState() {
     super.initState();
     _refreshUnread();
+    _refreshWaiting();
+    _requestsChanged.addListener(_refreshWaiting);
+    // A request that comes in while the portal is open shows within a minute.
+    _poll = Timer.periodic(const Duration(minutes: 1), (_) => _checkForNew());
     if (widget.requestId != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _openRequest(widget.requestId!));
     } else if (widget.toNotifications) {
@@ -406,10 +415,30 @@ class _VendorShellState extends State<VendorShell> {
 
   @override
   void dispose() {
+    _poll?.cancel();
     _packagesChanged.dispose();
     _reviewsChanged.dispose();
     _requestsChanged.dispose();
     super.dispose();
+  }
+
+  Future<void> _refreshWaiting() async {
+    try {
+      final stats = await widget.api.stats();
+      if (mounted) setState(() => _waiting = stats.requestsWaiting);
+    } catch (_) {}
+  }
+
+  /// The minute's check: the bell, and whether the requests waiting changed
+  /// (then every list showing them reloads).
+  Future<void> _checkForNew() async {
+    _refreshUnread();
+    try {
+      final stats = await widget.api.stats();
+      if (!mounted || stats.requestsWaiting == _waiting) return;
+      setState(() => _waiting = stats.requestsWaiting);
+      _requestsChanged.value++;
+    } catch (_) {}
   }
 
   /// The Requests tab, with that request open over it.
@@ -467,14 +496,16 @@ class _VendorShellState extends State<VendorShell> {
         api: widget.api,
         changed: _packagesChanged,
         reviewsChanged: _reviewsChanged,
+        requestsChanged: _requestsChanged,
         onOpenTab: _goTo,
+        onAnswered: () => _requestsChanged.value++,
       ),
       VendorRequestsTab(
         key: _requestsTab,
         api: widget.api,
         changed: _requestsChanged,
-        // Home's "to answer" count follows.
-        onAnswered: () => _packagesChanged.value++,
+        // Home, the badge and this list all follow.
+        onAnswered: () => _requestsChanged.value++,
       ),
       VendorPackagesTab(api: widget.api, changed: _packagesChanged),
       VendorReviewsTab(api: widget.api, onReplied: () => _reviewsChanged.value++),
@@ -605,9 +636,12 @@ class _VendorShellState extends State<VendorShell> {
     final (icon, activeIcon, label) = _tabs[index];
     final active = _tab == index;
     final color = active ? Colors.white : AppColors.textTertiary;
+    // Requests not answered yet, on the Requests tab, until each is answered.
+    final count = index == 1 ? _waiting : 0;
     return Semantics(
       button: true,
       selected: active,
+      label: count > 0 ? '$label, $count to answer' : null,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () => _goTo(index),
@@ -623,7 +657,13 @@ class _VendorShellState extends State<VendorShell> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(active ? activeIcon : icon, size: 21, color: color),
+              Badge(
+                isLabelVisible: count > 0,
+                label: Text(count > 99 ? '99+' : '$count'),
+                backgroundColor: AppColors.error,
+                offset: const Offset(8, -6),
+                child: Icon(active ? activeIcon : icon, size: 21, color: color),
+              ),
               const SizedBox(height: 3),
               Text(
                 label,

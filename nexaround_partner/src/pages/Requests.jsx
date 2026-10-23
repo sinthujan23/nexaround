@@ -33,11 +33,16 @@ const formatDay = (value) => {
 /** Where a request stands, as the vendor reads it. */
 function standing(r) {
   if (r.status === 'confirmed') return { label: `Confirmed for ${formatDay(r.confirmed_date)}`, tone: 'green' };
-  if (r.status === 'customer_cancelled') return { label: 'Cancelled by the traveller', tone: 'gray' };
+  if (r.status === 'customer_cancelled') {
+    return {
+      label: r.offer_response === 'declined' ? 'The traveller declined your date' : 'Cancelled by the traveller',
+      tone: 'gray',
+    };
+  }
   if (r.status === 'provider_cancelled') return { label: 'Cancelled by you', tone: 'gray' };
   if (r.status === 'closed') return { label: 'Closed', tone: 'gray' };
   if (r.vendor_response === 'other_date') {
-    return { label: `You offered ${formatDay(r.vendor_offered_date)}`, tone: 'amber' };
+    return { label: `You offered ${formatDay(r.vendor_offered_date)} · waiting for the traveller`, tone: 'amber' };
   }
   return { label: 'Waiting for your answer', tone: 'rose' };
 }
@@ -92,7 +97,7 @@ function RequestCard({ request, onAnswered, highlight }) {
     send(
       { action: declineAs, day: declineAs === 'other_date' ? day : null, reason, note: note.trim() || null },
       declineAs === 'other_date'
-        ? 'Sent. NexAround will check the new date with the traveller.'
+        ? 'Sent. The traveller will accept or decline the new date.'
         : 'Cancelled. The traveller has been told.',
     );
   };
@@ -188,7 +193,7 @@ function RequestCard({ request, onAnswered, highlight }) {
           <div className="rv-actions">
             <span className="muted">
               {declineAs === 'other_date'
-                ? 'NexAround checks the new date with the traveller.'
+                ? 'The traveller accepts or declines the new date in the NexAround app.'
                 : 'The traveller sees only the reason.'}
             </span>
             <button className="btn btn-ghost btn-sm" onClick={() => setMode(null)}>Back</button>

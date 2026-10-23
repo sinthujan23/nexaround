@@ -330,8 +330,8 @@ async def vendor_answered(enquiry_id: uuid.UUID) -> None:
             elif answer == lifecycle.VENDOR_OTHER_DATE:
                 subject = f"Another date offered: {experience}"
                 heading = f"{vendor} offered {day(enquiry.vendor_offered_date)}"
-                intro = ("The provider cannot do the date asked. Check the offered date with "
-                         "the traveller, then confirm or cancel the request in the admin panel.")
+                intro = ("The provider cannot do the date asked. The traveller has been asked to "
+                         "accept or decline the offered date in the app; you will hear their answer.")
             else:
                 subject = f"Cancelled by the provider: {experience}"
                 heading = f"{vendor} cancelled"
@@ -355,3 +355,80 @@ async def vendor_answered(enquiry_id: uuid.UUID) -> None:
             )
     except Exception:
         logger.exception("vendor answer email failed for enquiry %s", enquiry_id)
+
+
+async def date_offered(enquiry_id: uuid.UUID) -> None:
+    """Ask the traveller (push and email) to accept or decline the date the
+    provider offered instead of the one they asked for."""
+    try:
+        async with async_session() as db:
+            enquiry = await db.get(ExperienceEnquiry, enquiry_id)
+            offered = lifecycle.pending_offer(enquiry) if enquiry else None
+            if offered is None:
+                return
+            provider = enquiry.vendor_name_snapshot or "The provider"
+            experience = enquiry.package_title_snapshot or "your experience"
+            asked = day(enquiry.preferred_date) if enquiry.preferred_date else "the date you asked for"
+            if enquiry.user_id:
+                await _push(
+                    db, enquiry.user_id, "Another date offered",
+                    f"{provider} can't do {asked} but offers {day(offered)} for {experience}. "
+                    "Tap to accept or decline.",
+                    enquiry.id,
+                )
+            if enquiry.contact_email:
+                await email_service.send_experience_update_email(
+                    enquiry.contact_email,
+                    subject=f"Another date offered: {experience}",
+                    heading=f"{provider} offers {day(offered)}",
+                    intro=f"{provider} can't do {asked}. They can do {day(offered)} instead.",
+                    rows=(
+                        ("Experience", enquiry.package_title_snapshot),
+                        ("Asked for", asked if enquiry.preferred_date else None),
+                        ("Offered", day(offered)),
+                        ("Reason", lifecycle.DECLINE_REASONS.get(enquiry.vendor_response_reason or "")),
+                        ("Guests", _guests(enquiry.party_size)),
+                    ),
+                    notes=(
+                        "Open My requests in the Nexaround app to accept or decline it. Accepting "
+                        "confirms your booking for that date; declining cancels the request.",
+                    ),
+                    link_label="Read the Experience Booking Terms", link_url=TERMS_URL,
+                )
+    except Exception:
+        logger.exception("date offered notice failed for enquiry %s", enquiry_id)
+
+
+async def offer_answered(enquiry_id: uuid.UUID) -> None:
+    """Email the platform inbox the traveller's answer to an offered date."""
+    try:
+        async with async_session() as db:
+            enquiry = await db.get(ExperienceEnquiry, enquiry_id)
+            platform = await SettingsService(db).get_setting("contact_email")
+            if not enquiry or not platform or not enquiry.offer_response:
+                return
+            experience = enquiry.package_title_snapshot or "an experience"
+            accepted = enquiry.offer_response == lifecycle.OFFER_ACCEPTED
+            await email_service.send_experience_update_email(
+                platform,
+                subject=(f"Other date accepted: {experience}" if accepted
+                         else f"Other date declined: {experience}"),
+                heading=(f"{enquiry.contact_name} accepted {day(enquiry.vendor_offered_date)}" if accepted
+                         else f"{enquiry.contact_name} declined {day(enquiry.vendor_offered_date)}"),
+                intro=("The booking is confirmed for the offered date. The traveller and the "
+                       "provider have been told." if accepted else
+                       "The request is cancelled. The provider has been told."),
+                rows=(
+                    ("Request", request_ref(enquiry)),
+                    ("Experience", enquiry.package_title_snapshot),
+                    ("Provider", enquiry.vendor_name_snapshot),
+                    ("Asked for", day(enquiry.preferred_date) if enquiry.preferred_date else "Flexible"),
+                    ("Offered", day(enquiry.vendor_offered_date)),
+                    ("Guests", _guests(enquiry.party_size)),
+                    ("Traveller", enquiry.contact_name),
+                    ("Phone", enquiry.contact_phone),
+                    ("Email", enquiry.contact_email),
+                ),
+            )
+    except Exception:
+        logger.exception("offer answer email failed for enquiry %s", enquiry_id)

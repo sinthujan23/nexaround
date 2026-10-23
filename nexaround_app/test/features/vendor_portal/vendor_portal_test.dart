@@ -101,7 +101,8 @@ class _Server implements HttpClientAdapter {
       agreementRequired = false;
       body = _agreement();
     } else if (path == '/stats') {
-      body = {'packages_total': 2, 'packages_published': 1};
+      body = {'packages_total': 2, 'packages_published': 1,
+              'requests_waiting': request['vendor_response'] == null && request['can_answer'] == true ? 1 : 0};
     } else if (path == '/packages' && options.method == 'GET') {
       body = {
         'packages': [
@@ -435,7 +436,7 @@ void main() {
       expect(find.text('QAR 499 / group (max 7)'), findsOneWidget);
       expect(find.text('Waiting for your answer'), findsOneWidget);
 
-      await tester.tap(find.text('Confirm'));
+      await tester.tap(find.text('Confirm').last);
       await tester.pump();
       await tester.tap(find.text('Confirm booking'));
       for (var i = 0; i < 8; i++) {
@@ -466,6 +467,24 @@ void main() {
       expect(body['action'], 'cancelled');
       expect(body['reason'], 'fully_booked');
       expect(body['note'], 'Busy week');
+      await closePortal(tester);
+    });
+
+    testWidgets('Home shows the request to answer, and the Requests tab counts it', (tester) async {
+      await pumpPortal(tester);
+      expect(find.text('1 request to answer'), findsOneWidget);
+      expect(find.descendant(of: find.byType(Badge), matching: find.text('1')), findsOneWidget);
+
+      // Answered from Home: the card and the count go.
+      await tester.tap(find.text('Confirm').first);
+      await tester.pump();
+      await tester.tap(find.text('Confirm booking'));
+      for (var i = 0; i < 12; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(server.requests.where((r) => r.path == '/requests/r1/answer'), hasLength(1));
+      expect(find.text('1 request to answer'), findsNothing);
+      expect(find.descendant(of: find.byType(Badge), matching: find.text('1')), findsNothing);
       await closePortal(tester);
     });
 

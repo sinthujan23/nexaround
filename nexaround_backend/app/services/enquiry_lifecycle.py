@@ -216,8 +216,55 @@ def vendor_respond(
     enquiry.vendor_response_reason = reason if action != VENDOR_CONFIRMED else None
     enquiry.vendor_response_note = (note or "").strip() or None
     enquiry.vendor_offered_date = when if action == VENDOR_OTHER_DATE else None
+    if action == VENDOR_OTHER_DATE:
+        # A new offer for the traveller to answer.
+        enquiry.offer_response = None
+        enquiry.offer_responded_at = None
     if action == VENDOR_CONFIRMED:
         return apply_status(enquiry, CONFIRMED, now=now, confirmed_date=when)
     if action == VENDOR_CANCELLED:
         return apply_status(enquiry, PROVIDER_CANCELLED, now=now, reason=DECLINE_REASONS[reason])
     return None
+
+
+# --- The traveller's answer to an offered date ------------------------------
+#
+# The vendor's other date goes to the traveller in the app. Accepting confirms
+# the booking for that date; declining cancels the request (by the traveller:
+# it was their choice, and no late-cancellation rule applies to a request
+# that was never confirmed).
+
+OFFER_ACCEPTED = "accepted"
+OFFER_DECLINED = "declined"
+DECLINED_OFFER_REASON = "Declined the other date offered"
+
+
+def pending_offer(enquiry) -> Optional[date]:
+    """The date the provider offered, while the traveller has yet to answer."""
+    if (
+        enquiry.status in VENDOR_CAN_RESPOND
+        and enquiry.vendor_response == VENDOR_OTHER_DATE
+        and enquiry.offer_response is None
+    ):
+        return enquiry.vendor_offered_date
+    return None
+
+
+def offer_response_error(enquiry, today: date) -> Optional[str]:
+    """None if the traveller may answer the offered date now."""
+    offered = pending_offer(enquiry)
+    if offered is None:
+        return "There is no other date waiting for your answer."
+    if offered < today:
+        return "That date has passed. Contact Nexaround support to find another."
+    return None
+
+
+def respond_to_offer(enquiry, accept: bool, *, now: datetime) -> Optional[str]:
+    """Record the traveller's answer (checked by `offer_response_error`) and
+    return the event everyone hears about: CONFIRMED or CUSTOMER_CANCELLED."""
+    enquiry.offer_response = OFFER_ACCEPTED if accept else OFFER_DECLINED
+    enquiry.offer_responded_at = now
+    if accept:
+        return apply_status(enquiry, CONFIRMED, now=now, confirmed_date=enquiry.vendor_offered_date)
+    return apply_status(enquiry, CUSTOMER_CANCELLED, now=now, reason=DECLINED_OFFER_REASON)

@@ -883,6 +883,7 @@ def _request_out(enquiry) -> PartnerRequest:
         vendor_offered_date=enquiry.vendor_offered_date,
         vendor_response_reason=enquiry.vendor_response_reason,
         vendor_responded_at=enquiry.vendor_responded_at,
+        offer_response=enquiry.offer_response,
         can_answer=enquiry.status in enquiry_lifecycle.VENDOR_CAN_RESPOND,
         created_at=enquiry.created_at,
     )
@@ -961,8 +962,9 @@ async def answer_partner_request(
     """Confirm, offer another date, or cancel when no other date works.
 
     Confirming or cancelling tells the traveller at once (push and email), as
-    an admin's would; another date goes to NexAround, who takes it to the
-    traveller. NexAround hears every answer by email, with who asked.
+    an admin's would; another date goes to the traveller to accept (the
+    booking is confirmed for it) or decline (the request is cancelled).
+    NexAround hears every answer by email, with who asked.
     """
     enquiry = await _vendor_request(db, request_id, principal.vendor.id)
     now = datetime.now(timezone.utc)
@@ -981,6 +983,9 @@ async def answer_partner_request(
     await partner_activity.announce(activity)
     if event in (enquiry_lifecycle.CONFIRMED, enquiry_lifecycle.PROVIDER_CANCELLED):
         background_tasks.add_task(enquiry_notifications.booking_update, enquiry.id, event)
+    elif data.action == enquiry_lifecycle.VENDOR_OTHER_DATE:
+        # The traveller accepts or declines it in the app.
+        background_tasks.add_task(enquiry_notifications.date_offered, enquiry.id)
     background_tasks.add_task(enquiry_notifications.vendor_answered, enquiry.id)
     return _request_out(enquiry)
 

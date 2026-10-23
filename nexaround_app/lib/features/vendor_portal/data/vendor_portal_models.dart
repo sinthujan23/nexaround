@@ -422,6 +422,9 @@ class VendorRequest {
   final String? answer;
   final DateTime? offeredDate;
   final String? reason;
+
+  /// The traveller's answer to [offeredDate]: accepted | declined.
+  final String? offerResponse;
   final bool canAnswer;
   final DateTime createdAt;
 
@@ -437,6 +440,7 @@ class VendorRequest {
     this.answer,
     this.offeredDate,
     this.reason,
+    this.offerResponse,
     this.canAnswer = false,
     required this.createdAt,
   });
@@ -453,6 +457,7 @@ class VendorRequest {
         answer: json['vendor_response'] as String?,
         offeredDate: _date(json['vendor_offered_date']),
         reason: json['vendor_response_reason'] as String?,
+        offerResponse: json['offer_response'] as String?,
         canAnswer: json['can_answer'] == true,
         createdAt: _date(json['created_at']) ?? DateTime.now(),
       );

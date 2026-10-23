@@ -661,6 +661,19 @@ async def enquiry_alerts(
             enquiry_lifecycle.VENDOR_OTHER_DATE: "offered another date for",
             enquiry_lifecycle.VENDOR_CANCELLED: "cancelled",
         }
+        decided = (await db.execute(
+            select(ExperienceEnquiry).where(ExperienceEnquiry.offer_responded_at > since)
+            .order_by(ExperienceEnquiry.offer_responded_at.desc()).limit(20)
+        )).scalars().all()
+        for e in decided:
+            accepted = e.offer_response == enquiry_lifecycle.OFFER_ACCEPTED
+            events.append({
+                "id": str(e.id), "kind": f"traveller_{e.offer_response}",
+                "at": e.offer_responded_at.isoformat(),
+                "title": f"{e.contact_name} {'accepted' if accepted else 'declined'} the other date "
+                         f"for {e.package_title_snapshot or 'a request'}",
+                "body": e.reference,
+            })
         for e in answered:
             events.append({
                 "id": str(e.id), "kind": f"vendor_{e.vendor_response}",

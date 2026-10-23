@@ -325,6 +325,8 @@ class PartnerRequest(BaseModel):
     vendor_offered_date: Optional[date] = None
     vendor_response_reason: Optional[str] = None
     vendor_responded_at: Optional[datetime] = None
+    # The traveller's answer to the date offered: accepted | declined.
+    offer_response: Optional[str] = None
     can_answer: bool = False
     created_at: datetime
 

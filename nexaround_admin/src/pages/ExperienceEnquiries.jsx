@@ -234,7 +234,7 @@ export default function ExperienceEnquiries() {
                   </div>
                   {e.status === 'new' && e.vendor_response === 'other_date' && (
                     <div className="xp-row-sub" style={{ color: '#b45309', fontWeight: 600 }}>
-                      Provider offered {formatDay(e.vendor_offered_date)}
+                      Provider offered {formatDay(e.vendor_offered_date)} · waiting for the traveller
                     </div>
                   )}
                 </div>
@@ -419,11 +419,17 @@ export default function ExperienceEnquiries() {
                       )}
                     </div>
                   )}
+                  {selected.offer_response && (
+                    <div className="xp-section-hint" style={{ marginTop: 10, marginBottom: 0 }}>
+                      The traveller {selected.offer_response === 'accepted' ? 'accepted' : 'declined'} {formatDay(selected.vendor_offered_date)} in
+                      the app, {formatDateTime(selected.offer_responded_at)}.
+                    </div>
+                  )}
                   {selected.vendor_response === 'other_date' && ['new', 'contacted'].includes(selected.status) && (
                     <>
                       <div className="xp-section-hint" style={{ marginTop: 10 }}>
-                        Check {formatDay(selected.vendor_offered_date)} with the traveller (WhatsApp or call above). If it
-                        suits them, confirm it; if not, cancel the request as the provider’s.
+                        The traveller has been asked to accept or decline {formatDay(selected.vendor_offered_date)} in the
+                        app. If they tell you their answer another way, record it here.
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
                         <button

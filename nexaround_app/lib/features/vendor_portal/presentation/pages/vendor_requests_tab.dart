@@ -121,9 +121,13 @@ class VendorRequestsTabState extends State<VendorRequestsTab> {
     }
   }
 
+  /// The portal reloads every list (this one too) through [changed].
   void _answered() {
-    widget.onAnswered?.call();
-    _load();
+    if (widget.onAnswered != null) {
+      widget.onAnswered!();
+    } else {
+      _load();
+    }
   }
 
   @override
@@ -243,10 +247,13 @@ class _RequestCardState extends State<RequestCard> {
 
   (String, Color) get _standing => switch (r.status) {
         'confirmed' => ('Confirmed for ${requestDay(r.confirmedDate!)}', AppColors.success),
+        'customer_cancelled' when r.offerResponse == 'declined' =>
+          ('The traveller declined your date', AppColors.textTertiary),
         'customer_cancelled' => ('Cancelled by the traveller', AppColors.textTertiary),
         'provider_cancelled' => ('Cancelled by you', AppColors.textTertiary),
         'closed' => ('Closed', AppColors.textTertiary),
-        _ when r.answer == 'other_date' => ('You offered ${requestDay(r.offeredDate!)}', const Color(0xFFB7791F)),
+        _ when r.answer == 'other_date' =>
+          ('You offered ${requestDay(r.offeredDate!)} · waiting for the traveller', const Color(0xFFB7791F)),
         _ => ('Waiting for your answer', AppColors.error),
       };
 
@@ -308,7 +315,7 @@ class _RequestCardState extends State<RequestCard> {
     await _send(
       answer.offer ? 'other_date' : 'cancelled',
       answer.offer
-          ? 'Sent. NexAround will check the new date with the traveller.'
+          ? 'Sent. The traveller will accept or decline the new date.'
           : 'Cancelled. The traveller has been told.',
       day: answer.day,
       reason: answer.reason,
@@ -518,7 +525,7 @@ class _DeclineSheetState extends State<_DeclineSheet> {
               const SizedBox(height: 8),
               Text(
                 _offer
-                    ? 'NexAround checks the new date with the traveller.'
+                    ? 'The traveller accepts or declines the new date in the NexAround app.'
                     : 'The traveller is told you cannot do it, with the reason only.',
                 style: const TextStyle(fontSize: 12.5, color: AppColors.textSecondary),
               ),

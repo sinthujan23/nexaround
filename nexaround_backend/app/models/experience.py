@@ -318,6 +318,11 @@ class ExperienceEnquiry(Base):
     vendor_response_reason: Mapped[str] = mapped_column(String(30), nullable=True)
     vendor_response_note: Mapped[str] = mapped_column(Text, nullable=True)
     vendor_responded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
+    # The traveller's answer to that offered date, in the app: "accepted"
+    # (the booking is confirmed for it) or "declined" (the request is
+    # cancelled). NULL while it waits, and again if the vendor offers anew.
+    offer_response: Mapped[str] = mapped_column(String(10), nullable=True)
+    offer_responded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, index=True

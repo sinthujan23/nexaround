@@ -183,6 +183,12 @@ def update_text(enquiry, event: str, today: Optional[date] = None) -> tuple[str,
             f"{_facts(enquiry, enquiry.confirmed_date or enquiry.preferred_date, today)}. "
             "NexAround will be in touch with the details.",
         )
+    if getattr(enquiry, "offer_response", None) == enquiry_lifecycle.OFFER_DECLINED:
+        return (
+            f"Other date declined: {_package(enquiry)}",
+            f"{_facts(enquiry, enquiry.vendor_offered_date, today)}. "
+            "The traveller did not take the date you offered, so the request is closed.",
+        )
     what = "Booking" if enquiry.confirmed_at else "Request"
     return (
         f"{what} cancelled: {_package(enquiry)}",
@@ -225,7 +231,7 @@ def answer_text(enquiry, today: Optional[date] = None) -> tuple[str, str]:
     if enquiry.vendor_response == enquiry_lifecycle.VENDOR_OTHER_DATE:
         return (f"You offered another date: {package}",
                 f"{_facts(enquiry, enquiry.vendor_offered_date, today)}. "
-                "NexAround will check it with the traveller.")
+                "The traveller has been asked to accept or decline it.")
     return (f"You cancelled: {package}",
             f"{_facts(enquiry, enquiry.confirmed_date or enquiry.preferred_date, today)}. "
             "The traveller has been told.")
