@@ -29,8 +29,8 @@ class ExploreStoriesCard extends StatefulWidget {
     required this.onTap,
   });
 
-  /// The app's green, so the card stands out from the white story cards.
-  static const Color background = AppColors.brandGreen;
+  /// White, with everything on it in the app's green.
+  static const Color background = Colors.white;
 
   /// How long each photo stays at the front.
   static const Duration dealEvery = Duration(seconds: 3);
@@ -174,13 +174,13 @@ class _ExploreStoriesCardState extends State<ExploreStoriesCard>
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: AppColors.brandGreen,
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
                     '+${widget.moreCount}',
                     style: const TextStyle(
-                      color: ExploreStoriesCard.background,
+                      color: Colors.white,
                       fontSize: 12,
                       fontWeight: FontWeight.w800,
                     ),
@@ -208,6 +208,8 @@ class _ExploreStoriesCardState extends State<ExploreStoriesCard>
           decoration: BoxDecoration(
             color: ExploreStoriesCard.background,
             borderRadius: BorderRadius.circular(24),
+            // As the story cards beside it.
+            border: Border.all(color: AppColors.border),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -226,7 +228,7 @@ class _ExploreStoriesCardState extends State<ExploreStoriesCard>
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        color: Colors.white,
+                        color: AppColors.brandGreen,
                         fontSize: 19,
                         fontWeight: FontWeight.w700,
                         height: 1.15,
@@ -238,8 +240,7 @@ class _ExploreStoriesCardState extends State<ExploreStoriesCard>
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        // Light enough on the green for small text.
-                        color: Color(0xFFEAF5F5),
+                        color: AppColors.brandGreen,
                         fontSize: 12.5,
                         fontWeight: FontWeight.w500,
                       ),
@@ -249,7 +250,7 @@ class _ExploreStoriesCardState extends State<ExploreStoriesCard>
                       constraints: const BoxConstraints(minHeight: 44),
                       alignment: Alignment.center,
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: AppColors.brandGreen,
                         borderRadius: BorderRadius.circular(22),
                       ),
                       child: const Row(
@@ -261,14 +262,14 @@ class _ExploreStoriesCardState extends State<ExploreStoriesCard>
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
-                                color: AppColors.brandGreen,
+                                color: Colors.white,
                                 fontSize: 14,
                                 fontWeight: FontWeight.w700,
                               ),
                             ),
                           ),
                           SizedBox(width: 4),
-                          Icon(Icons.chevron_right_rounded, size: 18, color: AppColors.brandGreen),
+                          Icon(Icons.chevron_right_rounded, size: 18, color: Colors.white),
                         ],
                       ),
                     ),
@@ -283,7 +284,7 @@ class _ExploreStoriesCardState extends State<ExploreStoriesCard>
   }
 }
 
-/// One photo of the stack: a white-edged card with a soft shadow.
+/// One photo of the stack: a green-edged card with a soft shadow.
 class _PhotoCard extends StatelessWidget {
   final TravelStory story;
   final bool showBadge;
@@ -294,7 +295,7 @@ class _PhotoCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.brandGreen,
         borderRadius: BorderRadius.circular(16),
         boxShadow: const [
           BoxShadow(color: Color(0x59000000), blurRadius: 16, offset: Offset(0, 6)),
