@@ -45,6 +45,8 @@ import 'package:nexaround_app/features/travel_stories/presentation/widgets/trave
 import 'package:nexaround_app/features/travel_stories/presentation/widgets/post_story_sheet.dart';
 import 'package:nexaround_app/features/travel_stories/presentation/widgets/stories_comments_dialog.dart';
 import 'package:nexaround_app/features/travel_stories/presentation/pages/travel_stories_page.dart';
+import 'package:nexaround_app/features/travel_stories/presentation/pages/explore_stories_page.dart';
+import 'package:nexaround_app/features/travel_stories/presentation/widgets/explore_stories_card.dart';
 import 'package:nexaround_app/features/travel_stories/presentation/pages/travel_journal_page.dart';
 import 'package:nexaround_app/features/living_map/presentation/widgets/location_search_modal.dart';
 import 'package:nexaround_app/features/living_map/presentation/widgets/animated_neva_banner.dart';
@@ -200,6 +202,7 @@ class _LivingMapPageState extends State<LivingMapPage>
     LivingMapPage.homeTabReselected.removeListener(_onHomeReselected);
     _homeScroll.dispose();
     _storiesScroll.dispose();
+    _storiesChanged.dispose();
     _pulseController.dispose();
     _globeController.dispose();
     _positionSubscription?.cancel();
@@ -226,6 +229,9 @@ class _LivingMapPageState extends State<LivingMapPage>
   // The home page, and the Travel Stories row across it.
   final ScrollController _homeScroll = ScrollController();
   final ScrollController _storiesScroll = ScrollController();
+
+  /// Fires when [_travelStories] changes, for an open Explore page.
+  final ValueNotifier<int> _storiesChanged = ValueNotifier(0);
 
   /// Home tapped again: the top of the page and the first story at once,
   /// then the latest stories (as a pull-to-refresh).
@@ -3145,6 +3151,7 @@ class _LivingMapPageState extends State<LivingMapPage>
         setState(() {
           _travelStories = stories.where((s) => !s.isJournal).toList();
         });
+        _storiesChanged.value++;
         if (toFirst) _showFirstStory();
       }
     } catch (e) {
@@ -3203,6 +3210,16 @@ class _LivingMapPageState extends State<LivingMapPage>
     final index = travelBytes > 1 && startIndex > 0
         ? startIndex - (travelBytes - 1)
         : startIndex;
+    await _openStoriesViewer(stories, index, initialImageIndex: initialImageIndex);
+  }
+
+  /// The story viewer on [stories] from [index], for the row and the
+  /// Explore page.
+  Future<void> _openStoriesViewer(
+    List<TravelStory> stories,
+    int index, {
+    int initialImageIndex = 0,
+  }) async {
     await Navigator.push(
       context,
       MaterialPageRoute(
@@ -3210,11 +3227,12 @@ class _LivingMapPageState extends State<LivingMapPage>
           stories: stories,
           initialIndex: index,
           initialImageIndex: initialImageIndex,
-          travelByteCount: travelBytes,
+          travelByteCount: _travelByteCount,
           onStoryDeleted: (storyId) {
             setState(() {
               _travelStories.removeWhere((s) => s.id == storyId);
             });
+            _storiesChanged.value++;
           },
         ),
       ),
@@ -3222,6 +3240,35 @@ class _LivingMapPageState extends State<LivingMapPage>
     // Refresh stories from server when returning, so we pick up
     // changes from other users (new stories, deletions, etc.)
     _loadTravelStories();
+  }
+
+  /// All the row's stories as a photo grid, with chips to narrow them.
+  void _openExploreStories() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ExploreStoriesPage(
+          stories: () => _travelStories,
+          filterLabel: () => _storiesFilterLabel,
+          changes: _storiesChanged,
+          onPickCountry: _showCountryFilterBottomSheet,
+          onOpen: (stories, index) => _openStoriesViewer(stories, index),
+        ),
+      ),
+    );
+  }
+
+  /// The row ends in the Explore card once there is more than one story.
+  bool get _showExploreCard => _travelStories.length > 1;
+
+  /// The Explore card's collage: stories past the first card - the
+  /// TravelBytes behind it, then travellers' - that have a photo.
+  List<TravelStory> get _exploreCollage {
+    final front = _travelByteCount > 0 ? _shownTravelByte.id : null;
+    return _travelStories
+        .where((s) => s.id != front && ExploreStoriesCard.firstPhoto(s).isNotEmpty)
+        .take(4)
+        .toList();
   }
 
   void _showPostStorySheet() {
@@ -3257,6 +3304,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                 // After the TravelBytes, which always lead the row.
                 _travelStories.insert(_travelByteCount, savedStory ?? newStory);
               });
+              _storiesChanged.value++;
             }
           },
         );
@@ -3337,9 +3385,24 @@ class _LivingMapPageState extends State<LivingMapPage>
         // (_shownTravelByte; its shuffle button picks another) and opens the
         // viewer on that one.
         itemCount: _travelStories.length -
-            (_travelByteCount > 1 ? _travelByteCount - 1 : 0),
+            (_travelByteCount > 1 ? _travelByteCount - 1 : 0) +
+            (_showExploreCard ? 1 : 0),
         itemBuilder: (context, row) {
           final travelBytes = _travelByteCount;
+          final storyRows =
+              _travelStories.length - (travelBytes > 1 ? travelBytes - 1 : 0);
+          if (row == storyRows) {
+            return ExploreStoriesCard(
+              collage: _exploreCollage,
+              storyCount: _travelStories.length,
+              countryCount: _travelStories
+                  .map((s) => s.country?.trim() ?? '')
+                  .where((c) => c.isNotEmpty)
+                  .toSet()
+                  .length,
+              onTap: _openExploreStories,
+            );
+          }
           final index = travelBytes > 1 && row > 0 ? row + travelBytes - 1 : row;
           final stack = index == 0 && travelBytes > 1;
           final story = stack ? _shownTravelByte : _travelStories[index];
