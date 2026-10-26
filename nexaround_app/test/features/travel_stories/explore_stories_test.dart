@@ -120,10 +120,13 @@ void main() {
   group('the Explore card at the end of the row', () {
     Future<void> pumpCard(
       WidgetTester tester, {
-      required int photos,
+      int photos = 0,
+      List<TravelStory>? collage,
+      int more = 0,
       int stories = 16,
       int countries = 10,
       double textScale = 1.0,
+      bool animationsOff = false,
       VoidCallback? onTap,
     }) async {
       _phone(tester);
@@ -132,6 +135,7 @@ void main() {
           data: MediaQueryData(
             size: const Size(412, 900),
             textScaler: TextScaler.linear(textScale),
+            disableAnimations: animationsOff,
           ),
           // The home row: 425 high with 12 on top.
           child: Scaffold(
@@ -142,7 +146,8 @@ void main() {
                 scrollDirection: Axis.horizontal,
                 children: [
                   ExploreStoriesCard(
-                    collage: _feed().take(photos).toList(),
+                    collage: collage ?? _feed().take(photos).toList(),
+                    moreCount: more,
                     storyCount: stories,
                     countryCount: countries,
                     onTap: onTap ?? () {},
@@ -181,6 +186,44 @@ void main() {
     testWidgets('photos show their blurred preview while they load', (tester) async {
       await pumpCard(tester, photos: 4);
       expect(find.byType(StoryPhotoPreview), findsNWidgets(4));
+    });
+
+    testWidgets('"+N" for the stories without a card in the row', (tester) async {
+      await pumpCard(tester, photos: 3, more: 11);
+      expect(find.text('+11'), findsOneWidget);
+      await pumpCard(tester, photos: 3);
+      expect(find.textContaining('+'), findsNothing);
+    });
+
+    // A TravelByte first, then two travellers' stories: the badge shows
+    // only while the TravelByte is at the front.
+    List<TravelStory> oneTravelByte() {
+      final feed = _feed();
+      return [feed[0], feed[2], feed[3]];
+    }
+
+    testWidgets('deals the next photo to the front every few seconds, round and round',
+        (tester) async {
+      await pumpCard(tester, collage: oneTravelByte());
+      await tester.pump(); // the clock's first tick
+      expect(find.text('TRAVELBYTE'), findsOneWidget);
+
+      // Each pump passes one deal (the clock restarts on the frame it ends).
+      const pastADeal = Duration(milliseconds: 3800);
+      await tester.pump(pastADeal);
+      expect(find.text('TRAVELBYTE'), findsNothing);
+      await tester.pump(pastADeal);
+      expect(find.text('TRAVELBYTE'), findsNothing);
+      await tester.pump(pastADeal);
+      expect(find.text('TRAVELBYTE'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('keeps still for travellers who turned animations off', (tester) async {
+      await pumpCard(tester, collage: oneTravelByte(), animationsOff: true);
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 10));
+      expect(find.text('TRAVELBYTE'), findsOneWidget);
     });
   });
 

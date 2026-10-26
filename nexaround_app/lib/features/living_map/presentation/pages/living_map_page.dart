@@ -3271,10 +3271,19 @@ class _LivingMapPageState extends State<LivingMapPage>
   /// The row ends in the Explore card once there is more than one story.
   bool get _showExploreCard => _travelStories.length > 1;
 
-  /// The Explore card's collage: one TravelByte other than the one on the
-  /// front card, picked at random (again only when it is gone or the shuffle
-  /// put it on the front card), then stories that have no card in the row.
-  /// When there are none of those, the other stories.
+  /// Where the stories without a card in the row begin: past the row's
+  /// cards, the first of which holds every TravelByte.
+  int get _firstStoryWithoutCard =>
+      _storyCardsInRow + (_travelByteCount > 1 ? _travelByteCount - 1 : 0);
+
+  /// The Explore card's "+N".
+  int get _storiesWithoutCard =>
+      max(0, _travelStories.length - _firstStoryWithoutCard);
+
+  /// The photos the Explore card deals, up to six: one TravelByte other than
+  /// the one on the front card, picked at random (again only when it is gone
+  /// or the shuffle put it on the front card), then stories that have no
+  /// card in the row. When there are none of those, the other stories.
   List<TravelStory> get _exploreCollage {
     bool hasPhoto(TravelStory s) => ExploreStoriesCard.firstPhoto(s).isNotEmpty;
     final travelBytes = _travelByteCount;
@@ -3288,18 +3297,14 @@ class _LivingMapPageState extends State<LivingMapPage>
           ? null
           : others[_shuffleRandom.nextInt(others.length)].id;
     }
-    // The first story without a card: past the row's cards, the first of
-    // which holds every TravelByte.
-    final firstUnseen =
-        _storyCardsInRow + (travelBytes > 1 ? travelBytes - 1 : 0);
     final collage = [
       ...others.where((s) => s.id == _collageTravelByteId),
-      ..._travelStories.skip(firstUnseen).where(hasPhoto),
-    ].take(4).toList();
+      ..._travelStories.skip(_firstStoryWithoutCard).where(hasPhoto),
+    ].take(6).toList();
     if (collage.isNotEmpty) return collage;
     return _travelStories
         .where((s) => s.id != front && hasPhoto(s))
-        .take(4)
+        .take(6)
         .toList();
   }
 
@@ -3424,6 +3429,7 @@ class _LivingMapPageState extends State<LivingMapPage>
           if (row == min(_allStoryCards, _storyCardsInRow)) {
             return ExploreStoriesCard(
               collage: _exploreCollage,
+              moreCount: _storiesWithoutCard,
               storyCount: _travelStories.length,
               countryCount: _travelStories
                   .map((s) => s.country?.trim() ?? '')
