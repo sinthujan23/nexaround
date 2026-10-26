@@ -167,15 +167,18 @@ class _ExploreStoriesCardState extends State<ExploreStoriesCard>
         return Stack(
           children: [
             for (final i in order) card(i),
+            // On the front photo's bottom-right corner, overlapping its
+            // edge; it stays there while the photos come round under it.
             if (widget.moreCount > 0)
               Positioned(
-                right: 14,
-                bottom: 10,
+                right: box.maxWidth - (cx + 58 * s) - 10,
+                top: cy + 80 * s - 18,
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
                   decoration: BoxDecoration(
                     color: AppColors.brandGreen,
                     borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.white, width: 2),
                   ),
                   child: Text(
                     '+${widget.moreCount}',
