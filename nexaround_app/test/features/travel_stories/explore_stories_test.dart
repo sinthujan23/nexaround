@@ -241,23 +241,47 @@ void main() {
       ]);
     });
 
-    testWidgets('All: every story in feed order, TravelBytes marked', (tester) async {
+    testWidgets('All: the TravelBytes share the first tile, then travellers\' stories',
+        (tester) async {
       final explore = _Explore(_feed());
       await explore.pump(tester);
       expect(await _tiles(tester, explore), [
-        'Santorini', 'Sri Lanka', 'Sigiriya Rock', 'Lake Gregory',
+        'Santorini', 'Sigiriya Rock', 'Lake Gregory',
         'Dambulla Caves', 'Pinnawala', 'Oia',
       ]);
-      expect(find.text('TRAVELBYTE'), findsNWidgets(2));
+      // The account's name with the blue tick, on that tile only.
+      expect(find.text('TravelByte'), findsOneWidget);
+      expect(find.byIcon(Icons.verified_rounded), findsOneWidget);
       expect(find.text('34 km away'), findsOneWidget);
     });
 
-    testWidgets('"Near you" keeps the stories within 150 km, nearest first', (tester) async {
+    testWidgets('its shuffle button shows the other TravelBytes in turn', (tester) async {
+      final explore = _Explore(_feed());
+      await explore.pump(tester);
+      expect(find.byIcon(Icons.shuffle_rounded), findsOneWidget);
+
+      await tester.tap(find.byIcon(Icons.shuffle_rounded));
+      await tester.pump(const Duration(milliseconds: 400));
+      expect((await _tiles(tester, explore)).first, 'Sri Lanka');
+
+      await tester.tap(find.byIcon(Icons.shuffle_rounded));
+      await tester.pump(const Duration(milliseconds: 400));
+      expect((await _tiles(tester, explore)).first, 'Santorini');
+    });
+
+    testWidgets('no shuffle button with one TravelByte', (tester) async {
+      await _Explore(_feed().skip(1).toList()).pump(tester);
+      expect(find.text('TravelByte'), findsOneWidget);
+      expect(find.byIcon(Icons.shuffle_rounded), findsNothing);
+    });
+
+    testWidgets('"Near you" keeps the stories within 150 km: TravelBytes first, then nearest first',
+        (tester) async {
       final explore = _Explore(_feed());
       await explore.pump(tester);
       await tester.tap(find.text('Near you'));
       await tester.pump();
-      expect(await _tiles(tester, explore), ['Sigiriya Rock', 'Dambulla Caves', 'Lake Gregory', 'Sri Lanka']);
+      expect(await _tiles(tester, explore), ['Sri Lanka', 'Sigiriya Rock', 'Dambulla Caves', 'Lake Gregory']);
     });
 
     testWidgets('a category keeps only travellers\' stories of it', (tester) async {
@@ -276,8 +300,8 @@ void main() {
       await tester.tap(find.text('Lake Gregory'));
       final (shown, index) = explore.opened.single;
       expect(shown.map((s) => s.locationName).toList(),
-          ['Sigiriya Rock', 'Dambulla Caves', 'Lake Gregory', 'Sri Lanka']);
-      expect(index, 2);
+          ['Sri Lanka', 'Sigiriya Rock', 'Dambulla Caves', 'Lake Gregory']);
+      expect(index, 3);
     });
 
     testWidgets('staggered: tall then short on the left, short then tall on the right',
@@ -285,15 +309,15 @@ void main() {
       await _Explore(_feed()).pump(tester);
       Rect tile(String place) =>
           tester.getRect(find.ancestor(of: find.text(place), matching: _tile));
-      final first = tile('Santorini'), second = tile('Sri Lanka');
-      final third = tile('Sigiriya Rock'), fourth = tile('Lake Gregory');
+      final first = tile('Santorini'), second = tile('Sigiriya Rock');
+      final third = tile('Lake Gregory'), fourth = tile('Dambulla Caves');
       expect(first.left, lessThan(second.left));
       expect(first.height, greaterThan(second.height));
       expect(third.left, first.left);
       expect(fourth.left, second.left);
       // Both columns of a block end level, so the next block starts clean.
       expect(third.bottom, moreOrLessEquals(fourth.bottom));
-      expect(tile('Dambulla Caves').top, greaterThan(third.bottom));
+      expect(tile('Pinnawala').top, greaterThan(third.bottom));
     });
 
     testWidgets('another country: its stories, no "Near you", back to All', (tester) async {
