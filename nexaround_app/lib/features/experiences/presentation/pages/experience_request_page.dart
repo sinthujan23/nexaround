@@ -64,8 +64,8 @@ class _ExperienceRequestPageState extends State<ExperienceRequestPage> {
   int _pickupQuery = 0;
 
   DateTime? _preferredDate;
-  // The price asked about: the first until the traveller picks another. Null
-  // for "Price on request".
+  // The price asked about: the one that fits the number of guests (the first
+  // that does), or the one the traveller tapped. Null for "Price on request".
   late ExperiencePriceOption? _option =
       widget.package.priceOptions.isEmpty ? null : widget.package.priceOptions.first;
   late int _partySize;
@@ -95,6 +95,7 @@ class _ExperienceRequestPageState extends State<ExperienceRequestPage> {
     // Default to Sri Lanka; overridden below if the user has a saved phone.
     _phoneCountry = countryDialCodes.first;
     _partySize = _fitGuests(2);
+    _option = _optionFor(_partySize) ?? _option;
     _initialPartySize = _partySize;
     _loadTerms();
     try {
@@ -131,18 +132,52 @@ class _ExperienceRequestPageState extends State<ExperienceRequestPage> {
     _initialContact = _contact;
   }
 
-  // The guests the chosen price allows; the server checks the same.
-  int get _minGuests => _option?.minPeople ?? 1;
+  // The guests a price allows: a blank min is 1, a blank max the package's
+  // (the server's option_bounds; it checks the same).
+  int _low(ExperiencePriceOption o) => o.minPeople;
+  int _high(ExperiencePriceOption o) => o.maxPeople ?? widget.package.maxParticipants ?? 100;
+  bool _fits(ExperiencePriceOption o, int n) => n >= _low(o) && n <= _high(o);
+
+  /// The guests the package takes, across all its prices: the stepper goes
+  /// no further, so a group bigger than the boat cannot be asked for.
+  int get _minGuests {
+    final options = widget.package.priceOptions;
+    return options.isEmpty ? 1 : options.map(_low).reduce((a, b) => a < b ? a : b);
+  }
+
   int get _maxGuests {
-    final most = _option?.maxPeople ?? 100;
-    return most < _minGuests ? _minGuests : (most > 100 ? 100 : most);
+    final options = widget.package.priceOptions;
+    var most = options.isEmpty
+        ? (widget.package.maxParticipants ?? 100)
+        : options.map(_high).reduce((a, b) => a > b ? a : b);
+    final cap = widget.package.maxParticipants;
+    if (cap != null && cap < most) most = cap;
+    if (most > 100) most = 100;
+    return most < _minGuests ? _minGuests : most;
   }
 
   int _fitGuests(int n) => n.clamp(_minGuests, _maxGuests);
 
+  /// The price for [n] guests: the one chosen if it still fits, else the
+  /// first that does ("2–3 people", "4–5 people"...).
+  ExperiencePriceOption? _optionFor(int n) {
+    final current = _option;
+    if (current != null && _fits(current, n)) return current;
+    for (final o in widget.package.priceOptions) {
+      if (_fits(o, n)) return o;
+    }
+    return null;
+  }
+
+  void _setGuests(int n) => setState(() {
+        _partySize = _fitGuests(n);
+        _option = _optionFor(_partySize) ?? _option;
+      });
+
+  /// Tapping a price moves the guests into its range.
   void _pickOption(ExperiencePriceOption option) => setState(() {
         _option = option;
-        _partySize = _fitGuests(_partySize);
+        _partySize = _partySize.clamp(_low(option), _high(option)).clamp(_minGuests, _maxGuests);
       });
 
   /// The chosen price in the traveller's picked currency, shown under the
@@ -151,12 +186,14 @@ class _ExperienceRequestPageState extends State<ExperienceRequestPage> {
       ? _option!.displayLabel
       : widget.package.displayLabel;
 
+  /// What the package takes, so a bigger group knows why + stops.
   String get _guestsHint {
     final least = _minGuests;
-    final most = _option?.maxPeople;
-    if (least > 1 && most != null) return '$least–$most guests for this price';
-    if (least > 1) return 'At least $least guests for this price';
-    if (most != null) return 'Up to $most guests';
+    final most = _maxGuests;
+    final capped = most < 100;
+    if (least > 1 && capped) return '$least–$most guests for this experience';
+    if (least > 1) return 'At least $least guests for this experience';
+    if (capped) return 'Up to $most guests for this experience';
     return 'Everyone in your group';
   }
 
@@ -517,6 +554,11 @@ class _ExperienceRequestPageState extends State<ExperienceRequestPage> {
 
         if (widget.package.priceOptions.length > 1)
           _section('Price', [
+            const Padding(
+              padding: EdgeInsets.only(bottom: 10),
+              child: Text('Chosen for your number of guests (Your trip, below).',
+                  style: TextStyle(fontSize: 12.5, color: AppColors.textTertiary)),
+            ),
             for (final option in widget.package.priceOptions) _buildOption(option),
           ]),
 
@@ -718,9 +760,7 @@ class _ExperienceRequestPageState extends State<ExperienceRequestPage> {
           ),
           _stepper(
             Icons.remove_rounded,
-            () => setState(() {
-              if (_partySize > _minGuests) _partySize--;
-            }),
+            () => _setGuests(_partySize - 1),
             enabled: _partySize > _minGuests,
           ),
           SizedBox(
@@ -737,9 +777,7 @@ class _ExperienceRequestPageState extends State<ExperienceRequestPage> {
           ),
           _stepper(
             Icons.add_rounded,
-            () => setState(() {
-              if (_partySize < _maxGuests) _partySize++;
-            }),
+            () => _setGuests(_partySize + 1),
             enabled: _partySize < _maxGuests,
           ),
         ],

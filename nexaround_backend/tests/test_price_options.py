@@ -159,3 +159,28 @@ def test_a_starting_price_keeps_from_in_front():
 def test_no_choice_or_no_rate_means_no_display_label():
     assert display_label(DOHA, "QAR", 6, None, RATES) is None
     assert display_label(DOHA, "QAR", 6, "EUR", RATES) is None
+
+
+def test_a_package_without_prices_still_has_its_maximum():
+    from app.services.experience_format import too_many_guests
+
+    assert too_many_guests(9, 7) == "This experience takes up to 7 guests."
+    assert too_many_guests(7, 7) is None
+    assert too_many_guests(9, None) is None
+    assert too_many_guests(None, 7) is None
+
+
+def test_bands_refuse_a_group_bigger_than_the_boat():
+    """Per-boat bands 2-3 / 4-5 / 6-7: 9 guests fits none of them."""
+    from app.services.experience_format import pick_price_option
+
+    bands = [
+        {"id": "a", "amount": 28000, "usd": 84, "basis": "per_group", "min_people": 2, "max_people": 3},
+        {"id": "b", "amount": 30000, "usd": 90, "basis": "per_group", "min_people": 4, "max_people": 5},
+        {"id": "c", "amount": 33000, "usd": 99, "basis": "per_group", "min_people": 6, "max_people": 7},
+    ]
+    option, error = pick_price_option(bands, "b", 4, "LKR", 7)
+    assert option["amount"] == 30000 and error is None
+    for chosen in ("a", "b", "c"):
+        _, error = pick_price_option(bands, chosen, 9, "LKR", 7)
+        assert error, chosen

@@ -184,6 +184,14 @@ def option_bounds(option: dict, package_max: Optional[int]) -> tuple[int, Option
     return int(option.get("min_people") or 1), option.get("max_people") or package_max
 
 
+def too_many_guests(party_size: Optional[int], package_max: Optional[int]) -> Optional[str]:
+    """The package's own maximum (a boat's seats), for a request with no price
+    to check it against; None when it fits or there is no maximum."""
+    if package_max and party_size and party_size > package_max:
+        return f"This experience takes up to {package_max} guests."
+    return None
+
+
 def option_label(option: dict, currency: str, package_max: Optional[int]) -> str:
     """ "LKR 30,000 ($90) / group (max 7)", "LKR 8,000 ($24) / person (min 3)"."""
     least, most = option_bounds(option, package_max)

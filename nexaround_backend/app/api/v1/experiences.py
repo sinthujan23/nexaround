@@ -38,7 +38,8 @@ from app.schemas.experience import (
 from app.services.email_service import send_new_enquiry_email
 from app.services.experience_format import (
     COUNTRY_MODE_KEY, NEARBY_THRESHOLD_M, booking_window_error, is_nearby,
-    parse_country_mode, pick_price_option, unavailable_error, validate_enquiry_payload,
+    parse_country_mode, pick_price_option, too_many_guests, unavailable_error,
+    validate_enquiry_payload,
 )
 from app.services.experience_upload import (
     VIDEO_MEDIA_TYPES, parse_range, video_file,
@@ -384,6 +385,9 @@ async def create_experience_enquiry(
     )
     if option_error:
         errors.append(option_error)
+    # The package's own maximum (the boat's seats), price or not.
+    elif guests_error := too_many_guests(data.party_size, package.max_participants):
+        errors.append(guests_error)
     if errors:
         raise HTTPException(status_code=400, detail=" ".join(errors))
 

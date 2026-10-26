@@ -117,7 +117,7 @@ void main() {
       final result = await ExperiencesService.submitEnquiry(
         packageId: 'p1',
         contactName: 'Test Traveller',
-        contactPhone: '+94715550000',
+        contactPhone: '715550000',
         acceptedTermsVersion: 1,
       );
 
@@ -132,7 +132,7 @@ void main() {
       final result = await ExperiencesService.submitEnquiry(
         packageId: 'p1',
         contactName: 'Test Traveller',
-        contactPhone: '+94715550000',
+        contactPhone: '715550000',
         acceptedTermsVersion: 1,
       );
 
@@ -166,7 +166,7 @@ void main() {
       await tester.enterText(
           find.widgetWithText(TextField, 'Your name'), 'Test Traveller');
       await tester.enterText(
-          find.widgetWithText(TextField, 'Phone number'), '+94715550000');
+          find.widgetWithText(TextField, 'Phone number'), '715550000');
     }
 
     testWidgets('the close button leaves at once when nothing was typed',
@@ -299,7 +299,7 @@ void main() {
       await tester.enterText(
           find.widgetWithText(TextField, 'Your name'), 'Test Traveller');
       await tester.enterText(
-          find.widgetWithText(TextField, 'Phone number'), '+94715550000');
+          find.widgetWithText(TextField, 'Phone number'), '715550000');
     }
 
     Future<void> send(WidgetTester tester) async {
@@ -315,7 +315,7 @@ void main() {
 
       expect(find.text('Price'), findsOneWidget);
       expect(find.byIcon(Icons.radio_button_checked_rounded), findsOneWidget);
-      expect(find.text('Up to 7 guests'), findsOneWidget);
+      expect(find.text('Up to 7 guests for this experience'), findsOneWidget);
       await send(tester);
 
       expect(server.enquiries.single['price_option_id'], 'a');
@@ -329,17 +329,68 @@ void main() {
       await tester.ensureVisible(find.text(r'LKR 8,000 ($24) / person (min 3)'));
       await tester.tap(find.text(r'LKR 8,000 ($24) / person (min 3)'));
       await tester.pump();
-      expect(find.text('3–7 guests for this price'), findsOneWidget);
-      expect(find.text('3'), findsOneWidget);
-
-      // Cannot go below the minimum.
-      await tester.tap(find.byIcon(Icons.remove_rounded));
-      await tester.pump();
       expect(find.text('3'), findsOneWidget);
 
       await send(tester);
       expect(server.enquiries.single['price_option_id'], 'b');
       expect(server.enquiries.single['party_size'], 3);
+    });
+
+    testWidgets('below a price\'s minimum, the price that fits is chosen', (tester) async {
+      await open(tester, twoPrices);
+      await tester.ensureVisible(find.text(r'LKR 8,000 ($24) / person (min 3)'));
+      await tester.tap(find.text(r'LKR 8,000 ($24) / person (min 3)'));
+      await tester.pump();
+      await _tapMid(tester, find.byIcon(Icons.remove_rounded));
+      expect(find.text('2'), findsOneWidget);
+      await send(tester);
+      expect(server.enquiries.single['price_option_id'], 'a');
+      expect(server.enquiries.single['party_size'], 2);
+    });
+
+    testWidgets('per-boat bands follow the guests, and the boat\'s size is the limit', (tester) async {
+      const bands = ExperiencePackageEntity(
+        id: 'p3',
+        title: 'Dolphin Watching Adventure',
+        vendorId: 'v1',
+        vendorName: 'Blue Ocean Adventures',
+        latitude: 6,
+        longitude: 80,
+        maxParticipants: 7,
+        priceLabel: r'LKR 28,000 ($84) / group (min 2, max 3)',
+        priceOptions: [
+          ExperiencePriceOption(id: 'a', label: r'LKR 28,000 ($84) / group (min 2, max 3)',
+              basis: 'per_group', minPeople: 2, maxPeople: 3),
+          ExperiencePriceOption(id: 'b', label: r'LKR 30,000 ($90) / group (min 4, max 5)',
+              basis: 'per_group', minPeople: 4, maxPeople: 5),
+          ExperiencePriceOption(id: 'c', label: r'LKR 33,000 ($99) / group (min 6, max 7)',
+              basis: 'per_group', minPeople: 6, maxPeople: 7),
+        ],
+      );
+      await open(tester, bands);
+      expect(find.text('2–7 guests for this experience'), findsOneWidget);
+
+      // The + button's own handler (null once the boat is full).
+      Future<void> plus(int times) async {
+        for (var i = 0; i < times; i++) {
+          final button = tester.widget<GestureDetector>(find
+              .ancestor(of: find.byIcon(Icons.add_rounded), matching: find.byType(GestureDetector))
+              .first);
+          button.onTap?.call();
+          await tester.pump();
+        }
+      }
+
+      // 2 -> 4 guests: the 4–5 band.
+      await plus(2);
+      expect(find.text('4'), findsOneWidget);
+      // 4 -> 9 taps: stops at 7, the 6–7 band.
+      await plus(5);
+      expect(find.text('7'), findsOneWidget);
+      expect(find.text('8'), findsNothing);
+      await send(tester);
+      expect(server.enquiries.single['price_option_id'], 'c');
+      expect(server.enquiries.single['party_size'], 7);
     });
 
     testWidgets('a package with no prices sends no option', (tester) async {
@@ -350,4 +401,13 @@ void main() {
       expect(server.enquiries.single.containsKey('price_option_id'), isFalse);
     });
   });
+}
+
+/// Taps [finder] scrolled to mid-screen, clear of the fixed Send bar.
+Future<void> _tapMid(WidgetTester tester, Finder finder) async {
+  await tester.ensureVisible(finder);
+  await Scrollable.ensureVisible(tester.element(finder), alignment: 0.5);
+  await tester.pump();
+  await tester.tap(finder);
+  await tester.pump();
 }
