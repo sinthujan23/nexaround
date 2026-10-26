@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../app/theme/app_colors.dart';
 import '../../data/models/travel_story.dart';
+import 'official_story_widgets.dart';
 import 'story_photo_preview.dart';
 
 /// The last card of the home Travel Stories row: a fanned stack of photos of
@@ -318,22 +319,27 @@ class _PhotoCard extends StatelessWidget {
                 memCacheWidth: 360,
               ),
               if (showBadge)
+                // The account's name and blue tick, as on the Explore
+                // page's TravelByte tile and the home row's card.
                 Positioned(
                   left: 6,
+                  right: 6,
                   bottom: 6,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: AppColors.brandGreen,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Text(
-                      'TRAVELBYTE',
-                      style: TextStyle(
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                      decoration: BoxDecoration(
                         color: Colors.white,
-                        fontSize: 9,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.5,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: OfficialName(
+                        name: story.userName.trim().isEmpty ? 'TravelByte' : story.userName,
+                        style: const TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textPrimary,
+                        ),
                       ),
                     ),
                   ),

@@ -410,11 +410,36 @@ class CacheService {
   /// recover on its own, because "we have something" was read as "we are done".
   static const int attractionsCacheTtlMs = 30 * 60 * 1000;
 
-  static Future<void> cacheAttractions(List<Map<String, dynamic>> placesJson) async {
+  /// [arMeta]: how the AR screen fetched [placesJson] (where, for which
+  /// filter and range, whether every category came back), so it can tell
+  /// whether they will do or need refreshing. Any other write, such as a
+  /// clear, drops it.
+  static Future<void> cacheAttractions(
+    List<Map<String, dynamic>> placesJson, {
+    Map<String, dynamic>? arMeta,
+  }) async {
     final List<String> list = placesJson.map((p) => json.encode(p)).toList();
     await _prefs.setStringList('cached_attractions_list', list);
     await _prefs.setInt(
       'cached_attractions_time', DateTime.now().millisecondsSinceEpoch);
+    if (arMeta == null) {
+      await _prefs.remove(_arPlacesMetaKey);
+    } else {
+      await _prefs.setString(_arPlacesMetaKey, json.encode(arMeta));
+    }
+  }
+
+  static const String _arPlacesMetaKey = 'cached_attractions_ar_meta';
+
+  /// The [cacheAttractions] `arMeta` of the cached places, if AR saved them.
+  static Map<String, dynamic>? getCachedAttractionsArMeta() {
+    final raw = _prefs.getString(_arPlacesMetaKey);
+    if (raw == null) return null;
+    try {
+      return json.decode(raw) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Whether the cached place list is recent enough to serve instead of fetching.

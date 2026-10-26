@@ -9,6 +9,7 @@ import 'package:nexaround_app/core/services/google_directions_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:camera/camera.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter_compass/flutter_compass.dart';
 import 'package:geolocator/geolocator.dart' as geo;
 import 'package:permission_handler/permission_handler.dart';
@@ -1051,6 +1052,7 @@ class _ArCameraPageState extends State<ArCameraPage>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _checkAndInit();
+    _watchConnection();
   }
 
   /// Stop feeding camera frames while the app itself is in the background.
@@ -1060,9 +1062,22 @@ class _ArCameraPageState extends State<ArCameraPage>
   /// _triggerLimitNotice() (a 3-second banner) and can kick off a place fetch —
   /// both of which would then fire every time the user alt-tabs back into the
   /// app. Nothing here changes what the user sees: the preview is resumed
-  /// before the first visible frame after returning.
+  /// before the first visible frame after returning. The one exception is
+  /// deliberate: back after [_awayBeforeRefresh] or more, the places are
+  /// refreshed quietly (no banner, no spinner).
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Really in the background (another app, the phone locked), not
+    // "inactive" (the notification shade). Back after a while on AR: the
+    // places again, quietly.
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.hidden) {
+      _backgroundedAt ??= DateTime.now();
+    } else if (state == AppLifecycleState.resumed) {
+      final away = _backgroundedAt;
+      _backgroundedAt = null;
+      if (widget.isActive && _placesFetched) _refreshPlacesAfterAway(away);
+    }
+
     final controller = _controller;
     if (controller == null || !controller.value.isInitialized) return;
 
@@ -1376,8 +1391,109 @@ class _ArCameraPageState extends State<ArCameraPage>
     });
   }
 
-  // Live places are fetched once, lazily, the first time AR becomes visible.
+  // Live places are fetched lazily, the first time AR becomes visible, and
+  // again quietly on coming back after [_awayBeforeRefresh].
   bool _placesFetched = false;
+
+  // When the AR tab was last hidden, and when the app last went to the
+  // background, for [_refreshPlacesAfterAway].
+  DateTime? _hiddenAt;
+  DateTime? _backgroundedAt;
+
+  /// Away this long or more (another tab, another app): the places are
+  /// refreshed quietly on return.
+  static const Duration _awayBeforeRefresh = Duration(minutes: 2);
+
+  /// Saved places are reused without asking the server only while this
+  /// fresh and this close to where they were fetched (_savedPlacesStillGood).
+  static const Duration _savedPlacesFreshFor = Duration(minutes: 10);
+  static const double _savedPlacesReachM = 150;
+
+  /// Category calls that fail are asked again after a wait picked at
+  /// random in each of these windows (shortest, longest), so phones that
+  /// lost the server at the same moment don't all ask again at once.
+  static const List<(Duration, Duration)> _placesRetryWindows = [
+    (Duration(seconds: 2), Duration(seconds: 4)),
+    (Duration(seconds: 8), Duration(seconds: 12)),
+  ];
+  final Random _retryRandom = Random();
+
+  Duration _retryWait((Duration, Duration) window) {
+    final (shortest, longest) = window;
+    final spreadMs = longest.inMilliseconds - shortest.inMilliseconds;
+    return shortest + Duration(milliseconds: _retryRandom.nextInt(spreadMs + 1));
+  }
+
+  /// The places again, quietly: the ones on screen stay until fresh ones
+  /// arrive (no spinner), and saved places that are still good
+  /// (_savedPlacesStillGood) are reused without a network call.
+  void _refreshPlaces() {
+    _sessionRangeLandmarks.clear();
+    _lastFetchTime = null;
+    _fetchLivePlaces();
+  }
+
+  /// Back on AR after [_awayBeforeRefresh] or more ([since] null: not away).
+  void _refreshPlacesAfterAway(DateTime? since) {
+    if (since == null || DateTime.now().difference(since) < _awayBeforeRefresh) {
+      return;
+    }
+    _refreshPlaces();
+  }
+
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
+  bool _offline = false;
+  // The connection came back while AR was hidden: refresh on showing it.
+  bool _refreshWhenShown = false;
+
+  /// Back online after being offline: the places again at once (now if AR
+  /// is on screen, else when it is next shown) instead of keeping what a
+  /// failed fetch left until the next visit.
+  void _watchConnection() {
+    bool isOffline(List<ConnectivityResult> results) =>
+        results.every((r) => r == ConnectivityResult.none);
+    Connectivity()
+        .checkConnectivity()
+        .then((results) => _offline = isOffline(results))
+        .catchError((_) => false);
+    _connectivitySubscription = Connectivity().onConnectivityChanged.listen(
+      (results) {
+        final offline = isOffline(results);
+        final reconnected = _offline && !offline;
+        _offline = offline;
+        if (!reconnected || !mounted || !_placesFetched) return;
+        debugPrint('📶 AR: Back online; refreshing places.');
+        if (widget.isActive) {
+          _refreshPlaces();
+        } else {
+          _refreshWhenShown = true;
+        }
+      },
+      onError: (_) {},
+    );
+  }
+
+  /// Whether the saved places came from a complete fetch (every category
+  /// answered) for this filter and range, under [_savedPlacesFreshFor] ago
+  /// and within [_savedPlacesReachM] of [pos]. Otherwise they are shown at
+  /// once but refreshed: a partial or old list used to stay until the app
+  /// restarted (which clears it).
+  bool _savedPlacesStillGood(geo.Position pos) {
+    final meta = CacheService.getCachedAttractionsArMeta();
+    if (meta == null || meta['complete'] != true) return false;
+    if (meta['filter'] != _selectedFilter || meta['range_km'] != _rangeKm) {
+      return false;
+    }
+    final at = DateTime.fromMillisecondsSinceEpoch(
+      (meta['at'] as num?)?.toInt() ?? 0,
+    );
+    if (DateTime.now().difference(at) > _savedPlacesFreshFor) return false;
+    final lat = (meta['lat'] as num?)?.toDouble();
+    final lng = (meta['lng'] as num?)?.toDouble();
+    if (lat == null || lng == null) return false;
+    return geo.Geolocator.distanceBetween(lat, lng, pos.latitude, pos.longitude) <=
+        _savedPlacesReachM;
+  }
 
   /// Called when the AR tab becomes visible: (re)start the camera and load
   /// places. The compass/GPS callbacks gate on [widget.isActive] themselves, so
@@ -1393,7 +1509,13 @@ class _ArCameraPageState extends State<ArCameraPage>
     if (!_placesFetched) {
       _placesFetched = true;
       _fetchLivePlaces();
+    } else if (_refreshWhenShown) {
+      _refreshPlaces();
+    } else {
+      _refreshPlacesAfterAway(_hiddenAt);
     }
+    _refreshWhenShown = false;
+    _hiddenAt = null;
     _triggerLimitNotice();
   }
 
@@ -1401,6 +1523,7 @@ class _ArCameraPageState extends State<ArCameraPage>
   /// heading so it re-snaps on return. The compass/GPS callbacks early-return
   /// while hidden, so the heavy AR tree stops rebuilding in the background.
   void _stopArCapture() {
+    _hiddenAt = DateTime.now();
     _rawHeading = null;
     try {
       _controller?.pausePreview();
@@ -1430,6 +1553,7 @@ class _ArCameraPageState extends State<ArCameraPage>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _connectivitySubscription?.cancel();
     _accelerometerSubscription?.cancel();
     _compassSubscription?.cancel();
     _positionSubscription?.cancel();
@@ -2308,7 +2432,9 @@ class _ArCameraPageState extends State<ArCameraPage>
       return;
     }
 
-    // 2) Serve from persistent (local database) cache – no loading spinner
+    // 2) Serve from persistent (local database) cache – no loading spinner.
+    // Used as the answer only while still good (_savedPlacesStillGood);
+    // otherwise shown at once and refreshed quietly by the fetch below.
     _loadCachedPlaces(position: pos);
 
     if (_landmarks.isNotEmpty) {
@@ -2316,18 +2442,24 @@ class _ArCameraPageState extends State<ArCameraPage>
       // that fall outside the target band like 2-5km).
       _capCache.clear(); // force recalculation after landmarks changed
       final displayable = _placesForFilter(_selectedFilter);
-      if (displayable.isNotEmpty) {
+      if (displayable.isNotEmpty && _savedPlacesStillGood(pos)) {
         debugPrint(
           '🚀 AR: Range $_rangeKm km served instantly from persistent cache (${displayable.length} displayable places).',
         );
         // Cache into session so subsequent switches to this range are instant too
         _sessionRangeLandmarks[sessionCacheKey] = List.of(_landmarks);
+        // Walking 100 m from here refreshes them (the position stream).
+        _lastFetchPosition ??= pos;
         if (mounted) {
           setState(() {
             _isFetchingPlaces = false;
           });
         }
         return; // Serve cached data instantly — no network fetch needed
+      } else if (displayable.isNotEmpty) {
+        debugPrint(
+          '📦 AR: Showing ${displayable.length} saved places; refreshing them quietly.',
+        );
       } else {
         debugPrint(
           '📦 AR: Persistent cache has ${_landmarks.length} places but none in the ${_rangeKm}km annulus. Proceeding to network fetch.',
@@ -2363,6 +2495,18 @@ class _ArCameraPageState extends State<ArCameraPage>
       });
     }
     _lastFetchTime = now;
+
+    // Places already on screen (saved ones, or from before): this fetch
+    // refreshes them quietly, so they stay until it has at least as many.
+    final List<_ArLandmark> shownBefore = List.of(_landmarks);
+    final bool quiet = shownBefore.isNotEmpty;
+
+    // A filter or range picked while this runs is turned away as a
+    // duplicate fetch; it is fetched once this one ends (finally, below).
+    final String filterAtStart = _selectedFilter;
+    final int rangeAtStart = _rangeKm;
+    bool pickChanged() =>
+        _selectedFilter != filterAtStart || _rangeKm != rangeAtStart;
 
     try {
       List<_ArLandmark> collected = [];
@@ -2488,6 +2632,9 @@ class _ArCameraPageState extends State<ArCameraPage>
         // Sort by distance for a clean display order
         final sorted = uniqueCollected
           ..sort((a, b) => a.distanceM.compareTo(b.distanceM));
+        // Refreshing quietly: no shrinking from what is on screen while the
+        // categories come in.
+        if (quiet && sorted.length < shownBefore.length) return;
         setState(() {
           _landmarks = sorted;
           _allLandmarks = List.of(sorted);
@@ -2507,9 +2654,12 @@ class _ArCameraPageState extends State<ArCameraPage>
           '🔍 AR: Searching radius $radius m across categories: $currentCategories...',
         );
 
+        // Categories whose call failed (a server blip, a dropped connection).
+        final failed = <String?>[];
+
         // Launch all category fetches in parallel and update the UI progressively as each returns.
         // This ensures the user sees places on screen instantly (within ~700ms-1s) instead of waiting 6s for the slowest category.
-        final fetches = currentCategories.map((cat) async {
+        Future<void> fetchCategory(String? cat) async {
           try {
             final places = await GooglePlacesService.fetchNearbyPlaces(
               latitude: pos.latitude,
@@ -2531,11 +2681,25 @@ class _ArCameraPageState extends State<ArCameraPage>
             }
           } catch (err) {
             debugPrint('Error fetching category $cat: $err');
-            if (err is PlacesFetchException) fetchHadError = true;
+            if (err is PlacesFetchException) failed.add(cat);
           }
-        }).toList();
+        }
 
-        await Future.wait(fetches);
+        await Future.wait(currentCategories.map(fetchCategory));
+        // Ask again for the ones that failed, quietly: a few failed calls
+        // used to leave AR with a handful of places until the app restarted.
+        for (final window in _placesRetryWindows) {
+          if (failed.isEmpty || !mounted || pickChanged()) break;
+          final again = List.of(failed);
+          failed.clear();
+          final wait = _retryWait(window);
+          debugPrint(
+            '🔁 AR: Retrying ${again.length} categories in ${wait.inMilliseconds} ms: $again',
+          );
+          await Future.delayed(wait);
+          await Future.wait(again.map(fetchCategory));
+        }
+        if (failed.isNotEmpty) fetchHadError = true;
       }
 
       // Far-ring sampling: a single user-centred query can't reach the outer
@@ -2611,14 +2775,34 @@ class _ArCameraPageState extends State<ArCameraPage>
 
         collected = inBand.take(rangeCap).toList();
 
+        // A quiet refresh that still lost categories after its retries
+        // doesn't swap more places on screen for fewer: they stay until a
+        // complete fetch (walking on, coming back, the next visit).
+        if (quiet && fetchHadError && collected.length < shownBefore.length) {
+          debugPrint(
+            '📦 AR: Refresh incomplete (${collected.length} places); keeping the ${shownBefore.length} shown.',
+          );
+          _lastFetchPosition ??= pos;
+          if (mounted) {
+            setState(() {
+              _landmarks = shownBefore;
+              _allLandmarks = List.of(shownBefore);
+            });
+          }
+          return;
+        }
+
         if (mounted) {
           setState(() {
             _landmarks = collected;
             _allLandmarks = List.of(collected);
             _currentPosition = pos;
             _lastFetchPosition = pos; // Update last fetch position
-            _sessionRangeLandmarks[sessionCacheKey] =
-                collected; // Save to session cache
+            // Session cache (instant range switching) only for a complete
+            // fetch, so a partial one is asked for again.
+            if (!fetchHadError) {
+              _sessionRangeLandmarks[sessionCacheKey] = collected;
+            }
             _placesFetchError = false;
             // Fresh fetch means user likely moved; drop any manual override so
             // the smart picker is in charge again.
@@ -2649,17 +2833,45 @@ class _ArCameraPageState extends State<ArCameraPage>
                 },
               )
               .toList();
-          CacheService.cacheAttractions(attractionJsons);
+          CacheService.cacheAttractions(
+            attractionJsons,
+            arMeta: {
+              'lat': pos.latitude,
+              'lng': pos.longitude,
+              // What they were fetched for, even if the pick changed since.
+              'filter': filterAtStart,
+              'range_km': rangeAtStart,
+              // A partial list is saved too (shown at once next time) but
+              // never as complete, so it is refreshed.
+              'complete': !fetchHadError,
+              'at': DateTime.now().millisecondsSinceEpoch,
+            },
+          );
         } catch (e) {
           debugPrint('AR: Failed to cache fetched places: $e');
         }
+      } else if (quiet && fetchHadError) {
+        // Nothing came back this time (the server unreachable): keep what
+        // is on screen rather than emptying it.
+        debugPrint('📦 AR: Refresh failed; keeping the ${shownBefore.length} places shown.');
+        _lastFetchPosition ??= pos;
+        if (mounted) {
+          setState(() {
+            _landmarks = shownBefore;
+            _allLandmarks = List.of(shownBefore);
+          });
+        }
       } else {
         // If collected is empty (e.g. timeout or no result), clear the old landmarks so they don't leak
+        // Walking 100 m from here tries again (the position stream).
+        _lastFetchPosition = pos;
         if (mounted) {
           setState(() {
             _landmarks = [];
             _allLandmarks = [];
-            _sessionRangeLandmarks[sessionCacheKey] = [];
+            // Remembered as empty only when the area really has nothing; a
+            // failure is asked again on the next switch to this range.
+            if (!fetchHadError) _sessionRangeLandmarks[sessionCacheKey] = [];
             _currentPosition = pos;
             // No results: distinguish a real failure (all calls errored) from a
             // genuinely empty area, so the UI shows the right message.
@@ -2685,6 +2897,10 @@ class _ArCameraPageState extends State<ArCameraPage>
       // First fetch has now finished (success, empty, or error) — let the UI
       // switch away from the initial scanning state.
       if (mounted) setState(() => _hasCompletedInitialFetch = true);
+      if (mounted && pickChanged()) {
+        _lastFetchTime = null;
+        _fetchLivePlaces();
+      }
     }
   }
 

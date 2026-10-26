@@ -195,8 +195,8 @@ void main() {
       expect(find.textContaining('+'), findsNothing);
     });
 
-    // A TravelByte first, then two travellers' stories: the badge shows
-    // only while the TravelByte is at the front.
+    // A TravelByte first, then two travellers' stories: its name and blue
+    // tick show only while it is at the front.
     List<TravelStory> oneTravelByte() {
       final feed = _feed();
       return [feed[0], feed[2], feed[3]];
@@ -206,16 +206,16 @@ void main() {
         (tester) async {
       await pumpCard(tester, collage: oneTravelByte());
       await tester.pump(); // the clock's first tick
-      expect(find.text('TRAVELBYTE'), findsOneWidget);
+      expect(find.byIcon(Icons.verified_rounded), findsOneWidget);
 
       // Each pump passes one deal (the clock restarts on the frame it ends).
       const pastADeal = Duration(milliseconds: 3800);
       await tester.pump(pastADeal);
-      expect(find.text('TRAVELBYTE'), findsNothing);
+      expect(find.byIcon(Icons.verified_rounded), findsNothing);
       await tester.pump(pastADeal);
-      expect(find.text('TRAVELBYTE'), findsNothing);
+      expect(find.byIcon(Icons.verified_rounded), findsNothing);
       await tester.pump(pastADeal);
-      expect(find.text('TRAVELBYTE'), findsOneWidget);
+      expect(find.byIcon(Icons.verified_rounded), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 
@@ -223,7 +223,7 @@ void main() {
       await pumpCard(tester, collage: oneTravelByte(), animationsOff: true);
       await tester.pump();
       await tester.pump(const Duration(seconds: 10));
-      expect(find.text('TRAVELBYTE'), findsOneWidget);
+      expect(find.byIcon(Icons.verified_rounded), findsOneWidget);
     });
   });
 
