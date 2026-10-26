@@ -108,6 +108,8 @@ class _LivingMapPageState extends State<LivingMapPage>
   String? _shownTravelByteId;
   List<String> _travelBytesToShuffle = [];
   final _shuffleRandom = Random();
+  // The TravelByte in the Explore card's collage, picked at random.
+  String? _collageTravelByteId;
   bool _isFetchingRouteDistances = false;
   Set<String> _routeDistanceFetchedIds = {};
 
@@ -3258,15 +3260,45 @@ class _LivingMapPageState extends State<LivingMapPage>
     );
   }
 
+  /// The row shows this many story cards, then the Explore card; the rest
+  /// of the stories are on the Explore page.
+  static const int _storyCardsInRow = 5;
+
+  /// Cards for all the stories: the TravelBytes share the first.
+  int get _allStoryCards =>
+      _travelStories.length - (_travelByteCount > 1 ? _travelByteCount - 1 : 0);
+
   /// The row ends in the Explore card once there is more than one story.
   bool get _showExploreCard => _travelStories.length > 1;
 
-  /// The Explore card's collage: stories past the first card - the
-  /// TravelBytes behind it, then travellers' - that have a photo.
+  /// The Explore card's collage: one TravelByte other than the one on the
+  /// front card, picked at random (again only when it is gone or the shuffle
+  /// put it on the front card), then stories that have no card in the row.
+  /// When there are none of those, the other stories.
   List<TravelStory> get _exploreCollage {
-    final front = _travelByteCount > 0 ? _shownTravelByte.id : null;
+    bool hasPhoto(TravelStory s) => ExploreStoriesCard.firstPhoto(s).isNotEmpty;
+    final travelBytes = _travelByteCount;
+    final front = travelBytes > 0 ? _shownTravelByte.id : null;
+    final others = _travelStories
+        .take(travelBytes)
+        .where((s) => s.id != front && hasPhoto(s))
+        .toList();
+    if (!others.any((s) => s.id == _collageTravelByteId)) {
+      _collageTravelByteId = others.isEmpty
+          ? null
+          : others[_shuffleRandom.nextInt(others.length)].id;
+    }
+    // The first story without a card: past the row's cards, the first of
+    // which holds every TravelByte.
+    final firstUnseen =
+        _storyCardsInRow + (travelBytes > 1 ? travelBytes - 1 : 0);
+    final collage = [
+      ...others.where((s) => s.id == _collageTravelByteId),
+      ..._travelStories.skip(firstUnseen).where(hasPhoto),
+    ].take(4).toList();
+    if (collage.isNotEmpty) return collage;
     return _travelStories
-        .where((s) => s.id != front && ExploreStoriesCard.firstPhoto(s).isNotEmpty)
+        .where((s) => s.id != front && hasPhoto(s))
         .take(4)
         .toList();
   }
@@ -3384,14 +3416,12 @@ class _LivingMapPageState extends State<LivingMapPage>
         // All TravelBytes share the first card. It shows one at a time
         // (_shownTravelByte; its shuffle button picks another) and opens the
         // viewer on that one.
-        itemCount: _travelStories.length -
-            (_travelByteCount > 1 ? _travelByteCount - 1 : 0) +
+        // At most _storyCardsInRow of them, then the Explore card.
+        itemCount: min(_allStoryCards, _storyCardsInRow) +
             (_showExploreCard ? 1 : 0),
         itemBuilder: (context, row) {
           final travelBytes = _travelByteCount;
-          final storyRows =
-              _travelStories.length - (travelBytes > 1 ? travelBytes - 1 : 0);
-          if (row == storyRows) {
+          if (row == min(_allStoryCards, _storyCardsInRow)) {
             return ExploreStoriesCard(
               collage: _exploreCollage,
               storyCount: _travelStories.length,
