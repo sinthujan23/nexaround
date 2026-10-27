@@ -78,7 +78,7 @@
 	<key>NSCameraUsageDescription</key>
 	<string>This app requires camera access to show augmented reality navigation and capture points of interest.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>This app requires microphone access for audio in videos captured during your trips.</string>
+	<string>NexAround uses the microphone so you can talk to Neva and search by voice, and for audio in videos captured during your trips.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>This app requires speech recognition access to enable searching for places using voice commands.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>

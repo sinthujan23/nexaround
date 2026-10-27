@@ -82,7 +82,7 @@ def test_an_ordinary_question_is_one_call_and_no_map(scripted):
     reply = _chat("what should I do this evening?")
     assert reply == {
         "text": "Since you're around Al Danah, try the Corniche at sunset ✨",
-        "places": [], "query": "", "radius_m": 0,
+        "places": [], "query": "", "radius_m": 0, "lang": "",
     }
     assert len(calls["gemini"]) == 1 and calls["search"] == []
     body = calls["gemini"][0]["body"]

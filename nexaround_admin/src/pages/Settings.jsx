@@ -45,6 +45,9 @@ export default function Settings() {
   const [providers, setProviders] = useState(PROVIDER_FIELDS);
   const [countryMode, setCountryMode] = useState(true);
   const [fxKey, setFxKey] = useState('');
+  const [voiceOn, setVoiceOn] = useState(true);
+  const [voiceMinutes, setVoiceMinutes] = useState('10');
+  const [ttsKey, setTtsKey] = useState('');
   // Bumped after a save, so the currency card re-checks a new key at once.
   const [fxVersion, setFxVersion] = useState(0);
 
@@ -68,6 +71,9 @@ export default function Settings() {
         setSerpapiKey(res.serpapi_key || '');
         setCountryMode(res.experiences_country_mode !== false);
         setFxKey(res.exchangerate_api_key || '');
+        setVoiceOn(res.neva_voice_enabled !== false);
+        setVoiceMinutes(String(Math.round(((res.neva_voice_daily_seconds ?? 600) / 60) * 10) / 10));
+        setTtsKey(res.google_tts_api_key || '');
         setProviders(Object.fromEntries(
           Object.entries(PROVIDER_FIELDS).map(([k, dflt]) => [k, res[k] || dflt])
         ));
@@ -94,6 +100,9 @@ export default function Settings() {
         serpapi_key: serpapiKey,
         experiences_country_mode: countryMode,
         exchangerate_api_key: fxKey,
+        neva_voice_enabled: voiceOn,
+        neva_voice_daily_seconds: Math.max(0, Math.round(Number(voiceMinutes || 0) * 60)),
+        google_tts_api_key: ttsKey,
         ...providers,
       });
       setSuccess(true);
@@ -218,6 +227,44 @@ export default function Settings() {
             </div>
             <Switch checked={countryMode} onChange={setCountryMode} />
           </div>
+        </div>
+
+        <div style={{ borderTop: '1px solid var(--border)', paddingTop: '24px', marginTop: '24px' }}>
+          <h4 style={{ marginBottom: '12px', color: 'var(--text-primary)' }}>Neva Voice</h4>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: '16px' }}>
+            <div>
+              <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '13px' }}>Voice chat</div>
+              <div style={{ fontSize: '11px', color: 'var(--text-secondary)', maxWidth: '520px' }}>
+                On: travellers can ask Neva by voice and hear her reply. Off: the app answers in text only.
+                Reaches every server process within a minute of saving.
+              </div>
+            </div>
+            <Switch checked={voiceOn} onChange={setVoiceOn} />
+          </div>
+          <div className="form-group" style={{ marginBottom: '16px' }}>
+            <label className="form-label">
+              Spoken minutes per traveller per day{' '}
+              <span style={{ fontSize: '11px', color: 'var(--accent)', fontWeight: 700 }}>0 = no limit · past it Neva answers in text</span>
+            </label>
+            <input
+              type="number"
+              min="0"
+              step="0.5"
+              className="form-input"
+              value={voiceMinutes}
+              onChange={(e) => setVoiceMinutes(e.target.value)}
+            />
+          </div>
+          <SecretField
+            label="Google Cloud Text-to-Speech API Key"
+            tag="Neva's voice · first 1M characters a month free"
+            value={ttsKey}
+            onChange={setTtsKey}
+            placeholder="Google Cloud → APIs & Services → Credentials"
+          />
+          <p style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '-8px' }}>
+            Without this key, or for a language Google Cloud has no voice in, Neva speaks through Gemini, which takes several seconds longer to start.
+          </p>
         </div>
 
         <div style={{ borderTop: '1px solid var(--border)', paddingTop: '24px', marginTop: '24px' }}>

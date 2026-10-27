@@ -59,6 +59,9 @@ services:
       # the travel-story images already sitting in the bind mount, since Docker
       # seeds a new volume from the image (which does not carry them).
       - experience_media:/app/app/static/uploads/experiences
+      # Neva's spoken clips (app/services/neva_voice.py), kept so a replay or a
+      # repeated phrase is not bought twice. Outside app/static, which is public.
+      - neva_voice_cache:/app/neva_voice_cache
       # Firebase service-account credential (read-only, kept outside the repo).
       - /etc/nexaround/firebase-sa.json:/etc/nexaround/firebase-sa.json:ro
     depends_on:
@@ -203,4 +206,5 @@ volumes:
   pgdata:
   photo_cache:
   experience_media:
+  neva_voice_cache:
   redisdata:

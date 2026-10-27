@@ -4,7 +4,7 @@ from typing import List, Literal, Optional
 from datetime import datetime, timezone, date, time, timedelta
 from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status, Query, BackgroundTasks
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc, text, or_
 
@@ -12,7 +12,7 @@ from app.core.database import get_db
 from app.core.config import settings
 from app.core.rate_limiter import auth_rate_limiter
 from app.core.security import create_access_token, decode_token
-from app.services import audit, fx_service
+from app.services import audit, fx_service, neva_voice
 from app.services.user_service import UserService
 from app.services.settings_service import SettingsService
 from app.services.experience_format import COUNTRY_MODE_KEY, parse_country_mode
@@ -153,6 +153,10 @@ class SettingsResponse(BaseModel):
     experiences_country_mode: bool = True
     # ExchangeRate-API key for the daily currency rates (fx_service).
     exchangerate_api_key: str = ""
+    # Neva's spoken replies (neva_voice).
+    neva_voice_enabled: bool = True
+    neva_voice_daily_seconds: int = neva_voice.DEFAULT_DAILY_SECONDS
+    google_tts_api_key: str = ""
 
 ProviderMode = Literal["off", "shadow", "live"]
 
@@ -182,6 +186,9 @@ class SettingsUpdateRequest(BaseModel):
     provider_mode_atlas: Optional[ProviderMode] = None
     experiences_country_mode: Optional[bool] = None
     exchangerate_api_key: Optional[str] = None
+    neva_voice_enabled: Optional[bool] = None
+    neva_voice_daily_seconds: Optional[int] = Field(None, ge=0, le=86400)
+    google_tts_api_key: Optional[str] = None
 
 
 # --- Dependency to protect admin routes ---
@@ -919,6 +926,17 @@ _PROVIDER_SETTINGS = {
 }
 
 
+async def _voice_settings(service: SettingsService) -> dict:
+    enabled = await service.get_setting_fresh(neva_voice.K_ENABLED, "true")
+    daily = await service.get_setting_fresh(
+        neva_voice.K_DAILY_SECONDS, str(neva_voice.DEFAULT_DAILY_SECONDS))
+    return {
+        "neva_voice_enabled": enabled.strip().lower() not in ("0", "false", "no", "off"),
+        "neva_voice_daily_seconds": neva_voice._as_int(daily, neva_voice.DEFAULT_DAILY_SECONDS),
+        "google_tts_api_key": await service.get_setting_fresh(neva_voice.K_TTS_KEY, ""),
+    }
+
+
 async def _provider_settings(service: SettingsService) -> dict:
     values = {key: await service.get_setting(key, "") for key in _PROVIDER_SETTINGS}
     for key in provider_config.MODE_KEYS:
@@ -949,6 +967,7 @@ async def get_admin_settings(
         ),
         exchangerate_api_key=await service.get_setting_fresh(fx_service.KEY_SETTING, ""),
         **await _provider_settings(service),
+        **await _voice_settings(service),
     )
 
 
@@ -997,6 +1016,28 @@ async def update_admin_settings(
                 fx_service.KEY_SETTING, new_key, "ExchangeRate-API key (daily currency rates)"
             )
             fx_key_changed = True
+    voice_changed = False
+    if data.neva_voice_enabled is not None:
+        await service.set_setting(
+            neva_voice.K_ENABLED,
+            "true" if data.neva_voice_enabled else "false",
+            "Neva reads her replies aloud (true) or answers in text only (false)",
+        )
+        voice_changed = True
+    if data.neva_voice_daily_seconds is not None:
+        await service.set_setting(
+            neva_voice.K_DAILY_SECONDS, str(data.neva_voice_daily_seconds),
+            "Seconds of Neva speech per user per day (0 = no limit)",
+        )
+        voice_changed = True
+    if data.google_tts_api_key is not None:
+        await service.set_setting(
+            neva_voice.K_TTS_KEY, data.google_tts_api_key.strip(),
+            "Google Cloud Text-to-Speech API key (Neva's voice)",
+        )
+        voice_changed = True
+    if voice_changed:
+        await neva_voice.refresh_config()
     provider_changed = False
     for key, description in _PROVIDER_SETTINGS.items():
         value = getattr(data, key)
@@ -1026,6 +1067,7 @@ async def update_admin_settings(
         ),
         exchangerate_api_key=await service.get_setting_fresh(fx_service.KEY_SETTING, ""),
         **await _provider_settings(service),
+        **await _voice_settings(service),
     )
 
 

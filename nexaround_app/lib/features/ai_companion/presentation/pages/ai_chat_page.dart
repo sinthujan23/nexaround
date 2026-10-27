@@ -1,9 +1,13 @@
 import 'dart:async';
+import 'dart:io' show File;
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:just_audio/just_audio.dart' show AudioPlayer;
+import 'package:path_provider/path_provider.dart';
+import 'package:record/record.dart' show Amplitude, AudioEncoder, AudioRecorder, RecordConfig;
 import 'package:latlong2/latlong2.dart' as ll;
 import 'package:nexaround_app/core/constants/api_constants.dart';
 import 'package:nexaround_app/core/services/gemini_service.dart';
@@ -45,7 +49,7 @@ class AiChatPage extends StatefulWidget {
   State<AiChatPage> createState() => _AiChatPageState();
 }
 
-class _AiChatPageState extends State<AiChatPage> {
+class _AiChatPageState extends State<AiChatPage> with WidgetsBindingObserver {
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final List<_ChatMessage> _messages = [];
@@ -59,6 +63,28 @@ class _AiChatPageState extends State<AiChatPage> {
   double? _userLng;
   bool _locationResolved = false;
   final GeminiService _geminiService = GeminiService();
+
+  // Voice chat (2026-10-27): the question is recorded here and heard by the
+  // backend (/neva/voice); Neva's reply comes back as clips read aloud below.
+  final AudioRecorder _recorder = AudioRecorder();
+  final AudioPlayer _player = AudioPlayer();
+  bool _isRecording = false;
+  bool _heardSound = false;
+  double _noiseFloor = 0;
+  DateTime? _recordingStarted;
+  DateTime? _lastSound;
+  String? _recordingPath;
+  StreamSubscription<Amplitude>? _amplitudeSub;
+  Timer? _recordingLimit;
+  // Bumped to cancel whatever reply is being read aloud.
+  int _playToken = 0;
+  _ChatMessage? _speakingMessage;
+  bool _voicePausedNoticeShown = false;
+  bool _voiceOff = false;
+  // Louder than this (dBFS), or 12 dB over the room's quietest level, counts
+  // as speech. 1.5 s below it after speech ends the recording; 6 s with no
+  // speech at all ends it unsent, so silence is never paid for.
+  static const double _speechDb = -40;
 
   static const List<Map<String, dynamic>> _nearbyCategories = [
     {'id': 'Food & Drink', 'label': 'Food', 'icon': Icons.restaurant_rounded},
@@ -136,6 +162,7 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     // Kick off location resolution early so the very first answer is local.
     _resolveUserLocation();
     _loadMessagesFromStorage().then((_) {
@@ -445,6 +472,7 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
 
   void _sendMessage(String text) async {
     if (text.trim().isEmpty) return;
+    _stopSpeaking();
 
     setState(() {
       _messages.add(
@@ -495,6 +523,7 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
               places: places.isEmpty ? null : places,
               placesCategoryLabel: reply?.query,
               actions: parsed.actions.isEmpty ? null : parsed.actions,
+              speech: (reply == null || reply.speech.isEmpty) ? null : reply.speech,
             ),
           );
         });
@@ -519,6 +548,250 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
         _scrollToBottom();
       }
     }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // This tab stays mounted when the user switches away (home_page wraps
+    // hidden tabs in TickerMode(enabled: false)): stop listening and talking.
+    if (!TickerMode.of(context) && (_isRecording || _speakingMessage != null)) {
+      Future.microtask(_stopVoice);
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Not on `inactive`: that also fires for the microphone permission prompt.
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.detached) {
+      _stopVoice();
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _recordingLimit?.cancel();
+    _amplitudeSub?.cancel();
+    _playToken++;
+    _recorder.dispose();
+    _player.dispose();
+    super.dispose();
+  }
+
+  Future<void> _stopVoice() async {
+    if (_isRecording) await _finishRecording(send: false);
+    await _stopSpeaking();
+  }
+
+  Future<void> _startRecording() async {
+    if (_isRecording || _isTyping) return;
+    await _stopSpeaking();
+    if (!await _recorder.hasPermission()) {
+      _snack('Allow microphone access to talk to Neva.');
+      return;
+    }
+    try {
+      final path = '${(await getTemporaryDirectory()).path}'
+          '/neva_question_${DateTime.now().millisecondsSinceEpoch}.wav';
+      _recordingPath = path;
+      // 16 kHz mono WAV: what speech recognition needs, 32 KB a second.
+      await _recorder.start(
+        const RecordConfig(encoder: AudioEncoder.wav, sampleRate: 16000, numChannels: 1),
+        path: path,
+      );
+    } catch (e) {
+      debugPrint('Neva recording failed to start: $e');
+      _snack("Couldn't start the microphone. Please type instead.");
+      return;
+    }
+    if (!mounted) {
+      await _recorder.stop();
+      return;
+    }
+    _recordingStarted = DateTime.now();
+    _lastSound = null;
+    _heardSound = false;
+    _noiseFloor = 0;
+    setState(() => _isRecording = true);
+    _amplitudeSub = _recorder
+        .onAmplitudeChanged(const Duration(milliseconds: 150))
+        .listen(_onAmplitude);
+    _recordingLimit = Timer(const Duration(seconds: 30), () => _finishRecording());
+  }
+
+  void _onAmplitude(Amplitude amp) {
+    if (!_isRecording) return;
+    final level = amp.current;
+    // Some phones report -160 for the first frames, which says nothing about
+    // the room; and a floor below -70 would make every room noise speech.
+    if (level > -100 && level < _noiseFloor) {
+      _noiseFloor = level < -70 ? -70 : level;
+    }
+    final threshold = _noiseFloor + 12 < _speechDb ? _noiseFloor + 12 : _speechDb;
+    final now = DateTime.now();
+    if (level > threshold) {
+      _heardSound = true;
+      _lastSound = now;
+    } else if (_heardSound) {
+      if (now.difference(_lastSound!) >= const Duration(milliseconds: 1500)) {
+        _finishRecording();
+      }
+    } else if (now.difference(_recordingStarted!) >= const Duration(seconds: 6)) {
+      _finishRecording();
+    }
+  }
+
+  /// Ends the recording and sends it to Neva, unless [send] is false or it
+  /// stopped by itself without hearing anything. A tap on stop ([manual])
+  /// always sends: a quiet microphone may never cross the speech level.
+  Future<void> _finishRecording({bool send = true, bool manual = false}) async {
+    if (!_isRecording) return;
+    _isRecording = false;
+    _recordingLimit?.cancel();
+    await _amplitudeSub?.cancel();
+    _amplitudeSub = null;
+    String? path;
+    try {
+      path = await _recorder.stop();
+    } catch (e) {
+      debugPrint('Neva recording failed to stop: $e');
+    }
+    path ??= _recordingPath;
+    if (mounted) setState(() {});
+    if (path == null) return;
+    if (!send || (!manual && !_heardSound)) {
+      File(path).delete().ignore();
+      if (send) _snack("Didn't catch that. Tap the mic and speak.");
+      return;
+    }
+    await _sendVoice(path);
+  }
+
+  Future<void> _sendVoice(String path) async {
+    final pending = _ChatMessage(text: '🎤 …', isUser: true, timestamp: DateTime.now());
+    setState(() {
+      _messages.add(pending);
+      _showSuggestions = false;
+      _isTyping = true;
+    });
+    _scrollToBottom();
+
+    if (!_locationResolved) await _resolveUserLocation();
+    final outcome = await NevaService.voice(
+      audioPath: path,
+      latitude: _userLat,
+      longitude: _userLng,
+      area: _userArea,
+      history: _buildRecentHistory(),
+    );
+    File(path).delete().ignore();
+    if (!mounted) return;
+
+    final at = _messages.indexOf(pending);
+    final reply = outcome.reply;
+    if (reply == null) {
+      setState(() {
+        _isTyping = false;
+        if (at >= 0) _messages.removeAt(at);
+        if (outcome.failure == NevaVoiceFailure.voiceOff) _voiceOff = true;
+      });
+      _snack(switch (outcome.failure) {
+        NevaVoiceFailure.noSpeech => "Didn't catch that. Tap the mic and try again.",
+        NevaVoiceFailure.voiceOff => 'Voice chat is off right now. Please type to Neva.',
+        _ => "Neva couldn't hear you just now. Please try again or type.",
+      });
+      return;
+    }
+
+    final parsed = _extractActions(reply.text);
+    final answer = _ChatMessage(
+      text: parsed.cleanText,
+      isUser: false,
+      timestamp: DateTime.now(),
+      places: reply.places.isEmpty ? null : reply.places,
+      placesCategoryLabel: reply.query,
+      actions: parsed.actions.isEmpty ? null : parsed.actions,
+      speech: reply.speech.isEmpty ? null : reply.speech,
+    );
+    setState(() {
+      _isTyping = false;
+      if (at >= 0) {
+        _messages[at] = _ChatMessage(
+          text: reply.transcript.isNotEmpty ? reply.transcript : '🎤 Voice message',
+          isUser: true,
+          timestamp: pending.timestamp,
+        );
+      }
+      _messages.add(answer);
+    });
+    _saveMessagesToStorage();
+    _scrollToBottom();
+    if (reply.voicePaused) {
+      _showVoicePausedNotice();
+    } else {
+      _speak(answer);
+    }
+  }
+
+  /// Reads [message] aloud clip by clip, fetching the next one while the
+  /// current one plays. Clips are kept on the device, so a replay is free.
+  Future<void> _speak(_ChatMessage message) async {
+    final clips = message.speech;
+    if (clips == null || clips.isEmpty) return;
+    final token = ++_playToken;
+    await _player.stop();
+    if (!mounted || token != _playToken) return;
+    setState(() => _speakingMessage = message);
+    try {
+      var next = NevaService.speak(clips.first);
+      for (var i = 0; i < clips.length; i++) {
+        final clip = await next;
+        if (token != _playToken) return;
+        if (i + 1 < clips.length) next = NevaService.speak(clips[i + 1]);
+        if (clip.paused) {
+          _showVoicePausedNotice();
+          return;
+        }
+        final path = clip.path;
+        if (path == null) return;
+        // Stopped first: after a clip ends the player still counts as
+        // playing, and play() on a playing player returns at once.
+        await _player.stop();
+        await _player.setFilePath(path);
+        if (token != _playToken) return;
+        // Completes when the clip ends, or when _stopSpeaking stops it.
+        await _player.play();
+        if (token != _playToken) return;
+      }
+    } catch (e) {
+      debugPrint('Neva playback failed: $e');
+    } finally {
+      if (token == _playToken && mounted) setState(() => _speakingMessage = null);
+    }
+  }
+
+  Future<void> _stopSpeaking() async {
+    _playToken++;
+    if (_speakingMessage != null && mounted) setState(() => _speakingMessage = null);
+    try {
+      await _player.stop();
+    } catch (_) {}
+  }
+
+  void _showVoicePausedNotice() {
+    if (_voicePausedNoticeShown) return;
+    _voicePausedNoticeShown = true;
+    _snack("Neva's voice is resting for today. She'll keep answering in text.");
+  }
+
+  void _snack(String text) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(text), behavior: SnackBarBehavior.floating),
+    );
   }
 
   void _scrollToBottom() {
@@ -837,6 +1110,10 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
                           ),
                         ),
                 ),
+                if (!isUser && message.speech != null && message.speech!.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  _buildSpeakButton(message),
+                ],
                 if (message.actions != null && message.actions!.isNotEmpty) ...[
                   const SizedBox(height: 8),
                   _buildActionChips(message.actions!),
@@ -859,6 +1136,38 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
         ],
       ),
     ).animate().fade().slideY(begin: 0.1, end: 0);
+  }
+
+  Widget _buildSpeakButton(_ChatMessage message) {
+    final speaking = identical(_speakingMessage, message);
+    final color = speaking ? AppColors.primary : Colors.black38;
+    return InkWell(
+      onTap: () => speaking ? _stopSpeaking() : _speak(message),
+      borderRadius: BorderRadius.circular(14),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              speaking ? Icons.stop_circle_rounded : Icons.volume_up_rounded,
+              size: 16,
+              color: color,
+            ),
+            const SizedBox(width: 4),
+            Text(
+              speaking ? 'Stop' : 'Listen',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: color,
+                letterSpacing: 0.3,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildActionChips(List<_NevaAction> actions) {
@@ -1425,6 +1734,25 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
       valueListenable: _controller,
       builder: (context, value, _) {
         final hasText = value.text.trim().isNotEmpty;
+        // An empty field turns the send button into the mic; while listening
+        // it is a red stop button.
+        final recording = !hasText && _isRecording;
+        final canTalk = !hasText && !_voiceOff;
+        final active = hasText || canTalk;
+        final VoidCallback? onTap = hasText
+            ? () => _sendMessage(_controller.text)
+            : recording
+                ? () => _finishRecording(manual: true)
+                : (canTalk && !_isTyping)
+                    ? _startRecording
+                    : null;
+        final IconData icon = hasText
+            ? Icons.arrow_upward_rounded
+            : recording
+                ? Icons.stop_rounded
+                : canTalk
+                    ? Icons.mic_rounded
+                    : Icons.arrow_upward_rounded;
 
         return Container(
           decoration: BoxDecoration(
@@ -1447,10 +1775,10 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
                     fontWeight: FontWeight.w500,
                     color: Color(0xFF111827),
                   ),
-                  decoration: const InputDecoration(
-                    hintText: 'Talk to Neva...',
+                  decoration: InputDecoration(
+                    hintText: recording ? 'Listening… tap stop when you\'re done' : 'Talk to Neva...',
                     hintStyle: TextStyle(
-                      color: Color(0xFF9CA3AF),
+                      color: recording ? const Color(0xFFEF4444) : const Color(0xFF9CA3AF),
                       fontSize: 15,
                       fontWeight: FontWeight.w400,
                     ),
@@ -1461,7 +1789,7 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
                     focusedBorder: InputBorder.none,
                     errorBorder: InputBorder.none,
                     disabledBorder: InputBorder.none,
-                    contentPadding: EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+                    contentPadding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
                     isDense: true,
                   ),
                   textInputAction: TextInputAction.send,
@@ -1476,8 +1804,12 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
                 height: 40,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: hasText ? const Color(0xFF111827) : const Color(0xFFE5E7EB),
-                  boxShadow: hasText
+                  color: recording
+                      ? const Color(0xFFEF4444)
+                      : active
+                          ? const Color(0xFF111827)
+                          : const Color(0xFFE5E7EB),
+                  boxShadow: active
                       ? [
                           BoxShadow(
                             color: Colors.black.withValues(alpha: 0.15),
@@ -1490,15 +1822,15 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
                 child: Material(
                   color: Colors.transparent,
                   child: InkWell(
-                    onTap: hasText ? () => _sendMessage(_controller.text) : null,
+                    onTap: onTap,
                     customBorder: const CircleBorder(),
                     child: Center(
                       child: AnimatedScale(
-                        scale: hasText ? 1.0 : 0.88,
+                        scale: active ? 1.0 : 0.88,
                         duration: const Duration(milliseconds: 200),
                         child: Icon(
-                          Icons.arrow_upward_rounded,
-                          color: hasText ? Colors.white : const Color(0xFF9CA3AF),
+                          icon,
+                          color: active ? Colors.white : const Color(0xFF9CA3AF),
                           size: 20,
                         ),
                       ),
@@ -1535,6 +1867,8 @@ class _ChatMessage {
   final List<AttractionEntity>? places;
   final String? placesCategoryLabel;
   final List<_NevaAction>? actions;
+  // Neva's reply as signed clips the backend will speak.
+  final List<NevaSpeechClip>? speech;
 
   _ChatMessage({
     required this.text,
@@ -1543,6 +1877,7 @@ class _ChatMessage {
     this.places,
     this.placesCategoryLabel,
     this.actions,
+    this.speech,
   });
 
   Map<String, dynamic> toMap() => {
@@ -1552,6 +1887,8 @@ class _ChatMessage {
     'placesCategoryLabel': placesCategoryLabel,
     if (actions != null && actions!.isNotEmpty)
       'actions': actions!.map((a) => a.toMap()).toList(),
+    if (speech != null && speech!.isNotEmpty)
+      'speech': speech!.map((c) => c.toMap()).toList(),
     if (places != null && places!.isNotEmpty)
       'places': places!.map((p) => {
         'id': p.id,
@@ -1592,6 +1929,7 @@ class _ChatMessage {
         }
       }
     }
+    final clips = NevaSpeechClip.listFrom(map['speech']);
     return _ChatMessage(
       text: (map['text'] ?? '').toString(),
       isUser: map['isUser'] == true,
@@ -1599,6 +1937,7 @@ class _ChatMessage {
       places: plcs.isEmpty ? null : plcs,
       placesCategoryLabel: map['placesCategoryLabel']?.toString(),
       actions: acts.isEmpty ? null : acts,
+      speech: clips.isEmpty ? null : clips,
     );
   }
 }

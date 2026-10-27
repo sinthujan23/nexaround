@@ -13,10 +13,15 @@ app's search bar uses, around the user's coordinates, and she writes her reply
 from those results. The places go back to the app alongside the text, which
 pins them on a map under the message. Every other question is answered exactly
 as before, in one model call.
+
+Spoken questions (2026-10-27) go through the same call with the recording in
+place of the text and a rule for short replies; `neva_voice` hears and speaks.
 """
 from __future__ import annotations
 
+import base64
 import logging
+import re
 from typing import Any, Optional
 
 import httpx
@@ -89,6 +94,28 @@ WHAT YOU NEVER DO:
 
 Your goal: make every traveller feel they have a brilliant, caring local friend who's got their back. 💖
 '''.strip()
+
+# The voice that reads a reply aloud is picked by language, and a reply can be
+# in any language the user wrote or spoke in. The tag is stripped before the
+# text leaves the backend (`_split_lang`).
+_LANG_RULE = '''
+LANGUAGE TAG:
+- End every reply with a tag on its own line naming the language you replied in, as its ISO 639-1 code: [lang:en], [lang:ar], [lang:hi], [lang:es] and so on. The app hides it.
+'''.strip()
+
+# Appended last, after the shared prefix, for replies that will be read aloud:
+# speech is billed by length, and bullets and emoji read badly.
+NEVA_VOICE_RULES = '''
+VOICE REPLIES (this reply will be read aloud; these rules replace HOW TO FORMAT EVERY REPLY above):
+- Reply in the language the user spoke.
+- Keep it to one to three short, natural spoken sentences, 60 words at most. Never a list.
+- No bullet points, markdown, bold, asterisks or emojis: plain sentences only.
+- Say numbers and distances the way a person says them aloud.
+- If you found places, name the closest one or two with their distance and say you've pinned them on the map below.
+'''.strip()
+
+_LANG_TAG_RE = re.compile(r"\[lang:\s*([^\]\s]*)\s*\]", re.IGNORECASE)
+_LANG_CODE_RE = re.compile(r"^[a-z]{2,3}(-[a-z0-9]{2,8})?$")
 
 _FIND_PLACES_TOOL = {
     "function_declarations": [{
@@ -215,6 +242,19 @@ def _text(parts: list[dict]) -> str:
     return "".join(str(p.get("text") or "") for p in parts if isinstance(p, dict)).strip()
 
 
+def _split_lang(text: str) -> tuple[str, str]:
+    """The reply without its [lang:xx] tag, and the tag's code ("" if none)."""
+    found: list[str] = []
+
+    def _take(m: re.Match) -> str:
+        found.append(m.group(1))
+        return ""
+
+    clean = _LANG_TAG_RE.sub(_take, text).strip()
+    code = (found[-1] if found else "").strip().lower().replace("_", "-")
+    return clean, code if _LANG_CODE_RE.match(code) else ""
+
+
 def _function_call(parts: list[dict]) -> Optional[dict]:
     for p in parts:
         call = p.get("functionCall") if isinstance(p, dict) else None
@@ -259,39 +299,64 @@ async def chat(
     area: str = "",
     history: Optional[list[dict]] = None,
     user_id=None,
+    audio: Optional[tuple[bytes, str]] = None,
+    voice: bool = False,
 ) -> dict[str, Any]:
-    """Neva's reply: {"text", "places", "query", "radius_m"}.
+    """Neva's reply: {"text", "places", "query", "radius_m", "lang"}.
 
     `places` holds `PlaceResponse` objects when she searched, else is empty.
+    `lang` is the reply's language code from her [lang:xx] tag, "" if she
+    left it out.
+
+    With `audio` as (bytes, MIME type) the question is that recording, heard
+    directly: a transcript first would put a second model call in front of
+    the answer. `voice` asks for a short reply that reads well aloud.
     Raises NevaUnavailable when no model answered.
     """
     context = _context(latitude, longitude, area)
-    question = f"Context: {context}\n\nUser Question: {message}" if context else message
+    # The system rules alone lost to the persona's bullets-and-emoji format
+    # in a live test (2026-10-27); a line beside the question holds them.
+    spoken = " Answer in one to three short spoken sentences, with no list, markdown or emoji."
+    if audio is not None:
+        clip, mime = audio
+        lead = "The user's question is in this voice message." + spoken
+        question_parts = [
+            {"text": f"Context: {context}\n\n{lead}" if context else lead},
+            {"inline_data": {"mime_type": mime, "data": base64.b64encode(clip).decode()}},
+        ]
+    else:
+        question = f"Context: {context}\n\nUser Question: {message}" if context else message
+        question_parts = [{"text": question + (spoken if voice else "")}]
 
     contents = _format_history(history)
     if contents and contents[-1]["role"] == "user":
         contents.pop()
-    contents.append({"role": "user", "parts": [{"text": question}]})
+    contents.append({"role": "user", "parts": question_parts})
 
+    system = f"{NEVA_SYSTEM_PROMPT}\n\n{_LANG_RULE}"
+    if voice:
+        system += f"\n\n{NEVA_VOICE_RULES}"
     config = {
         "temperature": 0.85,
-        "maxOutputTokens": 1024,
+        "maxOutputTokens": 300 if voice else 1024,
         # Reasoning tokens bill at the output rate; see the proxy for the bill
         # that taught this.
         "thinkingConfig": {"thinkingBudget": 0},
     }
     body = {
-        "system_instruction": {"parts": [{"text": NEVA_SYSTEM_PROMPT}]},
+        "system_instruction": {"parts": [{"text": system}]},
         "contents": contents,
         "tools": [_FIND_PLACES_TOOL],
         "tool_config": {"function_calling_config": {"mode": "AUTO"}},
         "generationConfig": config,
     }
+    operation = "neva_voice" if voice else "neva_chat"
 
-    first = _parts(await _generate(body, api_key, "neva_chat"))
+    first = _parts(await _generate(body, api_key, operation))
     call = _function_call(first)
     if call is None:
-        return {"text": _text(first), "places": [], "query": "", "radius_m": 0}
+        text, lang = _split_lang(_text(first))
+        return {"text": text, "places": [], "query": "", "radius_m": 0, "lang": lang}
 
 
     query = str((call.get("args") or {}).get("query") or "").strip()[:80] or message[:80]
@@ -299,6 +364,9 @@ async def chat(
     radius = 0
     if latitude is None or longitude is None:
         result: dict[str, Any] = {"error": "The user's location is unknown."}
+    elif not query:
+        # Only reachable from a recording: there is no typed message to fall back on.
+        result = {"error": "No search phrase was given."}
     else:
         try:
             places, radius = await find_places(query, latitude, longitude, user_id)
@@ -332,9 +400,10 @@ async def chat(
     })
     # Answer now; a second search would leave the map showing the first one.
     body["tool_config"] = {"function_calling_config": {"mode": "NONE"}}
-    second = _parts(await _generate(body, api_key, "neva_chat_places"))
+    second = _parts(await _generate(body, api_key, f"{operation}_places"))
     logger.info(
         "Neva searched %r near %s,%s: %d place(s) within %d m",
         query, latitude, longitude, len(places), radius,
     )
-    return {"text": _text(second), "places": places, "query": query, "radius_m": radius}
+    text, lang = _split_lang(_text(second))
+    return {"text": text, "places": places, "query": query, "radius_m": radius, "lang": lang}
