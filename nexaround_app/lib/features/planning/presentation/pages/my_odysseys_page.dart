@@ -384,7 +384,26 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
             ),
             const SizedBox(height: 10),
 
-            // 2. Museums Hero Card
+            // 2. City Guides: step-by-step guides from the content team
+            _buildCuratedHubCard(
+              tag: 'CITY GUIDES',
+              tagIcon: Icons.route_rounded,
+              tagColor: const Color(0xFF7C4DFF),
+              badge: 'STEP BY STEP',
+              light: true,
+              title: 'City Guides',
+              subtitle:
+                  'Where to start, which ride to take and what to see at every stop, with tickets and tours on the way.',
+              imageAsset: 'assets/images/city_tours_bg.jpg',
+              ctaText: 'Explore',
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const CityToursPage()),
+              ),
+            ),
+            const SizedBox(height: 10),
+
+            // 3. Museums Hero Card
             _buildCuratedHubCard(
               tag: 'TOP MUSEUMS',
               tagIcon: Icons.museum_rounded,
@@ -402,37 +421,21 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
             ),
             const SizedBox(height: 10),
 
-            // 3. Mini-Tour Walking Challenge
+            // 4. Mini-Tour Walking Challenge
             _buildCuratedHubCard(
               tag: 'WALKING CHALLENGE',
               tagIcon: Icons.directions_walk_rounded,
               tagColor: const Color(0xFFFFB800),
+              tagTextColor: const Color(0xFF0F172A),
               badge: 'MINI-TOUR',
-              title: 'City Walking Challenge',
+              light: true,
+              title: 'Walking Challenge',
               subtitle:
                   'Interactive walking routes around nearby landmarks to explore destinations and unlock badges.',
               imageBytes: walkingChallengeBytes,
               imageAsset: 'assets/images/walking_challenge_bg.jpg',
               ctaText: 'Start',
               onTap: _openMiniTour,
-            ),
-            const SizedBox(height: 10),
-
-            // 4. City Tours: step-by-step guides from the content team
-            _buildCuratedHubCard(
-              tag: 'CITY TOURS',
-              tagIcon: Icons.route_rounded,
-              tagColor: const Color(0xFFB388FF),
-              badge: 'STEP BY STEP',
-              title: 'Famous City Tours',
-              subtitle:
-                  'Where to start, which ride to take and what to see at every stop, with tickets and tours on the way.',
-              imageAsset: 'assets/images/city_tours_bg.jpg',
-              ctaText: 'Explore',
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const CityToursPage()),
-              ),
             ),
           ],
         ).animate(key: ValueKey('curated_hub_$_selectedTabIndex')).fade(duration: 220.ms).slideX(
@@ -449,6 +452,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
     required String tag,
     required IconData tagIcon,
     required Color tagColor,
+    Color? tagTextColor,
     String? badge,
     Color? badgeBgColor,
     Color? badgeTextColor,
@@ -463,14 +467,19 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
     Color? ctaTextColor,
     Color? ctaBorderColor,
     bool isCtaDisabled = false,
+    // Light card: the photo fades into white with dark text, after the
+    // Museum guide page's colours (solid tag, navy badge, green button).
+    bool light = false,
     required VoidCallback onTap,
   }) {
+    const navy = Color(0xFF0F172A);
     return GestureDetector(
       onTap: onTap,
       child: Container(
         height: 148,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(18),
+          border: light ? Border.all(color: AppColors.border) : null,
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.14),
@@ -480,7 +489,8 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
           ],
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(18),
+          // the light card's 1 px border insets the photo
+          borderRadius: BorderRadius.circular(light ? 17 : 18),
           child: Stack(
             fit: StackFit.expand,
             children: [
@@ -499,16 +509,27 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
               DecoratedBox(
                 decoration: BoxDecoration(
                   gradient: gradient ??
-                      LinearGradient(
-                        begin: Alignment.bottomCenter,
-                        end: Alignment.topCenter,
-                        colors: [
-                          const Color(0xFF0F172A).withValues(alpha: 0.92),
-                          const Color(0xFF0F172A).withValues(alpha: 0.65),
-                          Colors.black.withValues(alpha: 0.25),
-                        ],
-                        stops: const [0.0, 0.55, 1.0],
-                      ),
+                      (light
+                          ? LinearGradient(
+                              begin: Alignment.bottomCenter,
+                              end: Alignment.topCenter,
+                              colors: [
+                                Colors.white.withValues(alpha: 0.97),
+                                Colors.white.withValues(alpha: 0.90),
+                                Colors.white.withValues(alpha: 0.0),
+                              ],
+                              stops: const [0.0, 0.5, 1.0],
+                            )
+                          : LinearGradient(
+                              begin: Alignment.bottomCenter,
+                              end: Alignment.topCenter,
+                              colors: [
+                                const Color(0xFF0F172A).withValues(alpha: 0.92),
+                                const Color(0xFF0F172A).withValues(alpha: 0.65),
+                                Colors.black.withValues(alpha: 0.25),
+                              ],
+                              stops: const [0.0, 0.55, 1.0],
+                            )),
                 ),
               ),
               Padding(
@@ -524,18 +545,34 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
                         Container(
                           padding: const EdgeInsets.symmetric(
                               horizontal: 8, vertical: 3.5),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.55),
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(
-                              color: tagColor.withValues(alpha: 0.60),
-                              width: 0.8,
-                            ),
-                          ),
+                          decoration: light
+                              ? BoxDecoration(
+                                  color: tagColor,
+                                  borderRadius: BorderRadius.circular(6),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withValues(alpha: 0.25),
+                                      blurRadius: 4,
+                                      offset: const Offset(0, 1),
+                                    ),
+                                  ],
+                                )
+                              : BoxDecoration(
+                                  color: Colors.black.withValues(alpha: 0.55),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(
+                                    color: tagColor.withValues(alpha: 0.60),
+                                    width: 0.8,
+                                  ),
+                                ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(tagIcon, color: tagColor, size: 11.5),
+                              Icon(tagIcon,
+                                  color: light
+                                      ? (tagTextColor ?? Colors.white)
+                                      : tagColor,
+                                  size: 11.5),
                               const SizedBox(width: 4.5),
                               Text(
                                 tag,
@@ -543,7 +580,9 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
                                   fontSize: 8.5,
                                   fontWeight: FontWeight.w900,
                                   letterSpacing: 1.1,
-                                  color: tagColor,
+                                  color: light
+                                      ? (tagTextColor ?? Colors.white)
+                                      : tagColor,
                                 ),
                               ),
                             ],
@@ -554,7 +593,10 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 7.5, vertical: 3),
                             decoration: BoxDecoration(
-                              color: badgeBgColor ?? Colors.white.withValues(alpha: 0.14),
+                              color: badgeBgColor ??
+                                  (light
+                                      ? navy.withValues(alpha: 0.78)
+                                      : Colors.white.withValues(alpha: 0.14)),
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Text(
@@ -584,11 +626,11 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
                                 title,
                                 maxLines: 1,
                                 overflow: TextOverflow.visible,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.w800,
                                   letterSpacing: -0.2,
-                                  color: Colors.white,
+                                  color: light ? navy : Colors.white,
                                 ),
                               ),
                               const SizedBox(height: 3.5),
@@ -601,7 +643,9 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
                                   fontSize: 11.5,
                                   height: 1.36,
                                   fontWeight: FontWeight.w500,
-                                  color: Colors.white.withValues(alpha: 0.84),
+                                  color: light
+                                      ? AppColors.textSecondary
+                                      : Colors.white.withValues(alpha: 0.84),
                                 ),
                               ),
                             ],
@@ -615,7 +659,9 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
                             color: ctaBgColor ??
                                 (isCtaDisabled
                                     ? const Color(0xFF334155).withValues(alpha: 0.75)
-                                    : Colors.white),
+                                    : light
+                                        ? AppColors.brandGreen
+                                        : Colors.white),
                             borderRadius: BorderRadius.circular(16),
                             border: isCtaDisabled
                                 ? Border.all(
@@ -647,7 +693,9 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
                                   color: ctaTextColor ??
                                       (isCtaDisabled
                                           ? const Color(0xFF94A3B8)
-                                          : const Color(0xFF0F172A)),
+                                          : light
+                                              ? Colors.white
+                                              : navy),
                                 ),
                               ),
                               if (ctaIcon != null) ...[
@@ -658,7 +706,9 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
                                   color: ctaTextColor ??
                                       (isCtaDisabled
                                           ? const Color(0xFF94A3B8)
-                                          : const Color(0xFF0F172A)),
+                                          : light
+                                              ? Colors.white
+                                              : navy),
                                 ),
                               ],
                             ],

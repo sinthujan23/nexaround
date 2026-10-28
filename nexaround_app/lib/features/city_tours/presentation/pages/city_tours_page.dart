@@ -48,7 +48,7 @@ class _CityToursPageState extends State<CityToursPage> {
         _loading = false;
         // Saved guides stay on screen; only an empty page shows the error.
         if ((_tours ?? const []).isEmpty) {
-          _error = userMessageFor(e, action: 'load city tours');
+          _error = userMessageFor(e, action: 'load city guides');
         }
       });
     }
@@ -82,7 +82,7 @@ class _CityToursPageState extends State<CityToursPage> {
               surfaceTintColor: Colors.white,
               foregroundColor: AppColors.textPrimary,
               title: Text(
-                'City Tours',
+                'City Guides',
                 style: TextStyle(
                   fontSize: 17,
                   fontWeight: FontWeight.w800,
