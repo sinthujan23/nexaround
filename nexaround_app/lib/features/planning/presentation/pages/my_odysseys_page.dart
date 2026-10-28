@@ -388,9 +388,8 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
             _buildCuratedHubCard(
               tag: 'CITY GUIDES',
               tagIcon: Icons.route_rounded,
-              tagColor: const Color(0xFF7C4DFF),
+              tagColor: const Color(0xFFB388FF),
               badge: 'STEP BY STEP',
-              light: true,
               title: 'City Guides',
               subtitle:
                   'Where to start, which ride to take and what to see at every stop, with tickets and tours on the way.',
@@ -426,9 +425,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
               tag: 'WALKING CHALLENGE',
               tagIcon: Icons.directions_walk_rounded,
               tagColor: const Color(0xFFFFB800),
-              tagTextColor: const Color(0xFF0F172A),
               badge: 'MINI-TOUR',
-              light: true,
               title: 'Walking Challenge',
               subtitle:
                   'Interactive walking routes around nearby landmarks to explore destinations and unlock badges.',
