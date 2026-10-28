@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
-import { mediaUrl } from '../api';
+import { apiGet, mediaUrl } from '../api';
 import { inlineRuns, parseBlocks } from '../descriptionFormat';
 import { escapeHtml } from '../places';
 import { allSteps, dayPlan, formatClock, modeOf, partnerLogo, stopNumbers } from '../cityTours';
@@ -17,7 +17,21 @@ const FRAME = 10;
 const OUTER_W = PHONE_W + FRAME * 2;
 const OUTER_H = PHONE_H + FRAME * 2;
 const HERO = Math.round(PHONE_W * 0.62) + STATUS_BAR;
-const TILES = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+// The app's own map: Mapbox streets, with the public token the app loads at
+// start (GET /config/keys; it is set in Settings). Without a token,
+// OpenStreetMap: CARTO's free tiles, the app's own fallback, now answer
+// "API key required".
+const mapboxTiles = (token) =>
+  `https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/256/{z}/{x}/{y}@2x?access_token=${encodeURIComponent(token)}`;
+const OSM_TILES = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+
+let mapToken = null;
+const loadMapToken = () => {
+  mapToken ??= apiGet('/config/keys')
+    .then((keys) => keys?.mapbox_access_token || '')
+    .catch(() => { mapToken = null; return ''; });
+  return mapToken;
+};
 
 const Icon = ({ name, size, color, style }) => (
   <span className="material-icons-round" style={{ fontSize: size, color, ...style }} aria-hidden="true">{name}</span>
@@ -112,11 +126,15 @@ function RouteMap({ stops }) {
 
   useEffect(() => {
     if (!window.L || !el.current || map.current) return undefined;
-    map.current = window.L.map(el.current, {
+    const m = window.L.map(el.current, {
       zoomControl: false, attributionControl: false, dragging: false, scrollWheelZoom: false,
       doubleClickZoom: false, boxZoom: false, keyboard: false, touchZoom: false,
     });
-    window.L.tileLayer(TILES, { subdomains: 'abcd', maxZoom: 19 }).addTo(map.current);
+    map.current = m;
+    loadMapToken().then((token) => {
+      if (map.current !== m) return;
+      window.L.tileLayer(token ? mapboxTiles(token) : OSM_TILES, { subdomains: 'abc', maxZoom: 19 }).addTo(m);
+    });
     return () => {
       map.current.remove();
       map.current = null;
@@ -557,7 +575,7 @@ export default function CityTourPreview({ content, partners, activeDayId = null,
         </div>
       </div>
       <div className="ctp-note">
-        As in the app. The map tiles may look slightly different; the pins and route are the same.
+        As in the app.
       </div>
     </div>
   );

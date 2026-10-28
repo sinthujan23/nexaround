@@ -1,4 +1,4 @@
-"""City Tours trips: a traveller following a guide step by step.
+"""City Tours trips: a traveller following one day of a guide step by step.
 
 "Start trip" in the app saves when the traveller set off; "Mark done" saves
 when each step (a stop, or the ride to the next one) ended. Every step has
@@ -12,8 +12,9 @@ marked done (the first, at the start), and the steps after it follow on, so
 marking a step done late or early moves the rest. The worker pushes one
 "Done at …?" reminder per step once it runs past its minutes (reminder_loop).
 
-The functions above the database section are pure, so they can be tested on
-their own.
+A trip follows one day (`day_id`; a trip from before days, the guide's first
+day). The functions above the database section are pure, so they can be
+tested on their own.
 """
 from __future__ import annotations
 
@@ -24,14 +25,14 @@ import re
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from app.services.city_tours import MOVE, STOP, TRANSPORT_MODES
+from app.services.city_tours import BREAK, MOVE, STOP, TRANSPORT_MODES, all_steps, find_day
 
 logger = logging.getLogger(__name__)
 
 PUSH_TYPE = "city_tour_trip"
 
 # Planned minutes for a step whose time is missing or unreadable.
-DEFAULT_MINUTES = {STOP: 30, MOVE: 15}
+DEFAULT_MINUTES = {STOP: 30, MOVE: 15, BREAK: 45}
 _MAX_MINUTES = 12 * 60
 
 # A running trip older than this is left alone: no more reminders.
@@ -93,8 +94,14 @@ def step_minutes(step: dict) -> int:
 
 
 def plan_minutes(content: dict) -> dict[str, int]:
-    """Step id → planned minutes, for every step of the guide."""
-    return {s["id"]: step_minutes(s) for s in (content or {}).get("steps") or [] if s.get("id")}
+    """Step id → planned minutes, for every step of every day."""
+    return {s["id"]: step_minutes(s) for s in all_steps(content) if s.get("id")}
+
+
+def trip_steps(content: dict, day_id: Optional[str]) -> list[dict]:
+    """The steps of the day a trip follows."""
+    day = find_day(content, day_id)
+    return list((day or {}).get("steps") or [])
 
 
 def as_time(value) -> Optional[datetime]:
@@ -161,6 +168,10 @@ def _next_stop(steps: list[dict], index: int) -> Optional[dict]:
 def reminder_text(steps: list[dict], step: dict) -> tuple[str, str]:
     """The push for a step past its planned time: (title, body)."""
     index = next((i for i, s in enumerate(steps) if s.get("id") == step.get("id")), 0)
+    if step.get("type") == BREAK:
+        nxt = next((s for s in steps[index + 1:] if s.get("type") != BREAK), None)
+        what = (nxt.get("name") if nxt and nxt.get("type") == STOP else "") or "the next step"
+        return f"{step.get('title') or 'Break'} over?", f"Next: {what}. Mark it done to update your times."
     if step.get("type") == STOP:
         title = f"Done at {step.get('name') or 'this stop'}?"
         after = steps[index + 1] if index + 1 < len(steps) else None
@@ -180,9 +191,11 @@ def reminder_text(steps: list[dict], step: dict) -> tuple[str, str]:
 
 def view(trip, content: dict) -> dict:
     """A trip as the app reads it: the times saved, and every step's minutes."""
+    day = find_day(content, trip.day_id)
     return {
         "id": str(trip.id),
         "tour_id": str(trip.tour_id),
+        "day_id": (day or {}).get("id") or trip.day_id,
         "started_at": trip.started_at.isoformat(),
         "finished_at": trip.finished_at.isoformat() if trip.finished_at else None,
         "done": dict(trip.done or {}),
@@ -213,7 +226,7 @@ async def remind_due(db, now: datetime) -> int:
     )).all()
     sent = 0
     for trip, tour in rows:
-        steps = (tour.live_content or {}).get("steps") or []
+        steps = trip_steps(tour.live_content, trip.day_id)
         due = due_step(trip.started_at, steps, trip.done or {}, plan_minutes(tour.live_content))
         if due is None:
             continue

@@ -103,3 +103,59 @@ def test_reminder_text():
     assert trips.reminder_text(steps, steps[4]) == (
         "Done at Notre-Dame?", "That's the last stop. Mark it done to finish your trip.",
     )
+
+
+# ── Trips follow one day ─────────────────────────────────────────────────────
+
+def _two_days():
+    from app.services import city_tours as ct
+    return ct.normalize({
+        "city": "Paris", "country": "France",
+        "days": [
+            {"title": "Day one", "starts_at": "09:00", "steps": [
+                {"type": "stop", "name": "Eiffel Tower", "lat": 48.85, "lng": 2.29, "time_here": "2 hr"},
+                {"type": "break", "title": "Lunch / Rest", "duration": "45 min"},
+            ]},
+            {"title": "Day two", "starts_at": "09:00", "steps": [
+                {"type": "stop", "name": "Louvre", "lat": 48.86, "lng": 2.33, "time_here": "3 hr"},
+            ]},
+        ],
+    })
+
+
+def test_a_trip_follows_its_own_day():
+    content = _two_days()
+    first, second = content["days"]
+    assert [s["name"] for s in trips.trip_steps(content, second["id"])] == ["Louvre"]
+    # A trip from before days follows the first day.
+    assert [s.get("name") or s.get("title") for s in trips.trip_steps(content, None)] == ["Eiffel Tower", "Lunch / Rest"]
+    assert trips.trip_steps(content, "no-such-day") == []
+
+
+def test_breaks_plan_their_own_minutes():
+    content = _two_days()
+    minutes = trips.plan_minutes(content)
+    brk = content["days"][0]["steps"][1]
+    assert minutes[brk["id"]] == 45
+    assert trips.step_minutes({"type": "break", "duration": ""}) == 45
+
+
+def test_break_reminder_names_what_comes_next():
+    steps = [
+        {"id": "a", "type": "break", "title": "Lunch / Rest"},
+        {"id": "b", "type": "stop", "name": "Musée d'Orsay"},
+    ]
+    title, body = trips.reminder_text(steps, steps[0])
+    assert title == "Lunch / Rest over?" and "Musée d'Orsay" in body
+
+
+def test_a_live_guide_from_before_days_still_plans_its_trip():
+    from app.services import city_tours as ct
+    stored = {"city": "Paris", "steps": [
+        {"id": "s1", "type": "stop", "name": "Eiffel Tower", "time_here": "1 h"},
+        {"id": "s2", "type": "move", "mode": "walk", "duration": "10 min"},
+        {"id": "s3", "type": "stop", "name": "Louvre", "time_here": "2 h"},
+    ]}
+    assert [s["id"] for s in trips.trip_steps(stored, None)] == ["s1", "s2", "s3"]
+    assert [s["id"] for s in trips.trip_steps(stored, ct.LEGACY_DAY_ID)] == ["s1", "s2", "s3"]
+    assert trips.plan_minutes(stored) == {"s1": 60, "s2": 10, "s3": 120}

@@ -41,9 +41,13 @@ Future<void> openCityTourById(BuildContext context, String tourId) async {
 /// by step with its partner buttons. Opened from a list with the guide's
 /// card, which draws the header while the rest loads.
 ///
-/// A signed-in traveller can start a trip: every step gets a planned time,
-/// the bar at the bottom asks them to mark the step in hand done, and the
-/// times after it move to match (the server pushes a reminder when a step
+/// A guide of several days first asks the traveller for their plan: how many
+/// days they have (the first ones), or which days' places they want. The
+/// plan is kept on the device; the days then show as tabs.
+///
+/// A signed-in traveller can start a day's trip: every step gets a planned
+/// time, the bar at the bottom asks them to mark the step in hand done, and
+/// the times after it move to match (the server pushes a reminder when a step
 /// runs over).
 class CityTourPage extends StatefulWidget {
   final CityTourCard card;
@@ -66,6 +70,10 @@ class _CityTourPageState extends State<CityTourPage> {
 
   CityTourTrip? _trip;
   bool _tripBusy = false;
+
+  // The days the traveller picked (null: not yet), and the day on screen.
+  List<String>? _plan;
+  String? _dayId;
   // Redraws the times while a trip runs: a step running over pushes the rest on.
   Timer? _tick;
 
@@ -74,6 +82,7 @@ class _CityTourPageState extends State<CityTourPage> {
     super.initState();
     _scroll.addListener(_onScroll);
     _tour = _service.cachedTour(widget.card.id);
+    _plan = _service.savedPlan(widget.card.id);
     _fetch();
     if (CacheService.isLoggedIn()) {
       _trip = _service.cachedTrip(widget.card.id);
@@ -144,15 +153,78 @@ class _CityTourPageState extends State<CityTourPage> {
     }
   }
 
-  Future<void> _startTrip() async {
+  Future<void> _startTrip(CityTourDay day) async {
     if (!CacheService.isLoggedIn()) {
       _say('Sign in to start a trip.');
       return;
     }
+    final running = _trip;
+    if (running != null && !running.isFinished && running.dayId != day.id) {
+      final go = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Start this day instead?'),
+          content: const Text('The trip you are on now ends.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Keep it'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Start this day'),
+            ),
+          ],
+        ),
+      );
+      if (go != true) return;
+    }
     await _tripChange(() async {
-      final trip = await _service.startTrip(widget.card.id);
-      if (mounted) setState(() => _trip = trip);
+      final trip = await _service.startTrip(widget.card.id, dayId: day.id);
+      if (mounted) {
+        setState(() {
+          _trip = trip;
+          _dayId = day.id;
+        });
+      }
     }, 'start the trip');
+  }
+
+  void _showPlan(List<String> dayIds) {
+    setState(() {
+      _plan = dayIds;
+      _dayId = dayIds.first;
+    });
+    unawaited(_service.savePlan(widget.card.id, dayIds));
+  }
+
+  /// The traveller's days the guide still has, in their order; a guide of one
+  /// day is just that day.
+  List<CityTourDay> _planDays(CityTour tour) {
+    if (!tour.hasDays) return tour.days;
+    return [
+      for (final id in _plan ?? const <String>[])
+        if (tour.dayById(id) != null) tour.dayById(id)!,
+    ];
+  }
+
+  /// The day on screen: the one picked, else the running trip's, else the first.
+  CityTourDay? _shownDay(List<CityTourDay> days) {
+    if (days.isEmpty) return null;
+    final trip = _trip;
+    for (final id in [_dayId, if (trip != null && !trip.isFinished) trip.dayId]) {
+      for (final d in days) {
+        if (d.id == id) return d;
+      }
+    }
+    return days.first;
+  }
+
+  /// Whether the trip is on this day (one from before days follows the first).
+  bool _tripOn(CityTour tour, CityTourDay day) {
+    final trip = _trip;
+    if (trip == null) return false;
+    return trip.dayId == day.id || (trip.dayId.isEmpty && day.id == tour.days.first.id);
   }
 
   Future<void> _markDone(CityTourStep step, DateTime at) async {
@@ -214,12 +286,13 @@ class _CityTourPageState extends State<CityTourPage> {
     }, 'end the trip');
   }
 
-  /// A stop's name, or the ride and where it goes: "Metro to Louvre".
-  String _stepTitle(CityTour tour, CityTourStep step) {
+  /// A stop's name, a break's, or the ride and where it goes: "Metro to Louvre".
+  String _stepTitle(CityTourDay day, CityTourStep step) {
     if (step.isStop) return step.name;
+    if (step.isBreak) return step.breakTitle.isEmpty ? 'Break' : step.breakTitle;
     final how = step.modeLabel.isEmpty ? 'Walk' : step.modeLabel;
-    final index = tour.steps.indexOf(step);
-    final next = tour.steps.skip(index + 1).where((s) => s.isStop).firstOrNull;
+    final index = day.steps.indexOf(step);
+    final next = day.steps.skip(index + 1).where((s) => s.isStop).firstOrNull;
     return next == null ? how : '$how to ${next.name}';
   }
 
@@ -249,10 +322,10 @@ class _CityTourPageState extends State<CityTourPage> {
     }
   }
 
-  void _openMap(CityTour tour) {
+  void _openMap(String title, CityTourDay day) {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => _CityTourMapPage(tour: tour)),
+      MaterialPageRoute(builder: (_) => _CityTourMapPage(title: title, stops: day.stops)),
     );
   }
 
@@ -263,19 +336,24 @@ class _CityTourPageState extends State<CityTourPage> {
     final place = [card.city, card.country].where((s) => s.isNotEmpty).join(' · ');
     final tour = _tour;
     final trip = _trip;
-    final schedule = tour == null || trip == null ? null : trip.schedule(tour.steps, DateTime.now());
+    final days = tour == null ? const <CityTourDay>[] : _planDays(tour);
+    final day = _shownDay(days);
+    final dayTrip = tour != null && day != null && _tripOn(tour, day) ? trip : null;
+    final schedule = day == null ? null : dayTrip?.schedule(day.steps, DateTime.now());
     final current = schedule?.current;
+    final number = day == null ? 0 : days.indexOf(day) + 1;
 
     return Scaffold(
       backgroundColor: Colors.white,
-      bottomNavigationBar: tour == null || tour.steps.isEmpty
+      bottomNavigationBar: tour == null || day == null || day.steps.isEmpty
           ? null
           : CityTourTripBar(
-              trip: trip,
+              trip: dayTrip,
               schedule: schedule,
-              currentTitle: current == null ? '' : _stepTitle(tour, current),
+              currentTitle: current == null ? '' : _stepTitle(day, current),
               busy: _tripBusy,
-              onStart: _startTrip,
+              startLabel: tour.hasDays ? 'Start Day $number' : 'Start trip',
+              onStart: () => _startTrip(day),
               onMarkDone: () {
                 if (current != null) _markDone(current, DateTime.now());
               },
@@ -392,13 +470,13 @@ class _CityTourPageState extends State<CityTourPage> {
               ),
             ),
           ),
-          ..._body(schedule),
+          ..._body(days, day, schedule),
         ],
       ),
     );
   }
 
-  List<Widget> _body(CityTourSchedule? schedule) {
+  List<Widget> _body(List<CityTourDay> days, CityTourDay? day, CityTourSchedule? schedule) {
     final tour = _tour;
     if (tour == null) {
       return [
@@ -432,52 +510,116 @@ class _CityTourPageState extends State<CityTourPage> {
       ];
     }
 
-    final stops = tour.stops;
-    final lastStopId = stops.isEmpty ? null : stops.last.id;
-    final hasPins = stops.any((s) => s.hasPin);
+    final children = <Widget>[
+      if (tour.introMd.isNotEmpty) ...[
+        ExperienceDescription(markdown: tour.introMd),
+        const SizedBox(height: 20),
+      ],
+    ];
+    if (day == null) {
+      if (tour.hasDays) {
+        children.add(CityTourPlanPicker(days: tour.days, initial: _plan ?? const [], onShow: _showPlan));
+      }
+    } else {
+      final number = days.indexOf(day) + 1;
+      if (tour.hasDays) {
+        children.addAll([
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'YOUR PLAN · ${days.length} DAY${days.length == 1 ? '' : 'S'}',
+                  style: const TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.1,
+                    color: AppColors.brandGreen,
+                  ),
+                ),
+              ),
+              GestureDetector(
+                onTap: () => setState(() => _plan = null),
+                child: const Text(
+                  'Change',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: AppColors.brandGreen),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          CityTourDayTabs(days: days, selectedId: day.id, onSelect: (id) => setState(() => _dayId = id)),
+          const SizedBox(height: 16),
+          Text(
+            day.title.isEmpty ? 'Day $number' : day.title,
+            style: const TextStyle(
+              fontSize: 19,
+              height: 1.25,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.2,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            cityTourDayLine(context, day),
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 14),
+        ]);
+      } else {
+        children.addAll(const [
+          Text(
+            'The route',
+            style: TextStyle(
+              fontSize: 19,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.2,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          SizedBox(height: 14),
+        ]);
+      }
+      final stops = day.stops;
+      final lastStopId = stops.isEmpty ? null : stops.last.id;
+      if (stops.any((s) => s.hasPin)) {
+        children.addAll([
+          CityTourMap(
+            key: ValueKey(day.id),
+            stops: stops,
+            onExpand: () => _openMap(tour.hasDays && day.title.isNotEmpty ? day.title : tour.card.title, day),
+          ),
+          const SizedBox(height: 18),
+        ]);
+      }
+      // A day someone is on shows the trip's times; any other its plan.
+      final times = schedule?.times ?? cityTourDayPlan(day, DateTime.now());
+      for (var i = 0; i < day.steps.length; i++) {
+        children.add(CityTourStepTile(
+          step: day.steps[i],
+          isFirst: i == 0,
+          isLast: i == day.steps.length - 1,
+          isLastStop: stops.length > 1 && day.steps[i].id == lastStopId,
+          onLinkTap: _openLink,
+          time: times[day.steps[i].id],
+        ));
+      }
+    }
     return [
       SliverPadding(
         padding: EdgeInsets.fromLTRB(20, 18, 20, 32 + MediaQuery.of(context).padding.bottom),
-        sliver: SliverList.list(
-          children: [
-            if (hasPins)
-              CityTourMap(stops: stops, onExpand: () => _openMap(tour)),
-            if (tour.introMd.isNotEmpty) ...[
-              const SizedBox(height: 20),
-              ExperienceDescription(markdown: tour.introMd),
-            ],
-            const SizedBox(height: 24),
-            const Text(
-              'The route',
-              style: TextStyle(
-                fontSize: 19,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -0.2,
-                color: AppColors.textPrimary,
-              ),
-            ),
-            const SizedBox(height: 14),
-            for (var i = 0; i < tour.steps.length; i++)
-              CityTourStepTile(
-                step: tour.steps[i],
-                isFirst: i == 0,
-                isLast: i == tour.steps.length - 1,
-                isLastStop: stops.length > 1 && tour.steps[i].id == lastStopId,
-                onLinkTap: _openLink,
-                time: schedule?.times[tour.steps[i].id],
-              ),
-          ],
-        ),
+        sliver: SliverList.list(children: children),
       ),
     ];
   }
 }
 
-/// The guide's map full screen: pan, zoom, and tap a stop for its name.
+/// A day's map full screen: pan, zoom, and tap a stop for its name.
 class _CityTourMapPage extends StatefulWidget {
-  final CityTour tour;
+  final String title;
+  final List<CityTourStep> stops;
 
-  const _CityTourMapPage({required this.tour});
+  const _CityTourMapPage({required this.title, required this.stops});
 
   @override
   State<_CityTourMapPage> createState() => _CityTourMapPageState();
@@ -496,7 +638,7 @@ class _CityTourMapPageState extends State<_CityTourMapPage> {
         surfaceTintColor: Colors.white,
         foregroundColor: AppColors.textPrimary,
         title: Text(
-          widget.tour.card.title,
+          widget.title,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(
@@ -510,7 +652,7 @@ class _CityTourMapPageState extends State<_CityTourMapPage> {
         children: [
           Positioned.fill(
             child: CityTourMap(
-              stops: widget.tour.stops,
+              stops: widget.stops,
               interactive: true,
               onStopTap: (stop) => setState(() => _picked = stop),
             ),

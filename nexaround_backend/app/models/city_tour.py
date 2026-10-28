@@ -142,6 +142,9 @@ class CityTourTrip(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False,
     )
+    # The day of the guide it follows; NULL for a trip from before days (the
+    # guide's first day).
+    day_id: Mapped[str] = mapped_column(String(36), nullable=True)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
     # Step id → ISO time it was marked done, in route order.
     done: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict, server_default="{}")

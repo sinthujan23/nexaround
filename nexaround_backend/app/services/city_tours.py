@@ -9,16 +9,29 @@ app:
       "title": "Paris in a day by metro", "summary": "…", "cover_url": "/static/…",
       "duration": "6–7 hours", "budget": "€40–60 per person",
       "intro_md": "## Before you start\\n…",           light Markdown, as the
-      "steps": [                                        description editor writes
-        {"id": "…", "type": "stop", "name": "Eiffel Tower", "lat": 48.8584,
-         "lng": 2.2945, "photo_url": "…", "time_here": "1 h", "price": "€29",
-         "body_md": "…", "links": [link, …]},
-        {"id": "…", "type": "move", "mode": "metro",
-         "title": "Line 6 towards Nation, 4 stops", "duration": "15 min",
-         "cost": "€2.15", "body_md": "…", "links": [link, …]},
+      "days": [                                         description editor writes
+        {"id": "…", "title": "Eiffel Tower, Champ de Mars and Invalides",
+         "starts_at": "09:00", "steps": [
+          {"id": "…", "type": "stop", "name": "Eiffel Tower", "lat": 48.8584,
+           "lng": 2.2945, "photo_url": "…", "time_here": "2 hr 45 min", "price": "€29",
+           "access_note": "Open daily", "body_md": "…", "links": [link, …]},
+          {"id": "…", "type": "move", "mode": "walk", "title": "Across the Champ de Mars",
+           "duration": "15 min", "cost": "", "access_note": "", "body_md": "…", "links": […]},
+          {"id": "…", "type": "break", "title": "Lunch / Rest", "duration": "45 min",
+           "access_note": "", "body_md": "…", "links": […]},
+          …
+        ]},
         …
       ]
     }
+
+A guide is one or more days, each a group of places in order: stops, the
+rides between them and breaks (lunch, a rest). A traveller with fewer days
+than the guide has takes the first ones, or picks the days whose places they
+want. A day's clock times come from its start time and each step's planned
+minutes (city_tour_trips.step_minutes), so nobody types "11:45 AM". Guides
+saved before days existed have a single "steps" list: `days_of` reads them as
+one day, and saving one turns it into `days`.
 
     link = {"id": "…", "kind": "affiliate", "partner": "klook", "words": "Seine cruise",
             "label": "Seine river cruise", "url": "<made here>"}
@@ -29,9 +42,10 @@ app:
 Creators never type a web address: an affiliate link's page is made here from
 the guide (its city and country, the stop's name, the stops either side of a
 ride), or, for WeGoTrip, picked from the city's catalogue in the editor
-(partner_options). The first step is where the journey starts; stops are
-numbered in order and pinned on the app's map. Link ids stay put across
-edits, because taps are counted per link (city_tour_taps.link_id).
+(partner_options). Stops are numbered within their day and pinned on that
+day's map. Step and link ids are unique across the whole guide and stay put
+across edits: trips mark steps done by id, and taps are counted per link
+(city_tour_taps.link_id).
 
 Everything here is free of the database, so it can be tested on its own.
 """
@@ -131,9 +145,14 @@ TRANSPORT_MODES: dict[str, str] = {
     "car": "Car or transfer",
 }
 
-STOP, MOVE = "stop", "move"
-MAX_STEPS = 60
+STOP, MOVE, BREAK = "stop", "move", "break"
+STEP_KINDS = (STOP, MOVE, BREAK)
+MAX_DAYS = 14
+MAX_STEPS = 60  # in one day
 MAX_LINKS_PER_STEP = 6
+# The one day of a guide saved before days existed. A fixed id, so its trips
+# and the day the editor saves it as are the same day.
+LEGACY_DAY_ID = "00000000-0000-4000-8000-000000000001"
 
 # Field → (longest, what the editor calls it).
 _TOUR_TEXT = {
@@ -155,6 +174,13 @@ _MOVE_TEXT = {
     "duration": (40, "travel time"),
     "cost": (60, "fare"),
 }
+_BREAK_TEXT = {
+    "title": (80, "name"),
+    "duration": (40, "time it takes"),
+}
+_STEP_TEXT = {STOP: _STOP_TEXT, MOVE: _MOVE_TEXT, BREAK: _BREAK_TEXT}
+_ACCESS_MAX = 300
+_DAY_TITLE_MAX = 160
 _STEP_BODY_MAX = 8000
 _LABEL_MAX = 80
 _URL_MAX = 1000
@@ -325,17 +351,15 @@ def _link(raw, where: str, seen: set[str], place: LinkPlace) -> dict:
     return link
 
 
-def _step(raw, index: int, step_ids: set[str]) -> dict:
-    where = f"Step {index + 1}"
+def _step(raw, where: str, step_ids: set[str]) -> dict:
     if not isinstance(raw, dict):
         raise ContentError(f"{where} is broken. Remove it and add it again.")
     kind = raw.get("type")
-    if kind not in (STOP, MOVE):
-        raise ContentError(f"{where} is neither a stop nor a way to travel.")
+    if kind not in STEP_KINDS:
+        raise ContentError(f"{where} is not a stop, a ride or a break.")
 
     step = {"id": _new_id(raw.get("id"), step_ids), "type": kind}
-    texts = _STOP_TEXT if kind == STOP else _MOVE_TEXT
-    for key, (longest, name) in texts.items():
+    for key, (longest, name) in _STEP_TEXT[kind].items():
         value = _str(raw.get(key))
         if len(value) > longest:
             raise ContentError(f"{where}: the {name} is too long ({longest} characters at most).")
@@ -347,10 +371,14 @@ def _step(raw, index: int, step_ids: set[str]) -> dict:
         if step["lat"] is None or step["lng"] is None:
             step["lat"] = step["lng"] = None
         step["photo_url"] = _media(raw.get("photo_url"), where)
-    else:
+    elif kind == MOVE:
         mode = _str(raw.get("mode"))
         step["mode"] = mode if mode in TRANSPORT_MODES else "walk"
 
+    note = _str(raw.get("access_note"))
+    if len(note) > _ACCESS_MAX:
+        raise ContentError(f"{where}: the opening and access note is too long ({_ACCESS_MAX} characters at most).")
+    step["access_note"] = note
     step["body_md"] = _markdown(raw, "body_md", _STEP_BODY_MAX, f"{where}'s text")
 
     links = raw.get("links") if isinstance(raw.get("links"), list) else []
@@ -372,32 +400,101 @@ def normalize(raw) -> dict:
     out["cover_url"] = _media(raw.get("cover_url"), "Cover photo")
     out["intro_md"] = _markdown(raw, "intro_md", _INTRO_MAX, "The introduction")
 
-    steps = raw.get("steps") if isinstance(raw.get("steps"), list) else []
-    if len(steps) > MAX_STEPS:
-        raise ContentError(f"A guide has {MAX_STEPS} steps at most.")
+    days = days_of(raw)
+    if len(days) > MAX_DAYS:
+        raise ContentError(f"A guide has {MAX_DAYS} days at most.")
+    day_ids: set[str] = set()
     step_ids: set[str] = set()
-    out["steps"] = [_step(s, i, step_ids) for i, s in enumerate(steps)]
-
-    # Links last: a ride's link needs the stops either side of it.
     link_ids: set[str] = set()
-    for i, (raw_step, step) in enumerate(zip(steps, out["steps"])):
-        place = LinkPlace(
-            city=out["city"], country=out["country"], step=step,
-            prev_stop=next((s for s in reversed(out["steps"][:i]) if s["type"] == STOP), None),
-            next_stop=next((s for s in out["steps"][i + 1:] if s["type"] == STOP), None),
-        )
-        links = raw_step.get("links") if isinstance(raw_step.get("links"), list) else []
-        step["links"] = [_link(link, f"Step {i + 1}", link_ids, place) for link in links]
+    out["days"] = []
+    for d, raw_day in enumerate(days):
+        if not isinstance(raw_day, dict):
+            raise ContentError(f"Day {d + 1} is broken. Remove it and add it again.")
+        name = f"Day {d + 1}" if len(days) > 1 else ""
+        title = _str(raw_day.get("title"))
+        if len(title) > _DAY_TITLE_MAX:
+            raise ContentError(f"{name or 'The day'}: its places line is too long ({_DAY_TITLE_MAX} characters at most).")
+        raw_steps = raw_day.get("steps") if isinstance(raw_day.get("steps"), list) else []
+        if len(raw_steps) > MAX_STEPS:
+            raise ContentError(f"{name or 'A day'} has {MAX_STEPS} steps at most.")
+        steps = [
+            _step(s, " · ".join(p for p in (name, f"Step {i + 1}") if p), step_ids)
+            for i, s in enumerate(raw_steps)
+        ]
+        # Links last: a ride's link needs the stops either side of it.
+        for i, (raw_step, step) in enumerate(zip(raw_steps, steps)):
+            place = LinkPlace(
+                city=out["city"], country=out["country"], step=step,
+                prev_stop=next((s for s in reversed(steps[:i]) if s["type"] == STOP), None),
+                next_stop=next((s for s in steps[i + 1:] if s["type"] == STOP), None),
+            )
+            links = raw_step.get("links") if isinstance(raw_step.get("links"), list) else []
+            where = " · ".join(p for p in (name, f"Step {i + 1}") if p)
+            step["links"] = [_link(link, where, link_ids, place) for link in links]
+        out["days"].append({
+            "id": _new_id(raw_day.get("id"), day_ids),
+            "title": title,
+            "starts_at": start_time(raw_day.get("starts_at"), name or "The day"),
+            "steps": steps,
+        })
     return out
 
 
+_CLOCK = re.compile(r"^\s*(\d{1,2})(?:[:.](\d{2}))?\s*([ap])?\.?\s*m?\.?\s*$", re.I)
+
+
+def start_time(value, where: str) -> str:
+    """A day's start as "HH:MM" (24-hour), from "09:00", "9:30" or "9:30 AM";
+    "" for none."""
+    text = _str(value)
+    if not text:
+        return ""
+    m = _CLOCK.match(text)
+    hour, minute = (int(m.group(1)), int(m.group(2) or 0)) if m else (99, 0)
+    half = (m.group(3) or "").lower() if m else ""
+    if half and 1 <= hour <= 12:
+        hour = hour % 12 + (12 if half == "p" else 0)
+    elif half:
+        hour = 99
+    if not (0 <= hour <= 23 and 0 <= minute <= 59):
+        raise ContentError(f"{where}: the start time should look like 09:00.")
+    return f"{hour:02d}:{minute:02d}"
+
+
+def days_of(content) -> list[dict]:
+    """A guide's days. One saved before days existed is one day, of its steps."""
+    content = content if isinstance(content, dict) else {}
+    days = content.get("days")
+    if isinstance(days, list):
+        return days
+    steps = content.get("steps")
+    if isinstance(steps, list):
+        return [{"id": LEGACY_DAY_ID, "title": "", "starts_at": "", "steps": steps}]
+    return []
+
+
+def all_steps(content) -> list[dict]:
+    """Every step of every day, in order."""
+    return [s for day in days_of(content) for s in (day.get("steps") or []) if isinstance(s, dict)]
+
+
+def find_day(content, day_id) -> Optional[dict]:
+    """The day with this id; the first day for none (a trip from before days)."""
+    days = days_of(content)
+    if not days:
+        return None
+    if not day_id:
+        return days[0]
+    return next((d for d in days if d.get("id") == day_id), None)
+
+
 def stops(content: dict) -> list[dict]:
-    return [s for s in (content or {}).get("steps") or [] if s.get("type") == STOP]
+    return [s for s in all_steps(content) if s.get("type") == STOP]
 
 
 def links(content: dict):
     """(step, link) for every partner link, in reading order."""
-    for step in (content or {}).get("steps") or []:
+    for step in all_steps(content):
         for link in step.get("links") or []:
             yield step, link
 
@@ -406,16 +503,35 @@ def find_link(content: dict, link_id: str) -> Optional[dict]:
     return next((link for _s, link in links(content) if link.get("id") == link_id), None)
 
 
+def _where(day_name: str, step: dict, number: int) -> str:
+    """"Stop 3", "Travel to stop 4", "Break after stop 2", with the day first
+    when the guide has several."""
+    kind = step.get("type")
+    if kind == STOP:
+        place = f"Stop {number}"
+    elif kind == MOVE:
+        place = f"Travel to stop {number + 1}"
+    else:
+        place = f"Break after stop {number}" if number else "Break"
+    return " · ".join(p for p in (day_name, place) if p)
+
+
 def step_name(content: dict, step: dict) -> str:
-    """"Stop 3 · Louvre" or "Travel to stop 4 · Metro": where a link sits."""
-    number = 0
-    for s in (content or {}).get("steps") or []:
-        if s.get("type") == STOP:
-            number += 1
-        if s is step:
-            if s["type"] == STOP:
-                return f"Stop {number} · {s.get('name') or 'unnamed'}"
-            return f"Travel to stop {number + 1} · {TRANSPORT_MODES.get(s.get('mode'), 'Walk')}"
+    """"Day 2 · Stop 3 · Louvre" or "Travel to stop 4 · Metro": where a link sits."""
+    days = days_of(content)
+    for d, day in enumerate(days):
+        number = 0
+        day_name = f"Day {d + 1}" if len(days) > 1 else ""
+        for s in day.get("steps") or []:
+            if s.get("type") == STOP:
+                number += 1
+            if s is step:
+                where = _where(day_name, s, number)
+                if s["type"] == STOP:
+                    return f"{where} · {s.get('name') or 'unnamed'}"
+                if s["type"] == MOVE:
+                    return f"{where} · {TRANSPORT_MODES.get(s.get('mode'), 'Walk')}"
+                return f"{where} · {s.get('title') or 'Break'}"
     return ""
 
 
@@ -434,31 +550,41 @@ def problems(content: dict, *, package_ok: Optional[Callable[[str], bool]] = Non
         if not content.get(key):
             found.append(f"Add {label}.")
 
-    steps = content.get("steps") or []
+    days = days_of(content)
     if len(stops(content)) < 2:
         found.append("Add at least two stops.")
-    if steps and steps[0].get("type") != STOP:
-        found.append("Start with a stop: the place where the journey begins.")
 
-    number = 0
-    for step in steps:
-        if step.get("type") == STOP:
-            number += 1
-            where = f"Stop {number}"
-            if not step.get("name"):
-                found.append(f"{where}: add its name.")
-            if step.get("lat") is None or step.get("lng") is None:
-                found.append(f"{where}: put it on the map.")
-        else:
-            where = f"Travel to stop {number + 1}"
-        for link in step.get("links") or []:
-            if link.get("kind") == EXPERIENCE:
-                if not link.get("package_id"):
-                    found.append(f"{where}: pick the experience for each Experience link.")
-                elif package_ok is not None and not package_ok(link["package_id"]):
-                    found.append(f"{where}: an Experience it links to is no longer listed in the app.")
-            elif not link.get("url"):
-                found.append(f"{where}: {_no_page(link, content)}")
+    for d, day in enumerate(days):
+        day_name = f"Day {d + 1}" if len(days) > 1 else ""
+        steps = day.get("steps") or []
+        if day_name and not day.get("title"):
+            found.append(f"{day_name}: add the line of places it covers, which travellers pick days by.")
+        if day_name and not any(s.get("type") == STOP for s in steps):
+            found.append(f"{day_name}: add at least one stop.")
+        number = 0
+        for step in steps:
+            if step.get("type") == STOP:
+                number += 1
+            where = _where(day_name, step, number)
+            if step.get("type") == STOP:
+                if not step.get("name"):
+                    found.append(f"{where}: add its name.")
+                if step.get("lat") is None or step.get("lng") is None:
+                    found.append(f"{where}: put it on the map.")
+            found.extend(_link_problems(step, where, content, package_ok))
+    return found
+
+
+def _link_problems(step: dict, where: str, content: dict, package_ok) -> list[str]:
+    found = []
+    for link in step.get("links") or []:
+        if link.get("kind") == EXPERIENCE:
+            if not link.get("package_id"):
+                found.append(f"{where}: pick the experience for each Experience link.")
+            elif package_ok is not None and not package_ok(link["package_id"]):
+                found.append(f"{where}: an Experience it links to is no longer listed in the app.")
+        elif not link.get("url"):
+            found.append(f"{where}: {_no_page(link, content)}")
     return found
 
 
@@ -509,6 +635,7 @@ def card(content: dict) -> dict:
         "duration": content.get("duration") or "",
         "budget": content.get("budget") or "",
         "stop_count": len(stops(content)),
+        "day_count": len(days_of(content)),
     }
 
 
@@ -533,39 +660,57 @@ def app_view(
     and goes on to the partner); `package_view(package_id)` is the Experience
     as its card shows it, or None when it is not listed, which drops the link.
     """
+    from app.services.city_tour_trips import step_minutes
+
     view = card(content)
     view["intro_md"] = (content or {}).get("intro_md") or ""
-    steps_out = []
-    number = 0
-    for step in (content or {}).get("steps") or []:
-        out = {k: v for k, v in step.items() if k != "links"}
-        if step.get("type") == STOP:
-            number += 1
-            out["number"] = number
-        else:
-            out["mode_label"] = TRANSPORT_MODES.get(step.get("mode"), "Walk")
-        shown = []
-        for link in step.get("links") or []:
-            if link.get("kind") == EXPERIENCE:
-                package = package_view(link.get("package_id") or "")
-                if package is None:
-                    continue
-                shown.append({
-                    "id": link["id"], "kind": EXPERIENCE, "partner": EXPERIENCE,
-                    "label": link.get("label") or package["title"],
-                    "package": package,
-                })
+    days_out = []
+    for d, day in enumerate(days_of(content)):
+        steps_out = []
+        number = 0
+        for step in day.get("steps") or []:
+            out = {k: v for k, v in step.items() if k != "links"}
+            out["minutes"] = step_minutes(step)
+            if step.get("type") == STOP:
+                number += 1
+                out["number"] = number
+            elif step.get("type") == MOVE:
+                out["mode_label"] = TRANSPORT_MODES.get(step.get("mode"), "Walk")
             else:
-                affiliate = AFFILIATES.get(link.get("partner"))
-                if affiliate is None or not link.get("url"):
-                    continue
-                shown.append({
-                    "id": link["id"], "kind": AFFILIATE, "partner": affiliate.key,
-                    "partner_name": affiliate.name,
-                    "label": link.get("label") or f"Book on {affiliate.name}",
-                    "url": tap_url(link["id"]),
-                })
-        out["links"] = shown
-        steps_out.append(out)
-    view["steps"] = steps_out
+                out["title"] = step.get("title") or "Break"
+            out["links"] = [shown for shown in (_shown_link(link, tap_url, package_view) for link in step.get("links") or []) if shown]
+            steps_out.append(out)
+        days_out.append({
+            "id": day.get("id") or LEGACY_DAY_ID,
+            "number": d + 1,
+            "title": day.get("title") or "",
+            "starts_at": day.get("starts_at") or "",
+            "minutes": sum(s["minutes"] for s in steps_out),
+            "stop_count": number,
+            "steps": steps_out,
+        })
+    view["days"] = days_out
+    # App builds from before days read one list of steps.
+    view["steps"] = [s for day in days_out for s in day["steps"]]
     return view
+
+
+def _shown_link(link: dict, tap_url, package_view) -> Optional[dict]:
+    if link.get("kind") == EXPERIENCE:
+        package = package_view(link.get("package_id") or "")
+        if package is None:
+            return None
+        return {
+            "id": link["id"], "kind": EXPERIENCE, "partner": EXPERIENCE,
+            "label": link.get("label") or package["title"],
+            "package": package,
+        }
+    affiliate = AFFILIATES.get(link.get("partner"))
+    if affiliate is None or not link.get("url"):
+        return None
+    return {
+        "id": link["id"], "kind": AFFILIATE, "partner": affiliate.key,
+        "partner_name": affiliate.name,
+        "label": link.get("label") or f"Book on {affiliate.name}",
+        "url": tap_url(link["id"]),
+    }

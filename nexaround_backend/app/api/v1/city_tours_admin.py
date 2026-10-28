@@ -140,6 +140,7 @@ def _list_item(
         country=content.get("country") or "",
         cover_url=content.get("cover_url") or "",
         stop_count=len(city_tours.stops(content)),
+        day_count=len(city_tours.days_of(content)),
         review_status=tour.review_status,
         review_note=tour.review_note,
         is_live=_is_live(tour),

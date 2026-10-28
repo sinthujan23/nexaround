@@ -14,6 +14,11 @@ class CityTourSaveIn(BaseModel):
     version: Optional[int] = None
 
 
+class CityTourTripStartIn(BaseModel):
+    # The day to follow; the guide's first day when left out.
+    day_id: Optional[str] = Field(None, max_length=36)
+
+
 class CityTourVersionIn(BaseModel):
     version: int
 
@@ -42,6 +47,7 @@ class CityTourListItem(BaseModel):
     country: str
     cover_url: str
     stop_count: int
+    day_count: int = 1
     review_status: str
     review_note: Optional[str] = None
     is_live: bool

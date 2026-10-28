@@ -10,6 +10,7 @@ the app opens on its own detail page after telling us of the tap.
 """
 import uuid
 from datetime import datetime, timezone
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy import select, update
@@ -21,7 +22,7 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.core.rate_limiter import RateLimiter, get_client_ip, get_redis_client
 from app.models.city_tour import CityTour, CityTourTap, CityTourTrip
-from app.schemas.city_tour import CityTourTripDoneIn
+from app.schemas.city_tour import CityTourTripDoneIn, CityTourTripStartIn
 from app.services import city_tour_trips as trips
 from app.services import city_tours
 
@@ -139,11 +140,16 @@ async def get_trip(
 @router.post("/{tour_id}/trip")
 async def start_trip(
     tour_id: uuid.UUID,
+    body: Optional[CityTourTripStartIn] = None,
     db: AsyncSession = Depends(get_db),
     user=Depends(get_current_user),
 ):
-    """Start the guide now. A trip of theirs on it still shown ends."""
+    """Start one day of the guide now (the first day when none is named). A
+    trip of theirs on the guide still shown ends."""
     tour = await live_tour(db, tour_id)
+    day = city_tours.find_day(tour.live_content, body.day_id if body else None)
+    if day is None:
+        raise HTTPException(status_code=404, detail="That day is not in this guide any more.")
     now = datetime.now(timezone.utc)
     await db.execute(
         update(CityTourTrip)
@@ -154,7 +160,7 @@ async def start_trip(
         )
         .values(ended_at=now)
     )
-    trip = CityTourTrip(tour_id=tour.id, user_id=user.id, started_at=now, done={})
+    trip = CityTourTrip(tour_id=tour.id, user_id=user.id, day_id=day.get("id"), started_at=now, done={})
     db.add(trip)
     await db.commit()
     return {"trip": trips.view(trip, tour.live_content)}
@@ -171,7 +177,7 @@ async def mark_step_done(
     retry) changes nothing; marking a later step first is refused (409)."""
     tour = await live_tour(db, tour_id)
     trip = await _running_trip(db, tour.id, user.id)
-    steps = tour.live_content.get("steps") or []
+    steps = trips.trip_steps(tour.live_content, trip.day_id)
     done = trip.done or {}
     if body.step_id not in done:
         marked = trips.mark_done(
@@ -197,7 +203,7 @@ async def undo_step_done(
     trip = await _shown_trip(db, tour.id, user.id)
     if trip is None:
         raise HTTPException(status_code=404, detail="This trip has ended.")
-    trip.done = trips.undo_last(tour.live_content.get("steps") or [], trip.done or {})
+    trip.done = trips.undo_last(trips.trip_steps(tour.live_content, trip.day_id), trip.done or {})
     trip.finished_at = None
     await db.commit()
     return {"trip": trips.view(trip, tour.live_content)}

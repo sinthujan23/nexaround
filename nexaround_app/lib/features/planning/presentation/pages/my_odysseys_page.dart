@@ -1203,9 +1203,14 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
                 ),
               ),
             ),
-            // Segmented Pill Switcher (Option 4)
-            SliverToBoxAdapter(
-              child: _buildSegmentedSwitcher(),
+            // Segmented Pill Switcher (Option 4), pinned under the app bar
+            // so it is never half hidden behind it; the page colour behind
+            // it covers the cards scrolling underneath.
+            PinnedHeaderSliver(
+              child: ColoredBox(
+                color: AppColors.background,
+                child: _buildSegmentedSwitcher(),
+              ),
             ),
             if (_selectedTabIndex == 0) ...[
               // Personal Trip Blueprints Section Header
