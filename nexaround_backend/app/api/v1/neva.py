@@ -23,6 +23,10 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/neva", tags=["neva"])
 
+# How long a spoken question's reply waits for its transcript once the
+# answer is ready.
+_TRANSCRIPT_GRACE_S = 3.0
+
 
 class ChatMessageItem(BaseModel):
     role: str = Field(..., pattern="^(user|model|assistant)$")
@@ -170,7 +174,7 @@ async def neva_voice_turn(
     has_location = latitude is not None and longitude is not None
     # Transcribing runs beside the answer, and a "near me" answer's second
     # call reads the transcript rather than hearing the recording again.
-    hearing = asyncio.ensure_future(neva_voice.transcribe(clip, mime, api_key))
+    hearing = asyncio.ensure_future(neva_voice.transcribe(clip, mime, api_key, area=area or ""))
     try:
         reply = await neva_service.chat(
             "",
@@ -192,7 +196,9 @@ async def neva_voice_turn(
         hearing.cancel()
         raise
     try:
-        heard: Optional[str] = await hearing
+        # Usually ready by now. Flash sometimes takes 9-15 s, and that should
+        # cost the bubble its words, not the user their answer.
+        heard: Optional[str] = await asyncio.wait_for(hearing, _TRANSCRIPT_GRACE_S)
     except Exception as e:
         # The answer stands; the bubble just has no words to show.
         logger.warning("Neva voice: no transcript: %s", e)

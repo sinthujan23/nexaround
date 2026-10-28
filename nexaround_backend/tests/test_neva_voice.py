@@ -401,7 +401,8 @@ def endpoint(monkeypatch, voice_config, engines):
     async def _key(db):
         return "gem-key"
 
-    async def _transcribe(clip, mime, api_key):
+    async def _transcribe(clip, mime, api_key, area=""):
+        seen["transcribe_area"] = area
         if isinstance(heard["value"], Exception):
             raise heard["value"]
         return heard["value"]
@@ -488,6 +489,43 @@ def test_an_oversized_compressed_recording_is_refused(endpoint):
     with pytest.raises(HTTPException) as err:
         _voice_turn(clip=b"\x00\x00\x00\x1cftypM4A " + b"\x00" * neva_voice.MAX_COMPRESSED_BYTES)
     assert err.value.status_code == 413
+
+
+def test_a_slow_transcript_does_not_hold_the_answer(endpoint, monkeypatch):
+    async def _slow(clip, mime, api_key, area=""):
+        await asyncio.sleep(1)
+        return "too late"
+
+    monkeypatch.setattr(neva_voice, "transcribe", _slow)
+    monkeypatch.setattr(neva_api, "_TRANSCRIPT_GRACE_S", 0.01)
+    out = _voice_turn()
+    assert out.transcript == "" and out.text == "Yes, one is 300 metres away."
+
+
+def test_the_transcript_is_told_where_the_user_is(endpoint):
+    _, _, seen = endpoint
+    _voice_turn()
+    assert seen["transcribe_area"] == "Colombo"
+
+
+def test_place_names_are_transcribed_on_flash_with_the_area(monkeypatch):
+    # Flash-Lite wrote the TL's "trip plan for Trincomalee" as "Drink On".
+    sent = {}
+
+    def _handler(request):
+        sent["url"] = str(request.url)
+        sent["body"] = request.content.decode()
+        return httpx.Response(200, json={"candidates": [{"content": {"parts": [
+            {"text": "Can you create a trip plan for Trincomalee?"}]}}]})
+
+    real_client = httpx.AsyncClient
+    monkeypatch.setattr(neva_voice.httpx, "AsyncClient",
+                        lambda **kw: real_client(transport=httpx.MockTransport(_handler), **kw))
+    heard = asyncio.run(neva_voice.transcribe(_wav(), "audio/wav", "k", area="Kinniya, Sri Lanka"))
+    assert heard == "Can you create a trip plan for Trincomalee?"
+    assert "/models/gemini-2.5-flash:generateContent" in sent["url"]
+    assert "near Kinniya, Sri Lanka" in sent["body"]
+    assert "standard spelling" in sent["body"]
 
 
 def test_silence_is_reported_not_answered(endpoint):

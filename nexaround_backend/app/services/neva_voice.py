@@ -66,10 +66,22 @@ _TIMEOUT_S = 30.0
 _GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta"
 _CLOUD_TTS_URL = "https://texttospeech.googleapis.com/v1/text:synthesize"
 
-_TRANSCRIBE_MODEL = "gemini-2.5-flash-lite"
+# Flash, not Flash-Lite: the TL's "trip plan for Trincomalee" came out as
+# "Drink On" (2026-10-28). On 12 spoken questions naming places, Flash-Lite
+# wrote 5 of the names right and Flash 10; with the user's area as a hint,
+# Flash got 11. About $0.0001 a question instead of $0.00003, and no slower:
+# it runs beside the answer.
+_TRANSCRIBE_MODEL = "gemini-2.5-flash"
 _TRANSCRIBE_SYSTEM = (
-    "Transcribe exactly what the speaker says, word for word, in the language "
-    "they speak. Output only the transcript. If there is no speech, output nothing."
+    "Transcribe exactly what the speaker says, in the language they speak, "
+    "leaving out filler sounds such as uh and um. Travellers often name places: "
+    "write each place name with its standard spelling as it appears on maps, "
+    "never a phonetic spelling. Output only the transcript. If there is no "
+    "speech, output nothing."
+)
+_TRANSCRIBE_AREA = (
+    " The speaker is in or near {area}, so places nearby are likely, but they "
+    "may name places anywhere in the world."
 )
 _NO_SPEECH_RE = re.compile(r"^\W*(no speech|silence|inaudible|\[?blank\]?)\W*$", re.IGNORECASE)
 
@@ -264,19 +276,30 @@ def clip_seconds(clip: bytes, mime: str) -> Optional[float]:
         return None
 
 
-async def transcribe(clip: bytes, mime: str, api_key: str) -> str:
-    """What the user said, word for word; "" when there was no speech."""
+async def transcribe(clip: bytes, mime: str, api_key: str, area: str = "") -> str:
+    """What the user said, word for word; "" when there was no speech.
+
+    `area`, where the user is, helps with the names of places near them.
+    """
+    system = _TRANSCRIBE_SYSTEM
+    if area.strip() and area.strip() != "Nearby":
+        system += _TRANSCRIBE_AREA.format(area=area.strip())
     body = {
-        "system_instruction": {"parts": [{"text": _TRANSCRIBE_SYSTEM}]},
+        "system_instruction": {"parts": [{"text": system}]},
         "contents": [{"role": "user", "parts": [
             {"inline_data": {"mime_type": mime, "data": base64.b64encode(clip).decode()}},
         ]}],
-        "generationConfig": {"temperature": 0, "maxOutputTokens": 400},
+        "generationConfig": {
+            "temperature": 0,
+            "maxOutputTokens": 400,
+            # Reasoning tokens bill at the output rate and add nothing here.
+            "thinkingConfig": {"thinkingBudget": 0},
+        },
     }
     try:
         async with httpx.AsyncClient(timeout=_TIMEOUT_S) as client:
             async with telemetry.track(
-                "gemini", f"neva_transcribe:{_TRANSCRIBE_MODEL}", sku="gemini_flash_lite_audio",
+                "gemini", f"neva_transcribe:{_TRANSCRIBE_MODEL}", sku="gemini_flash_audio",
             ) as t:
                 resp = await client.post(
                     f"{_GEMINI_URL}/models/{_TRANSCRIBE_MODEL}:generateContent",
