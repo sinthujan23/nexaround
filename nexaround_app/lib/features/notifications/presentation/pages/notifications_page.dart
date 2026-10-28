@@ -7,6 +7,7 @@ import 'package:nexaround_app/features/vendor_portal/presentation/pages/vendor_p
 import 'package:nexaround_app/core/services/discovery_history_service.dart';
 
 import 'package:nexaround_app/features/planning/data/odyssey_repository.dart';
+import 'package:nexaround_app/features/city_tours/presentation/pages/city_tour_page.dart';
 
 /// The bell inbox: lists notifications received via FCM. Tapping an
 /// "odyssey_ready" or "discovery_ready" item jumps directly to the exact plan. Opening the page marks
@@ -67,6 +68,9 @@ class _NotificationsPageState extends State<NotificationsPage> {
     } else if (type == 'experience_request') {
       final requestId = (data['enquiry_id'] ?? n['enquiry_id'])?.toString();
       await showMyExperienceRequests(context, openRequestId: requestId);
+    } else if (type == 'city_tour_trip') {
+      final tourId = (data['tour_id'] ?? n['tour_id'])?.toString();
+      if (tourId != null && tourId.isNotEmpty) await openCityTourById(context, tourId);
     } else if (type == 'vendor_request' || type == 'vendor_review') {
       await openVendorPortal(context,
           vendorId: (data['vendor_id'] ?? n['vendor_id'])?.toString(),
@@ -129,6 +133,8 @@ class _NotificationsPageState extends State<NotificationsPage> {
         return Icons.storefront_rounded;
       case 'experience_request':
         return Icons.receipt_long_rounded;
+      case 'city_tour_trip':
+        return Icons.route_rounded;
       default:
         return Icons.notifications_rounded;
     }

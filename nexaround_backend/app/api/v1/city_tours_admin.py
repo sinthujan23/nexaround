@@ -21,7 +21,7 @@ from app.api.v1.admin import verify_admin_token
 from app.api.v1.experiences_admin import admin_place_search
 from app.core.database import get_db
 from app.core.security import decode_token, get_password_hash
-from app.models.city_tour import CityTour, CityTourTap, ContentCreator
+from app.models.city_tour import CityTour, CityTourTap, CityTourTrip, ContentCreator
 from app.models.experience import ExperiencePackage, ExperienceVendor
 from app.schemas.city_tour import (
     CityTourDetail, CityTourListItem, CityTourReviewIn, CityTourSaveIn, CityTourVersionIn,
@@ -30,6 +30,7 @@ from app.schemas.city_tour import (
 from app.services import audit, city_tours, creator_auth, legal_service
 from app.services.experience_service import package_to_card
 from app.services.experience_upload import save_experience_images
+from app.services.providers import gocity, wegotrip
 
 router = APIRouter(prefix="/admin/city-tours", tags=["Admin City Tours"])
 
@@ -128,7 +129,9 @@ def _is_live(tour: CityTour) -> bool:
     return tour.live_content is not None
 
 
-def _list_item(tour: CityTour, editor: Editor, taps: Optional[int]) -> dict:
+def _list_item(
+    tour: CityTour, editor: Editor, taps: Optional[int], trips: Optional[tuple] = None,
+) -> dict:
     content = tour.content or {}
     return dict(
         id=tour.id,
@@ -148,6 +151,8 @@ def _list_item(tour: CityTour, editor: Editor, taps: Optional[int]) -> dict:
         submitted_at=tour.submitted_at,
         published_at=tour.published_at,
         taps=taps if editor.is_admin else None,
+        trips_started=trips[0] if editor.is_admin and trips else None,
+        trips_finished=trips[1] if editor.is_admin and trips else None,
     )
 
 
@@ -221,11 +226,74 @@ async def list_partners(
     )
     return {
         "affiliates": [
-            {"key": a.key, "name": a.name, "what": a.what, "domain": a.domains[0], "example": a.example}
+            {"key": a.key, "name": a.name, "what": a.what, "domain": a.domains[0]}
             for a in city_tours.AFFILIATES.values()
         ],
         "experiences": packages,
         "transport_modes": [{"key": k, "label": v} for k, v in city_tours.TRANSPORT_MODES.items()],
+    }
+
+
+def _price_label(p: dict) -> str:
+    amount = f"{p['price']:,.2f}".removesuffix(".00")
+    return f"{p['currency']} {amount}"
+
+
+async def _wegotrip_options(city: str, country: str, place: str) -> dict:
+    """The city's WeGoTrip tickets and tours, the one for this stop first."""
+    if not city:
+        return {"available": False, "reason": "Add the guide's city first.", "products": [], "best": None}
+    try:
+        found = wegotrip.find_city(await wegotrip.cities(), city, country)
+        catalogue = await wegotrip.products(found["id"]) if found else []
+    except Exception:
+        catalogue = []
+    if not catalogue:
+        return {"available": False, "reason": f"WeGoTrip has nothing in {city} yet.", "products": [], "best": None}
+
+    place_words = wegotrip.place_words([city], country)
+    best = wegotrip.match(place, catalogue, place_words) if place else None
+    wanted = wegotrip.words(place) - place_words
+    # The match, then titles sharing the stop's words; WeGoTrip's own
+    # popularity order otherwise (sorted() keeps it for ties).
+    ordered = sorted(
+        catalogue,
+        key=lambda p: (p is not best, -len(wegotrip.words(p["title"]) & wanted)),
+    )
+    return {
+        "available": True,
+        "products": [
+            {"id": str(p["id"]), "title": p["title"], "kind": wegotrip.kind(p),
+             "price_label": _price_label(p), "url": wegotrip.product_url(p)}
+            for p in ordered
+        ],
+        "best": str(best["id"]) if best else None,
+    }
+
+
+@router.get("/partner-options")
+async def partner_options(
+    city: str = Query("", max_length=80),
+    country: str = Query("", max_length=80),
+    place: str = Query("", max_length=120),
+    _: Editor = Depends(require_editor),
+):
+    """What each partner can link to from a guide in this city. Creators pick
+    from this; the page itself is made by city_tours.partner_page on save."""
+    city, country, place = city.strip(), country.strip(), place.strip()
+    has_pass = bool(city and gocity.destination_for(city, country))
+    return {
+        "klook": {"available": True},
+        "gocity": {
+            "available": has_pass,
+            "reason": "" if has_pass else f"Go City has no pass for {city or 'this city'}.",
+        },
+        "airalo": {
+            "available": bool(city_tours.airalo_slug(country)),
+            "reason": "" if country else "Add the guide's country first.",
+        },
+        "gettransfer": {"available": True},
+        "wegotrip": await _wegotrip_options(city, country, place),
     }
 
 
@@ -447,7 +515,26 @@ async def list_tours(
                 .group_by(CityTourTap.tour_id)
             )
         ).all())
-    return [_list_item(t, editor, taps.get(t.id, 0)) for t in tours]
+    # Travellers, not trips: someone who starts a guide twice counts once.
+    trips: dict = {}
+    if editor.is_admin and tours:
+        trips = {
+            tour_id: (started, finished)
+            for tour_id, started, finished in (
+                await db.execute(
+                    select(
+                        CityTourTrip.tour_id,
+                        func.count(func.distinct(CityTourTrip.user_id)),
+                        func.count(func.distinct(CityTourTrip.user_id)).filter(
+                            CityTourTrip.finished_at.isnot(None),
+                        ),
+                    )
+                    .where(CityTourTrip.tour_id.in_([t.id for t in tours]))
+                    .group_by(CityTourTrip.tour_id)
+                )
+            ).all()
+        }
+    return [_list_item(t, editor, taps.get(t.id, 0), trips.get(t.id, (0, 0))) for t in tours]
 
 
 @router.post("", response_model=CityTourDetail, status_code=201)

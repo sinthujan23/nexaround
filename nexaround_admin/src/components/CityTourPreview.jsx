@@ -8,8 +8,14 @@ import { modeOf, partnerLogo, stopNumbers } from '../cityTours';
 // nexaround_app/lib/features/city_tours/ (city_tour_page.dart and
 // city_tour_widgets.dart). Change one, change the other.
 
-const PHONE_W = 390;
-const STATUS_BAR = 47;
+// iPhone 17 Pro, in points: screen, top safe area (Dynamic Island) and the
+// .ctp-phone frame around the screen.
+const PHONE_W = 402;
+const PHONE_H = 874;
+const STATUS_BAR = 62;
+const FRAME = 10;
+const OUTER_W = PHONE_W + FRAME * 2;
+const OUTER_H = PHONE_H + FRAME * 2;
 const HERO = Math.round(PHONE_W * 0.62) + STATUS_BAR;
 const TILES = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
 
@@ -185,8 +191,9 @@ function LinkButton({ link, partners }) {
   }
   const affiliate = (partners?.affiliates || []).find((a) => a.key === link.partner);
   const name = affiliate?.name || link.partner;
-  if (!link.url) {
-    return <div className="ctp-missing">Paste the {name} page. Until then the app leaves this button out.</div>;
+  // The other partners' pages are made on save; only WeGoTrip needs a pick.
+  if (link.partner === 'wegotrip' && !link.url) {
+    return <div className="ctp-missing">Pick the WeGoTrip ticket. Until then the app leaves this button out.</div>;
   }
   return (
     <div className="ctp-link">
@@ -289,6 +296,13 @@ function GuidePage({ content, partners }) {
           />
         ))}
       </div>
+      {steps.length > 0 && (
+        // CityTourTripBar before a trip starts (the page's bottomNavigationBar).
+        <div className="ctp-tripbar">
+          <div className="ctp-tripbar-note">Plans your times from now and reminds you at each stop.</div>
+          <div className="ctp-trip-btn"><Icon name="play_arrow" size={22} color="#fff" />Start trip</div>
+        </div>
+      )}
     </div>
   );
 }
@@ -318,14 +332,46 @@ function ListPage({ content }) {
 }
 
 /**
+ * The phone is always laid out at its real size; on a short window or a narrow
+ * column it is shrunk as a whole (never stretched) so all of it shows at once.
+ */
+function useFitScale(root, fit) {
+  const [scale, setScale] = useState(1);
+  useEffect(() => {
+    const measure = () => {
+      if (!root.current || !fit.current) return;
+      const box = root.current.getBoundingClientRect();
+      const phone = fit.current.getBoundingClientRect();
+      // the tabs above the phone and the note below it
+      const around = (phone.top - box.top) + (box.bottom - phone.bottom);
+      const header = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--header-h')) || 0;
+      const roomH = window.innerHeight - header - 32 - around;
+      setScale(Math.min(1, root.current.clientWidth / OUTER_W, roomH / OUTER_H));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(root.current);
+    window.addEventListener('resize', measure);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, [root, fit]);
+  return scale;
+}
+
+/**
  * A phone showing the guide as travellers will see it, redrawn as the content
  * changes. "Guide page" is the guide itself; "In a list" is its card where a
  * city has more than one guide.
  */
 export default function CityTourPreview({ content, partners, tab: initialTab = 'page' }) {
   const [tab, setTab] = useState(initialTab);
+  const root = useRef(null);
+  const fit = useRef(null);
+  const scale = useFitScale(root, fit);
   return (
-    <div className="ctp">
+    <div className="ctp" ref={root}>
       <div className="ctp-tabs">
         <div className="seg">
           <button type="button" className={`seg-btn ${tab === 'page' ? 'active' : ''}`} onClick={() => setTab('page')}>
@@ -336,11 +382,14 @@ export default function CityTourPreview({ content, partners, tab: initialTab = '
           </button>
         </div>
       </div>
-      <div className="ctp-phone">
-        <div className="ctp-screen">
-          {tab === 'page'
-            ? <GuidePage content={content} partners={partners} />
-            : <ListPage content={content} />}
+      <div className="ctp-fit" ref={fit} style={{ width: OUTER_W * scale, height: OUTER_H * scale }}>
+        <div className="ctp-phone" style={{ transform: `scale(${scale})` }}>
+          <div className="ctp-screen">
+            {tab === 'page'
+              ? <GuidePage content={content} partners={partners} />
+              : <ListPage content={content} />}
+          </div>
+          <span className="ctp-island" />
         </div>
       </div>
       <div className="ctp-note">

@@ -20,25 +20,31 @@ app:
       ]
     }
 
-    link = {"id": "…", "kind": "affiliate", "partner": "klook",
-            "url": "https://www.klook.com/activity/…", "label": "Skip the line"}
+    link = {"id": "…", "kind": "affiliate", "partner": "klook", "words": "Seine cruise",
+            "label": "Seine river cruise", "url": "<made here>"}
+         | {"id": "…", "kind": "affiliate", "partner": "wegotrip", "product_title": "…",
+            "url": "<a product page from WeGoTrip's catalogue>", "label": "…"}
          | {"id": "…", "kind": "experience", "package_id": "…", "label": "…"}
 
-The first step is where the journey starts; stops are numbered in order and
-pinned on the app's map. Link ids stay put across edits, because taps are
-counted per link (city_tour_taps.link_id).
+Creators never type a web address: an affiliate link's page is made here from
+the guide (its city and country, the stop's name, the stops either side of a
+ride), or, for WeGoTrip, picked from the city's catalogue in the editor
+(partner_options). The first step is where the journey starts; stops are
+numbered in order and pinned on the app's map. Link ids stay put across
+edits, because taps are counted per link (city_tour_taps.link_id).
 
 Everything here is free of the database, so it can be tested on its own.
 """
 from __future__ import annotations
 
 import math
+import re
 import urllib.parse
 import uuid
 from dataclasses import dataclass
 from typing import Callable, Optional
 
-from app.services.providers import airalo, aviasales, gettransfer, gocity, kiwi, klook, wegotrip
+from app.services.providers import airalo, gettransfer, gocity, klook, wegotrip
 
 
 class ContentError(ValueError):
@@ -53,32 +59,28 @@ class Affiliate:
     name: str
     what: str
     domains: tuple[str, ...]
-    example: str
     # Travelpayouts' program numbers, as each provider module builds its own
-    # links. Aviasales and GetTransfer links carry no campaign_id.
+    # links. GetTransfer links carry no campaign_id.
     campaign_id: str
     promo_id: str
 
 
-# The Travelpayouts programs Odyssey already links to. A creator pastes any page
-# from the partner's own site; the tap goes through tp.media with our partner
-# ID, so a sale on that page is credited to us. HelloSafe insurance is not
-# here: its links are made per traveller from trip dates a guide does not have.
+# The Travelpayouts programs Odyssey already links to, minus the flight ones:
+# a flight search needs the traveller's home airport and dates, which a guide
+# does not know. The tap goes through tp.media with our partner ID, so a sale
+# on the partner's page is credited to us. HelloSafe insurance is not here
+# either: its links are made per traveller from trip dates.
 AFFILIATES: dict[str, Affiliate] = {a.key: a for a in (
     Affiliate("klook", "Klook", "Tours, day trips and tickets", ("klook.com",),
-              "https://www.klook.com/activity/…", klook.CAMPAIGN_ID, klook.PROMO_ID),
+              klook.CAMPAIGN_ID, klook.PROMO_ID),
     Affiliate("wegotrip", "WeGoTrip", "Entry tickets and audio tours", ("wegotrip.com",),
-              "https://wegotrip.com/…", wegotrip.CAMPAIGN_ID, wegotrip.PROMO_ID),
+              wegotrip.CAMPAIGN_ID, wegotrip.PROMO_ID),
     Affiliate("gocity", "Go City", "Sightseeing passes for many attractions", ("gocity.com",),
-              "https://gocity.com/en/paris/passes", gocity.CAMPAIGN_ID, gocity.PROMO_ID),
-    Affiliate("gettransfer", "GetTransfer", "Airport and city transfers by car", ("gettransfer.com",),
-              "https://gettransfer.com/en/…", "", gettransfer.PROMO_ID),
+              gocity.CAMPAIGN_ID, gocity.PROMO_ID),
+    Affiliate("gettransfer", "GetTransfer", "A car with a driver, booked ahead", ("gettransfer.com",),
+              "", gettransfer.PROMO_ID),
     Affiliate("airalo", "Airalo", "eSIM data for the trip", ("airalo.com",),
-              "https://www.airalo.com/france-esim", airalo._CAMPAIGN_ID, airalo._PROMO_ID),
-    Affiliate("aviasales", "Aviasales", "Flight search", ("aviasales.com",),
-              "https://www.aviasales.com/…", "", aviasales.PROMO_ID),
-    Affiliate("kiwi", "Kiwi.com", "Flights, often combining airlines", ("kiwi.com",),
-              "https://www.kiwi.com/en/…", kiwi.CAMPAIGN_ID, kiwi.PROMO_ID),
+              airalo._CAMPAIGN_ID, airalo._PROMO_ID),
 )}
 
 EXPERIENCE = "experience"
@@ -216,7 +218,84 @@ def _new_id(value, seen: set[str]) -> str:
     return kept
 
 
-def _link(raw, where: str, seen: set[str]) -> dict:
+# ── Partner pages, made from the guide ───────────────────────────────────────
+
+_WEGOTRIP_PAGE = re.compile(r"^/[a-z0-9-]+-d\d+/[a-z0-9-]+-p\d+/?$")
+_WORDS_MAX = 80
+
+
+@dataclass(frozen=True)
+class LinkPlace:
+    """Where a link sits: the guide's city and country, its step, and the
+    stops either side of it (for a ride)."""
+    city: str
+    country: str
+    step: dict
+    prev_stop: Optional[dict] = None
+    next_stop: Optional[dict] = None
+
+
+def airalo_slug(country: str) -> str:
+    """Airalo's name for a country's page ("france" → airalo.com/france-esim), or ""."""
+    name = (country or "").strip()
+    if not name:
+        return ""
+    from app.services.geo_resolver import _COUNTRY_NAMES
+
+    code = name.upper() if len(name) == 2 else next(
+        (c for c, n in _COUNTRY_NAMES.items() if n.casefold() == name.casefold()), "",
+    )
+    return next(iter(airalo._candidates(name, code)), "")
+
+
+def klook_query(words: str, place: LinkPlace) -> str:
+    """What Klook is searched for: the creator's words, or the stop's name, and
+    the city unless the words already say it."""
+    words = words or (place.step.get("name") if place.step.get("type") == STOP else "") or ""
+    if place.city and place.city.casefold() in words.casefold():
+        return words
+    return " ".join(w for w in (words, place.city) if w)
+
+
+def _place_name(stop: Optional[dict], city: str) -> str:
+    return ", ".join(p for p in ((stop or {}).get("name") or "", city) if p)
+
+
+def partner_page(link: dict, place: LinkPlace) -> str:
+    """The partner's page for a link, "" when there is none to make."""
+    partner = link.get("partner")
+    if partner == "klook":
+        query = klook_query(link.get("words") or "", place)
+        return klook.search_url(query) if query else ""
+    if partner == "gocity":
+        slug = gocity.destination_for(place.city, place.country)
+        return gocity.pass_page(slug) if slug else ""
+    if partner == "airalo":
+        slug = airalo_slug(place.country)
+        return airalo.country_page(slug) if slug else ""
+    if partner == "gettransfer":
+        # On a stop: a car to it, from wherever the traveller says (the
+        # nearest-airport table picks small fields, e.g. Ratmalana for
+        # Colombo). On a ride: from the stop before to the stop after.
+        if place.step.get("type") == STOP:
+            return gettransfer.booking_link(
+                "economy", marker="", project_id="", to_name=_place_name(place.step, place.city),
+            )
+        return gettransfer.booking_link(
+            "economy", marker="", project_id="",
+            from_name=_place_name(place.prev_stop, place.city),
+            to_name=_place_name(place.next_stop, place.city),
+        )
+    if partner == "wegotrip":
+        url = link.get("url") or ""
+        ok = host_matches(url, AFFILIATES["wegotrip"].domains) and _WEGOTRIP_PAGE.match(
+            urllib.parse.urlparse(url).path or "",
+        )
+        return url if ok else ""
+    return ""
+
+
+def _link(raw, where: str, seen: set[str], place: LinkPlace) -> dict:
     if not isinstance(raw, dict):
         raise ContentError(f"{where}: a partner link is broken. Remove it and add it again.")
     label = _str(raw.get("label"))
@@ -231,21 +310,22 @@ def _link(raw, where: str, seen: set[str]) -> dict:
         }
 
     partner = _str(raw.get("partner"))
-    affiliate = AFFILIATES.get(partner)
-    if affiliate is None:
+    if partner not in AFFILIATES:
         raise ContentError(f"{where}: pick a partner for each link.")
-    url = _str(raw.get("url"))
-    if len(url) > _URL_MAX:
-        raise ContentError(f"{where}: the {affiliate.name} link is too long.")
-    if url and not host_matches(url, affiliate.domains):
-        raise ContentError(
-            f"{where}: the {affiliate.name} link must be a page on {affiliate.domains[0]} "
-            "(starting https://)."
-        )
-    return {"id": link_id, "kind": AFFILIATE, "partner": partner, "url": url, "label": label}
+    link = {"id": link_id, "kind": AFFILIATE, "partner": partner, "label": label}
+    if partner == "klook":
+        words = _str(raw.get("words"))
+        if len(words) > _WORDS_MAX:
+            raise ContentError(f"{where}: the Klook search words are too long ({_WORDS_MAX} characters at most).")
+        link["words"] = words
+    if partner == "wegotrip":
+        link["product_title"] = _str(raw.get("product_title"))[:200]
+        link["url"] = _str(raw.get("url"))[:_URL_MAX]
+    link["url"] = partner_page(link, place)
+    return link
 
 
-def _step(raw, index: int, step_ids: set[str], link_ids: set[str]) -> dict:
+def _step(raw, index: int, step_ids: set[str]) -> dict:
     where = f"Step {index + 1}"
     if not isinstance(raw, dict):
         raise ContentError(f"{where} is broken. Remove it and add it again.")
@@ -276,7 +356,6 @@ def _step(raw, index: int, step_ids: set[str], link_ids: set[str]) -> dict:
     links = raw.get("links") if isinstance(raw.get("links"), list) else []
     if len(links) > MAX_LINKS_PER_STEP:
         raise ContentError(f"{where}: {MAX_LINKS_PER_STEP} partner links at most.")
-    step["links"] = [_link(link, where, link_ids) for link in links]
     return step
 
 
@@ -297,8 +376,18 @@ def normalize(raw) -> dict:
     if len(steps) > MAX_STEPS:
         raise ContentError(f"A guide has {MAX_STEPS} steps at most.")
     step_ids: set[str] = set()
+    out["steps"] = [_step(s, i, step_ids) for i, s in enumerate(steps)]
+
+    # Links last: a ride's link needs the stops either side of it.
     link_ids: set[str] = set()
-    out["steps"] = [_step(s, i, step_ids, link_ids) for i, s in enumerate(steps)]
+    for i, (raw_step, step) in enumerate(zip(steps, out["steps"])):
+        place = LinkPlace(
+            city=out["city"], country=out["country"], step=step,
+            prev_stop=next((s for s in reversed(out["steps"][:i]) if s["type"] == STOP), None),
+            next_stop=next((s for s in out["steps"][i + 1:] if s["type"] == STOP), None),
+        )
+        links = raw_step.get("links") if isinstance(raw_step.get("links"), list) else []
+        step["links"] = [_link(link, f"Step {i + 1}", link_ids, place) for link in links]
     return out
 
 
@@ -369,9 +458,21 @@ def problems(content: dict, *, package_ok: Optional[Callable[[str], bool]] = Non
                 elif package_ok is not None and not package_ok(link["package_id"]):
                     found.append(f"{where}: an Experience it links to is no longer listed in the app.")
             elif not link.get("url"):
-                name = AFFILIATES[link["partner"]].name if link.get("partner") in AFFILIATES else "partner"
-                found.append(f"{where}: paste the {name} page for its link.")
+                found.append(f"{where}: {_no_page(link, content)}")
     return found
+
+
+def _no_page(link: dict, content: dict) -> str:
+    partner = link.get("partner")
+    if partner == "gocity":
+        return f"Go City has no pass for {content.get('city') or 'this city'}. Remove its link."
+    if partner == "airalo":
+        return "add the guide's country, for the Airalo link."
+    if partner == "wegotrip":
+        return "pick the WeGoTrip ticket for its link."
+    if partner == "klook":
+        return "add the words to search Klook for."
+    return "remove the link and add it again."
 
 
 # ── Review ───────────────────────────────────────────────────────────────────

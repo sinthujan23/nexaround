@@ -28,6 +28,7 @@ import 'package:nexaround_app/core/services/google_places_service.dart';
 import 'package:nexaround_app/features/living_map/presentation/pages/smart_tourism_map_page.dart';
 import 'package:nexaround_app/features/experiences/presentation/pages/my_experience_requests_page.dart';
 import 'package:nexaround_app/features/vendor_portal/presentation/pages/vendor_portal_page.dart';
+import 'package:nexaround_app/features/city_tours/presentation/pages/city_tour_page.dart';
 
 class HomePage extends StatefulWidget {
   static final GlobalKey<HomePageState> homeKey = GlobalKey<HomePageState>();
@@ -85,6 +86,11 @@ class HomePageState extends State<HomePage> with WidgetsBindingObserver {
       }
       // A request for a business this traveller manages, or NexAround's
       // check of its changes: its notifications.
+      // A City Guides trip step ran past its time: back to the guide.
+      if (type == 'city_tour_trip' && mounted) {
+        final tourId = data['tour_id']?.toString();
+        if (tourId != null && tourId.isNotEmpty) openCityTourById(context, tourId);
+      }
       if ((type == 'vendor_request' || type == 'vendor_review') && mounted) {
         openVendorPortal(context,
             vendorId: data['vendor_id']?.toString(),

@@ -98,6 +98,9 @@ export default function CityTours({ queue = false }) {
               <span className="ctg-side">
                 {queue ? `Sent ${formatDate(t.submitted_at)}` : `Saved ${formatDate(t.updated_at)}`}
                 {admin && t.is_live && <span>{t.taps || 0} partner taps</span>}
+                {admin && t.is_live && (
+                  <span>{t.trips_started || 0} started · {t.trips_finished || 0} finished</span>
+                )}
               </span>
             </button>
           ))}

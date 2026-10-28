@@ -5,6 +5,7 @@ import 'package:latlong2/latlong2.dart' as ll;
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/constants/api_constants.dart';
 import 'package:nexaround_app/features/city_tours/domain/city_tour.dart';
+import 'package:nexaround_app/features/city_tours/domain/city_tour_trip.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_description.dart';
 
 // The admin panel draws a copy of these screens as its preview
@@ -36,6 +37,28 @@ IconData cityTourModeIcon(String mode) {
     default:
       return Icons.directions_walk_rounded;
   }
+}
+
+/// A clock time in the phone's own style: "11:45" or "11:45 AM".
+String cityTourClock(BuildContext context, DateTime time) =>
+    MaterialLocalizations.of(context).formatTimeOfDay(
+      TimeOfDay.fromDateTime(time.toLocal()),
+      alwaysUse24HourFormat: MediaQuery.alwaysUse24HourFormatOf(context),
+    );
+
+/// "45 min", "2 h", "1 h 20 min".
+String cityTourSpan(int minutes) {
+  final h = minutes ~/ 60, m = minutes % 60;
+  if (h == 0) return '$m min';
+  return m == 0 ? '$h h' : '$h h $m min';
+}
+
+/// "On time", "15 min behind", "10 min ahead": the trip against its plan.
+String cityTourPace(int behindMinutes) {
+  if (behindMinutes.abs() < 5) return 'On time';
+  return behindMinutes > 0
+      ? '${cityTourSpan(behindMinutes)} behind'
+      : '${cityTourSpan(-behindMinutes)} ahead';
 }
 
 /// A small grey pill: "5 stops", "6–7 hours", "€40–60".
@@ -335,6 +358,9 @@ class CityTourStepTile extends StatelessWidget {
   final bool isLastStop;
   final void Function(CityTourLink link) onLinkTap;
 
+  /// The step's place in a running or finished trip; null with no trip.
+  final CityTourStepTime? time;
+
   const CityTourStepTile({
     super.key,
     required this.step,
@@ -342,6 +368,7 @@ class CityTourStepTile extends StatelessWidget {
     required this.isLast,
     required this.isLastStop,
     required this.onLinkTap,
+    this.time,
   });
 
   static const double _rail = 28;
@@ -369,11 +396,60 @@ class CityTourStepTile extends StatelessWidget {
                 child: step.isStop ? CityTourStopBadge(step.number) : _modeBadge(),
               ),
               const SizedBox(width: 14),
-              Expanded(child: step.isStop ? _stop() : _move()),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (time != null) _time(context, time!),
+                    step.isStop ? _stop() : _move(),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
       ],
+    );
+  }
+
+  /// "Done 11:52", "Now · until 11:45", or the planned "11:45 – 12:05".
+  Widget _time(BuildContext context, CityTourStepTime t) {
+    final String text;
+    final Color color;
+    final IconData icon;
+    if (t.isDone) {
+      text = 'Done ${cityTourClock(context, t.doneAt!)}';
+      color = AppColors.brandGreen;
+      icon = Icons.check_circle_rounded;
+    } else if (t.isCurrent) {
+      final over = DateTime.now().isAfter(t.end);
+      text = over
+          ? 'Now · planned until ${cityTourClock(context, t.end)}'
+          : 'Now · until ${cityTourClock(context, t.end)}';
+      color = over ? const Color(0xFFD97706) : AppColors.brandGreen;
+      icon = Icons.play_circle_rounded;
+    } else {
+      text = '${cityTourClock(context, t.start)} – ${cityTourClock(context, t.end)}';
+      color = AppColors.textTertiary;
+      icon = Icons.schedule_rounded;
+    }
+    return Padding(
+      padding: EdgeInsets.only(top: step.isStop ? 2 : 5, bottom: step.isStop ? 2 : 0),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 4),
+          Text(
+            text,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: t.isDone || t.isCurrent ? FontWeight.w800 : FontWeight.w600,
+              color: color,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -653,6 +729,166 @@ class CityTourLinkButton extends StatelessWidget {
                 errorWidget: (_, __, ___) => Container(color: AppColors.surfaceVariant),
               ),
       ),
+    );
+  }
+}
+
+/// The bar under a guide: "Start trip"; then, on a trip, the step in hand
+/// with "Mark done"; then "Trip finished".
+class CityTourTripBar extends StatelessWidget {
+  final CityTourTrip? trip;
+  final CityTourSchedule? schedule;
+
+  /// What the step in hand is called: a stop's name, or "Metro to Louvre".
+  final String currentTitle;
+  final bool busy;
+  final VoidCallback onStart;
+  final VoidCallback onMarkDone;
+  final VoidCallback onClose;
+
+  const CityTourTripBar({
+    super.key,
+    required this.trip,
+    required this.schedule,
+    required this.currentTitle,
+    required this.busy,
+    required this.onStart,
+    required this.onMarkDone,
+    required this.onClose,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(top: BorderSide(color: AppColors.border)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+          child: _content(context),
+        ),
+      ),
+    );
+  }
+
+  Widget _content(BuildContext context) {
+    final trip = this.trip;
+    final schedule = this.schedule;
+    if (trip == null || schedule == null) {
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text(
+            'Plans your times from now and reminds you at each stop.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            height: 50,
+            child: FilledButton.icon(
+              onPressed: busy ? null : onStart,
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.brandGreen,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              ),
+              icon: const Icon(Icons.play_arrow_rounded, size: 22),
+              label: const Text(
+                'Start trip',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    if (trip.isFinished) {
+      final took = trip.finishedAt!.difference(trip.startedAt).inMinutes;
+      return Row(
+        children: [
+          const Icon(Icons.flag_rounded, size: 26, color: AppColors.brandGreen),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Trip finished',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Took ${cityTourSpan(took)} · ${cityTourPace(schedule.behindMinutes).toLowerCase()}',
+                  style: const TextStyle(fontSize: 12.5, color: AppColors.textSecondary),
+                ),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: busy ? null : onClose,
+            child: const Text('Close', style: TextStyle(fontWeight: FontWeight.w800)),
+          ),
+        ],
+      );
+    }
+
+    final time = schedule.current == null ? null : schedule.times[schedule.current!.id];
+    final over = time != null && DateTime.now().isAfter(time.end);
+    final when = time == null
+        ? ''
+        : over
+            ? 'Planned until ${cityTourClock(context, time.end)}'
+            : 'Until ${cityTourClock(context, time.end)}';
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                over ? 'TIME TO MOVE ON' : 'NOW',
+                style: TextStyle(
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.1,
+                  color: over ? const Color(0xFFD97706) : AppColors.brandGreen,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                currentTitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                [if (when.isNotEmpty) when, cityTourPace(schedule.behindMinutes)].join(' · '),
+                style: const TextStyle(fontSize: 12.5, color: AppColors.textSecondary),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 12),
+        FilledButton.icon(
+          onPressed: busy ? null : onMarkDone,
+          style: FilledButton.styleFrom(
+            backgroundColor: AppColors.brandGreen,
+            minimumSize: const Size(0, 46),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          ),
+          icon: const Icon(Icons.check_rounded, size: 20),
+          label: const Text('Mark done', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800)),
+        ),
+      ],
     );
   }
 }

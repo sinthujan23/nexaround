@@ -66,19 +66,76 @@ def test_photo_must_be_an_upload_or_https():
     assert ct.normalize(_guide(cover_url="https://example.com/a.jpg"))["cover_url"]
 
 
-def test_affiliate_link_must_be_on_the_partners_own_site():
-    good = {"kind": "affiliate", "partner": "klook", "url": "https://www.klook.com/activity/123/"}
-    out = ct.normalize(_guide(steps=[_stop(links=[good])]))
-    assert out["steps"][0]["links"][0]["url"] == good["url"]
+def _links(guide):
+    return {link["partner"]: link["url"] for step in guide["steps"] for link in step["links"]}
 
-    for url in (
-        "http://www.klook.com/activity/123/",       # not https
-        "https://klook.com.evil.example/activity",  # look-alike host
-        "https://www.gocity.com/en/paris",          # another partner's site
-    ):
-        bad = dict(good, url=url)
-        with pytest.raises(ct.ContentError, match="klook.com"):
-            ct.normalize(_guide(steps=[_stop(links=[bad])]))
+
+def test_partner_pages_are_made_from_the_guide_not_typed():
+    guide = ct.normalize(_guide(steps=[
+        _stop(links=[
+            {"kind": "affiliate", "partner": "klook", "url": "https://evil.example/x"},
+            {"kind": "affiliate", "partner": "gocity", "url": "https://evil.example/x"},
+            {"kind": "affiliate", "partner": "airalo"},
+            {"kind": "affiliate", "partner": "gettransfer"},
+        ]),
+        _stop("Louvre", 48.8606, 2.3376),
+    ]))
+    urls = _links(guide)
+    # A pasted address is ignored: each page comes from the guide itself.
+    assert urls["klook"] == "https://www.klook.com/search/result/?query=Eiffel+Tower+Paris"
+    assert urls["gocity"] == "https://gocity.com/en/paris/passes"
+    assert urls["airalo"] == "https://www.airalo.com/france-esim"
+    query = urllib.parse.parse_qs(urllib.parse.urlparse(urls["gettransfer"]).query)
+    assert query["to_name"] == ["Eiffel Tower, Paris"] and "from_name" not in query
+
+
+def test_klook_searches_the_creators_words_in_the_city():
+    guide = ct.normalize(_guide(steps=[
+        _stop(links=[{"kind": "affiliate", "partner": "klook", "words": "Seine cruise"}]),
+        _move(links=[{"kind": "affiliate", "partner": "klook", "words": "Batobus Paris"}]),
+        _stop("Louvre"),
+    ]))
+    first, ride = [s["links"][0]["url"] for s in guide["steps"][:2]]
+    assert first.endswith("?query=Seine+cruise+Paris")
+    assert ride.endswith("?query=Batobus+Paris")  # the city is not added twice
+
+
+def test_a_car_on_a_ride_goes_from_the_stop_before_to_the_stop_after():
+    guide = ct.normalize(_guide(steps=[
+        _stop(), _move(mode="taxi", links=[{"kind": "affiliate", "partner": "gettransfer"}]), _stop("Louvre"),
+    ]))
+    query = urllib.parse.parse_qs(urllib.parse.urlparse(guide["steps"][1]["links"][0]["url"]).query)
+    assert query["from_name"] == ["Eiffel Tower, Paris"] and query["to_name"] == ["Louvre, Paris"]
+
+
+def test_wegotrip_link_must_be_a_page_from_its_catalogue():
+    good = "https://wegotrip.com/paris-d2988507/louvre-p2381/"
+    for url, kept in ((good, True), ("https://wegotrip.com/about", False), ("https://evil.example/paris-d1/x-p2/", False)):
+        guide = ct.normalize(_guide(steps=[
+            _stop(links=[{"kind": "affiliate", "partner": "wegotrip", "url": url, "product_title": "Louvre"}]),
+            _stop("Louvre"),
+        ]))
+        assert (_links(guide)["wegotrip"] == url) is kept
+        assert ("Stop 1: pick the WeGoTrip ticket for its link." in ct.problems(guide)) is not kept
+
+
+def test_go_city_only_where_it_sells_a_pass():
+    guide = ct.normalize(_guide(city="Colombo", country="Sri Lanka", steps=[
+        _stop(links=[{"kind": "affiliate", "partner": "gocity"}]), _stop("Galle Face"),
+    ]))
+    assert _links(guide)["gocity"] == ""
+    assert "Stop 1: Go City has no pass for Colombo. Remove its link." in ct.problems(guide)
+
+
+def test_airalo_page_names():
+    assert ct.airalo_slug("France") == "france"
+    assert ct.airalo_slug("United Arab Emirates") == "united-arab-emirates"
+    assert ct.airalo_slug("Czechia") == "czech-republic"
+    assert ct.airalo_slug("") == ""
+
+
+def test_flight_partners_are_not_offered_in_guides():
+    assert set(ct.AFFILIATES) == {"klook", "wegotrip", "gocity", "gettransfer", "airalo"}
 
 
 def test_unknown_partner_is_refused():
@@ -124,12 +181,12 @@ def test_problems_name_what_is_missing():
 
 def test_problems_flag_links_without_a_target():
     guide = ct.normalize(_guide(steps=[
-        _stop(links=[{"kind": "affiliate", "partner": "gocity", "url": ""}]),
+        _stop(links=[{"kind": "affiliate", "partner": "wegotrip", "url": ""}]),
         _move(links=[{"kind": "experience", "package_id": ""}]),
         _stop("Louvre"),
     ]))
     found = ct.problems(guide)
-    assert "Stop 1: paste the Go City page for its link." in found
+    assert "Stop 1: pick the WeGoTrip ticket for its link." in found
     assert "Travel to stop 2: pick the experience for each Experience link." in found
 
 
@@ -171,7 +228,7 @@ def test_tracked_url_goes_through_travelpayouts_with_the_partners_program():
 
 
 def test_tracked_url_without_campaign_and_without_ids():
-    url = ct.tracked_url("aviasales", "https://www.aviasales.com/search/X", marker="1", project_id="2")
+    url = ct.tracked_url("gettransfer", "https://gettransfer.com/en/transfers/new", marker="1", project_id="2")
     assert "campaign_id" not in urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
     page = "https://www.klook.com/activity/1/"
     assert ct.tracked_url("klook", page, marker="", project_id="2") == page

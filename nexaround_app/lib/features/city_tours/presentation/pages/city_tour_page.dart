@@ -4,16 +4,47 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/error/user_message.dart';
+import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/features/city_tours/data/city_tours_service.dart';
 import 'package:nexaround_app/features/city_tours/domain/city_tour.dart';
+import 'package:nexaround_app/features/city_tours/domain/city_tour_trip.dart';
 import 'package:nexaround_app/features/city_tours/presentation/widgets/city_tour_widgets.dart';
 import 'package:nexaround_app/features/experiences/presentation/pages/experience_link_page.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_description.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+/// Opens a guide from its id alone (a trip reminder): from the device's copy
+/// when there is one, else after loading it.
+Future<void> openCityTourById(BuildContext context, String tourId) async {
+  final service = CityToursService();
+  var tour = service.cachedTour(tourId);
+  if (tour == null) {
+    try {
+      tour = await service.getTour(tourId);
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(userMessageFor(e, action: 'open this guide'))),
+        );
+      }
+      return;
+    }
+  }
+  if (!context.mounted) return;
+  await Navigator.push(
+    context,
+    MaterialPageRoute(builder: (_) => CityTourPage(card: tour!.card)),
+  );
+}
+
 /// One guide: the cover, what it is, the stops on a map, then the route step
 /// by step with its partner buttons. Opened from a list with the guide's
 /// card, which draws the header while the rest loads.
+///
+/// A signed-in traveller can start a trip: every step gets a planned time,
+/// the bar at the bottom asks them to mark the step in hand done, and the
+/// times after it move to match (the server pushes a reminder when a step
+/// runs over).
 class CityTourPage extends StatefulWidget {
   final CityTourCard card;
 
@@ -33,16 +64,30 @@ class _CityTourPageState extends State<CityTourPage> {
   String? _error;
   bool _collapsed = false;
 
+  CityTourTrip? _trip;
+  bool _tripBusy = false;
+  // Redraws the times while a trip runs: a step running over pushes the rest on.
+  Timer? _tick;
+
   @override
   void initState() {
     super.initState();
     _scroll.addListener(_onScroll);
     _tour = _service.cachedTour(widget.card.id);
     _fetch();
+    if (CacheService.isLoggedIn()) {
+      _trip = _service.cachedTrip(widget.card.id);
+      _loadTrip();
+    }
+    _tick = Timer.periodic(const Duration(seconds: 30), (_) {
+      final trip = _trip;
+      if (mounted && trip != null && !trip.isFinished) setState(() {});
+    });
   }
 
   @override
   void dispose() {
+    _tick?.cancel();
     _scroll.dispose();
     super.dispose();
   }
@@ -66,6 +111,116 @@ class _CityTourPageState extends State<CityTourPage> {
       if (!mounted || _tour != null) return;
       setState(() => _error = userMessageFor(e, action: 'load this guide'));
     }
+  }
+
+  Future<void> _loadTrip() async {
+    try {
+      final trip = await _service.getTrip(widget.card.id);
+      if (mounted) setState(() => _trip = trip);
+    } catch (e) {
+      // The device's copy stays on screen.
+      debugPrint('City tour trip not loaded: $e');
+    }
+  }
+
+  void _say(String text, {SnackBarAction? action}) {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(SnackBar(content: Text(text), action: action));
+  }
+
+  /// Runs one trip change, one at a time; a failure is said, not thrown.
+  Future<bool> _tripChange(Future<void> Function() change, String action) async {
+    if (_tripBusy) return false;
+    setState(() => _tripBusy = true);
+    try {
+      await change();
+      return true;
+    } catch (e) {
+      if (mounted) _say(userMessageFor(e, action: action));
+      return false;
+    } finally {
+      if (mounted) setState(() => _tripBusy = false);
+    }
+  }
+
+  Future<void> _startTrip() async {
+    if (!CacheService.isLoggedIn()) {
+      _say('Sign in to start a trip.');
+      return;
+    }
+    await _tripChange(() async {
+      final trip = await _service.startTrip(widget.card.id);
+      if (mounted) setState(() => _trip = trip);
+    }, 'start the trip');
+  }
+
+  Future<void> _markDone(CityTourStep step, DateTime at) async {
+    if (_tripBusy) return;
+    setState(() => _tripBusy = true);
+    try {
+      final trip = await _service.markDone(widget.card.id, step.id, at);
+      if (!mounted) return;
+      setState(() => _trip = trip);
+      _say(
+        trip.isFinished ? 'Trip finished. Well done!' : 'Marked done. Times updated.',
+        action: SnackBarAction(label: 'Undo', onPressed: _undo),
+      );
+    } catch (e) {
+      // Tried again with the same time, so a dropped signal costs nothing.
+      if (mounted) {
+        _say(
+          userMessageFor(e, action: 'mark this done'),
+          action: SnackBarAction(label: 'Try again', onPressed: () => _markDone(step, at)),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _tripBusy = false);
+    }
+  }
+
+  Future<void> _undo() async {
+    await _tripChange(() async {
+      final trip = await _service.undoDone(widget.card.id);
+      if (mounted) setState(() => _trip = trip);
+    }, 'undo that');
+  }
+
+  Future<void> _endTrip() async {
+    final end = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('End this trip?'),
+        content: const Text('You can start the guide again any time.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Keep going'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('End trip'),
+          ),
+        ],
+      ),
+    );
+    if (end == true) await _closeTrip();
+  }
+
+  Future<void> _closeTrip() async {
+    await _tripChange(() async {
+      await _service.endTrip(widget.card.id);
+      if (mounted) setState(() => _trip = null);
+    }, 'end the trip');
+  }
+
+  /// A stop's name, or the ride and where it goes: "Metro to Louvre".
+  String _stepTitle(CityTour tour, CityTourStep step) {
+    if (step.isStop) return step.name;
+    final how = step.modeLabel.isEmpty ? 'Walk' : step.modeLabel;
+    final index = tour.steps.indexOf(step);
+    final next = tour.steps.skip(index + 1).where((s) => s.isStop).firstOrNull;
+    return next == null ? how : '$how to ${next.name}';
   }
 
   Future<void> _openLink(CityTourLink link) async {
@@ -106,9 +261,26 @@ class _CityTourPageState extends State<CityTourPage> {
     final card = _tour?.card ?? widget.card;
     final width = MediaQuery.of(context).size.width;
     final place = [card.city, card.country].where((s) => s.isNotEmpty).join(' · ');
+    final tour = _tour;
+    final trip = _trip;
+    final schedule = tour == null || trip == null ? null : trip.schedule(tour.steps, DateTime.now());
+    final current = schedule?.current;
 
     return Scaffold(
       backgroundColor: Colors.white,
+      bottomNavigationBar: tour == null || tour.steps.isEmpty
+          ? null
+          : CityTourTripBar(
+              trip: trip,
+              schedule: schedule,
+              currentTitle: current == null ? '' : _stepTitle(tour, current),
+              busy: _tripBusy,
+              onStart: _startTrip,
+              onMarkDone: () {
+                if (current != null) _markDone(current, DateTime.now());
+              },
+              onClose: _closeTrip,
+            ),
       body: CustomScrollView(
         controller: _scroll,
         slivers: [
@@ -146,6 +318,24 @@ class _CityTourPageState extends State<CityTourPage> {
                 ),
               ),
             ),
+            actions: [
+              if (trip != null && !trip.isFinished)
+                Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Material(
+                    color: Colors.white.withValues(alpha: 0.92),
+                    shape: const CircleBorder(),
+                    child: PopupMenuButton<String>(
+                      padding: EdgeInsets.zero,
+                      icon: const Icon(Icons.more_horiz_rounded, color: AppColors.textPrimary, size: 20),
+                      onSelected: (_) => _endTrip(),
+                      itemBuilder: (_) => const [
+                        PopupMenuItem(value: 'end', child: Text('End trip')),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
             flexibleSpace: FlexibleSpaceBar(
               background: card.coverUrl.isEmpty
                   ? Container(color: AppColors.surfaceVariant)
@@ -202,13 +392,13 @@ class _CityTourPageState extends State<CityTourPage> {
               ),
             ),
           ),
-          ..._body(),
+          ..._body(schedule),
         ],
       ),
     );
   }
 
-  List<Widget> _body() {
+  List<Widget> _body(CityTourSchedule? schedule) {
     final tour = _tour;
     if (tour == null) {
       return [
@@ -274,6 +464,7 @@ class _CityTourPageState extends State<CityTourPage> {
                 isLast: i == tour.steps.length - 1,
                 isLastStop: stops.length > 1 && tour.steps[i].id == lastStopId,
                 onLinkTap: _openLink,
+                time: schedule?.times[tour.steps[i].id],
               ),
           ],
         ),

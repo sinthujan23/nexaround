@@ -45,6 +45,7 @@ async def main() -> None:
     from app.core import job_queue, leader
     from app.core.database import engine
     from app.services import (
+        city_tour_trips,
         fx_service,
         google_places_client,
         odyssey_jobs,
@@ -78,6 +79,8 @@ async def main() -> None:
             # Today's currency rates: fetched just after each daily publish,
             # about 30 requests a month (Admin > Settings > Currency rates).
             asyncio.create_task(fx_service.refresh_loop()),
+            # City Guides trips: "Done at …?" once a step runs past its time.
+            asyncio.create_task(city_tour_trips.reminder_loop()),
         ])
         logger.info("telemetry singleton loops started")
     else:

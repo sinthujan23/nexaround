@@ -24,7 +24,7 @@ from app.models.experience import (
 from app.models.audit import AuthSession, AuditEvent
 from app.models.fx_rate import FxRate
 from app.models.legal import LegalAcceptance, LegalDocument
-from app.models.city_tour import CityTour, CityTourTap, ContentCreator
+from app.models.city_tour import CityTour, CityTourTap, CityTourTrip, ContentCreator
 
 from app.models.forum import (
     ForumCategory, ForumTopic, ForumPost, ForumLike, ForumBookmark,
@@ -46,6 +46,6 @@ __all__ = [
     "ForumTopicView",
     "AuthSession", "AuditEvent", "FxRate",
     "LegalDocument", "LegalAcceptance",
-    "CityTour", "CityTourTap", "ContentCreator",
+    "CityTour", "CityTourTap", "CityTourTrip", "ContentCreator",
 ]
 

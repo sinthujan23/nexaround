@@ -1,4 +1,6 @@
-"""City Tours in the app: the approved guides, and taps on their partner links.
+"""City Tours in the app: the approved guides, taps on their partner links, and
+trips (a signed-in traveller following a guide step by step; the rules are
+app/services/city_tour_trips.py).
 
 Only `live_content` is ever read here: what an admin approved, never a
 creator's working copy. The partner links come out ready to tap. Affiliate
@@ -7,17 +9,20 @@ traveller on through Travelpayouts; Experience links carry the package, which
 the app opens on its own detail page after telling us of the tap.
 """
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user_optional
+from app.api.deps import get_current_user, get_current_user_optional
 from app.api.v1.city_tours_admin import _listed_packages, linked_package_ids, package_view
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.rate_limiter import RateLimiter, get_client_ip, get_redis_client
-from app.models.city_tour import CityTour, CityTourTap
+from app.models.city_tour import CityTour, CityTourTap, CityTourTrip
+from app.schemas.city_tour import CityTourTripDoneIn
+from app.services import city_tour_trips as trips
 from app.services import city_tours
 
 router = APIRouter(prefix="/city-tours", tags=["City Tours"])
@@ -94,5 +99,120 @@ async def record_tap(
             package_id=uuid.UUID(link["package_id"]) if link.get("package_id") else None,
             user_id=user.id if user is not None else None,
         ))
+        await db.commit()
+    return Response(status_code=204)
+
+
+async def _shown_trip(db: AsyncSession, tour_id: uuid.UUID, user_id) -> CityTourTrip | None:
+    """The traveller's latest trip on a guide, running or finished; one they
+    stopped or closed is not shown again."""
+    return (await db.execute(
+        select(CityTourTrip)
+        .where(
+            CityTourTrip.tour_id == tour_id,
+            CityTourTrip.user_id == user_id,
+            CityTourTrip.ended_at.is_(None),
+        )
+        .order_by(CityTourTrip.started_at.desc())
+        .limit(1)
+    )).scalar_one_or_none()
+
+
+async def _running_trip(db: AsyncSession, tour_id: uuid.UUID, user_id) -> CityTourTrip:
+    trip = await _shown_trip(db, tour_id, user_id)
+    if trip is None or trip.finished_at is not None:
+        raise HTTPException(status_code=404, detail="This trip has ended.")
+    return trip
+
+
+@router.get("/{tour_id}/trip")
+async def get_trip(
+    tour_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    tour = await live_tour(db, tour_id)
+    trip = await _shown_trip(db, tour.id, user.id)
+    return {"trip": trips.view(trip, tour.live_content) if trip else None}
+
+
+@router.post("/{tour_id}/trip")
+async def start_trip(
+    tour_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    """Start the guide now. A trip of theirs on it still shown ends."""
+    tour = await live_tour(db, tour_id)
+    now = datetime.now(timezone.utc)
+    await db.execute(
+        update(CityTourTrip)
+        .where(
+            CityTourTrip.tour_id == tour.id,
+            CityTourTrip.user_id == user.id,
+            CityTourTrip.ended_at.is_(None),
+        )
+        .values(ended_at=now)
+    )
+    trip = CityTourTrip(tour_id=tour.id, user_id=user.id, started_at=now, done={})
+    db.add(trip)
+    await db.commit()
+    return {"trip": trips.view(trip, tour.live_content)}
+
+
+@router.post("/{tour_id}/trip/done")
+async def mark_step_done(
+    tour_id: uuid.UUID,
+    body: CityTourTripDoneIn,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    """Mark the step in hand done. A second tap on a step already done (a
+    retry) changes nothing; marking a later step first is refused (409)."""
+    tour = await live_tour(db, tour_id)
+    trip = await _running_trip(db, tour.id, user.id)
+    steps = tour.live_content.get("steps") or []
+    done = trip.done or {}
+    if body.step_id not in done:
+        marked = trips.mark_done(
+            trip.started_at, steps, done, body.step_id, body.at, datetime.now(timezone.utc),
+        )
+        if marked is None:
+            raise HTTPException(status_code=409, detail="Mark the steps before this one done first.")
+        trip.done = marked
+        if trips.all_done(steps, marked):
+            trip.finished_at = trips.as_time(marked[body.step_id])
+        await db.commit()
+    return {"trip": trips.view(trip, tour.live_content)}
+
+
+@router.post("/{tour_id}/trip/undo")
+async def undo_step_done(
+    tour_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    """Take back the last "Mark done", including the one that finished the trip."""
+    tour = await live_tour(db, tour_id)
+    trip = await _shown_trip(db, tour.id, user.id)
+    if trip is None:
+        raise HTTPException(status_code=404, detail="This trip has ended.")
+    trip.done = trips.undo_last(tour.live_content.get("steps") or [], trip.done or {})
+    trip.finished_at = None
+    await db.commit()
+    return {"trip": trips.view(trip, tour.live_content)}
+
+
+@router.delete("/{tour_id}/trip", status_code=204)
+async def end_trip(
+    tour_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    """Stop a running trip, or close a finished one's summary."""
+    tour = await live_tour(db, tour_id)
+    trip = await _shown_trip(db, tour.id, user.id)
+    if trip is not None:
+        trip.ended_at = datetime.now(timezone.utc)
         await db.commit()
     return Response(status_code=204)

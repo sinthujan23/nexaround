@@ -71,7 +71,7 @@ function PhotoField({ value, onChange, onBusy, label, hint }) {
   );
 }
 
-function StopFields({ step, patch, partners, taps, center, onBusy }) {
+function StopFields({ step, patch, partners, taps, center, onBusy, where }) {
   return (
     <>
       <div className="form-group">
@@ -131,13 +131,13 @@ function StopFields({ step, patch, partners, taps, center, onBusy }) {
       </div>
       <div className="form-group" style={{ marginBottom: 0 }}>
         <label className="form-label">Partner links</label>
-        <CityTourLinks links={step.links} partners={partners} taps={taps} onChange={(links) => patch({ links })} />
+        <CityTourLinks links={step.links} partners={partners} taps={taps} where={where} onChange={(links) => patch({ links })} />
       </div>
     </>
   );
 }
 
-function MoveFields({ step, patch, partners, taps }) {
+function MoveFields({ step, patch, partners, taps, where }) {
   return (
     <>
       <div className="form-group">
@@ -187,7 +187,7 @@ function MoveFields({ step, patch, partners, taps }) {
       </div>
       <div className="form-group" style={{ marginBottom: 0 }}>
         <label className="form-label">Partner links</label>
-        <CityTourLinks links={step.links} partners={partners} taps={taps} onChange={(links) => patch({ links })} />
+        <CityTourLinks links={step.links} partners={partners} taps={taps} where={where} onChange={(links) => patch({ links })} />
       </div>
     </>
   );
@@ -370,6 +370,20 @@ export default function CityTourEditor() {
     }
     return null;
   };
+  // Where a step's partner links sit: what their pages are made from.
+  const linkPlace = (index) => {
+    const step = form.steps[index];
+    const stopName = (s) => (s && s.type === 'stop' ? s.name : '');
+    return {
+      city: form.city.trim(),
+      country: form.country.trim(),
+      isStop: step.type === 'stop',
+      stopName: stopName(step).trim(),
+      place: stopName(step).trim(),
+      prevStop: stopName([...form.steps.slice(0, index)].reverse().find((s) => s.type === 'stop')).trim(),
+      nextStop: stopName(form.steps.slice(index + 1).find((s) => s.type === 'stop')).trim(),
+    };
+  };
   const canSend = !admin && (dirty || status === 'draft' || status === 'changes_requested');
   const canApprove = admin && (dirty || status !== 'approved');
 
@@ -531,12 +545,15 @@ export default function CityTourEditor() {
                       <div className="cte-step-body">
                         {step.type === 'stop' ? (
                           <StopFields
-                            step={step} partners={partners} taps={taps} center={lastPin(i)}
+                            step={step} partners={partners} taps={taps} center={lastPin(i)} where={linkPlace(i)}
                             onBusy={(d) => setUploads((n) => n + d)}
                             patch={(p) => patchStep(step.id, p)}
                           />
                         ) : (
-                          <MoveFields step={step} partners={partners} taps={taps} patch={(p) => patchStep(step.id, p)} />
+                          <MoveFields
+                            step={step} partners={partners} taps={taps} where={linkPlace(i)}
+                            patch={(p) => patchStep(step.id, p)}
+                          />
                         )}
                       </div>
                     )}

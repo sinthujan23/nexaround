@@ -29,6 +29,12 @@ class CityTourVisibilityIn(BaseModel):
     hidden: bool
 
 
+class CityTourTripDoneIn(BaseModel):
+    step_id: str = Field(..., max_length=36)
+    # When the traveller tapped "Mark done"; a retry sends the same time.
+    at: Optional[datetime] = None
+
+
 class CityTourListItem(BaseModel):
     id: uuid.UUID
     title: str
@@ -49,6 +55,9 @@ class CityTourListItem(BaseModel):
     published_at: Optional[datetime] = None
     # Partner taps, all time. Admins only.
     taps: Optional[int] = None
+    # Travellers who started the guide in the app, and who finished it. Admins only.
+    trips_started: Optional[int] = None
+    trips_finished: Optional[int] = None
 
 
 class CityTourDetail(CityTourListItem):

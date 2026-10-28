@@ -118,3 +118,37 @@ class CityTourTap(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_now, nullable=False, index=True,
     )
+
+
+class CityTourTrip(Base):
+    """A traveller following a guide: when they started, and when they marked
+    each step (a stop, or the ride to the next one) done. The app plans the
+    rest of the day from these times; the worker pushes a "Done at …?"
+    reminder when the step in hand runs past its planned time
+    (app/services/city_tour_trips.py).
+
+    A trip ends when its last step is marked done (`finished_at`) or the
+    traveller stops it (`ended_at`). Starting the guide again ends any trip of
+    theirs on it still running and opens a new one."""
+    __tablename__ = "city_tour_trips"
+    __table_args__ = (
+        Index("ix_city_tour_trips_user_tour", "user_id", "tour_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tour_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("city_tours.id", ondelete="CASCADE"), nullable=False,
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False,
+    )
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    # Step id → ISO time it was marked done, in route order.
+    done: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict, server_default="{}")
+    finished_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
+    ended_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
+    # The step whose reminder went out, so each step is reminded once.
+    reminded_step_id: Mapped[str] = mapped_column(String(36), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_now, onupdate=_now, nullable=False,
+    )
