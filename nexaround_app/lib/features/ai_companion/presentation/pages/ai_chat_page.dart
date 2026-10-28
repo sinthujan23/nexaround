@@ -82,7 +82,7 @@ class _AiChatPageState extends State<AiChatPage> with WidgetsBindingObserver {
   bool _voicePausedNoticeShown = false;
   bool _voiceOff = false;
   // Louder than this (dBFS), or 12 dB over the room's quietest level, counts
-  // as speech. 1.5 s below it after speech ends the recording; 6 s with no
+  // as speech. 1 s below it after speech ends the recording; 6 s with no
   // speech at all ends it unsent, so silence is never paid for.
   static const double _speechDb = -40;
 
@@ -595,11 +595,17 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
     }
     try {
       final path = '${(await getTemporaryDirectory()).path}'
-          '/neva_question_${DateTime.now().millisecondsSinceEpoch}.wav';
+          '/neva_question_${DateTime.now().millisecondsSinceEpoch}.m4a';
       _recordingPath = path;
-      // 16 kHz mono WAV: what speech recognition needs, 32 KB a second.
+      // 16 kHz mono AAC at 32 kbps: 4 KB a second, an eighth of WAV, and
+      // Gemini hears it just as well (tested 2026-10-27).
       await _recorder.start(
-        const RecordConfig(encoder: AudioEncoder.wav, sampleRate: 16000, numChannels: 1),
+        const RecordConfig(
+          encoder: AudioEncoder.aacLc,
+          sampleRate: 16000,
+          numChannels: 1,
+          bitRate: 32000,
+        ),
         path: path,
       );
     } catch (e) {
@@ -636,7 +642,7 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
       _heardSound = true;
       _lastSound = now;
     } else if (_heardSound) {
-      if (now.difference(_lastSound!) >= const Duration(milliseconds: 1500)) {
+      if (now.difference(_lastSound!) >= const Duration(milliseconds: 1000)) {
         _finishRecording();
       }
     } else if (now.difference(_recordingStarted!) >= const Duration(seconds: 6)) {
@@ -736,8 +742,10 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
     }
   }
 
-  /// Reads [message] aloud clip by clip, fetching the next one while the
-  /// current one plays. Clips are kept on the device, so a replay is free.
+  /// Reads [message] aloud clip by clip. Every clip is asked for at once, so
+  /// one is ready by the time the one before it ends: fetched one after
+  /// another, each sentence waited for its own synthesis. Clips are kept on
+  /// the device, so a replay is free.
   Future<void> _speak(_ChatMessage message) async {
     final clips = message.speech;
     if (clips == null || clips.isEmpty) return;
@@ -746,11 +754,10 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
     if (!mounted || token != _playToken) return;
     setState(() => _speakingMessage = message);
     try {
-      var next = NevaService.speak(clips.first);
-      for (var i = 0; i < clips.length; i++) {
-        final clip = await next;
+      final fetches = [for (final c in clips) NevaService.speak(c)];
+      for (final fetch in fetches) {
+        final clip = await fetch;
         if (token != _playToken) return;
-        if (i + 1 < clips.length) next = NevaService.speak(clips[i + 1]);
         if (clip.paused) {
           _showVoicePausedNotice();
           return;

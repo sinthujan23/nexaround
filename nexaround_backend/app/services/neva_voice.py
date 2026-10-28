@@ -111,6 +111,9 @@ _CHUNK_MAX = 250
 
 # The app records at most 30 s of 16 kHz mono WAV: 960 KB.
 MAX_CLIP_BYTES = 1_200_000
+# The app's 32 kbps AAC is 120 KB for 30 s; its length is not read from the
+# header, so it is held to a size instead.
+MAX_COMPRESSED_BYTES = 400_000
 MAX_CLIP_SECONDS = 31.0
 
 # Outside app/static on purpose: that directory is served publicly.
@@ -242,6 +245,9 @@ def clip_mime(clip: bytes) -> Optional[str]:
         return "audio/flac"
     if clip[:4] == b"OggS":
         return "audio/ogg"
+    # The app's AAC, as .m4a (MP4) or raw ADTS frames: audio/aac to Gemini.
+    if clip[4:8] == b"ftyp" or (len(clip) > 1 and clip[0] == 0xFF and clip[1] & 0xF6 == 0xF0):
+        return "audio/aac"
     if clip[:3] == b"ID3" or (len(clip) > 1 and clip[0] == 0xFF and clip[1] & 0xE0 == 0xE0):
         return "audio/mp3"
     return None
@@ -371,12 +377,18 @@ def verify(user_id, lang: str, text: str, sig: str) -> bool:
     return hmac.compare_digest(sign(user_id, lang, text), sig or "")
 
 
-def speech_for(text: str, lang: str, user_id) -> list[dict]:
-    """Neva's reply as signed clips the app may ask /neva/speak to say."""
-    return [
-        {"text": c, "lang": lang, "sig": sign(user_id, lang, c)}
-        for c in chunks(speakable(text))
-    ]
+def speech_for(text: str, lang: str, user_id, *, whole: bool = False) -> list[dict]:
+    """Neva's reply as signed clips the app may ask /neva/speak to say.
+
+    `whole` makes it one clip. Spoken replies are one to three sentences, and
+    as separate clips each one waited for its own synthesis: the first test
+    on a phone (2026-10-27) had up to 6 s of silence between sentences.
+    """
+    spoken = speakable(text)
+    if not spoken:
+        return []
+    clips = [spoken] if whole else chunks(spoken)
+    return [{"text": c, "lang": lang, "sig": sign(user_id, lang, c)} for c in clips]
 
 
 # ── Making the audio ────────────────────────────────────────────────────────
@@ -539,12 +551,21 @@ async def _gemini_tts(text: str, api_key: str) -> tuple[bytes, str]:
     raise VoiceUnavailable(f"Gemini TTS returned {last_status}")
 
 
-async def synthesize(text: str, lang: str, *, user_id, api_key: str) -> tuple[bytes, str]:
+async def speaks_fast(lang: str) -> bool:
+    """True when Chirp will say a reply in `lang`: about a second, not Gemini's 4-6 s."""
+    cfg = await _load_config()
+    return bool(cfg["enabled"] and cfg["tts_key"] and chirp_locale(lang))
+
+
+async def synthesize(
+    text: str, lang: str, *, user_id, api_key: str, fast_only: bool = False,
+) -> tuple[bytes, str]:
     """Audio for one signed clip, as (bytes, MIME type).
 
     Raises VoiceBlocked past the allowance or with voice off, VoiceUnavailable
     when no engine answered. A cached clip is served even past the allowance:
-    it costs nothing.
+    it costs nothing. `fast_only` gives up rather than wait for Gemini when
+    Chirp fails, for a caller that is holding the reply's text back meanwhile.
     """
     cfg = await _load_config()
     if not cfg["enabled"]:
@@ -561,6 +582,8 @@ async def synthesize(text: str, lang: str, *, user_id, api_key: str) -> tuple[by
     await check(user_id)
     made = await _chirp(text, locale, cfg["tts_key"]) if locale else None
     if made is None:
+        if fast_only:
+            raise VoiceUnavailable("Chirp gave no audio")
         if not api_key:
             raise VoiceUnavailable("no TTS engine configured")
         made = await _gemini_tts(text, api_key)

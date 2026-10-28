@@ -19,10 +19,11 @@ place of the text and a rule for short replies; `neva_voice` hears and speaks.
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 import logging
 import re
-from typing import Any, Optional
+from typing import Any, Awaitable, Optional
 
 import httpx
 
@@ -105,14 +106,36 @@ LANGUAGE TAG:
 
 # Appended last, after the shared prefix, for replies that will be read aloud:
 # speech is billed by length, and bullets and emoji read badly.
+#
+# The first wording ("keep it short") made Neva skip find_places for spoken
+# "near me" questions in 2 of 6 tries (2026-10-27), naming pharmacies from
+# memory and saying they were pinned. The first rule here is the fix.
 NEVA_VOICE_RULES = '''
-VOICE REPLIES (this reply will be read aloud; these rules replace HOW TO FORMAT EVERY REPLY above):
+VOICE REPLIES (this reply will be read aloud; these rules replace HOW TO FORMAT EVERY REPLY above, and nothing else):
+- Finding places works exactly as above: when the user wants a place near them, call find_places first, and only ever name places it returned.
 - Reply in the language the user spoke.
 - Keep it to one to three short, natural spoken sentences, 60 words at most. Never a list.
 - No bullet points, markdown, bold, asterisks or emojis: plain sentences only.
 - Say numbers and distances the way a person says them aloud.
-- If you found places, name the closest one or two with their distance and say you've pinned them on the map below.
+- When find_places returned places, name the closest one or two with their distance and say you've pinned them on the map below.
 '''.strip()
+
+# Beside a spoken question. The system rules alone lost to the persona's
+# bullets-and-emoji format in a live test (2026-10-27), and Flash-Lite's
+# answer after a place search dropped the language tag the voice is picked by.
+_SPOKEN_REMINDER = (
+    " If they want a place near them, call find_places first. Then answer in one"
+    " to three short spoken sentences, with no list, markdown or emoji, and end"
+    " with the [lang:xx] tag."
+)
+
+# The answer after a voice "near me" search is two plain sentences from a
+# list of places: Flash-Lite writes it faster than Flash.
+_VOICE_PLACES_MODELS = ("gemini-2.5-flash-lite", "gemini-2.5-flash")
+# How long that answer waits for the transcript before hearing the recording
+# again (~2 s slower). Transcription starts with the question, so it is
+# usually done by then.
+_TRANSCRIPT_WAIT_S = 2.0
 
 _LANG_TAG_RE = re.compile(r"\[lang:\s*([^\]\s]*)\s*\]", re.IGNORECASE)
 _LANG_CODE_RE = re.compile(r"^[a-z]{2,3}(-[a-z0-9]{2,8})?$")
@@ -203,11 +226,11 @@ def _format_history(history: Optional[list[dict]], max_turns: int = 8) -> list[d
     return cleaned
 
 
-async def _generate(body: dict, api_key: str, operation: str) -> dict:
-    """One generateContent call, falling through the Flash models on overload."""
+async def _generate(body: dict, api_key: str, operation: str, models: tuple = _MODELS) -> dict:
+    """One generateContent call, falling through `models` on overload."""
     last_status = None
     async with httpx.AsyncClient(timeout=_TIMEOUT_S) as client:
-        for model in _MODELS:
+        for model in models:
             try:
                 async with telemetry.track(
                     "gemini", f"{operation}:{model}", sku="gemini_flash_generate",
@@ -253,6 +276,17 @@ def _split_lang(text: str) -> tuple[str, str]:
     clean = _LANG_TAG_RE.sub(_take, text).strip()
     code = (found[-1] if found else "").strip().lower().replace("_", "-")
     return clean, code if _LANG_CODE_RE.match(code) else ""
+
+
+async def _heard(transcript: Awaitable[str]) -> str:
+    """The transcript if it is ready within _TRANSCRIPT_WAIT_S, else "".
+
+    Shielded: the caller still wants the transcript for the chat bubble.
+    """
+    try:
+        return (await asyncio.wait_for(asyncio.shield(transcript), _TRANSCRIPT_WAIT_S)) or ""
+    except Exception:
+        return ""
 
 
 def _function_call(parts: list[dict]) -> Optional[dict]:
@@ -301,6 +335,7 @@ async def chat(
     user_id=None,
     audio: Optional[tuple[bytes, str]] = None,
     voice: bool = False,
+    transcript: Optional[Awaitable[str]] = None,
 ) -> dict[str, Any]:
     """Neva's reply: {"text", "places", "query", "radius_m", "lang"}.
 
@@ -311,12 +346,12 @@ async def chat(
     With `audio` as (bytes, MIME type) the question is that recording, heard
     directly: a transcript first would put a second model call in front of
     the answer. `voice` asks for a short reply that reads well aloud.
+    `transcript`, a transcription already under way, replaces the recording
+    in the answer after a place search: hearing the audio again took ~2 s.
     Raises NevaUnavailable when no model answered.
     """
     context = _context(latitude, longitude, area)
-    # The system rules alone lost to the persona's bullets-and-emoji format
-    # in a live test (2026-10-27); a line beside the question holds them.
-    spoken = " Answer in one to three short spoken sentences, with no list, markdown or emoji."
+    spoken = _SPOKEN_REMINDER
     if audio is not None:
         clip, mime = audio
         lead = "The user's question is in this voice message." + spoken
@@ -332,6 +367,7 @@ async def chat(
     if contents and contents[-1]["role"] == "user":
         contents.pop()
     contents.append({"role": "user", "parts": question_parts})
+    question_at = len(contents) - 1
 
     system = f"{NEVA_SYSTEM_PROMPT}\n\n{_LANG_RULE}"
     if voice:
@@ -400,7 +436,17 @@ async def chat(
     })
     # Answer now; a second search would leave the map showing the first one.
     body["tool_config"] = {"function_calling_config": {"mode": "NONE"}}
-    second = _parts(await _generate(body, api_key, f"{operation}_places"))
+    if audio is not None and transcript is not None:
+        heard = await _heard(transcript)
+        if heard:
+            asked = f"User Question (spoken): {heard}{spoken}"
+            contents[question_at] = {
+                "role": "user",
+                "parts": [{"text": f"Context: {context}\n\n{asked}" if context else asked}],
+            }
+    second = _parts(await _generate(
+        body, api_key, f"{operation}_places", _VOICE_PLACES_MODELS if voice else _MODELS,
+    ))
     logger.info(
         "Neva searched %r near %s,%s: %d place(s) within %d m",
         query, latitude, longitude, len(places), radius,

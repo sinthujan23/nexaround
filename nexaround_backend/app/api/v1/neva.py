@@ -3,6 +3,7 @@
 Spoken questions and Neva's spoken replies: `app.services.neva_voice`.
 """
 import asyncio
+import base64
 import json
 import logging
 from typing import Literal, Optional
@@ -60,6 +61,9 @@ class NevaVoiceResponse(NevaChatResponse):
     transcript: str = ""
     # The day's spoken allowance (or the API budget) is used up: text only.
     voice_paused: bool = False
+    # The first clip's audio when Chirp made it in time; else the app asks /neva/speak.
+    audio: str = ""
+    audio_mime: str = ""
 
 
 class SpeakRequest(BaseModel):
@@ -148,6 +152,8 @@ async def neva_voice_turn(
     seconds = neva_voice.clip_seconds(clip, mime)
     if seconds is not None and seconds > neva_voice.MAX_CLIP_SECONDS:
         raise HTTPException(status_code=413, detail="The recording is too long.")
+    if seconds is None and len(clip) > neva_voice.MAX_COMPRESSED_BYTES:
+        raise HTTPException(status_code=413, detail="The recording is too long.")
     api_key = await _gemini_key(db)
     if not api_key:
         raise HTTPException(status_code=500, detail="Gemini API Key not configured")
@@ -162,9 +168,11 @@ async def neva_voice_turn(
         paused = True
 
     has_location = latitude is not None and longitude is not None
-    heard, reply = await asyncio.gather(
-        neva_voice.transcribe(clip, mime, api_key),
-        neva_service.chat(
+    # Transcribing runs beside the answer, and a "near me" answer's second
+    # call reads the transcript rather than hearing the recording again.
+    hearing = asyncio.ensure_future(neva_voice.transcribe(clip, mime, api_key))
+    try:
+        reply = await neva_service.chat(
             "",
             api_key=api_key,
             latitude=latitude if has_location else None,
@@ -174,25 +182,47 @@ async def neva_voice_turn(
             user_id=current_user.id,
             audio=(clip, mime),
             voice=True,
-        ),
-        return_exceptions=True,
-    )
-    if isinstance(reply, neva_service.NevaUnavailable):
-        logger.warning("Neva voice unavailable: %s", reply)
+            transcript=hearing,
+        )
+    except neva_service.NevaUnavailable as e:
+        hearing.cancel()
+        logger.warning("Neva voice unavailable: %s", e)
         raise HTTPException(status_code=503, detail="Neva is unavailable right now.")
-    if isinstance(reply, BaseException):
-        raise reply
-    if isinstance(heard, BaseException):
+    except BaseException:
+        hearing.cancel()
+        raise
+    try:
+        heard: Optional[str] = await hearing
+    except Exception as e:
         # The answer stands; the bubble just has no words to show.
-        logger.warning("Neva voice: no transcript: %s", heard)
+        logger.warning("Neva voice: no transcript: %s", e)
         heard = None
     if heard == "":
         raise HTTPException(status_code=422, detail="no_speech")
     if not reply["text"]:
         raise HTTPException(status_code=503, detail="Neva returned an empty reply.")
 
-    speech = [] if paused else neva_voice.speech_for(reply["text"], reply["lang"], current_user.id)
-    return NevaVoiceResponse(**reply, speech=speech, transcript=heard or "", voice_paused=paused)
+    # One clip: as several, each sentence waited for its own synthesis and
+    # the first phone test had up to 6 s of silence between them.
+    speech = [] if paused else neva_voice.speech_for(
+        reply["text"], reply["lang"], current_user.id, whole=True)
+    audio, audio_mime = b"", ""
+    # The fast voice comes back with the text, saving the app a second trip.
+    # Gemini's 4-6 s would hold the text back, so the app fetches those.
+    if speech and await neva_voice.speaks_fast(reply["lang"]):
+        try:
+            audio, audio_mime = await neva_voice.synthesize(
+                speech[0]["text"], speech[0]["lang"], user_id=current_user.id,
+                api_key=api_key, fast_only=True,
+            )
+        except neva_voice.VoiceBlocked:
+            paused, speech = True, []
+        except neva_voice.VoiceUnavailable as e:
+            logger.warning("Neva voice: no audio with the reply: %s", e)
+    return NevaVoiceResponse(
+        **reply, speech=speech, transcript=heard or "", voice_paused=paused,
+        audio=base64.b64encode(audio).decode() if audio else "", audio_mime=audio_mime,
+    )
 
 
 @router.post("/speak")

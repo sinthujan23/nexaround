@@ -53,8 +53,8 @@ def scripted(monkeypatch):
     script: list[dict] = []
     results: dict[int, list] = {}
 
-    async def _generate(body, api_key, operation):
-        calls["gemini"].append({"body": body, "operation": operation})
+    async def _generate(body, api_key, operation, models=None):
+        calls["gemini"].append({"body": body, "operation": operation, "models": models})
         return script.pop(0)
 
     async def _search(*, query, latitude, longitude, radius_m=None, near_me=False):

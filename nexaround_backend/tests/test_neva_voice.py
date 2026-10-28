@@ -6,6 +6,8 @@ Gemini TTS only for languages Chirp has no voice in. Cost is held by short
 replies, a disk cache, signed clips and a daily allowance per user.
 """
 import asyncio
+import base64
+import copy
 import io
 import uuid
 import wave
@@ -283,15 +285,78 @@ def test_gemini_tts_usage_is_read_from_the_interactions_reply(monkeypatch):
 
 @pytest.fixture
 def scripted(monkeypatch):
+    """Gemini from a script. Bodies are copied: chat() edits its body between calls."""
     calls = []
     script = []
 
-    async def _generate(body, api_key, operation):
-        calls.append({"body": body, "operation": operation})
+    async def _generate(body, api_key, operation, models=None):
+        calls.append({"body": copy.deepcopy(body), "operation": operation, "models": models})
         return script.pop(0)
 
+    async def _find_places(query, latitude, longitude, user_id=None):
+        return [], 3000
+
     monkeypatch.setattr(neva_service, "_generate", _generate)
+    monkeypatch.setattr(neva_service, "find_places", _find_places)
     return calls, script
+
+
+def _call(query):
+    return {"candidates": [{"content": {"role": "model", "parts": [
+        {"functionCall": {"name": "find_places", "args": {"query": query}}}]}}]}
+
+
+def _voice_chat(transcript, **kw):
+    return asyncio.run(neva_service.chat(
+        "", api_key="k", latitude=6.9, longitude=79.85, area="Colombo",
+        audio=(_wav(), "audio/wav"), voice=True, transcript=transcript, **kw,
+    ))
+
+
+def test_voice_rules_keep_the_place_search():
+    # The first wording made Neva skip find_places for spoken "near me"
+    # questions and name pharmacies from memory.
+    assert "call find_places first" in neva_service.NEVA_VOICE_RULES
+    assert "only ever name places it returned" in neva_service.NEVA_VOICE_RULES
+
+
+def test_a_spoken_near_me_answer_reads_the_transcript_on_flash_lite(scripted):
+    calls, script = scripted
+    script.extend([_call("pharmacy"), _reply("Nothing close by, sorry. [lang:en]")])
+
+    async def _transcript():
+        return "Is there a pharmacy near me?"
+
+    reply = _voice_chat(_transcript())
+    assert reply["text"] == "Nothing close by, sorry." and reply["lang"] == "en"
+    first, second = calls
+    assert "inline_data" in first["body"]["contents"][-1]["parts"][1]
+    assert first["models"] is None or first["models"] == neva_service._MODELS
+    asked = second["body"]["contents"][0]["parts"]
+    assert len(asked) == 1 and "User Question (spoken): Is there a pharmacy near me?" in asked[0]["text"]
+    assert second["operation"] == "neva_voice_places"
+    assert second["models"] == neva_service._VOICE_PLACES_MODELS
+
+
+def test_a_late_transcript_leaves_the_recording_in(scripted, monkeypatch):
+    calls, script = scripted
+    script.extend([_call("pharmacy"), _reply("Nothing close by. [lang:en]")])
+    monkeypatch.setattr(neva_service, "_TRANSCRIPT_WAIT_S", 0.01)
+
+    async def _slow():
+        await asyncio.sleep(0.2)
+        return "too late"
+
+    _voice_chat(_slow())
+    assert "inline_data" in calls[1]["body"]["contents"][0]["parts"][1]
+
+
+def test_a_typed_near_me_answer_stays_on_flash(scripted):
+    calls, script = scripted
+    script.extend([_call("pharmacy"), _reply("Here are the closest. [lang:en]")])
+    asyncio.run(neva_service.chat("pharmacy near me?", api_key="k", latitude=6.9, longitude=79.85))
+    assert calls[1]["models"] == neva_service._MODELS
+    assert calls[1]["operation"] == "neva_chat_places"
 
 
 def test_the_language_tag_is_stripped_and_returned(scripted):
@@ -327,7 +392,7 @@ def test_a_recording_is_heard_directly_with_the_voice_rules(scripted):
 # ── The endpoints ───────────────────────────────────────────────────────────
 
 @pytest.fixture
-def endpoint(monkeypatch, voice_config):
+def endpoint(monkeypatch, voice_config, engines):
     heard = {"value": "Is there a pharmacy near me?"}
     answer = {"value": {"text": "Yes, one is 300 metres away.", "places": [], "query": "",
                         "radius_m": 0, "lang": "en"}}
@@ -369,6 +434,60 @@ def test_a_spoken_question_comes_back_with_its_transcript_and_signed_speech(endp
     assert out.voice_paused is False
     assert seen["voice"] is True and seen["audio"][1] == "audio/wav"
     assert seen["history"] == [{"role": "user", "text": "hi"}], "malformed turns dropped"
+
+
+def test_the_fast_voice_comes_back_with_the_text(endpoint, engines):
+    calls, _ = engines
+    out = _voice_turn()
+    assert len(out.speech) == 1, "one clip: no gaps between sentences"
+    assert out.audio_mime == "audio/mpeg"
+    assert base64.b64decode(out.audio).startswith(b"ID3mp3")
+    assert calls["chirp"] == [("Yes, one is 300 metres away.", "en-US", "cloud-key")]
+    # Kept on disk, so the app's later /neva/speak for the same clip is free.
+    assert _speak("Yes, one is 300 metres away.", "en")[1] == "audio/mpeg"
+    assert len(calls["chirp"]) == 1
+
+
+def test_without_the_fast_voice_the_app_fetches_the_clip(endpoint, engines, voice_config):
+    cfg, _ = voice_config
+    cfg["tts_key"] = ""
+    calls, _ = engines
+    out = _voice_turn()
+    assert out.audio == "" and len(out.speech) == 1
+    assert calls["gemini"] == [], "Gemini's 4-6 s would hold the text back"
+
+
+def test_a_chirp_failure_does_not_hold_the_text_for_gemini(endpoint, engines):
+    calls, chirp_result = engines
+    chirp_result["value"] = None
+    out = _voice_turn()
+    assert out.audio == "" and len(out.speech) == 1
+    assert calls["gemini"] == []
+
+
+def test_the_whole_reply_is_one_clip():
+    text = "Sure! The closest one is 300 metres away. I've pinned it on the map below."
+    clips = neva_voice.speech_for(text, "en", USER, whole=True)
+    assert [c["text"] for c in clips] == [text]
+    assert len(neva_voice.speech_for(text, "en", USER)) == 2, "typed replies are still split"
+
+
+def test_aac_recordings_are_recognised():
+    assert neva_voice.clip_mime(b"\x00\x00\x00\x1cftypM4A \x00\x00\x00\x00") == "audio/aac"
+    assert neva_voice.clip_mime(b"\xff\xf1\x50\x80\x00\x1f\xfc") == "audio/aac", "ADTS"
+    assert neva_voice.clip_mime(b"\xff\xfb\x90\x64\x00") == "audio/mp3"
+
+
+def test_an_aac_recording_reaches_neva_as_aac(endpoint):
+    _, _, seen = endpoint
+    _voice_turn(clip=b"\x00\x00\x00\x1cftypM4A " + b"\x00" * 4000)
+    assert seen["audio"][1] == "audio/aac"
+
+
+def test_an_oversized_compressed_recording_is_refused(endpoint):
+    with pytest.raises(HTTPException) as err:
+        _voice_turn(clip=b"\x00\x00\x00\x1cftypM4A " + b"\x00" * neva_voice.MAX_COMPRESSED_BYTES)
+    assert err.value.status_code == 413
 
 
 def test_silence_is_reported_not_answered(endpoint):

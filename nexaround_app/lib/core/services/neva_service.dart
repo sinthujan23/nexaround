@@ -123,8 +123,9 @@ class NevaService {
     }
   }
 
-  /// Sends the recording at [audioPath] (16 kHz mono WAV) and returns Neva's
-  /// short spoken-style reply with what the user said.
+  /// Sends the recording at [audioPath] (16 kHz mono AAC) and returns Neva's
+  /// short spoken-style reply with what the user said. When the backend sent
+  /// the reply's audio along, it is stored where [speak] finds it.
   static Future<NevaVoiceOutcome> voice({
     required String audioPath,
     double? latitude,
@@ -134,7 +135,7 @@ class NevaService {
   }) async {
     try {
       final form = FormData.fromMap({
-        'audio': await MultipartFile.fromFile(audioPath, filename: 'question.wav'),
+        'audio': await MultipartFile.fromFile(audioPath, filename: audioPath.split('/').last),
         if (latitude != null && longitude != null) 'latitude': latitude.toString(),
         if (latitude != null && longitude != null) 'longitude': longitude.toString(),
         if (area != null && area.isNotEmpty && area != 'Nearby') 'area': area,
@@ -145,10 +146,19 @@ class NevaService {
         data: form,
         options: _options,
       );
-      final reply = response.statusCode == 200 ? _parse(response.data) : null;
-      return reply == null
-          ? const NevaVoiceOutcome.failed(NevaVoiceFailure.unavailable)
-          : NevaVoiceOutcome.reply(reply);
+      final data = response.data;
+      final reply = response.statusCode == 200 ? _parse(data) : null;
+      if (reply == null) return const NevaVoiceOutcome.failed(NevaVoiceFailure.unavailable);
+      final audio = data is Map ? (data['audio'] ?? '').toString() : '';
+      if (audio.isNotEmpty && reply.speech.isNotEmpty) {
+        try {
+          final mime = (data as Map)['audio_mime']?.toString() ?? '';
+          await _storeClip(reply.speech.first, base64Decode(audio), mime);
+        } catch (e) {
+          debugPrint('Neva reply audio not kept: $e');
+        }
+      }
+      return NevaVoiceOutcome.reply(reply);
     } on DioException catch (e) {
       final status = e.response?.statusCode;
       final data = e.response?.data;
@@ -171,7 +181,7 @@ class NevaService {
   /// `paused` is true when today's voice allowance is used up or voice is off.
   static Future<({String? path, bool paused})> speak(NevaSpeechClip clip) async {
     try {
-      final dir = Directory('${(await getTemporaryDirectory()).path}/neva_voice');
+      final dir = await _clipDir();
       for (final ext in const ['mp3', 'wav']) {
         final file = File('${dir.path}/${clip.sig}.$ext');
         if (await file.exists() && await file.length() > 0) {
@@ -195,10 +205,7 @@ class NevaService {
       }
       if (bytes.isEmpty) return (path: null, paused: false);
       final type = response.headers.value(Headers.contentTypeHeader) ?? '';
-      await dir.create(recursive: true);
-      final file = File('${dir.path}/${clip.sig}.${type.contains('wav') ? 'wav' : 'mp3'}');
-      await file.writeAsBytes(bytes, flush: true);
-      return (path: file.path, paused: false);
+      return (path: await _storeClip(clip, bytes, type), paused: false);
     } on DioException catch (e) {
       if (e.response?.statusCode == 429) return (path: null, paused: true);
       debugPrint('Neva speech failed: $e');
@@ -207,6 +214,18 @@ class NevaService {
       debugPrint('Neva speech failed: $e');
       return (path: null, paused: false);
     }
+  }
+
+  static Future<Directory> _clipDir() async =>
+      Directory('${(await getTemporaryDirectory()).path}/neva_voice');
+
+  /// Keeps [bytes] as the audio of [clip], so [speak] plays it without a request.
+  static Future<String> _storeClip(NevaSpeechClip clip, List<int> bytes, String mime) async {
+    final dir = await _clipDir();
+    await dir.create(recursive: true);
+    final file = File('${dir.path}/${clip.sig}.${mime.contains('wav') ? 'wav' : 'mp3'}');
+    await file.writeAsBytes(bytes, flush: true);
+    return file.path;
   }
 
   static NevaReply? _parse(dynamic data) {
