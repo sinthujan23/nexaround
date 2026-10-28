@@ -22,6 +22,7 @@ class CityTourCard {
   final String duration;
   final String budget;
   final int stopCount;
+  final int dayCount;
 
   const CityTourCard({
     required this.id,
@@ -33,6 +34,7 @@ class CityTourCard {
     required this.duration,
     required this.budget,
     required this.stopCount,
+    this.dayCount = 1,
   });
 
   factory CityTourCard.fromJson(Map<String, dynamic> json) => CityTourCard(
@@ -45,6 +47,7 @@ class CityTourCard {
         duration: _s(json['duration']),
         budget: _s(json['budget']),
         stopCount: (json['stop_count'] as num?)?.toInt() ?? 0,
+        dayCount: (json['day_count'] as num?)?.toInt() ?? 1,
       );
 
   /// Guides group into one city however the writer capitalised it.
@@ -146,10 +149,13 @@ class CityTourLink {
   }
 }
 
-/// A place to visit ([isStop]) or the way to the next one.
+/// A place to visit ([isStop]), the way to the next one ([isMove]) or a meal
+/// or rest ([isBreak]).
 class CityTourStep {
   final String id;
-  final bool isStop;
+
+  /// "stop", "move" or "break".
+  final String kind;
 
   // A stop.
   final int number;
@@ -164,15 +170,26 @@ class CityTourStep {
   final String mode;
   final String modeLabel;
   final String directions;
-  final String duration;
   final String cost;
+
+  // A break: "Lunch / Rest".
+  final String breakTitle;
+
+  /// A ride's or a break's time, as written ("15 min").
+  final String duration;
+
+  /// When it is shut, what to book: "Closed Tuesdays."
+  final String accessNote;
+
+  /// Planned minutes, read by the server from the time written.
+  final int minutes;
 
   final String bodyMd;
   final List<CityTourLink> links;
 
   const CityTourStep({
     required this.id,
-    required this.isStop,
+    required this.kind,
     this.number = 0,
     this.name = '',
     this.lat,
@@ -183,23 +200,29 @@ class CityTourStep {
     this.mode = 'walk',
     this.modeLabel = '',
     this.directions = '',
-    this.duration = '',
     this.cost = '',
+    this.breakTitle = '',
+    this.duration = '',
+    this.accessNote = '',
+    this.minutes = 0,
     this.bodyMd = '',
     this.links = const [],
   });
 
+  bool get isStop => kind == 'stop';
+  bool get isMove => kind == 'move';
+  bool get isBreak => kind == 'break';
   bool get hasPin => lat != null && lng != null;
 
   factory CityTourStep.fromJson(Map<String, dynamic> json) {
-    final isStop = json['type'] == 'stop';
+    final kind = const ['stop', 'move', 'break'].contains(json['type']) ? json['type'] as String : 'move';
     final links = (json['links'] as List? ?? const [])
         .whereType<Map>()
         .map((e) => CityTourLink.fromJson(e.cast<String, dynamic>()))
         .toList();
     return CityTourStep(
       id: _s(json['id']),
-      isStop: isStop,
+      kind: kind,
       number: (json['number'] as num?)?.toInt() ?? 0,
       name: _s(json['name']),
       lat: (json['lat'] as num?)?.toDouble(),
@@ -209,33 +232,40 @@ class CityTourStep {
       price: _s(json['price']),
       mode: _s(json['mode']).isEmpty ? 'walk' : _s(json['mode']),
       modeLabel: _s(json['mode_label']),
-      directions: isStop ? '' : _s(json['title']),
-      duration: _s(json['duration']),
+      directions: kind == 'move' ? _s(json['title']) : '',
       cost: _s(json['cost']),
+      breakTitle: kind == 'break' ? _s(json['title']) : '',
+      duration: _s(json['duration']),
+      accessNote: _s(json['access_note']),
+      minutes: (json['minutes'] as num?)?.toInt() ?? 0,
       bodyMd: _s(json['body_md']),
       links: links,
     );
   }
 }
 
-/// A whole guide.
-class CityTour {
+/// One day of a guide: a group of places in order, from [startsAt] ("09:00";
+/// empty when the guide gives no time).
+class CityTourDay {
   final String id;
-  final CityTourCard card;
-  final String introMd;
+  final String title;
+  final String startsAt;
+  final int minutes;
   final List<CityTourStep> steps;
 
-  const CityTour({
+  const CityTourDay({
     required this.id,
-    required this.card,
-    required this.introMd,
+    required this.title,
+    required this.startsAt,
+    required this.minutes,
     required this.steps,
   });
 
-  factory CityTour.fromJson(Map<String, dynamic> json) => CityTour(
+  factory CityTourDay.fromJson(Map<String, dynamic> json) => CityTourDay(
         id: _s(json['id']),
-        card: CityTourCard.fromJson(json),
-        introMd: _s(json['intro_md']),
+        title: _s(json['title']),
+        startsAt: _s(json['starts_at']),
+        minutes: (json['minutes'] as num?)?.toInt() ?? 0,
         steps: (json['steps'] as List? ?? const [])
             .whereType<Map>()
             .map((e) => CityTourStep.fromJson(e.cast<String, dynamic>()))
@@ -243,4 +273,56 @@ class CityTour {
       );
 
   List<CityTourStep> get stops => steps.where((s) => s.isStop).toList();
+
+  /// Today at [startsAt], or null with no start time.
+  DateTime? startOn(DateTime day) {
+    final parts = startsAt.split(':');
+    if (parts.length != 2) return null;
+    final h = int.tryParse(parts[0]), m = int.tryParse(parts[1]);
+    if (h == null || m == null) return null;
+    return DateTime(day.year, day.month, day.day, h, m);
+  }
+}
+
+/// A whole guide: one day, or several for the traveller to choose from.
+class CityTour {
+  final String id;
+  final CityTourCard card;
+  final String introMd;
+  final List<CityTourDay> days;
+
+  const CityTour({
+    required this.id,
+    required this.card,
+    required this.introMd,
+    required this.days,
+  });
+
+  factory CityTour.fromJson(Map<String, dynamic> json) {
+    var days = (json['days'] as List? ?? const [])
+        .whereType<Map>()
+        .map((e) => CityTourDay.fromJson(e.cast<String, dynamic>()))
+        .toList();
+    // A copy saved on the device before guides had days.
+    if (days.isEmpty && json['steps'] is List) {
+      days = [CityTourDay.fromJson({'id': 'day-1', 'steps': json['steps']})];
+    }
+    return CityTour(
+      id: _s(json['id']),
+      card: CityTourCard.fromJson(json),
+      introMd: _s(json['intro_md']),
+      days: days,
+    );
+  }
+
+  bool get hasDays => days.length > 1;
+  List<CityTourStep> get steps => [for (final d in days) ...d.steps];
+  List<CityTourStep> get stops => steps.where((s) => s.isStop).toList();
+
+  CityTourDay? dayById(String? id) {
+    for (final d in days) {
+      if (d.id == id) return d;
+    }
+    return null;
+  }
 }

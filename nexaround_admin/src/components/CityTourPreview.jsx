@@ -2,7 +2,7 @@ import { Fragment, useEffect, useRef, useState } from 'react';
 import { mediaUrl } from '../api';
 import { inlineRuns, parseBlocks } from '../descriptionFormat';
 import { escapeHtml } from '../places';
-import { modeOf, partnerLogo, stopNumbers } from '../cityTours';
+import { allSteps, dayPlan, formatClock, modeOf, partnerLogo, stopNumbers } from '../cityTours';
 
 // The guide as the app draws it, at the app's own sizes: a copy of
 // nexaround_app/lib/features/city_tours/ (city_tour_page.dart and
@@ -86,9 +86,11 @@ function Fact({ icon, text }) {
 }
 
 function facts(content) {
-  const stops = (content.steps || []).filter((s) => s.type === 'stop').length;
+  const stops = allSteps(content).filter((s) => s.type === 'stop').length;
+  const days = (content.days || []).length;
   return (
     <>
+      {days > 1 && <Fact icon="calendar_today" text={`${days} days`} />}
       {stops > 0 && <Fact icon="place" text={stops === 1 ? '1 stop' : `${stops} stops`} />}
       {content.duration && <Fact icon="schedule" text={content.duration} />}
       {content.budget && <Fact icon="payments" text={content.budget} />}
@@ -216,20 +218,63 @@ function Links({ links, partners, gap }) {
   );
 }
 
-function Step({ step, number, isFirst, isLast, isLastStop, partners }) {
+/** The planned "9:00 AM – 11:45 AM" above a step (CityTourStepTile._time). */
+function PlannedTime({ time, stop }) {
+  if (!time) return null;
+  return (
+    <div className="ctp-time" style={{ paddingTop: stop ? 2 : 5, paddingBottom: stop ? 2 : 0 }}>
+      <Icon name="schedule" size={14} color="#9E9E9E" />
+      {formatClock(time[0])} – {formatClock(time[1])}
+    </div>
+  );
+}
+
+function AccessNote({ text }) {
+  if (!text) return null;
+  return (
+    <div className="ctp-access">
+      <Icon name="info_outline" size={14} color="#9E9E9E" />
+      <span>{text}</span>
+    </div>
+  );
+}
+
+function Step({ step, number, isFirst, isLast, isLastStop, partners, time }) {
   const line = !(isFirst && isLast) && (
     <span
       className="ctp-rail"
       style={isLast ? { top: isFirst ? 14 : 0, height: 14 } : { top: isFirst ? 14 : 0, bottom: 0 }}
     />
   );
+  if (step.type === 'break') {
+    return (
+      <div className="ctp-step" style={{ paddingBottom: isLast ? 0 : 22 }}>
+        {line}
+        <span className="ctp-mode"><Icon name="restaurant" size={15} color="#545454" /></span>
+        <div className="ctp-step-body">
+          <PlannedTime time={time} />
+          <div style={{ paddingTop: 5 }}>
+            <div className="ctp-move-line">
+              <strong>{step.title || 'Break'}</strong>
+              {step.duration && <span> · {step.duration}</span>}
+            </div>
+            <AccessNote text={step.access_note} />
+            {step.body_md && <div style={{ marginTop: 8 }}><AppMarkdown text={step.body_md} /></div>}
+            <Links links={step.links} partners={partners} gap={10} />
+          </div>
+        </div>
+      </div>
+    );
+  }
   if (step.type === 'stop') {
     const caption = isFirst ? 'START HERE' : isLastStop ? 'LAST STOP' : null;
     return (
       <div className="ctp-step" style={{ paddingBottom: isLast ? 0 : 22 }}>
         {line}
         <StopBadge number={number} />
-        <div className="ctp-step-body" style={{ paddingTop: 2 }}>
+        <div className="ctp-step-body">
+          <PlannedTime time={time} stop />
+          <div style={{ paddingTop: 2 }}>
           {caption && <div className="ctp-caption">{caption}</div>}
           <div className="ctp-stop-name">{step.name}</div>
           {(step.time_here || step.price) && (
@@ -238,9 +283,11 @@ function Step({ step, number, isFirst, isLast, isLastStop, partners }) {
               {step.price && <span><Icon name="confirmation_number" size={14} color="#9E9E9E" />{step.price}</span>}
             </div>
           )}
+          <AccessNote text={step.access_note} />
           {step.photo_url && <img className="ctp-stop-photo" src={mediaUrl(step.photo_url)} alt="" />}
           {step.body_md && <div style={{ marginTop: 10 }}><AppMarkdown text={step.body_md} /></div>}
           <Links links={step.links} partners={partners} gap={12} />
+          </div>
         </div>
       </div>
     );
@@ -251,24 +298,112 @@ function Step({ step, number, isFirst, isLast, isLastStop, partners }) {
     <div className="ctp-step" style={{ paddingBottom: isLast ? 0 : 22 }}>
       {line}
       <span className="ctp-mode"><Icon name={mode.icon} size={15} color="#545454" /></span>
-      <div className="ctp-step-body" style={{ paddingTop: 5 }}>
-        <div className="ctp-move-line">
-          <strong>{mode.label}</strong>
-          {extras.length > 0 && <span> · {extras.join(' · ')}</span>}
+      <div className="ctp-step-body">
+        <PlannedTime time={time} />
+        <div style={{ paddingTop: 5 }}>
+          <div className="ctp-move-line">
+            <strong>{mode.label}</strong>
+            {extras.length > 0 && <span> · {extras.join(' · ')}</span>}
+          </div>
+          {step.title && <div className="ctp-move-dir">{step.title}</div>}
+          <AccessNote text={step.access_note} />
+          {step.body_md && <div style={{ marginTop: 8 }}><AppMarkdown text={step.body_md} /></div>}
+          <Links links={step.links} partners={partners} gap={10} />
         </div>
-        {step.title && <div className="ctp-move-dir">{step.title}</div>}
-        {step.body_md && <div style={{ marginTop: 8 }}><AppMarkdown text={step.body_md} /></div>}
-        <Links links={step.links} partners={partners} gap={10} />
       </div>
     </div>
   );
 }
 
-function GuidePage({ content, partners }) {
-  const steps = content.steps || [];
+/** One day's route: its map, then each step with its planned time. */
+function DayRoute({ day, partners }) {
+  const steps = day.steps || [];
   const numbers = stopNumbers(steps);
+  const plan = dayPlan(day);
   const stops = steps.filter((s) => s.type === 'stop').map((s) => ({ ...s, number: numbers[s.id] }));
   const lastStopId = stops.length > 1 ? stops[stops.length - 1].id : null;
+  return (
+    <>
+      <RouteMap key={day.id} stops={stops} />
+      <div style={{ height: 18 }} />
+      {steps.map((s, i) => (
+        <Step
+          key={s.id} step={s} number={numbers[s.id]} partners={partners} time={plan.times[s.id]}
+          isFirst={i === 0} isLast={i === steps.length - 1} isLastStop={s.id === lastStopId}
+        />
+      ))}
+    </>
+  );
+}
+
+const dayLine = (day) => {
+  const plan = dayPlan(day);
+  const places = (day.steps || []).filter((s) => s.type === 'stop').length;
+  return [plan.start !== null ? `${formatClock(plan.start)} – ${formatClock(plan.end)}` : '',
+    `${places} place${places === 1 ? '' : 's'}`].filter(Boolean).join(' · ');
+};
+
+/** CityTourPlanPicker: how many days, or which days' places. */
+function Planner({ days, picked, onPick, onShow }) {
+  const chosen = new Set(picked);
+  const firstN = picked.length > 0 && picked.every((id, i) => days[i]?.id === id) ? picked.length : 0;
+  const toggle = (id) => onPick(days.map((d) => d.id).filter((x) => (x === id ? !chosen.has(x) : chosen.has(x))));
+  return (
+    <div className="ctp-planner">
+      <div className="ctp-caption">PLAN YOUR DAYS</div>
+      <div className="ctp-planner-title">How many days do you have?</div>
+      <div className="ctp-daychips">
+        {days.map((d, i) => (
+          <span
+            key={d.id} className={`ctp-daychip ${firstN === i + 1 ? 'on' : ''}`}
+            onClick={() => onPick(days.slice(0, i + 1).map((x) => x.id))}
+          >
+            {i + 1}
+          </span>
+        ))}
+      </div>
+      <div className="ctp-planner-or">Or pick the places you want</div>
+      {days.map((d, i) => (
+        <div key={d.id} className="ctp-daypick" onClick={() => toggle(d.id)}>
+          <Icon
+            name={chosen.has(d.id) ? 'check_box' : 'check_box_outline_blank'} size={22}
+            color={chosen.has(d.id) ? '#007A7C' : '#9E9E9E'}
+          />
+          <span>
+            <strong>Day {i + 1} · {d.title || 'Places to add'}</strong>
+            <span>{dayLine(d)}</span>
+          </span>
+        </div>
+      ))}
+      <div className={`ctp-planner-btn ${picked.length ? '' : 'off'}`} onClick={() => picked.length && onShow()}>
+        {picked.length ? `Show my ${picked.length}-day plan` : 'Pick your days'}
+      </div>
+    </div>
+  );
+}
+
+function GuidePage({ content, partners, activeDayId }) {
+  const days = content.days || [];
+  const ids = days.map((d) => d.id);
+  const several = days.length > 1;
+  // The traveller's plan (day ids) and the day on screen, as in the app. The
+  // editor's day being worked on (activeDayId) is brought into view.
+  const [plan, setPlan] = useState(null);
+  const [picked, setPicked] = useState([]);
+  const [tab, setTab] = useState(null);
+  const [seenActive, setSeenActive] = useState(activeDayId);
+  if (activeDayId !== seenActive) {
+    setSeenActive(activeDayId);
+    if (activeDayId && ids.includes(activeDayId)) {
+      if (!plan || !plan.includes(activeDayId)) setPlan(ids);
+      setTab(activeDayId);
+    }
+  }
+  const planDays = (plan || []).map((id) => days.find((d) => d.id === id)).filter(Boolean);
+  const shown = several
+    ? planDays.find((d) => d.id === tab) || planDays[0]
+    : days[0];
+  const shownNumber = shown ? planDays.indexOf(shown) + 1 : 1;
   const place = [content.city, content.country].filter(Boolean).join(' · ');
   return (
     <div className="ctp-page">
@@ -286,21 +421,50 @@ function GuidePage({ content, partners }) {
         <div className="ctp-facts">{facts(content)}</div>
       </div>
       <div className="ctp-body">
-        <RouteMap stops={stops} />
-        {content.intro_md && <div style={{ marginTop: 20 }}><AppMarkdown text={content.intro_md} /></div>}
-        <div className="ctp-route-title">The route</div>
-        {steps.map((s, i) => (
-          <Step
-            key={s.id} step={s} number={numbers[s.id]} partners={partners}
-            isFirst={i === 0} isLast={i === steps.length - 1} isLastStop={s.id === lastStopId}
-          />
-        ))}
+        {!several && shown && (
+          <>
+            {content.intro_md && <div style={{ marginBottom: 20 }}><AppMarkdown text={content.intro_md} /></div>}
+            <div className="ctp-route-title" style={{ marginTop: 0 }}>The route</div>
+            <DayRoute day={shown} partners={partners} />
+          </>
+        )}
+        {several && (
+          <>
+            {content.intro_md && <div style={{ marginBottom: 20 }}><AppMarkdown text={content.intro_md} /></div>}
+            {!shown ? (
+              <Planner
+                days={days} picked={picked} onPick={setPicked}
+                onShow={() => { setPlan(picked); setTab(picked[0]); }}
+              />
+            ) : (
+              <>
+                <div className="ctp-plan-head">
+                  <span className="ctp-caption">YOUR PLAN · {planDays.length} DAY{planDays.length === 1 ? '' : 'S'}</span>
+                  <span className="ctp-plan-change" onClick={() => { setPicked(plan); setPlan(null); }}>Change</span>
+                </div>
+                <div className="ctp-daytabs">
+                  {planDays.map((d, i) => (
+                    <span key={d.id} className={`ctp-daytab ${d.id === shown.id ? 'on' : ''}`} onClick={() => setTab(d.id)}>
+                      Day {i + 1}
+                    </span>
+                  ))}
+                </div>
+                <div className="ctp-day-title">{shown.title || `Day ${shownNumber}`}</div>
+                <div className="ctp-day-meta">{dayLine(shown)}</div>
+                <div style={{ height: 14 }} />
+                <DayRoute day={shown} partners={partners} />
+              </>
+            )}
+          </>
+        )}
       </div>
-      {steps.length > 0 && (
+      {shown && (shown.steps || []).length > 0 && (
         // CityTourTripBar before a trip starts (the page's bottomNavigationBar).
         <div className="ctp-tripbar">
           <div className="ctp-tripbar-note">Plans your times from now and reminds you at each stop.</div>
-          <div className="ctp-trip-btn"><Icon name="play_arrow" size={22} color="#fff" />Start trip</div>
+          <div className="ctp-trip-btn">
+            <Icon name="play_arrow" size={22} color="#fff" />{several ? `Start Day ${shownNumber}` : 'Start trip'}
+          </div>
         </div>
       )}
     </div>
@@ -365,7 +529,7 @@ function useFitScale(root, fit) {
  * changes. "Guide page" is the guide itself; "In a list" is its card where a
  * city has more than one guide.
  */
-export default function CityTourPreview({ content, partners, tab: initialTab = 'page' }) {
+export default function CityTourPreview({ content, partners, activeDayId = null, tab: initialTab = 'page' }) {
   const [tab, setTab] = useState(initialTab);
   const root = useRef(null);
   const fit = useRef(null);
@@ -386,7 +550,7 @@ export default function CityTourPreview({ content, partners, tab: initialTab = '
         <div className="ctp-phone" style={{ transform: `scale(${scale})` }}>
           <div className="ctp-screen">
             {tab === 'page'
-              ? <GuidePage content={content} partners={partners} />
+              ? <GuidePage content={content} partners={partners} activeDayId={activeDayId} />
               : <ListPage content={content} />}
           </div>
           <span className="ctp-island" />

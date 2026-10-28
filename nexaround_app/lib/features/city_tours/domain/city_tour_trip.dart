@@ -1,12 +1,13 @@
 import 'package:nexaround_app/features/city_tours/domain/city_tour.dart';
 
-/// A traveller following a guide: "Start trip" saved [startedAt], and each
+/// A traveller following one day of a guide ([dayId]): "Start trip" saved [startedAt], and each
 /// "Mark done" saved when a step ended. The server reads every step's planned
 /// minutes from the guide ("1.5–2 hours" → 105) and sends them in [minutes],
 /// so the app and the server's reminders plan with the same numbers.
 /// Shape from GET/POST /city-tours/{id}/trip.
 class CityTourTrip {
   final String id;
+  final String dayId;
   final DateTime startedAt;
   final DateTime? finishedAt;
   final Map<String, DateTime> done;
@@ -14,6 +15,7 @@ class CityTourTrip {
 
   const CityTourTrip({
     required this.id,
+    this.dayId = '',
     required this.startedAt,
     required this.finishedAt,
     required this.done,
@@ -37,6 +39,7 @@ class CityTourTrip {
     });
     return CityTourTrip(
       id: (json['id'] ?? '').toString(),
+      dayId: (json['day_id'] ?? '').toString(),
       startedAt: _time(json['started_at']) ?? DateTime.now(),
       finishedAt: _time(json['finished_at']),
       done: done,
@@ -44,7 +47,7 @@ class CityTourTrip {
     );
   }
 
-  int minutesFor(CityTourStep step) => minutes[step.id] ?? (step.isStop ? 30 : 15);
+  int minutesFor(CityTourStep step) => minutes[step.id] ?? cityTourPlannedMinutes(step);
 
   /// Every step's times as of [now]. A step starts when the one before it was
   /// marked done (the first, at the start); the step in hand runs its planned
@@ -113,3 +116,27 @@ class CityTourSchedule {
     required this.behindMinutes,
   });
 }
+
+/// A step's planned minutes when no trip says otherwise: the server's number,
+/// else its defaults (stop 30, ride 15, break 45).
+int cityTourPlannedMinutes(CityTourStep step) {
+  if (step.minutes > 0) return step.minutes;
+  if (step.isStop) return 30;
+  return step.isBreak ? 45 : 15;
+}
+
+/// A day's planned times from its own start time ("9:00 AM – 11:45 AM"),
+/// for a day nobody is following yet. Empty when the day has no start time.
+Map<String, CityTourStepTime> cityTourDayPlan(CityTourDay day, DateTime today) {
+  final start = day.startOn(today);
+  if (start == null) return const {};
+  var cursor = start;
+  final times = <String, CityTourStepTime>{};
+  for (final step in day.steps) {
+    final end = cursor.add(Duration(minutes: cityTourPlannedMinutes(step)));
+    times[step.id] = CityTourStepTime(start: cursor, end: end);
+    cursor = end;
+  }
+  return times;
+}
+

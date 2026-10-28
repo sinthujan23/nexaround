@@ -17,6 +17,7 @@ class CityToursService {
   static const String _listKey = 'city_tours_list';
   static String _tourKey(String id) => 'city_tour_$id';
   static String _tripKey(String id) => 'city_tour_trip_$id';
+  static String _planKey(String id) => 'city_tour_plan_$id';
 
   Future<List<CityTourCard>> getTours() async {
     final response = await _dio.get(_base);
@@ -69,11 +70,26 @@ class CityToursService {
     return trip is Map ? CityTourTrip.fromJson(trip.cast<String, dynamic>()) : null;
   }
 
-  /// Starts the guide now; a trip already running on it ends.
-  Future<CityTourTrip> startTrip(String tourId) async {
-    final response = await _dio.post('$_base/$tourId/trip');
+  /// Starts one day of the guide now ([dayId]; the first day when null). A
+  /// trip already running on the guide ends.
+  Future<CityTourTrip> startTrip(String tourId, {String? dayId}) async {
+    final response = await _dio.post(
+      '$_base/$tourId/trip',
+      data: dayId == null ? null : {'day_id': dayId},
+    );
     return (await _saveTrip(tourId, response.data))!;
   }
+
+  // The days a traveller picked for a guide, on this device only.
+
+  List<String>? savedPlan(String tourId) {
+    final raw = _read(_planKey(tourId));
+    final days = raw?['days'];
+    return days is List ? days.map((e) => e.toString()).toList() : null;
+  }
+
+  Future<void> savePlan(String tourId, List<String> dayIds) =>
+      CacheService.saveUserData(_planKey(tourId), json.encode({'days': dayIds}));
 
   /// [at] is when the traveller tapped, so a retry keeps that time.
   Future<CityTourTrip> markDone(String tourId, String stepId, DateTime at) async {

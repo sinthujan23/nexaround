@@ -11,7 +11,8 @@ import CityTourLinks from '../components/CityTourLinks';
 import CityTourPreview from '../components/CityTourPreview';
 import { COUNTRIES } from '../constants/countries';
 import {
-  MODES, emptyGuide, modeOf, newMove, newStop, notifyCityToursChanged, stopNumbers, tourBadges,
+  MODES, dayPlan, emptyGuide, formatClock, modeOf, newBreak, newDay, newMove, newStop,
+  notifyCityToursChanged, stopNumbers, tourBadges, withDays,
 } from '../cityTours';
 import { isCreator } from '../session';
 import { useToast } from '../hooks';
@@ -71,6 +72,20 @@ function PhotoField({ value, onChange, onBusy, label, hint }) {
   );
 }
 
+/** The doc's "Closure / Access" column: when it is shut, what to book. */
+function AccessNote({ step, patch }) {
+  return (
+    <div className="form-group">
+      <label className="form-label">Opening & access</label>
+      <input
+        className="form-input" maxLength={300} value={step.access_note || ''}
+        placeholder="e.g. Closed Tuesdays. Book a time slot online."
+        onChange={(e) => patch({ access_note: e.target.value })}
+      />
+    </div>
+  );
+}
+
 function StopFields({ step, patch, partners, taps, center, onBusy, where }) {
   return (
     <>
@@ -109,7 +124,7 @@ function StopFields({ step, patch, partners, taps, center, onBusy, where }) {
         <div className="form-group">
           <label className="form-label">Time to spend here</label>
           <input
-            className="form-input" maxLength={40} value={step.time_here} placeholder="e.g. 1–2 hours"
+            className="form-input" maxLength={40} value={step.time_here} placeholder="e.g. 2 hr 45 min"
             onChange={(e) => patch({ time_here: e.target.value })}
           />
         </div>
@@ -121,6 +136,7 @@ function StopFields({ step, patch, partners, taps, center, onBusy, where }) {
           />
         </div>
       </div>
+      <AccessNote step={step} patch={patch} />
       <div className="form-group">
         <label className="form-label">What to see and do</label>
         <RichTextEditor
@@ -177,11 +193,49 @@ function MoveFields({ step, patch, partners, taps, where }) {
           />
         </div>
       </div>
+      <AccessNote step={step} patch={patch} />
       <div className="form-group">
         <label className="form-label">More details</label>
         <RichTextEditor
           value={step.body_md} minHeight={90}
           placeholder="Where to buy the ticket, which exit to take…"
+          onChange={(v) => patch({ body_md: v })}
+        />
+      </div>
+      <div className="form-group" style={{ marginBottom: 0 }}>
+        <label className="form-label">Partner links</label>
+        <CityTourLinks links={step.links} partners={partners} taps={taps} where={where} onChange={(links) => patch({ links })} />
+      </div>
+    </>
+  );
+}
+
+/** A meal or a rest: no place on the map, just time in the day. */
+function BreakFields({ step, patch, partners, taps, where }) {
+  return (
+    <>
+      <div className="form-grid-2">
+        <div className="form-group">
+          <label className="form-label">Name</label>
+          <input
+            className="form-input" maxLength={80} value={step.title} placeholder="e.g. Lunch / Rest"
+            onChange={(e) => patch({ title: e.target.value })}
+          />
+        </div>
+        <div className="form-group">
+          <label className="form-label">How long</label>
+          <input
+            className="form-input" maxLength={40} value={step.duration} placeholder="e.g. 45 min"
+            onChange={(e) => patch({ duration: e.target.value })}
+          />
+        </div>
+      </div>
+      <AccessNote step={step} patch={patch} />
+      <div className="form-group">
+        <label className="form-label">More details</label>
+        <RichTextEditor
+          value={step.body_md} minHeight={90}
+          placeholder="Where to eat nearby, what to try…"
           onChange={(v) => patch({ body_md: v })}
         />
       </div>
@@ -210,7 +264,9 @@ export default function CityTourEditor() {
   const [base, setBase] = useState(form);
   const [partners, setPartners] = useState(null);
   const [loadError, setLoadError] = useState('');
-  const [openStep, setOpenStep] = useState(() => form?.steps?.[0]?.id || null);
+  const [openStep, setOpenStep] = useState(() => form?.days?.[0]?.steps?.[0]?.id || null);
+  // The day being worked on: the phone preview shows it.
+  const [focusDay, setFocusDay] = useState(null);
   const [uploads, setUploads] = useState(0);
   const [busy, setBusy] = useState('');
   const [sendingBack, setSendingBack] = useState(false);
@@ -229,9 +285,10 @@ export default function CityTourEditor() {
     apiGet(`/admin/city-tours/${id}`)
       .then((d) => {
         if (!active) return;
+        const content = withDays(d.content);
         setDetail(d);
-        setForm(d.content);
-        setBase(d.content);
+        setForm(content);
+        setBase(content);
         setOpenStep(null);
       })
       .catch((err) => { if (active) setLoadError(err.message || 'Could not load this guide.'); });
@@ -249,34 +306,60 @@ export default function CityTourEditor() {
   if (!form) return <PageLoading />;
 
   const patchForm = (patch) => setForm((f) => ({ ...f, ...patch }));
-  const patchStep = (stepId, patch) =>
-    setForm((f) => ({ ...f, steps: f.steps.map((s) => (s.id === stepId ? { ...s, ...patch } : s)) }));
+  const patchDay = (dayId, patch) =>
+    setForm((f) => ({ ...f, days: f.days.map((d) => (d.id === dayId ? { ...d, ...patch } : d)) }));
+  const patchSteps = (dayId, change) =>
+    setForm((f) => ({ ...f, days: f.days.map((d) => (d.id === dayId ? { ...d, steps: change(d.steps) } : d)) }));
+  const patchStep = (stepId, patch) => setForm((f) => ({
+    ...f,
+    days: f.days.map((d) => ({ ...d, steps: d.steps.map((s) => (s.id === stepId ? { ...s, ...patch } : s)) })),
+  }));
 
-  const addStep = (kind) => {
-    const step = kind === 'stop' ? newStop() : newMove();
-    setForm((f) => ({ ...f, steps: [...f.steps, step] }));
+  const addStep = (dayId, kind) => {
+    const step = kind === 'stop' ? newStop() : kind === 'break' ? newBreak() : newMove();
+    patchSteps(dayId, (steps) => [...steps, step]);
     setOpenStep(step.id);
+    setFocusDay(dayId);
   };
-  const moveStep = (index, delta) => setForm((f) => {
-    const steps = [...f.steps];
+  const moveStep = (dayId, index, delta) => patchSteps(dayId, (list) => {
+    const steps = [...list];
     const target = index + delta;
-    if (target < 0 || target >= steps.length) return f;
+    if (target < 0 || target >= steps.length) return list;
     [steps[index], steps[target]] = [steps[target], steps[index]];
-    return { ...f, steps };
+    return steps;
   });
-  const removeStep = (step) => {
+  const removeStep = (dayId, step) => {
     const empty = step.type === 'stop'
       ? !step.name && step.lat == null && !step.body_md && !step.links.length
       : !step.title && !step.body_md && !step.links.length;
     if (!empty && !confirm('Remove this step and everything written in it?')) return;
-    setForm((f) => ({ ...f, steps: f.steps.filter((s) => s.id !== step.id) }));
+    patchSteps(dayId, (steps) => steps.filter((s) => s.id !== step.id));
+  };
+
+  const addDay = () => {
+    const day = newDay(true);
+    setForm((f) => ({ ...f, days: [...f.days, day] }));
+    setOpenStep(day.steps[0].id);
+    setFocusDay(day.id);
+  };
+  const moveDay = (index, delta) => setForm((f) => {
+    const days = [...f.days];
+    const target = index + delta;
+    if (target < 0 || target >= days.length) return f;
+    [days[index], days[target]] = [days[target], days[index]];
+    return { ...f, days };
+  });
+  const removeDay = (day) => {
+    if (day.steps.length && !confirm(`Remove this day and its ${day.steps.length} steps?`)) return;
+    setForm((f) => ({ ...f, days: f.days.filter((d) => d.id !== day.id) }));
   };
 
   const applySaved = (saved, sent) => {
+    const content = withDays(saved.content);
     setDetail(saved);
-    setBase(saved.content);
+    setBase(content);
     // Kept if more was typed while the save was on its way.
-    setForm((current) => (current === sent ? saved.content : current));
+    setForm((current) => (current === sent ? content : current));
   };
 
   const run = async (label, work) => {
@@ -361,18 +444,20 @@ export default function CityTourEditor() {
   };
 
   const status = detail?.review_status || 'draft';
-  const numbers = stopNumbers(form.steps);
   const taps = admin ? detail?.link_taps || {} : undefined;
-  const lastPin = (index) => {
-    for (let i = index - 1; i >= 0; i -= 1) {
-      const s = form.steps[i];
-      if (s.type === 'stop' && s.lat != null && s.lng != null) return [Number(s.lat), Number(s.lng)];
-    }
-    return null;
+  const severalDays = form.days.length > 1;
+  // The pin a new stop's map opens at: the stop before it, on this day or an earlier one.
+  const lastPin = (dayIndex, index) => {
+    const before = [
+      ...form.days.slice(0, dayIndex).flatMap((d) => d.steps),
+      ...form.days[dayIndex].steps.slice(0, index),
+    ];
+    const stop = [...before].reverse().find((s) => s.type === 'stop' && s.lat != null && s.lng != null);
+    return stop ? [Number(stop.lat), Number(stop.lng)] : null;
   };
   // Where a step's partner links sit: what their pages are made from.
-  const linkPlace = (index) => {
-    const step = form.steps[index];
+  const linkPlace = (day, index) => {
+    const step = day.steps[index];
     const stopName = (s) => (s && s.type === 'stop' ? s.name : '');
     return {
       city: form.city.trim(),
@@ -380,8 +465,8 @@ export default function CityTourEditor() {
       isStop: step.type === 'stop',
       stopName: stopName(step).trim(),
       place: stopName(step).trim(),
-      prevStop: stopName([...form.steps.slice(0, index)].reverse().find((s) => s.type === 'stop')).trim(),
-      nextStop: stopName(form.steps.slice(index + 1).find((s) => s.type === 'stop')).trim(),
+      prevStop: stopName([...day.steps.slice(0, index)].reverse().find((s) => s.type === 'stop')).trim(),
+      nextStop: stopName(day.steps.slice(index + 1).find((s) => s.type === 'stop')).trim(),
     };
   };
   const canSend = !admin && (dirty || status === 'draft' || status === 'changes_requested');
@@ -497,78 +582,147 @@ export default function CityTourEditor() {
           </section>
 
           <section className="cte-card">
-            <div className="xp-section-title">The route</div>
+            <div className="xp-section-title">Days</div>
             <div className="xp-section-hint">
-              Start with the place where the journey begins. Then add how to get to the next stop, the next stop, and so on.
+              One day for each group of places, the must-sees first: a traveller with 3 days gets Days 1 to 3, or picks
+              the days whose places they want. In each day, add the places, the rides between them and breaks in order.
+              The times come from the day’s start and how long each step takes.
             </div>
-            <div className="cte-steps">
-              {form.steps.map((step, i) => {
-                const open = openStep === step.id;
-                const mode = modeOf(step.mode);
-                const pinned = step.lat != null && step.lng != null;
-                return (
-                  <div key={step.id} className={`cte-step ${open ? 'open' : ''}`}>
-                    <div className="cte-step-head" onClick={() => setOpenStep(open ? null : step.id)}>
-                      {step.type === 'stop'
-                        ? <span className={`ctp-badge ${numbers[step.id] === 1 ? 'start' : ''}`}>{numbers[step.id]}</span>
-                        : <span className="ctp-mode"><MaterialIcon name={mode.icon} size={15} /></span>}
-                      <div className="cte-step-title">
-                        <strong>
-                          {step.type === 'stop'
-                            ? step.name || 'New stop'
-                            : [mode.label, step.title].filter(Boolean).join(' · ')}
-                        </strong>
-                        <span>
-                          {step.type === 'stop'
-                            ? [i === 0 ? 'Start' : 'Stop', pinned ? 'on the map' : 'not on the map yet',
-                              step.links.length ? `${step.links.length} partner link${step.links.length > 1 ? 's' : ''}` : '']
-                              .filter(Boolean).join(' · ')
-                            : ['Travel', step.duration, step.cost,
-                              step.links.length ? `${step.links.length} partner link${step.links.length > 1 ? 's' : ''}` : '']
-                              .filter(Boolean).join(' · ')}
-                        </span>
-                      </div>
-                      <div className="cte-step-tools" onClick={(e) => e.stopPropagation()}>
-                        <button type="button" className="icon-btn" title="Move up" disabled={i === 0} onClick={() => moveStep(i, -1)}>
+            {form.days.map((day, d) => {
+              const plan = dayPlan(day);
+              const numbers = stopNumbers(day.steps);
+              const places = day.steps.filter((s) => s.type === 'stop').length;
+              return (
+                <div key={day.id} className={`cte-day ${focusDay === day.id ? 'focus' : ''}`} onFocusCapture={() => setFocusDay(day.id)}>
+                  <div className="cte-day-head">
+                    <strong>Day {d + 1}</strong>
+                    <span>
+                      {[plan.start !== null ? `${formatClock(plan.start)} – ${formatClock(plan.end)}` : '',
+                        `${places} place${places === 1 ? '' : 's'}`].filter(Boolean).join(' · ')}
+                    </span>
+                    {severalDays && (
+                      <div className="cte-step-tools">
+                        <button type="button" className="icon-btn" title="Move day up" disabled={d === 0} onClick={() => moveDay(d, -1)}>
                           <ArrowUpIcon size={15} />
                         </button>
-                        <button type="button" className="icon-btn" title="Move down" disabled={i === form.steps.length - 1} onClick={() => moveStep(i, 1)}>
+                        <button type="button" className="icon-btn" title="Move day down" disabled={d === form.days.length - 1} onClick={() => moveDay(d, 1)}>
                           <ArrowDownIcon size={15} />
                         </button>
-                        <button type="button" className="icon-btn danger" title="Remove" onClick={() => removeStep(step)}>
+                        <button type="button" className="icon-btn danger" title="Remove day" onClick={() => removeDay(day)}>
                           <TrashIcon size={15} />
                         </button>
                       </div>
-                      <ChevronDownIcon size={18} className={`cte-chevron ${open ? 'up' : ''}`} />
-                    </div>
-                    {open && (
-                      <div className="cte-step-body">
-                        {step.type === 'stop' ? (
-                          <StopFields
-                            step={step} partners={partners} taps={taps} center={lastPin(i)} where={linkPlace(i)}
-                            onBusy={(d) => setUploads((n) => n + d)}
-                            patch={(p) => patchStep(step.id, p)}
-                          />
-                        ) : (
-                          <MoveFields
-                            step={step} partners={partners} taps={taps} where={linkPlace(i)}
-                            patch={(p) => patchStep(step.id, p)}
-                          />
-                        )}
-                      </div>
                     )}
                   </div>
-                );
-              })}
-            </div>
-            <div className="cte-add">
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => addStep('move')}>
-                <MaterialIcon name="directions_walk" size={16} /> Add travel to the next stop
+                  <div className="cte-day-fields">
+                    <div className="form-group">
+                      <label className="form-label">Places this day{severalDays ? ' *' : ''}</label>
+                      <input
+                        className="form-input" maxLength={160} value={day.title}
+                        placeholder="e.g. Eiffel Tower, Champ de Mars, Seine Cruise and Invalides"
+                        onChange={(e) => patchDay(day.id, { title: e.target.value })}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Starts at</label>
+                      <input
+                        className="form-input" type="time" value={day.starts_at || ''}
+                        onChange={(e) => patchDay(day.id, { starts_at: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                  <div className="cte-steps">
+                    {day.steps.map((step, i) => {
+                      const open = openStep === step.id;
+                      const mode = modeOf(step.mode);
+                      const pinned = step.lat != null && step.lng != null;
+                      const linkCount = step.links.length
+                        ? `${step.links.length} partner link${step.links.length > 1 ? 's' : ''}` : '';
+                      const time = plan.times[step.id];
+                      const when = time ? `${formatClock(time[0])} – ${formatClock(time[1])}` : '';
+                      return (
+                        <div key={step.id} className={`cte-step ${open ? 'open' : ''}`}>
+                          <div
+                            className="cte-step-head"
+                            onClick={() => { setOpenStep(open ? null : step.id); setFocusDay(day.id); }}
+                          >
+                            {step.type === 'stop'
+                              ? <span className={`ctp-badge ${numbers[step.id] === 1 ? 'start' : ''}`}>{numbers[step.id]}</span>
+                              : <span className="ctp-mode"><MaterialIcon name={step.type === 'break' ? 'restaurant' : mode.icon} size={15} /></span>}
+                            <div className="cte-step-title">
+                              <strong>
+                                {step.type === 'stop'
+                                  ? step.name || 'New stop'
+                                  : step.type === 'break'
+                                    ? step.title || 'Break'
+                                    : [mode.label, step.title].filter(Boolean).join(' · ')}
+                              </strong>
+                              <span>
+                                {step.type === 'stop'
+                                  ? [when, pinned ? 'on the map' : 'not on the map yet', linkCount].filter(Boolean).join(' · ')
+                                  : [when || (step.type === 'break' ? 'Break' : 'Travel'), step.duration, step.cost, linkCount]
+                                    .filter(Boolean).join(' · ')}
+                              </span>
+                            </div>
+                            <div className="cte-step-tools" onClick={(e) => e.stopPropagation()}>
+                              <button type="button" className="icon-btn" title="Move up" disabled={i === 0} onClick={() => moveStep(day.id, i, -1)}>
+                                <ArrowUpIcon size={15} />
+                              </button>
+                              <button type="button" className="icon-btn" title="Move down" disabled={i === day.steps.length - 1} onClick={() => moveStep(day.id, i, 1)}>
+                                <ArrowDownIcon size={15} />
+                              </button>
+                              <button type="button" className="icon-btn danger" title="Remove" onClick={() => removeStep(day.id, step)}>
+                                <TrashIcon size={15} />
+                              </button>
+                            </div>
+                            <ChevronDownIcon size={18} className={`cte-chevron ${open ? 'up' : ''}`} />
+                          </div>
+                          {open && (
+                            <div className="cte-step-body">
+                              {step.type === 'stop' && (
+                                <StopFields
+                                  step={step} partners={partners} taps={taps} center={lastPin(d, i)} where={linkPlace(day, i)}
+                                  onBusy={(n) => setUploads((u) => u + n)}
+                                  patch={(p) => patchStep(step.id, p)}
+                                />
+                              )}
+                              {step.type === 'move' && (
+                                <MoveFields
+                                  step={step} partners={partners} taps={taps} where={linkPlace(day, i)}
+                                  patch={(p) => patchStep(step.id, p)}
+                                />
+                              )}
+                              {step.type === 'break' && (
+                                <BreakFields
+                                  step={step} partners={partners} taps={taps} where={linkPlace(day, i)}
+                                  patch={(p) => patchStep(step.id, p)}
+                                />
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="cte-add">
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => addStep(day.id, 'move')}>
+                      <MaterialIcon name="directions_walk" size={16} /> Add travel to the next stop
+                    </button>
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => addStep(day.id, 'stop')}>
+                      <MapPinIcon size={14} /> Add a stop
+                    </button>
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => addStep(day.id, 'break')}>
+                      <MaterialIcon name="restaurant" size={16} /> Add a break
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+            {form.days.length < 14 && (
+              <button type="button" className="btn btn-ghost btn-sm" onClick={addDay}>
+                <MaterialIcon name="calendar_today" size={15} /> Add a day
               </button>
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => addStep('stop')}>
-                <MapPinIcon size={14} /> Add a stop
-              </button>
-            </div>
+            )}
           </section>
 
           <section className="cte-card">
@@ -638,7 +792,7 @@ export default function CityTourEditor() {
         </div>
 
         <aside className="cte-side">
-          <CityTourPreview content={form} partners={partners} />
+          <CityTourPreview content={form} partners={partners} activeDayId={focusDay} />
         </aside>
       </div>
 

@@ -85,7 +85,8 @@ export default function CityTours({ queue = false }) {
               <span className="ctg-main">
                 <strong>{t.title || 'Untitled guide'}</strong>
                 <span>
-                  {[[t.city, t.country].filter(Boolean).join(', '), `${t.stop_count} stop${t.stop_count === 1 ? '' : 's'}`,
+                  {[[t.city, t.country].filter(Boolean).join(', '),
+                    t.day_count > 1 ? `${t.day_count} days` : '', `${t.stop_count} stop${t.stop_count === 1 ? '' : 's'}`,
                     admin ? `by ${t.author_name}` : ''].filter(Boolean).join(' · ')}
                 </span>
                 {t.review_status === 'changes_requested' && t.review_note && (

@@ -97,6 +97,8 @@ class CityTourFact extends StatelessWidget {
 
 /// The facts a guide card and the guide's header show.
 List<Widget> cityTourFacts(CityTourCard card) => [
+      if (card.dayCount > 1)
+        CityTourFact(icon: Icons.calendar_today_rounded, text: '${card.dayCount} days'),
       if (card.stopCount > 0)
         CityTourFact(
           icon: Icons.place_rounded,
@@ -401,7 +403,7 @@ class CityTourStepTile extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     if (time != null) _time(context, time!),
-                    step.isStop ? _stop() : _move(),
+                    step.isStop ? _stop() : (step.isBreak ? _break() : _move()),
                   ],
                 ),
               ),
@@ -462,7 +464,65 @@ class CityTourStepTile extends StatelessWidget {
         shape: BoxShape.circle,
         border: Border.all(color: AppColors.border, width: 1.5),
       ),
-      child: Icon(cityTourModeIcon(step.mode), size: 15, color: AppColors.textSecondary),
+      child: Icon(
+        step.isBreak ? Icons.restaurant_rounded : cityTourModeIcon(step.mode),
+        size: 15,
+        color: AppColors.textSecondary,
+      ),
+    );
+  }
+
+  /// The guide's "Closure / Access" line: "Closed Tuesdays. Book ahead."
+  Widget _access() {
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.only(top: 1),
+            child: Icon(Icons.info_outline_rounded, size: 14, color: AppColors.textTertiary),
+          ),
+          const SizedBox(width: 4),
+          Expanded(
+            child: Text(
+              step.accessNote,
+              style: const TextStyle(fontSize: 12.5, height: 1.4, color: AppColors.textSecondary),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _break() {
+    return Padding(
+      padding: const EdgeInsets.only(top: 5),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text.rich(
+            TextSpan(
+              text: step.breakTitle.isEmpty ? 'Break' : step.breakTitle,
+              style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+              children: [
+                if (step.duration.isNotEmpty)
+                  TextSpan(
+                    text: ' · ${step.duration}',
+                    style: const TextStyle(fontWeight: FontWeight.w500, color: AppColors.textSecondary),
+                  ),
+              ],
+            ),
+            style: const TextStyle(fontSize: 13, height: 1.3),
+          ),
+          if (step.accessNote.isNotEmpty) _access(),
+          if (step.bodyMd.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            ExperienceDescription(markdown: step.bodyMd),
+          ],
+          ..._links(10),
+        ],
+      ),
     );
   }
 
@@ -508,6 +568,7 @@ class CityTourStepTile extends StatelessWidget {
               ],
             ),
           ],
+          if (step.accessNote.isNotEmpty) _access(),
           if (step.photoUrl.isNotEmpty) ...[
             const SizedBox(height: 10),
             ClipRRect(
@@ -573,6 +634,7 @@ class CityTourStepTile extends StatelessWidget {
               ),
             ),
           ],
+          if (step.accessNote.isNotEmpty) _access(),
           if (step.bodyMd.isNotEmpty) ...[
             const SizedBox(height: 8),
             ExperienceDescription(markdown: step.bodyMd),
@@ -746,12 +808,16 @@ class CityTourTripBar extends StatelessWidget {
   final VoidCallback onMarkDone;
   final VoidCallback onClose;
 
+  /// "Start trip", or "Start Day 2" in a guide of several days.
+  final String startLabel;
+
   const CityTourTripBar({
     super.key,
     required this.trip,
     required this.schedule,
     required this.currentTitle,
     required this.busy,
+    this.startLabel = 'Start trip',
     required this.onStart,
     required this.onMarkDone,
     required this.onClose,
@@ -797,9 +863,9 @@ class CityTourTripBar extends StatelessWidget {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
               ),
               icon: const Icon(Icons.play_arrow_rounded, size: 22),
-              label: const Text(
-                'Start trip',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+              label: Text(
+                startLabel,
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
               ),
             ),
           ),
@@ -889,6 +955,242 @@ class CityTourTripBar extends StatelessWidget {
           label: const Text('Mark done', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800)),
         ),
       ],
+    );
+  }
+}
+
+/// "9:00 AM – 6:55 PM · 6 places": a day at a glance.
+String cityTourDayLine(BuildContext context, CityTourDay day) {
+  final places = day.stops.length;
+  final plan = cityTourDayPlan(day, DateTime.now());
+  final first = day.steps.isEmpty ? null : plan[day.steps.first.id];
+  final last = day.steps.isEmpty ? null : plan[day.steps.last.id];
+  return [
+    if (first != null && last != null)
+      '${cityTourClock(context, first.start)} – ${cityTourClock(context, last.end)}',
+    places == 1 ? '1 place' : '$places places',
+  ].join(' · ');
+}
+
+/// "Plan your days": how many days the traveller has (the first ones), or
+/// which days' places they want. [onShow] gets the day ids in guide order.
+class CityTourPlanPicker extends StatefulWidget {
+  final List<CityTourDay> days;
+  final List<String> initial;
+  final ValueChanged<List<String>> onShow;
+
+  const CityTourPlanPicker({
+    super.key,
+    required this.days,
+    this.initial = const [],
+    required this.onShow,
+  });
+
+  @override
+  State<CityTourPlanPicker> createState() => _CityTourPlanPickerState();
+}
+
+class _CityTourPlanPickerState extends State<CityTourPlanPicker> {
+  late Set<String> _picked = {...widget.initial};
+
+  List<String> get _ordered => [
+        for (final d in widget.days)
+          if (_picked.contains(d.id)) d.id,
+      ];
+
+  /// N when the pick is exactly the first N days, else 0.
+  int get _firstN {
+    final ordered = _ordered;
+    for (var i = 0; i < ordered.length; i++) {
+      if (widget.days[i].id != ordered[i]) return 0;
+    }
+    return ordered.length;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ordered = _ordered;
+    final firstN = _firstN;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'PLAN YOUR DAYS',
+            style: TextStyle(
+              fontSize: 10.5,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.1,
+              color: AppColors.brandGreen,
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'How many days do you have?',
+            style: TextStyle(
+              fontSize: 17,
+              height: 1.25,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.2,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (var i = 0; i < widget.days.length; i++)
+                GestureDetector(
+                  onTap: () => setState(() => _picked = {for (final d in widget.days.take(i + 1)) d.id}),
+                  child: Container(
+                    width: 44,
+                    height: 40,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: firstN == i + 1 ? AppColors.brandGreen : Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: firstN == i + 1 ? AppColors.brandGreen : AppColors.border),
+                    ),
+                    child: Text(
+                      '${i + 1}',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        color: firstN == i + 1 ? Colors.white : AppColors.textPrimary,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          const Text(
+            'Or pick the places you want',
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+          ),
+          const SizedBox(height: 4),
+          for (var i = 0; i < widget.days.length; i++)
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => setState(() {
+                final id = widget.days[i].id;
+                if (!_picked.remove(id)) _picked.add(id);
+              }),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                decoration: BoxDecoration(
+                  border: i == 0 ? null : const Border(top: BorderSide(color: AppColors.surfaceVariant)),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      _picked.contains(widget.days[i].id)
+                          ? Icons.check_box_rounded
+                          : Icons.check_box_outline_blank_rounded,
+                      size: 22,
+                      color: _picked.contains(widget.days[i].id) ? AppColors.brandGreen : AppColors.textTertiary,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Day ${i + 1} · ${widget.days[i].title.isEmpty ? 'Places to see' : widget.days[i].title}',
+                            style: const TextStyle(
+                              fontSize: 14,
+                              height: 1.3,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            cityTourDayLine(context, widget.days[i]),
+                            style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            height: 50,
+            child: FilledButton(
+              onPressed: ordered.isEmpty ? null : () => widget.onShow(ordered),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.brandGreen,
+                disabledBackgroundColor: AppColors.border,
+                disabledForegroundColor: AppColors.textTertiary,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              ),
+              child: Text(
+                ordered.isEmpty ? 'Pick your days' : 'Show my ${ordered.length}-day plan',
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The traveller's days as tabs: "Day 1", "Day 2"…, numbered in their plan.
+class CityTourDayTabs extends StatelessWidget {
+  final List<CityTourDay> days;
+  final String selectedId;
+  final ValueChanged<String> onSelect;
+
+  const CityTourDayTabs({
+    super.key,
+    required this.days,
+    required this.selectedId,
+    required this.onSelect,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 34,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: days.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (_, i) {
+          final on = days[i].id == selectedId;
+          return GestureDetector(
+            onTap: () => onSelect(days[i].id),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: on ? AppColors.primary : AppColors.surface,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                'Day ${i + 1}',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: on ? Colors.white : AppColors.textPrimary,
+                ),
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 }

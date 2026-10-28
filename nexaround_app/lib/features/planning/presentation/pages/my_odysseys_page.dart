@@ -390,6 +390,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
               tagIcon: Icons.route_rounded,
               tagColor: const Color(0xFFB388FF),
               badge: 'STEP BY STEP',
+              shaded: false,
               title: 'City Guides',
               subtitle:
                   'Where to start, which ride to take and what to see at every stop, with tickets and tours on the way.',
@@ -426,6 +427,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
               tagIcon: Icons.directions_walk_rounded,
               tagColor: const Color(0xFFFFB800),
               badge: 'MINI-TOUR',
+              shaded: false,
               title: 'Walking Challenge',
               subtitle:
                   'Interactive walking routes around nearby landmarks to explore destinations and unlock badges.',
@@ -467,6 +469,8 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
     // Light card: the photo fades into white with dark text, after the
     // Museum guide page's colours (solid tag, navy badge, green button).
     bool light = false,
+    // false shows the photo at full brightness, with no shade over it
+    bool shaded = true,
     required VoidCallback onTap,
   }) {
     const navy = Color(0xFF0F172A);
@@ -503,32 +507,33 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
                   errorBuilder: (context, error, stackTrace) =>
                       const SizedBox.shrink(),
                 ),
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: gradient ??
-                      (light
-                          ? LinearGradient(
-                              begin: Alignment.bottomCenter,
-                              end: Alignment.topCenter,
-                              colors: [
-                                Colors.white.withValues(alpha: 0.97),
-                                Colors.white.withValues(alpha: 0.90),
-                                Colors.white.withValues(alpha: 0.0),
-                              ],
-                              stops: const [0.0, 0.5, 1.0],
-                            )
-                          : LinearGradient(
-                              begin: Alignment.bottomCenter,
-                              end: Alignment.topCenter,
-                              colors: [
-                                const Color(0xFF0F172A).withValues(alpha: 0.92),
-                                const Color(0xFF0F172A).withValues(alpha: 0.65),
-                                Colors.black.withValues(alpha: 0.25),
-                              ],
-                              stops: const [0.0, 0.55, 1.0],
-                            )),
+              if (shaded)
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: gradient ??
+                        (light
+                            ? LinearGradient(
+                                begin: Alignment.bottomCenter,
+                                end: Alignment.topCenter,
+                                colors: [
+                                  Colors.white.withValues(alpha: 0.97),
+                                  Colors.white.withValues(alpha: 0.90),
+                                  Colors.white.withValues(alpha: 0.0),
+                                ],
+                                stops: const [0.0, 0.5, 1.0],
+                              )
+                            : LinearGradient(
+                                begin: Alignment.bottomCenter,
+                                end: Alignment.topCenter,
+                                colors: [
+                                  const Color(0xFF0F172A).withValues(alpha: 0.92),
+                                  const Color(0xFF0F172A).withValues(alpha: 0.65),
+                                  Colors.black.withValues(alpha: 0.25),
+                                ],
+                                stops: const [0.0, 0.55, 1.0],
+                              )),
+                  ),
                 ),
-              ),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 13),
                 child: Column(
