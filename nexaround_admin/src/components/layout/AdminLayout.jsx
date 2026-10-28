@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { NAV_ITEMS } from '../../nav';
+import { isCreator } from '../../session';
 import { useEnquiryAlerts } from '../../enquiryAlerts';
 import { CrossIcon, InboxIcon } from '../Icons';
 import ErrorBoundary from '../ErrorBoundary';
@@ -30,10 +31,24 @@ function EnquiryPopup({ event, onOpen, onClose }) {
   );
 }
 
-export default function AdminLayout({ onLogout }) {
+function Main() {
   const { pathname } = useLocation();
-  const navigate = useNavigate();
   const page = NAV_ITEMS.find((item) => item.path === pathname);
+  return (
+    <main className="main-content">
+      <PageHeader title={page?.title} />
+      <div className="page-body">
+        {/* Keyed on the path so a page that crashed recovers once you navigate away. */}
+        <ErrorBoundary key={pathname}>
+          <Outlet />
+        </ErrorBoundary>
+      </div>
+    </main>
+  );
+}
+
+function AdminChrome({ onLogout }) {
+  const navigate = useNavigate();
   const alerts = useEnquiryAlerts();
 
   return (
@@ -49,15 +64,20 @@ export default function AdminLayout({ onLogout }) {
           />
         ))}
       </div>
-      <main className="main-content">
-        <PageHeader title={page?.title} />
-        <div className="page-body">
-          {/* Keyed on the path so a page that crashed recovers once you navigate away. */}
-          <ErrorBoundary key={pathname}>
-            <Outlet />
-          </ErrorBoundary>
-        </div>
-      </main>
+      <Main />
     </div>
   );
+}
+
+/** A content creator's panel: City Tours only, so no enquiry alerts either. */
+export default function AdminLayout({ onLogout }) {
+  if (isCreator()) {
+    return (
+      <div className="admin-layout">
+        <Sidebar onLogout={onLogout} />
+        <Main />
+      </div>
+    );
+  }
+  return <AdminChrome onLogout={onLogout} />;
 }

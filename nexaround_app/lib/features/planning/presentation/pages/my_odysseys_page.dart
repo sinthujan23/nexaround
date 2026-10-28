@@ -10,6 +10,7 @@ import 'package:nexaround_app/features/planning/presentation/pages/odyssey_plann
 import 'package:nexaround_app/features/mini_tour/presentation/widgets/mini_tour_launcher.dart';
 import 'package:nexaround_app/features/planning/presentation/pages/history_page.dart';
 import 'package:nexaround_app/features/planning/presentation/pages/museums_list_page.dart';
+import 'package:nexaround_app/features/city_tours/presentation/pages/city_tours_page.dart';
 import 'package:nexaround_app/core/utils/number_format.dart';
 import 'package:video_player/video_player.dart';
 import 'package:nexaround_app/core/error/user_message.dart';
@@ -344,7 +345,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
                     ],
                   ),
                   const Text(
-                    '3 Portals Available',
+                    '4 Portals Available',
                     style: TextStyle(
                       fontSize: 9.5,
                       fontWeight: FontWeight.w600,
@@ -414,6 +415,24 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
               imageAsset: 'assets/images/walking_challenge_bg.jpg',
               ctaText: 'Start',
               onTap: _openMiniTour,
+            ),
+            const SizedBox(height: 10),
+
+            // 4. City Tours: step-by-step guides from the content team
+            _buildCuratedHubCard(
+              tag: 'CITY TOURS',
+              tagIcon: Icons.route_rounded,
+              tagColor: const Color(0xFFB388FF),
+              badge: 'STEP BY STEP',
+              title: 'Famous City Tours',
+              subtitle:
+                  'Where to start, which ride to take and what to see at every stop, with tickets and tours on the way.',
+              imageAsset: 'assets/images/city_tours_bg.jpg',
+              ctaText: 'Explore',
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const CityToursPage()),
+              ),
             ),
           ],
         ).animate(key: ValueKey('curated_hub_$_selectedTabIndex')).fade(duration: 220.ms).slideX(

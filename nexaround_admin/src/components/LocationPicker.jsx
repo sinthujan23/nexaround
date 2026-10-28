@@ -32,6 +32,9 @@ export default function LocationPicker({
   optional = false,
   // Forms that keep no address (official travel stories) hide its box.
   showAddress = true,
+  // Where the map opens with no pin yet, as [lat, lng]: a city guide's next
+  // stop starts beside the one before it.
+  center = null,
 }) {
   const mapRef = useRef(null);
   const markerRef = useRef(null);
@@ -50,9 +53,9 @@ export default function LocationPicker({
     if (!window.L) return;
     if (mapRef.current) return;
 
-    const start = hasPoint ? [Number(latitude), Number(longitude)] : [7.8731, 80.7718];
+    const start = hasPoint ? [Number(latitude), Number(longitude)] : center || [7.8731, 80.7718];
     const map = window.L.map(mapId, { zoomControl: true })
-      .setView(start, hasPoint ? 14 : 7);
+      .setView(start, hasPoint ? 14 : center ? 13 : 7);
 
     window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '© OpenStreetMap contributors',

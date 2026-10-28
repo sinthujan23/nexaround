@@ -12,7 +12,7 @@ from app.core.database import get_db
 from app.core.config import settings
 from app.core.rate_limiter import auth_rate_limiter
 from app.core.security import create_access_token, decode_token
-from app.services import audit, fx_service, neva_voice
+from app.services import audit, creator_auth, fx_service, neva_voice
 from app.services.user_service import UserService
 from app.services.settings_service import SettingsService
 from app.services.experience_format import COUNTRY_MODE_KEY, parse_country_mode
@@ -46,6 +46,9 @@ class AdminLoginRequest(BaseModel):
 
 class AdminLoginResponse(BaseModel):
     token: str
+    # "admin", or "creator" for a City Tours writer (creator_auth), whose
+    # panel shows City Tours only.
+    role: str = "admin"
 
 class MonthlySignups(BaseModel):
     month: str  # YYYY-MM, Sri Lanka time
@@ -256,6 +259,27 @@ async def admin_login(
         )
         return AdminLoginResponse(token=token)
 
+    # Not the admin: a City Tours content creator signs in with their email.
+    creator, reason = (None, "wrong password") if username_valid else await creator_auth.sign_in(
+        data.username, data.password,
+    )
+    if creator is not None:
+        label = creator.name
+        sid = await audit.start_session(
+            actor_type=creator_auth.ACTOR, actor_id=str(creator.id), actor_label=label,
+            request=request, ttl=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
+        )
+        await audit.record(
+            actor_type=creator_auth.ACTOR, actor_id=str(creator.id), actor_label=label,
+            session_id=sid, category="auth", action="auth.login",
+            summary=f"Signed in from {audit.describe_device(meta['browser'], meta['os'])}",
+            method="POST", route="/api/v1/admin/login", status_code=200, meta=meta,
+        )
+        token = create_access_token({
+            "sub": str(creator.id), "role": creator_auth.ROLE, "sid": str(sid), "name": label,
+        })
+        return AdminLoginResponse(token=token, role=creator_auth.ROLE)
+
     # The attempted name is kept (it is the one thing that says whether someone
     # is guessing the real username); the password never is.
     await audit.record(
@@ -264,7 +288,7 @@ async def admin_login(
         summary="Failed admin sign-in",
         method="POST", route="/api/v1/admin/login", status_code=401,
         success=False, meta=meta,
-        detail={"reason": "wrong password" if username_valid else "unknown username"},
+        detail={"reason": reason},
     )
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -273,17 +297,27 @@ async def admin_login(
 
 
 @router.post("/logout")
-async def admin_logout(request: Request, token: str = Depends(verify_admin_token)):
-    """End this device's session, so the token stops working immediately."""
+async def admin_logout(request: Request, authorization: str = Header(...)):
+    """End this device's session, so the token stops working immediately.
+
+    Content creators sign out here too: same panel, their own session rows.
+    """
+    token = authorization.split(" ")[1] if authorization.startswith("Bearer ") else ""
     payload = decode_token(token) or {}
-    username = payload.get("sub") or "admin"
+    creator = await creator_auth.from_token(payload, request)
+    if creator is not None:
+        actor_type, actor_id, label = creator_auth.ACTOR, str(creator.id), creator.name
+    else:
+        await verify_admin_token(request, authorization)
+        actor_type = "admin"
+        actor_id = label = payload.get("sub") or "admin"
     row = await audit.revoke_session(
-        payload.get("sid"), reason="user", by=username,
-        actor_type="admin", actor_id=username,
+        payload.get("sid"), reason="user", by=label,
+        actor_type=actor_type, actor_id=actor_id,
     )
     if row is not None:
         await audit.record(
-            actor_type="admin", actor_id=username, actor_label=username,
+            actor_type=actor_type, actor_id=actor_id, actor_label=label,
             session_id=row.id, category="auth", action="auth.logout",
             summary="Signed out", method="POST", route="/api/v1/admin/logout",
             status_code=200, meta=audit.client_meta(request),
@@ -1105,7 +1139,7 @@ async def _vendor_names(db: AsyncSession, ids) -> dict:
 async def list_audit_events(
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=100),
-    actor_type: Optional[Literal["admin", "vendor", "anonymous"]] = None,
+    actor_type: Optional[Literal["admin", "vendor", "creator", "anonymous"]] = None,
     category: Optional[Literal["auth", "change", "access"]] = None,
     outcome: Optional[Literal["success", "failed"]] = None,
     vendor_id: Optional[uuid.UUID] = None,
@@ -1179,7 +1213,7 @@ async def list_audit_events(
 async def list_sessions(
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=100),
-    actor_type: Optional[Literal["admin", "vendor"]] = None,
+    actor_type: Optional[Literal["admin", "vendor", "creator"]] = None,
     state: Literal["active", "all"] = "active",
     token: str = Depends(verify_admin_token),
     db: AsyncSession = Depends(get_db),

@@ -40,8 +40,8 @@ export function deviceLabel(browser, os) {
   return browser || os || 'Unknown device';
 }
 
-export const ACTOR_LABELS = { admin: 'Admin', vendor: 'Partner', anonymous: 'Unknown' };
-export const ACTOR_TONES = { admin: 'blue', vendor: 'green', anonymous: 'red' };
+export const ACTOR_LABELS = { admin: 'Admin', vendor: 'Partner', creator: 'Creator', anonymous: 'Unknown' };
+export const ACTOR_TONES = { admin: 'blue', vendor: 'green', creator: 'yellow', anonymous: 'red' };
 
 export const CATEGORY_LABELS = {
   auth: 'Sign-in & security',

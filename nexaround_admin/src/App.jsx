@@ -2,7 +2,8 @@ import { useState, useEffect, startTransition } from 'react';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import './index.css';
 import { apiPost } from './api';
-import { NAV_ITEMS, NAV_REDIRECTS, HOME_PATH, LOGIN_PATH } from './nav';
+import { NAV_ITEMS, NAV_REDIRECTS, LOGIN_PATH, canSee, homePathFor } from './nav';
+import { sessionRole } from './session';
 import Login from './pages/Login';
 import AdminLayout from './components/layout/AdminLayout';
 import NetworkStatusBar from './components/NetworkStatusBar';
@@ -60,19 +61,23 @@ function App() {
     );
   }
 
+  // A content creator's token opens City Tours only; any other address lands there.
+  const role = sessionRole();
+  const home = homePathFor(role);
+
   return (
     <>
       <NetworkStatusBar />
       <Routes>
-        <Route path={LOGIN_PATH} element={<Navigate to={location.state?.from || HOME_PATH} replace />} />
+        <Route path={LOGIN_PATH} element={<Navigate to={location.state?.from || home} replace />} />
         <Route element={<AdminLayout onLogout={handleLogout} />}>
-          {NAV_ITEMS.map(({ path, page: Page }) => (
+          {NAV_ITEMS.filter((item) => canSee(item, role)).map(({ path, page: Page }) => (
             <Route key={path} path={path} element={<Page />} />
           ))}
           {NAV_REDIRECTS.map(([from, to]) => (
             <Route key={from} path={from} element={<Navigate to={to} replace />} />
           ))}
-          <Route path="*" element={<Navigate to={HOME_PATH} replace />} />
+          <Route path="*" element={<Navigate to={home} replace />} />
         </Route>
       </Routes>
     </>

@@ -131,6 +131,7 @@ export default function AuditTrail() {
             <option value="">Everyone</option>
             <option value="admin">Admin</option>
             <option value="vendor">Partners</option>
+            <option value="creator">Content creators</option>
             <option value="anonymous">Unknown (failed sign-ins)</option>
           </select>
           <select
