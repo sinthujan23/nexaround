@@ -469,11 +469,25 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
     // Light card: the photo fades into white with dark text, after the
     // Museum guide page's colours (solid tag, navy badge, green button).
     bool light = false,
-    // false shows the photo at full brightness, with no shade over it
+    // false keeps the photo bright: only a light shade behind the text,
+    // plus a shadow on the text and a darker badge so both stay readable
     bool shaded = true,
     required VoidCallback onTap,
   }) {
     const navy = Color(0xFF0F172A);
+    final textShadows = shaded
+        ? null
+        : [
+            Shadow(
+              color: Colors.black.withValues(alpha: 0.55),
+              blurRadius: 2,
+              offset: const Offset(0, 1),
+            ),
+            Shadow(
+              color: Colors.black.withValues(alpha: 0.45),
+              blurRadius: 10,
+            ),
+          ];
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -532,6 +546,21 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
                                 ],
                                 stops: const [0.0, 0.55, 1.0],
                               )),
+                  ),
+                )
+              else
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.bottomCenter,
+                      end: Alignment.topCenter,
+                      colors: [
+                        navy.withValues(alpha: 0.40),
+                        navy.withValues(alpha: 0.22),
+                        navy.withValues(alpha: 0.0),
+                      ],
+                      stops: const [0.0, 0.5, 0.9],
+                    ),
                   ),
                 ),
               Padding(
@@ -598,7 +627,9 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
                               color: badgeBgColor ??
                                   (light
                                       ? navy.withValues(alpha: 0.78)
-                                      : Colors.white.withValues(alpha: 0.14)),
+                                      : shaded
+                                          ? Colors.white.withValues(alpha: 0.14)
+                                          : Colors.black.withValues(alpha: 0.55)),
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Text(
@@ -633,6 +664,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
                                   fontWeight: FontWeight.w800,
                                   letterSpacing: -0.2,
                                   color: light ? navy : Colors.white,
+                                  shadows: textShadows,
                                 ),
                               ),
                               const SizedBox(height: 3.5),
@@ -645,9 +677,12 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
                                   fontSize: 11.5,
                                   height: 1.36,
                                   fontWeight: FontWeight.w500,
+                                  // full white on a bright photo
                                   color: light
                                       ? AppColors.textSecondary
-                                      : Colors.white.withValues(alpha: 0.84),
+                                      : Colors.white
+                                          .withValues(alpha: shaded ? 0.84 : 1.0),
+                                  shadows: textShadows,
                                 ),
                               ),
                             ],
