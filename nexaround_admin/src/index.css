@@ -4044,6 +4044,15 @@ a.btn { text-decoration: none; }
 }
 .ctp-daychip.on { background: #007a7c; border-color: #007a7c; color: #fff; }
 .ctp-planner-or { margin: 18px 0 4px; font-size: 14px; font-weight: 700; }
+.ctp-planner-or + .ctp-daychips { margin-top: 6px; }
+.ctp-ways { display: flex; gap: 10px; margin-top: 12px; }
+.ctp-way {
+  flex: 1; height: 76px; border-radius: 14px; background: #fff; border: 1px solid #e2e2e2; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  font-size: 14px; font-weight: 800; box-sizing: border-box;
+}
+.ctp-way.on { background: #007a7c; border-color: #007a7c; color: #fff; cursor: default; }
+.ctp-way.off { opacity: 0.45; color: #9e9e9e; }
 .ctp-daypick { display: flex; align-items: flex-start; gap: 10px; padding: 10px 0; border-top: 1px solid #e8e8e8; cursor: pointer; }
 .ctp-daypick:first-of-type { border-top: 0; }
 .ctp-daypick > span:last-child { display: flex; flex-direction: column; min-width: 0; }

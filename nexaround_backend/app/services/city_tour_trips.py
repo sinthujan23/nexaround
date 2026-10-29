@@ -12,6 +12,9 @@ marked done (the first, at the start), and the steps after it follow on, so
 marking a step done late or early moves the rest. The worker pushes one
 "Done at …?" reminder per step once it runs past its minutes (reminder_loop).
 
+"Skip" ends a step the same way, at the time it was tapped, and notes it in
+`skipped`, so the app can say "Skipped" and leave its minutes out of the pace.
+
 A trip follows one day (`day_id`; a trip from before days, the guide's first
 day). The functions above the database section are pure, so they can be
 tested on their own.
@@ -157,6 +160,11 @@ def undo_last(steps: list[dict], done: dict) -> dict:
     return {k: v for k, v in done.items() if k != marked[-1]} if marked else dict(done)
 
 
+def still_skipped(skipped: list, done: dict) -> list[str]:
+    """The skipped steps that are still marked: an undone skip drops out."""
+    return [s for s in skipped or [] if s in done]
+
+
 def all_done(steps: list[dict], done: dict) -> bool:
     return bool(steps) and all(s.get("id") in done for s in steps)
 
@@ -199,6 +207,7 @@ def view(trip, content: dict) -> dict:
         "started_at": trip.started_at.isoformat(),
         "finished_at": trip.finished_at.isoformat() if trip.finished_at else None,
         "done": dict(trip.done or {}),
+        "skipped": still_skipped(trip.skipped, trip.done or {}),
         "minutes": plan_minutes(content),
     }
 

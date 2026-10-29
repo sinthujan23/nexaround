@@ -160,7 +160,7 @@ async def start_trip(
         )
         .values(ended_at=now)
     )
-    trip = CityTourTrip(tour_id=tour.id, user_id=user.id, day_id=day.get("id"), started_at=now, done={})
+    trip = CityTourTrip(tour_id=tour.id, user_id=user.id, day_id=day.get("id"), started_at=now, done={}, skipped=[])
     db.add(trip)
     await db.commit()
     return {"trip": trips.view(trip, tour.live_content)}
@@ -173,8 +173,9 @@ async def mark_step_done(
     db: AsyncSession = Depends(get_db),
     user=Depends(get_current_user),
 ):
-    """Mark the step in hand done. A second tap on a step already done (a
-    retry) changes nothing; marking a later step first is refused (409)."""
+    """Mark the step in hand done, or skip it (`skip`). A second tap on a step
+    already done (a retry) changes nothing; marking a later step first is
+    refused (409)."""
     tour = await live_tour(db, tour_id)
     trip = await _running_trip(db, tour.id, user.id)
     steps = trips.trip_steps(tour.live_content, trip.day_id)
@@ -186,6 +187,8 @@ async def mark_step_done(
         if marked is None:
             raise HTTPException(status_code=409, detail="Mark the steps before this one done first.")
         trip.done = marked
+        if body.skip:
+            trip.skipped = [*(trip.skipped or []), body.step_id]
         if trips.all_done(steps, marked):
             trip.finished_at = trips.as_time(marked[body.step_id])
         await db.commit()
@@ -198,12 +201,13 @@ async def undo_step_done(
     db: AsyncSession = Depends(get_db),
     user=Depends(get_current_user),
 ):
-    """Take back the last "Mark done", including the one that finished the trip."""
+    """Take back the last "Mark done" or skip, including the one that finished the trip."""
     tour = await live_tour(db, tour_id)
     trip = await _shown_trip(db, tour.id, user.id)
     if trip is None:
         raise HTTPException(status_code=404, detail="This trip has ended.")
     trip.done = trips.undo_last(trips.trip_steps(tour.live_content, trip.day_id), trip.done or {})
+    trip.skipped = trips.still_skipped(trip.skipped, trip.done)
     trip.finished_at = None
     await db.commit()
     return {"trip": trips.view(trip, tour.live_content)}

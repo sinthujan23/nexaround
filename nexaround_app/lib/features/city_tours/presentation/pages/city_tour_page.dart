@@ -46,9 +46,10 @@ Future<void> openCityTourById(BuildContext context, String tourId) async {
 /// plan is kept on the device; the days then show as tabs.
 ///
 /// A signed-in traveller can start a day's trip: every step gets a planned
-/// time, the bar at the bottom asks them to mark the step in hand done, and
-/// the times after it move to match (the server pushes a reminder when a step
-/// runs over).
+/// time, the bar at the bottom asks them to mark the step in hand done or
+/// skip it, and the times after it move to match (the server pushes a
+/// reminder when a step runs over). The step in hand is on green, the ones
+/// behind are greyed, and each mark scrolls the page on to the next.
 class CityTourPage extends StatefulWidget {
   final CityTourCard card;
 
@@ -76,6 +77,8 @@ class _CityTourPageState extends State<CityTourPage> {
   String? _dayId;
   // Redraws the times while a trip runs: a step running over pushes the rest on.
   Timer? _tick;
+  // Each step on screen, to scroll to the step in hand after a mark.
+  final Map<String, GlobalKey> _stepKeys = {};
 
   @override
   void initState() {
@@ -227,28 +230,55 @@ class _CityTourPageState extends State<CityTourPage> {
     return trip.dayId == day.id || (trip.dayId.isEmpty && day.id == tour.days.first.id);
   }
 
-  Future<void> _markDone(CityTourStep step, DateTime at) async {
+  /// "Mark done", or "Skip" with [skip].
+  Future<void> _markDone(CityTourStep step, DateTime at, {bool skip = false}) async {
     if (_tripBusy) return;
     setState(() => _tripBusy = true);
     try {
-      final trip = await _service.markDone(widget.card.id, step.id, at);
+      final trip = await _service.markDone(widget.card.id, step.id, at, skip: skip);
       if (!mounted) return;
       setState(() => _trip = trip);
+      _revealCurrent(trip);
       _say(
-        trip.isFinished ? 'Trip finished. Well done!' : 'Marked done. Times updated.',
+        trip.isFinished
+            ? 'Trip finished. Well done!'
+            : (skip ? 'Skipped. Times updated.' : 'Marked done. Times updated.'),
         action: SnackBarAction(label: 'Undo', onPressed: _undo),
       );
     } catch (e) {
       // Tried again with the same time, so a dropped signal costs nothing.
       if (mounted) {
         _say(
-          userMessageFor(e, action: 'mark this done'),
-          action: SnackBarAction(label: 'Try again', onPressed: () => _markDone(step, at)),
+          userMessageFor(e, action: skip ? 'skip this' : 'mark this done'),
+          action: SnackBarAction(label: 'Try again', onPressed: () => _markDone(step, at, skip: skip)),
         );
       }
     } finally {
       if (mounted) setState(() => _tripBusy = false);
     }
+  }
+
+  /// Scrolls the step in hand up under the bar at the top, once it is drawn.
+  void _revealCurrent(CityTourTrip trip) {
+    final tour = _tour;
+    if (tour == null || trip.isFinished) return;
+    // A trip from before days follows the first day.
+    final day = tour.dayById(trip.dayId) ?? (tour.days.isEmpty ? null : tour.days.first);
+    if (day == null) return;
+    final next = trip.schedule(day.steps, DateTime.now()).current;
+    if (next == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final box = _stepKeys[next.id]?.currentContext?.findRenderObject() as RenderBox?;
+      if (!mounted || box == null || !box.attached || !_scroll.hasClients) return;
+      final top = MediaQuery.of(context).padding.top + kToolbarHeight + 16;
+      final position = _scroll.position;
+      final target = position.pixels + box.localToGlobal(Offset.zero).dy - top;
+      _scroll.animateTo(
+        target.clamp(position.minScrollExtent, position.maxScrollExtent),
+        duration: const Duration(milliseconds: 450),
+        curve: Curves.easeInOutCubic,
+      );
+    });
   }
 
   Future<void> _undo() async {
@@ -356,6 +386,9 @@ class _CityTourPageState extends State<CityTourPage> {
               onStart: () => _startTrip(day),
               onMarkDone: () {
                 if (current != null) _markDone(current, DateTime.now());
+              },
+              onSkip: () {
+                if (current != null) _markDone(current, DateTime.now(), skip: true);
               },
               onClose: _closeTrip,
             ),
@@ -596,6 +629,7 @@ class _CityTourPageState extends State<CityTourPage> {
       final times = schedule?.times ?? cityTourDayPlan(day, DateTime.now());
       for (var i = 0; i < day.steps.length; i++) {
         children.add(CityTourStepTile(
+          key: _stepKeys.putIfAbsent(day.steps[i].id, GlobalKey.new),
           step: day.steps[i],
           isFirst: i == 0,
           isLast: i == day.steps.length - 1,
@@ -608,7 +642,11 @@ class _CityTourPageState extends State<CityTourPage> {
     return [
       SliverPadding(
         padding: EdgeInsets.fromLTRB(20, 18, 20, 32 + MediaQuery.of(context).padding.bottom),
-        sliver: SliverList.list(children: children),
+        // Built all at once, not as they scroll in, so the step in hand can
+        // be found and scrolled to (_revealCurrent).
+        sliver: SliverToBoxAdapter(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children),
+        ),
       ),
     ];
   }

@@ -361,41 +361,71 @@ const dayLine = (day) => {
     `${places} place${places === 1 ? '' : 's'}`].filter(Boolean).join(' · ');
 };
 
-/** CityTourPlanPicker: how many days, or which days' places. */
-function Planner({ days, picked, onPick, onShow }) {
-  const chosen = new Set(picked);
-  const firstN = picked.length > 0 && picked.every((id, i) => days[i]?.id === id) ? picked.length : 0;
-  const toggle = (id) => onPick(days.map((d) => d.id).filter((x) => (x === id ? !chosen.has(x) : chosen.has(x))));
+/**
+ * CityTourPlanPicker, two ways: "Day based" takes the first N days; "Place
+ * based" ticks each day's set of places. The way picked greys the other out.
+ */
+function Planner({ days, onShow }) {
+  const [way, setWay] = useState(null);
+  const [count, setCount] = useState(0);
+  const [picked, setPicked] = useState([]);
+  const chosen = way === 'days'
+    ? days.slice(0, count).map((d) => d.id)
+    : way === 'places' ? days.map((d) => d.id).filter((id) => picked.includes(id)) : [];
+  const toggle = (id) => setPicked(picked.includes(id) ? picked.filter((x) => x !== id) : [...picked, id]);
+  const wayButton = (key, icon, label) => (
+    <div
+      className={`ctp-way ${way === key ? 'on' : ''} ${way && way !== key ? 'off' : ''}`}
+      onClick={() => way !== key && setWay(key)}
+    >
+      <Icon name={icon} size={22} color={way === key ? '#fff' : way ? '#9E9E9E' : '#007A7C'} />
+      <span>{label}</span>
+    </div>
+  );
   return (
     <div className="ctp-planner">
       <div className="ctp-caption">PLAN YOUR DAYS</div>
-      <div className="ctp-planner-title">How many days do you have?</div>
-      <div className="ctp-daychips">
-        {days.map((d, i) => (
-          <span
-            key={d.id} className={`ctp-daychip ${firstN === i + 1 ? 'on' : ''}`}
-            onClick={() => onPick(days.slice(0, i + 1).map((x) => x.id))}
-          >
-            {i + 1}
-          </span>
-        ))}
+      <div className="ctp-planner-title">How do you want to plan?</div>
+      <div className="ctp-ways">
+        {wayButton('days', 'calendar_today', 'Day based')}
+        {wayButton('places', 'place', 'Place based')}
       </div>
-      <div className="ctp-planner-or">Or pick the places you want</div>
-      {days.map((d, i) => (
-        <div key={d.id} className="ctp-daypick" onClick={() => toggle(d.id)}>
-          <Icon
-            name={chosen.has(d.id) ? 'check_box' : 'check_box_outline_blank'} size={22}
-            color={chosen.has(d.id) ? '#007A7C' : '#9E9E9E'}
-          />
-          <span>
-            <strong>Day {i + 1} · {d.title || 'Places to add'}</strong>
-            <span>{dayLine(d)}</span>
-          </span>
+      {way === 'days' && (
+        <>
+          <div className="ctp-planner-or">How many days do you have?</div>
+          <div className="ctp-daychips">
+            {days.map((d, i) => (
+              <span key={d.id} className={`ctp-daychip ${count === i + 1 ? 'on' : ''}`} onClick={() => setCount(i + 1)}>
+                {i + 1}
+              </span>
+            ))}
+          </div>
+        </>
+      )}
+      {way === 'places' && (
+        <>
+          <div className="ctp-planner-or">Pick the sets of places you want</div>
+          <div>
+            {days.map((d, i) => (
+              <div key={d.id} className="ctp-daypick" onClick={() => toggle(d.id)}>
+                <Icon
+                  name={picked.includes(d.id) ? 'check_box' : 'check_box_outline_blank'} size={22}
+                  color={picked.includes(d.id) ? '#007A7C' : '#9E9E9E'}
+                />
+                <span>
+                  <strong>Day {i + 1} · {d.title || 'Places to see'}</strong>
+                  <span>{dayLine(d)}</span>
+                </span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+      {way && (
+        <div className={`ctp-planner-btn ${chosen.length ? '' : 'off'}`} onClick={() => chosen.length && onShow(chosen)}>
+          {chosen.length ? `Show my ${chosen.length}-day plan` : way === 'days' ? 'Pick your days' : 'Pick your places'}
         </div>
-      ))}
-      <div className={`ctp-planner-btn ${picked.length ? '' : 'off'}`} onClick={() => picked.length && onShow()}>
-        {picked.length ? `Show my ${picked.length}-day plan` : 'Pick your days'}
-      </div>
+      )}
     </div>
   );
 }
@@ -407,7 +437,6 @@ function GuidePage({ content, partners, activeDayId }) {
   // The traveller's plan (day ids) and the day on screen, as in the app. The
   // editor's day being worked on (activeDayId) is brought into view.
   const [plan, setPlan] = useState(null);
-  const [picked, setPicked] = useState([]);
   const [tab, setTab] = useState(null);
   const [seenActive, setSeenActive] = useState(activeDayId);
   if (activeDayId !== seenActive) {
@@ -450,15 +479,12 @@ function GuidePage({ content, partners, activeDayId }) {
           <>
             {content.intro_md && <div style={{ marginBottom: 20 }}><AppMarkdown text={content.intro_md} /></div>}
             {!shown ? (
-              <Planner
-                days={days} picked={picked} onPick={setPicked}
-                onShow={() => { setPlan(picked); setTab(picked[0]); }}
-              />
+              <Planner days={days} onShow={(ids) => { setPlan(ids); setTab(ids[0]); }} />
             ) : (
               <>
                 <div className="ctp-plan-head">
                   <span className="ctp-caption">YOUR PLAN · {planDays.length} DAY{planDays.length === 1 ? '' : 'S'}</span>
-                  <span className="ctp-plan-change" onClick={() => { setPicked(plan); setPlan(null); }}>Change</span>
+                  <span className="ctp-plan-change" onClick={() => setPlan(null)}>Change</span>
                 </div>
                 <div className="ctp-daytabs">
                   {planDays.map((d, i) => (

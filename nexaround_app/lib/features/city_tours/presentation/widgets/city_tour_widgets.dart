@@ -352,7 +352,8 @@ class CityTourMap extends StatelessWidget {
 }
 
 /// One step of the route: a numbered stop, or the ride to the next one, on a
-/// grey line that joins them.
+/// grey line that joins them. On a trip the step in hand sits on the app's
+/// green, and the steps done or skipped fade to grey.
 class CityTourStepTile extends StatelessWidget {
   final CityTourStep step;
   final bool isFirst;
@@ -375,9 +376,57 @@ class CityTourStepTile extends StatelessWidget {
 
   static const double _rail = 28;
 
+  /// How far the green reaches past the step's text.
+  static const double _greenPad = 10;
+
+  /// Grey, and faded towards the white page.
+  static const ColorFilter _doneFilter = ColorFilter.matrix(<double>[
+    0.2126, 0.7152, 0.0722, 0, 0,
+    0.2126, 0.7152, 0.0722, 0, 0,
+    0.2126, 0.7152, 0.0722, 0, 0,
+    0, 0, 0, 0.45, 0,
+  ]);
+
+  bool get _isNow => time?.isCurrent ?? false;
+
+  // Text colours, white on the green of the step in hand.
+  Color get _ink => _isNow ? Colors.white : AppColors.textPrimary;
+  Color get _soft => _isNow ? Colors.white.withValues(alpha: 0.85) : AppColors.textSecondary;
+  Color get _faint => _isNow ? Colors.white.withValues(alpha: 0.7) : AppColors.textTertiary;
+  Color get _accent => _isNow ? Colors.white : AppColors.brandGreen;
+
   @override
   Widget build(BuildContext context) {
-    return Stack(
+    Widget content = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (time != null) _time(context, time!),
+        step.isStop ? _stop() : (step.isBreak ? _break() : _move()),
+      ],
+    );
+    if (_isNow) {
+      // Drawn past the text rather than padding it, so nothing moves when
+      // the step comes up.
+      content = Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Positioned(
+            left: -_greenPad,
+            top: -_greenPad,
+            right: -_greenPad,
+            bottom: -_greenPad,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: AppColors.brandGreen,
+                borderRadius: BorderRadius.circular(16),
+              ),
+            ),
+          ),
+          content,
+        ],
+      );
+    }
+    final tile = Stack(
       children: [
         if (!(isFirst && isLast))
           Positioned(
@@ -398,28 +447,25 @@ class CityTourStepTile extends StatelessWidget {
                 child: step.isStop ? CityTourStopBadge(step.number) : _modeBadge(),
               ),
               const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (time != null) _time(context, time!),
-                    step.isStop ? _stop() : (step.isBreak ? _break() : _move()),
-                  ],
-                ),
-              ),
+              Expanded(child: content),
             ],
           ),
         ),
       ],
     );
+    return (time?.isDone ?? false) ? ColorFiltered(colorFilter: _doneFilter, child: tile) : tile;
   }
 
-  /// "Done 11:52", "Now · until 11:45", or the planned "11:45 – 12:05".
+  /// "Done 11:52", "Skipped", "Now · until 11:45", or the planned "11:45 – 12:05".
   Widget _time(BuildContext context, CityTourStepTime t) {
     final String text;
     final Color color;
     final IconData icon;
-    if (t.isDone) {
+    if (t.isDone && t.skipped) {
+      text = 'Skipped';
+      color = AppColors.textTertiary;
+      icon = Icons.skip_next_rounded;
+    } else if (t.isDone) {
       text = 'Done ${cityTourClock(context, t.doneAt!)}';
       color = AppColors.brandGreen;
       icon = Icons.check_circle_rounded;
@@ -428,7 +474,7 @@ class CityTourStepTile extends StatelessWidget {
       text = over
           ? 'Now · planned until ${cityTourClock(context, t.end)}'
           : 'Now · until ${cityTourClock(context, t.end)}';
-      color = over ? const Color(0xFFD97706) : AppColors.brandGreen;
+      color = Colors.white;
       icon = Icons.play_circle_rounded;
     } else {
       text = '${cityTourClock(context, t.start)} – ${cityTourClock(context, t.end)}';
@@ -479,15 +525,15 @@ class CityTourStepTile extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Padding(
-            padding: EdgeInsets.only(top: 1),
-            child: Icon(Icons.info_outline_rounded, size: 14, color: AppColors.textTertiary),
+          Padding(
+            padding: const EdgeInsets.only(top: 1),
+            child: Icon(Icons.info_outline_rounded, size: 14, color: _faint),
           ),
           const SizedBox(width: 4),
           Expanded(
             child: Text(
               step.accessNote,
-              style: const TextStyle(fontSize: 12.5, height: 1.4, color: AppColors.textSecondary),
+              style: TextStyle(fontSize: 12.5, height: 1.4, color: _soft),
             ),
           ),
         ],
@@ -504,12 +550,12 @@ class CityTourStepTile extends StatelessWidget {
           Text.rich(
             TextSpan(
               text: step.breakTitle.isEmpty ? 'Break' : step.breakTitle,
-              style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+              style: TextStyle(fontWeight: FontWeight.w700, color: _ink),
               children: [
                 if (step.duration.isNotEmpty)
                   TextSpan(
                     text: ' · ${step.duration}',
-                    style: const TextStyle(fontWeight: FontWeight.w500, color: AppColors.textSecondary),
+                    style: TextStyle(fontWeight: FontWeight.w500, color: _soft),
                   ),
               ],
             ),
@@ -518,7 +564,7 @@ class CityTourStepTile extends StatelessWidget {
           if (step.accessNote.isNotEmpty) _access(),
           if (step.bodyMd.isNotEmpty) ...[
             const SizedBox(height: 8),
-            ExperienceDescription(markdown: step.bodyMd),
+            ExperienceDescription(markdown: step.bodyMd, color: _isNow ? Colors.white : null),
           ],
           ..._links(10),
         ],
@@ -536,23 +582,23 @@ class CityTourStepTile extends StatelessWidget {
           if (caption != null) ...[
             Text(
               caption,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 10.5,
                 fontWeight: FontWeight.w800,
                 letterSpacing: 1.1,
-                color: AppColors.brandGreen,
+                color: _accent,
               ),
             ),
             const SizedBox(height: 2),
           ],
           Text(
             step.name,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 17,
               height: 1.25,
               fontWeight: FontWeight.w800,
               letterSpacing: -0.2,
-              color: AppColors.textPrimary,
+              color: _ink,
             ),
           ),
           if (step.timeHere.isNotEmpty || step.price.isNotEmpty) ...[
@@ -587,7 +633,7 @@ class CityTourStepTile extends StatelessWidget {
           ],
           if (step.bodyMd.isNotEmpty) ...[
             const SizedBox(height: 10),
-            ExperienceDescription(markdown: step.bodyMd),
+            ExperienceDescription(markdown: step.bodyMd, color: _isNow ? Colors.white : null),
           ],
           ..._links(12),
         ],
@@ -608,14 +654,14 @@ class CityTourStepTile extends StatelessWidget {
           Text.rich(
             TextSpan(
               text: step.modeLabel.isEmpty ? 'Walk' : step.modeLabel,
-              style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+              style: TextStyle(fontWeight: FontWeight.w700, color: _ink),
               children: [
                 if (extras.isNotEmpty)
                   TextSpan(
                     text: ' · ${extras.join(' · ')}',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontWeight: FontWeight.w500,
-                      color: AppColors.textSecondary,
+                      color: _soft,
                     ),
                   ),
               ],
@@ -626,18 +672,18 @@ class CityTourStepTile extends StatelessWidget {
             const SizedBox(height: 3),
             Text(
               step.directions,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 14,
                 height: 1.45,
                 fontWeight: FontWeight.w500,
-                color: AppColors.textPrimary,
+                color: _ink,
               ),
             ),
           ],
           if (step.accessNote.isNotEmpty) _access(),
           if (step.bodyMd.isNotEmpty) ...[
             const SizedBox(height: 8),
-            ExperienceDescription(markdown: step.bodyMd),
+            ExperienceDescription(markdown: step.bodyMd, color: _isNow ? Colors.white : null),
           ],
           ..._links(10),
         ],
@@ -649,14 +695,14 @@ class CityTourStepTile extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 14, color: AppColors.textTertiary),
+        Icon(icon, size: 14, color: _faint),
         const SizedBox(width: 4),
         Text(
           text,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 12.5,
             fontWeight: FontWeight.w500,
-            color: AppColors.textSecondary,
+            color: _soft,
           ),
         ),
       ],
@@ -796,7 +842,7 @@ class CityTourLinkButton extends StatelessWidget {
 }
 
 /// The bar under a guide: "Start trip"; then, on a trip, the step in hand
-/// with "Mark done"; then "Trip finished".
+/// with "Skip" and "Mark done"; then "Trip finished".
 class CityTourTripBar extends StatelessWidget {
   final CityTourTrip? trip;
   final CityTourSchedule? schedule;
@@ -806,6 +852,7 @@ class CityTourTripBar extends StatelessWidget {
   final bool busy;
   final VoidCallback onStart;
   final VoidCallback onMarkDone;
+  final VoidCallback onSkip;
   final VoidCallback onClose;
 
   /// "Start trip", or "Start Day 2" in a guide of several days.
@@ -820,6 +867,7 @@ class CityTourTripBar extends StatelessWidget {
     this.startLabel = 'Start trip',
     required this.onStart,
     required this.onMarkDone,
+    required this.onSkip,
     required this.onClose,
   });
 
@@ -943,6 +991,18 @@ class CityTourTripBar extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 12),
+        OutlinedButton(
+          onPressed: busy ? null : onSkip,
+          style: OutlinedButton.styleFrom(
+            foregroundColor: AppColors.textPrimary,
+            side: const BorderSide(color: AppColors.border),
+            minimumSize: const Size(0, 46),
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          ),
+          child: const Text('Skip', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800)),
+        ),
+        const SizedBox(width: 8),
         FilledButton.icon(
           onPressed: busy ? null : onMarkDone,
           style: FilledButton.styleFrom(
@@ -972,8 +1032,10 @@ String cityTourDayLine(BuildContext context, CityTourDay day) {
   ].join(' · ');
 }
 
-/// "Plan your days": how many days the traveller has (the first ones), or
-/// which days' places they want. [onShow] gets the day ids in guide order.
+/// "Plan your days", two ways. "Day based" asks how many days the traveller
+/// has and takes the first ones; "Place based" lists each day's set of places
+/// to tick, a day for each set. The way picked greys the other out (a tap on
+/// it switches). [onShow] gets the day ids in guide order.
 class CityTourPlanPicker extends StatefulWidget {
   final List<CityTourDay> days;
   final List<String> initial;
@@ -990,27 +1052,41 @@ class CityTourPlanPicker extends StatefulWidget {
   State<CityTourPlanPicker> createState() => _CityTourPlanPickerState();
 }
 
-class _CityTourPlanPickerState extends State<CityTourPlanPicker> {
-  late Set<String> _picked = {...widget.initial};
+enum _PlanWay { days, places }
 
-  List<String> get _ordered => [
+class _CityTourPlanPickerState extends State<CityTourPlanPicker> {
+  // Opened again from "Change": the way the plan was made, as far as it shows.
+  late _PlanWay? _way = widget.initial.isEmpty
+      ? null
+      : (_firstDays(widget.initial) ? _PlanWay.days : _PlanWay.places);
+  late int _count = _way == _PlanWay.days ? widget.initial.length : 0;
+  late final Set<String> _picked = _way == _PlanWay.places ? <String>{...widget.initial} : <String>{};
+
+  /// Whether [ids] are the guide's first days, in order.
+  bool _firstDays(List<String> ids) {
+    if (ids.length > widget.days.length) return false;
+    for (var i = 0; i < ids.length; i++) {
+      if (widget.days[i].id != ids[i]) return false;
+    }
+    return true;
+  }
+
+  List<String> get _chosen {
+    if (_way == _PlanWay.days) return [for (final d in widget.days.take(_count)) d.id];
+    if (_way == _PlanWay.places) {
+      return [
         for (final d in widget.days)
           if (_picked.contains(d.id)) d.id,
       ];
-
-  /// N when the pick is exactly the first N days, else 0.
-  int get _firstN {
-    final ordered = _ordered;
-    for (var i = 0; i < ordered.length; i++) {
-      if (widget.days[i].id != ordered[i]) return 0;
     }
-    return ordered.length;
+    return const [];
   }
+
+  static const _question = TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textPrimary);
 
   @override
   Widget build(BuildContext context) {
-    final ordered = _ordered;
-    final firstN = _firstN;
+    final chosen = _chosen;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -1031,7 +1107,7 @@ class _CityTourPlanPickerState extends State<CityTourPlanPicker> {
           ),
           const SizedBox(height: 4),
           const Text(
-            'How many days do you have?',
+            'How do you want to plan?',
             style: TextStyle(
               fontSize: 17,
               height: 1.25,
@@ -1041,107 +1117,162 @@ class _CityTourPlanPickerState extends State<CityTourPlanPicker> {
             ),
           ),
           const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
+          Row(
             children: [
-              for (var i = 0; i < widget.days.length; i++)
-                GestureDetector(
-                  onTap: () => setState(() => _picked = {for (final d in widget.days.take(i + 1)) d.id}),
-                  child: Container(
-                    width: 44,
-                    height: 40,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: firstN == i + 1 ? AppColors.brandGreen : Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: firstN == i + 1 ? AppColors.brandGreen : AppColors.border),
-                    ),
-                    child: Text(
-                      '${i + 1}',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w800,
-                        color: firstN == i + 1 ? Colors.white : AppColors.textPrimary,
+              Expanded(child: _wayButton(_PlanWay.days, Icons.calendar_today_rounded, 'Day based')),
+              const SizedBox(width: 10),
+              Expanded(child: _wayButton(_PlanWay.places, Icons.place_rounded, 'Place based')),
+            ],
+          ),
+          if (_way == _PlanWay.days) ...[
+            const SizedBox(height: 18),
+            const Text('How many days do you have?', style: _question),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (var i = 0; i < widget.days.length; i++)
+                  GestureDetector(
+                    onTap: () => setState(() => _count = i + 1),
+                    child: Container(
+                      width: 44,
+                      height: 40,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: _count == i + 1 ? AppColors.brandGreen : Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: _count == i + 1 ? AppColors.brandGreen : AppColors.border),
+                      ),
+                      child: Text(
+                        '${i + 1}',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          color: _count == i + 1 ? Colors.white : AppColors.textPrimary,
+                        ),
                       ),
                     ),
                   ),
+              ],
+            ),
+          ],
+          if (_way == _PlanWay.places) ...[
+            const SizedBox(height: 18),
+            const Text('Pick the sets of places you want', style: _question),
+            const SizedBox(height: 4),
+            for (var i = 0; i < widget.days.length; i++)
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => setState(() {
+                  final id = widget.days[i].id;
+                  if (!_picked.remove(id)) _picked.add(id);
+                }),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  decoration: BoxDecoration(
+                    border: i == 0 ? null : const Border(top: BorderSide(color: AppColors.surfaceVariant)),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        _picked.contains(widget.days[i].id)
+                            ? Icons.check_box_rounded
+                            : Icons.check_box_outline_blank_rounded,
+                        size: 22,
+                        color: _picked.contains(widget.days[i].id) ? AppColors.brandGreen : AppColors.textTertiary,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Day ${i + 1} · ${widget.days[i].title.isEmpty ? 'Places to see' : widget.days[i].title}',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                height: 1.3,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.textPrimary,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              cityTourDayLine(context, widget.days[i]),
+                              style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
+              ),
+          ],
+          if (_way != null) ...[
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: FilledButton(
+                onPressed: chosen.isEmpty ? null : () => widget.onShow(chosen),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.brandGreen,
+                  disabledBackgroundColor: AppColors.border,
+                  disabledForegroundColor: AppColors.textTertiary,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+                child: Text(
+                  chosen.isNotEmpty
+                      ? 'Show my ${chosen.length}-day plan'
+                      : (_way == _PlanWay.days ? 'Pick your days' : 'Pick your places'),
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// "Day based" or "Place based": green when picked, greyed out when the
+  /// other one is.
+  Widget _wayButton(_PlanWay way, IconData icon, String label) {
+    final on = _way == way;
+    final greyed = _way != null && !on;
+    return GestureDetector(
+      onTap: on ? null : () => setState(() => _way = way),
+      child: Opacity(
+        opacity: greyed ? 0.45 : 1,
+        child: Container(
+          height: 76,
+          decoration: BoxDecoration(
+            color: on ? AppColors.brandGreen : Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: on ? AppColors.brandGreen : AppColors.border),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                icon,
+                size: 22,
+                color: on ? Colors.white : (greyed ? AppColors.textTertiary : AppColors.brandGreen),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: on ? Colors.white : (greyed ? AppColors.textTertiary : AppColors.textPrimary),
+                ),
+              ),
             ],
           ),
-          const SizedBox(height: 18),
-          const Text(
-            'Or pick the places you want',
-            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
-          ),
-          const SizedBox(height: 4),
-          for (var i = 0; i < widget.days.length; i++)
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => setState(() {
-                final id = widget.days[i].id;
-                if (!_picked.remove(id)) _picked.add(id);
-              }),
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                decoration: BoxDecoration(
-                  border: i == 0 ? null : const Border(top: BorderSide(color: AppColors.surfaceVariant)),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(
-                      _picked.contains(widget.days[i].id)
-                          ? Icons.check_box_rounded
-                          : Icons.check_box_outline_blank_rounded,
-                      size: 22,
-                      color: _picked.contains(widget.days[i].id) ? AppColors.brandGreen : AppColors.textTertiary,
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Day ${i + 1} · ${widget.days[i].title.isEmpty ? 'Places to see' : widget.days[i].title}',
-                            style: const TextStyle(
-                              fontSize: 14,
-                              height: 1.3,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.textPrimary,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            cityTourDayLine(context, widget.days[i]),
-                            style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          const SizedBox(height: 14),
-          SizedBox(
-            width: double.infinity,
-            height: 50,
-            child: FilledButton(
-              onPressed: ordered.isEmpty ? null : () => widget.onShow(ordered),
-              style: FilledButton.styleFrom(
-                backgroundColor: AppColors.brandGreen,
-                disabledBackgroundColor: AppColors.border,
-                disabledForegroundColor: AppColors.textTertiary,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-              ),
-              child: Text(
-                ordered.isEmpty ? 'Pick your days' : 'Show my ${ordered.length}-day plan',
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }

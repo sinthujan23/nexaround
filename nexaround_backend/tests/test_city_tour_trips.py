@@ -94,6 +94,30 @@ def test_undo_last_and_all_done():
     assert trips.undo_last(steps, {}) == {}
 
 
+def test_an_undone_skip_is_no_longer_skipped():
+    steps = _steps()
+    done = {"a": T0.isoformat(), "b": (T0 + timedelta(minutes=5)).isoformat()}
+    assert trips.still_skipped(["b"], done) == ["b"]
+    undone = trips.undo_last(steps, done)
+    assert trips.still_skipped(["b"], undone) == []
+    assert trips.still_skipped(None, done) == []
+
+
+def test_the_trip_view_lists_skipped_steps():
+    class Trip:
+        id = "t1"
+        tour_id = "g1"
+        day_id = None
+        started_at = T0
+        finished_at = None
+        done = {"a": T0.isoformat(), "b": T0.isoformat()}
+        skipped = ["b", "gone"]
+
+    view = trips.view(Trip(), {"steps": _steps()})
+    assert view["skipped"] == ["b"]
+    assert set(view["done"]) == {"a", "b"}
+
+
 def test_reminder_text():
     steps = _steps()
     assert trips.reminder_text(steps, steps[0]) == (

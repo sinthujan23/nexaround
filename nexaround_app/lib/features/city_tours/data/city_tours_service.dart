@@ -91,16 +91,17 @@ class CityToursService {
   Future<void> savePlan(String tourId, List<String> dayIds) =>
       CacheService.saveUserData(_planKey(tourId), json.encode({'days': dayIds}));
 
-  /// [at] is when the traveller tapped, so a retry keeps that time.
-  Future<CityTourTrip> markDone(String tourId, String stepId, DateTime at) async {
+  /// [at] is when the traveller tapped, so a retry keeps that time. [skip]
+  /// ends the step without visiting it.
+  Future<CityTourTrip> markDone(String tourId, String stepId, DateTime at, {bool skip = false}) async {
     final response = await _dio.post(
       '$_base/$tourId/trip/done',
-      data: {'step_id': stepId, 'at': at.toUtc().toIso8601String()},
+      data: {'step_id': stepId, 'at': at.toUtc().toIso8601String(), if (skip) 'skip': true},
     );
     return (await _saveTrip(tourId, response.data))!;
   }
 
-  /// Takes back the last "Mark done".
+  /// Takes back the last "Mark done" or "Skip".
   Future<CityTourTrip> undoDone(String tourId) async {
     final response = await _dio.post('$_base/$tourId/trip/undo');
     return (await _saveTrip(tourId, response.data))!;

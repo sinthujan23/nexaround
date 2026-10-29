@@ -1,7 +1,8 @@
 import 'package:nexaround_app/features/city_tours/domain/city_tour.dart';
 
 /// A traveller following one day of a guide ([dayId]): "Start trip" saved [startedAt], and each
-/// "Mark done" saved when a step ended. The server reads every step's planned
+/// "Mark done" saved when a step ended. "Skip" ends a step the same way and
+/// is listed in [skipped] too. The server reads every step's planned
 /// minutes from the guide ("1.5–2 hours" → 105) and sends them in [minutes],
 /// so the app and the server's reminders plan with the same numbers.
 /// Shape from GET/POST /city-tours/{id}/trip.
@@ -11,6 +12,7 @@ class CityTourTrip {
   final DateTime startedAt;
   final DateTime? finishedAt;
   final Map<String, DateTime> done;
+  final Set<String> skipped;
   final Map<String, int> minutes;
 
   const CityTourTrip({
@@ -19,6 +21,7 @@ class CityTourTrip {
     required this.startedAt,
     required this.finishedAt,
     required this.done,
+    this.skipped = const {},
     required this.minutes,
   });
 
@@ -43,6 +46,7 @@ class CityTourTrip {
       startedAt: _time(json['started_at']) ?? DateTime.now(),
       finishedAt: _time(json['finished_at']),
       done: done,
+      skipped: {for (final id in json['skipped'] as List? ?? const []) id.toString()},
       minutes: minutes,
     );
   }
@@ -50,8 +54,9 @@ class CityTourTrip {
   int minutesFor(CityTourStep step) => minutes[step.id] ?? cityTourPlannedMinutes(step);
 
   /// Every step's times as of [now]. A step starts when the one before it was
-  /// marked done (the first, at the start); the step in hand runs its planned
-  /// minutes, or on until now when it runs over; the rest follow on.
+  /// marked done or skipped (the first, at the start); the step in hand runs
+  /// its planned minutes, or on until now when it runs over; the rest follow
+  /// on. A skipped step's minutes leave the plan the pace is measured against.
   CityTourSchedule schedule(List<CityTourStep> steps, DateTime now) {
     final times = <String, CityTourStepTime>{};
     CityTourStep? current;
@@ -59,10 +64,11 @@ class CityTourTrip {
     var planned = startedAt;
     for (final step in steps) {
       final length = Duration(minutes: minutesFor(step));
-      planned = planned.add(length);
       final doneAt = done[step.id];
+      final wasSkipped = doneAt != null && skipped.contains(step.id);
+      if (!wasSkipped) planned = planned.add(length);
       if (doneAt != null) {
-        times[step.id] = CityTourStepTime(start: cursor, end: doneAt, doneAt: doneAt);
+        times[step.id] = CityTourStepTime(start: cursor, end: doneAt, doneAt: doneAt, skipped: wasSkipped);
         cursor = doneAt;
       } else if (current == null) {
         current = step;
@@ -90,11 +96,15 @@ class CityTourStepTime {
   final DateTime? doneAt;
   final bool isCurrent;
 
+  /// Done by "Skip" rather than "Mark done".
+  final bool skipped;
+
   const CityTourStepTime({
     required this.start,
     required this.end,
     this.doneAt,
     this.isCurrent = false,
+    this.skipped = false,
   });
 
   bool get isDone => doneAt != null;

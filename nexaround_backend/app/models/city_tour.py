@@ -122,9 +122,9 @@ class CityTourTap(Base):
 
 class CityTourTrip(Base):
     """A traveller following a guide: when they started, and when they marked
-    each step (a stop, or the ride to the next one) done. The app plans the
-    rest of the day from these times; the worker pushes a "Done at …?"
-    reminder when the step in hand runs past its planned time
+    each step (a stop, or the ride to the next one) done or skipped it. The
+    app plans the rest of the day from these times; the worker pushes a
+    "Done at …?" reminder when the step in hand runs past its planned time
     (app/services/city_tour_trips.py).
 
     A trip ends when its last step is marked done (`finished_at`) or the
@@ -146,8 +146,10 @@ class CityTourTrip(Base):
     # guide's first day).
     day_id: Mapped[str] = mapped_column(String(36), nullable=True)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
-    # Step id → ISO time it was marked done, in route order.
+    # Step id → ISO time it was marked done, in route order. A skipped step is
+    # in here too, at the time it was skipped, and its id also in `skipped`.
     done: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict, server_default="{}")
+    skipped: Mapped[list] = mapped_column(JSONB, nullable=False, default=list, server_default="[]")
     finished_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
     ended_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
     # The step whose reminder went out, so each step is reminded once.

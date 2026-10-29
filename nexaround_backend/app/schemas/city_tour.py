@@ -38,6 +38,8 @@ class CityTourTripDoneIn(BaseModel):
     step_id: str = Field(..., max_length=36)
     # When the traveller tapped "Mark done"; a retry sends the same time.
     at: Optional[datetime] = None
+    # "Skip": the step ends now without being visited.
+    skip: bool = False
 
 
 class CityTourListItem(BaseModel):
