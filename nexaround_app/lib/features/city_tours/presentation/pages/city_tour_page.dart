@@ -48,7 +48,7 @@ Future<void> openCityTourById(BuildContext context, String tourId) async {
 /// A signed-in traveller can start a day's trip: every step gets a planned
 /// time, the bar at the bottom asks them to mark the step in hand done or
 /// skip it, and the times after it move to match (the server pushes a
-/// reminder when a step runs over). The step in hand is on green, the ones
+/// reminder when a step runs over). The step in hand is edged in green, the ones
 /// behind are greyed, and each mark scrolls the page on to the next.
 class CityTourPage extends StatefulWidget {
   final CityTourCard card;

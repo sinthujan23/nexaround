@@ -352,8 +352,8 @@ class CityTourMap extends StatelessWidget {
 }
 
 /// One step of the route: a numbered stop, or the ride to the next one, on a
-/// grey line that joins them. On a trip the step in hand sits on the app's
-/// green, and the steps done or skipped fade to grey.
+/// grey line that joins them. On a trip the step in hand sits on a light grey
+/// card edged in the app's green, and the steps done or skipped fade to grey.
 class CityTourStepTile extends StatelessWidget {
   final CityTourStep step;
   final bool isFirst;
@@ -376,8 +376,8 @@ class CityTourStepTile extends StatelessWidget {
 
   static const double _rail = 28;
 
-  /// How far the green reaches past the step's text.
-  static const double _greenPad = 10;
+  /// How far the step in hand's card reaches past its text.
+  static const double _cardPad = 10;
 
   /// Grey, and faded towards the white page.
   static const ColorFilter _doneFilter = ColorFilter.matrix(<double>[
@@ -388,12 +388,6 @@ class CityTourStepTile extends StatelessWidget {
   ]);
 
   bool get _isNow => time?.isCurrent ?? false;
-
-  // Text colours, white on the green of the step in hand.
-  Color get _ink => _isNow ? Colors.white : AppColors.textPrimary;
-  Color get _soft => _isNow ? Colors.white.withValues(alpha: 0.85) : AppColors.textSecondary;
-  Color get _faint => _isNow ? Colors.white.withValues(alpha: 0.7) : AppColors.textTertiary;
-  Color get _accent => _isNow ? Colors.white : AppColors.brandGreen;
 
   @override
   Widget build(BuildContext context) {
@@ -411,14 +405,15 @@ class CityTourStepTile extends StatelessWidget {
         clipBehavior: Clip.none,
         children: [
           Positioned(
-            left: -_greenPad,
-            top: -_greenPad,
-            right: -_greenPad,
-            bottom: -_greenPad,
+            left: -_cardPad,
+            top: -_cardPad,
+            right: -_cardPad,
+            bottom: -_cardPad,
             child: DecoratedBox(
               decoration: BoxDecoration(
-                color: AppColors.brandGreen,
+                color: AppColors.surface,
                 borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppColors.brandGreen, width: 1.5),
               ),
             ),
           ),
@@ -474,7 +469,7 @@ class CityTourStepTile extends StatelessWidget {
       text = over
           ? 'Now · planned until ${cityTourClock(context, t.end)}'
           : 'Now · until ${cityTourClock(context, t.end)}';
-      color = Colors.white;
+      color = over ? const Color(0xFFD97706) : AppColors.brandGreen;
       icon = Icons.play_circle_rounded;
     } else {
       text = '${cityTourClock(context, t.start)} – ${cityTourClock(context, t.end)}';
@@ -527,13 +522,13 @@ class CityTourStepTile extends StatelessWidget {
         children: [
           Padding(
             padding: const EdgeInsets.only(top: 1),
-            child: Icon(Icons.info_outline_rounded, size: 14, color: _faint),
+            child: Icon(Icons.info_outline_rounded, size: 14, color: AppColors.textTertiary),
           ),
           const SizedBox(width: 4),
           Expanded(
             child: Text(
               step.accessNote,
-              style: TextStyle(fontSize: 12.5, height: 1.4, color: _soft),
+              style: const TextStyle(fontSize: 12.5, height: 1.4, color: AppColors.textSecondary),
             ),
           ),
         ],
@@ -550,12 +545,12 @@ class CityTourStepTile extends StatelessWidget {
           Text.rich(
             TextSpan(
               text: step.breakTitle.isEmpty ? 'Break' : step.breakTitle,
-              style: TextStyle(fontWeight: FontWeight.w700, color: _ink),
+              style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.textPrimary),
               children: [
                 if (step.duration.isNotEmpty)
                   TextSpan(
                     text: ' · ${step.duration}',
-                    style: TextStyle(fontWeight: FontWeight.w500, color: _soft),
+                    style: const TextStyle(fontWeight: FontWeight.w500, color: AppColors.textSecondary),
                   ),
               ],
             ),
@@ -564,7 +559,7 @@ class CityTourStepTile extends StatelessWidget {
           if (step.accessNote.isNotEmpty) _access(),
           if (step.bodyMd.isNotEmpty) ...[
             const SizedBox(height: 8),
-            ExperienceDescription(markdown: step.bodyMd, color: _isNow ? Colors.white : null),
+            ExperienceDescription(markdown: step.bodyMd),
           ],
           ..._links(10),
         ],
@@ -586,7 +581,7 @@ class CityTourStepTile extends StatelessWidget {
                 fontSize: 10.5,
                 fontWeight: FontWeight.w800,
                 letterSpacing: 1.1,
-                color: _accent,
+                color: AppColors.brandGreen,
               ),
             ),
             const SizedBox(height: 2),
@@ -598,7 +593,7 @@ class CityTourStepTile extends StatelessWidget {
               height: 1.25,
               fontWeight: FontWeight.w800,
               letterSpacing: -0.2,
-              color: _ink,
+              color: AppColors.textPrimary,
             ),
           ),
           if (step.timeHere.isNotEmpty || step.price.isNotEmpty) ...[
@@ -633,7 +628,7 @@ class CityTourStepTile extends StatelessWidget {
           ],
           if (step.bodyMd.isNotEmpty) ...[
             const SizedBox(height: 10),
-            ExperienceDescription(markdown: step.bodyMd, color: _isNow ? Colors.white : null),
+            ExperienceDescription(markdown: step.bodyMd),
           ],
           ..._links(12),
         ],
@@ -654,14 +649,14 @@ class CityTourStepTile extends StatelessWidget {
           Text.rich(
             TextSpan(
               text: step.modeLabel.isEmpty ? 'Walk' : step.modeLabel,
-              style: TextStyle(fontWeight: FontWeight.w700, color: _ink),
+              style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.textPrimary),
               children: [
                 if (extras.isNotEmpty)
                   TextSpan(
                     text: ' · ${extras.join(' · ')}',
                     style: TextStyle(
                       fontWeight: FontWeight.w500,
-                      color: _soft,
+                      color: AppColors.textSecondary,
                     ),
                   ),
               ],
@@ -676,14 +671,14 @@ class CityTourStepTile extends StatelessWidget {
                 fontSize: 14,
                 height: 1.45,
                 fontWeight: FontWeight.w500,
-                color: _ink,
+                color: AppColors.textPrimary,
               ),
             ),
           ],
           if (step.accessNote.isNotEmpty) _access(),
           if (step.bodyMd.isNotEmpty) ...[
             const SizedBox(height: 8),
-            ExperienceDescription(markdown: step.bodyMd, color: _isNow ? Colors.white : null),
+            ExperienceDescription(markdown: step.bodyMd),
           ],
           ..._links(10),
         ],
@@ -695,14 +690,14 @@ class CityTourStepTile extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 14, color: _faint),
+        Icon(icon, size: 14, color: AppColors.textTertiary),
         const SizedBox(width: 4),
         Text(
           text,
           style: TextStyle(
             fontSize: 12.5,
             fontWeight: FontWeight.w500,
-            color: _soft,
+            color: AppColors.textSecondary,
           ),
         ),
       ],
