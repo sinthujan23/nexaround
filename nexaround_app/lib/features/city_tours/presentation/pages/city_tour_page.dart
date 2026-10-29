@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderAbstractViewport;
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/error/user_message.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
@@ -49,7 +51,8 @@ Future<void> openCityTourById(BuildContext context, String tourId) async {
 /// time, the bar at the bottom asks them to mark the step in hand done or
 /// skip it, and the times after it move to match (the server pushes a
 /// reminder when a step runs over). The step in hand is edged in green, the ones
-/// behind are greyed, and each mark scrolls the page on to the next.
+/// behind are greyed, and each mark scrolls the page on to the next. Scrolled
+/// into, the step in hand keeps its number and name under the bar at the top.
 class CityTourPage extends StatefulWidget {
   final CityTourCard card;
 
@@ -372,6 +375,7 @@ class _CityTourPageState extends State<CityTourPage> {
     final schedule = day == null ? null : dayTrip?.schedule(day.steps, DateTime.now());
     final current = schedule?.current;
     final number = day == null ? 0 : days.indexOf(day) + 1;
+    final currentKey = current == null ? null : _stepKeys.putIfAbsent(current.id, GlobalKey.new);
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -392,118 +396,135 @@ class _CityTourPageState extends State<CityTourPage> {
               },
               onClose: _closeTrip,
             ),
-      body: CustomScrollView(
-        controller: _scroll,
-        slivers: [
-          SliverAppBar(
-            pinned: true,
-            expandedHeight: width * _heroFraction,
-            backgroundColor: Colors.white,
-            surfaceTintColor: Colors.white,
-            centerTitle: false,
-            titleSpacing: 4,
-            title: AnimatedOpacity(
-              opacity: _collapsed ? 1 : 0,
-              duration: const Duration(milliseconds: 200),
-              child: Text(
-                card.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -0.2,
-                  color: AppColors.textPrimary,
+      body: Stack(
+        children: [
+          CustomScrollView(
+            controller: _scroll,
+            slivers: [
+              SliverAppBar(
+                pinned: true,
+                expandedHeight: width * _heroFraction,
+                backgroundColor: Colors.white,
+                surfaceTintColor: Colors.white,
+                centerTitle: false,
+                titleSpacing: 4,
+                title: AnimatedOpacity(
+                  opacity: _collapsed ? 1 : 0,
+                  duration: const Duration(milliseconds: 200),
+                  child: Text(
+                    card.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.2,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
                 ),
-              ),
-            ),
-            leading: Padding(
-              padding: const EdgeInsets.all(8),
-              child: Material(
-                color: Colors.white.withValues(alpha: 0.92),
-                shape: const CircleBorder(),
-                child: IconButton(
-                  padding: EdgeInsets.zero,
-                  icon: const Icon(Icons.arrow_back_rounded, color: AppColors.textPrimary, size: 20),
-                  onPressed: () => Navigator.pop(context),
-                ),
-              ),
-            ),
-            actions: [
-              if (trip != null && !trip.isFinished)
-                Padding(
+                leading: Padding(
                   padding: const EdgeInsets.all(8),
                   child: Material(
                     color: Colors.white.withValues(alpha: 0.92),
                     shape: const CircleBorder(),
-                    child: PopupMenuButton<String>(
+                    child: IconButton(
                       padding: EdgeInsets.zero,
-                      icon: const Icon(Icons.more_horiz_rounded, color: AppColors.textPrimary, size: 20),
-                      onSelected: (_) => _endTrip(),
-                      itemBuilder: (_) => const [
-                        PopupMenuItem(value: 'end', child: Text('End trip')),
-                      ],
+                      icon: const Icon(Icons.arrow_back_rounded, color: AppColors.textPrimary, size: 20),
+                      onPressed: () => Navigator.pop(context),
                     ),
                   ),
                 ),
-            ],
-            flexibleSpace: FlexibleSpaceBar(
-              background: card.coverUrl.isEmpty
-                  ? Container(color: AppColors.surfaceVariant)
-                  : CachedNetworkImage(
-                      imageUrl: cityTourMediaUrl(card.coverUrl),
-                      fit: BoxFit.cover,
-                      memCacheWidth: 1440,
-                      placeholder: (_, __) => Container(color: AppColors.surface),
-                      errorWidget: (_, __, ___) => Container(color: AppColors.surfaceVariant),
-                    ),
-            ),
-          ),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (place.isNotEmpty)
-                    Text(
-                      place.toUpperCase(),
-                      style: const TextStyle(
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 1.2,
-                        color: AppColors.brandGreen,
+                actions: [
+                  if (trip != null && !trip.isFinished)
+                    Padding(
+                      padding: const EdgeInsets.all(8),
+                      child: Material(
+                        color: Colors.white.withValues(alpha: 0.92),
+                        shape: const CircleBorder(),
+                        child: PopupMenuButton<String>(
+                          padding: EdgeInsets.zero,
+                          icon: const Icon(Icons.more_horiz_rounded, color: AppColors.textPrimary, size: 20),
+                          onSelected: (_) => _endTrip(),
+                          itemBuilder: (_) => const [
+                            PopupMenuItem(value: 'end', child: Text('End trip')),
+                          ],
+                        ),
                       ),
                     ),
-                  const SizedBox(height: 6),
-                  Text(
-                    card.title,
-                    style: const TextStyle(
-                      fontSize: 24,
-                      height: 1.2,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: -0.4,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                  if (card.summary.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      card.summary,
-                      style: const TextStyle(
-                        fontSize: 14.5,
-                        height: 1.5,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 14),
-                  Wrap(spacing: 8, runSpacing: 8, children: cityTourFacts(card)),
                 ],
+                flexibleSpace: FlexibleSpaceBar(
+                  background: card.coverUrl.isEmpty
+                      ? Container(color: AppColors.surfaceVariant)
+                      : CachedNetworkImage(
+                          imageUrl: cityTourMediaUrl(card.coverUrl),
+                          fit: BoxFit.cover,
+                          memCacheWidth: 1440,
+                          placeholder: (_, __) => Container(color: AppColors.surface),
+                          errorWidget: (_, __, ___) => Container(color: AppColors.surfaceVariant),
+                        ),
+                ),
+              ),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (place.isNotEmpty)
+                        Text(
+                          place.toUpperCase(),
+                          style: const TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 1.2,
+                            color: AppColors.brandGreen,
+                          ),
+                        ),
+                      const SizedBox(height: 6),
+                      Text(
+                        card.title,
+                        style: const TextStyle(
+                          fontSize: 24,
+                          height: 1.2,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.4,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      if (card.summary.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          card.summary,
+                          style: const TextStyle(
+                            fontSize: 14.5,
+                            height: 1.5,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 14),
+                      Wrap(spacing: 8, runSpacing: 8, children: cityTourFacts(card)),
+                    ],
+                  ),
+                ),
+              ),
+              ..._body(days, day, schedule),
+            ],
+          ),
+          if (day != null && current != null && currentKey != null)
+            Positioned(
+              top: MediaQuery.of(context).padding.top + kToolbarHeight,
+              left: 0,
+              right: 0,
+              child: _StickyStep(
+                scroll: _scroll,
+                tileKey: currentKey,
+                step: current,
+                title: _stepTitle(day, current),
+                cardEndInset: CityTourStepTile.cardEndInset(current, isLast: current.id == day.steps.last.id),
               ),
             ),
-          ),
-          ..._body(days, day, schedule),
         ],
       ),
     );
@@ -649,6 +670,106 @@ class _CityTourPageState extends State<CityTourPage> {
         ),
       ),
     ];
+  }
+}
+
+/// The step in hand's number and name, held under the bar at the top while
+/// the traveller scrolls through its card. The card's end pushes it away.
+class _StickyStep extends StatefulWidget {
+  final ScrollController scroll;
+  final GlobalKey tileKey;
+  final CityTourStep step;
+  final String title;
+  final double cardEndInset;
+
+  const _StickyStep({
+    required this.scroll,
+    required this.tileKey,
+    required this.step,
+    required this.title,
+    required this.cardEndInset,
+  });
+
+  @override
+  State<_StickyStep> createState() => _StickyStepState();
+}
+
+class _StickyStepState extends State<_StickyStep> {
+  static const double _height = 52;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.scroll.addListener(_moved);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _moved());
+  }
+
+  @override
+  void didUpdateWidget(_StickyStep old) {
+    super.didUpdateWidget(old);
+    if (old.scroll != widget.scroll) {
+      old.scroll.removeListener(_moved);
+      widget.scroll.addListener(_moved);
+    }
+    // The step's tile may move once this frame is laid out.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _moved());
+  }
+
+  @override
+  void dispose() {
+    widget.scroll.removeListener(_moved);
+    super.dispose();
+  }
+
+  void _moved() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final box = widget.tileKey.currentContext?.findRenderObject();
+    final viewport = RenderAbstractViewport.maybeOf(box);
+    if (box is! RenderBox || !box.hasSize || viewport == null || !widget.scroll.hasClients) {
+      return const SizedBox.shrink();
+    }
+    // Where the tile sits in the list, less how far the list has scrolled:
+    // right for this frame, where its painted place would be a frame behind.
+    final top = viewport.getOffsetToReveal(box, 0).offset - widget.scroll.offset;
+    final end = top + box.size.height - widget.cardEndInset;
+    final edge = MediaQuery.of(context).padding.top + kToolbarHeight;
+    if (top >= edge || end <= edge) return const SizedBox.shrink();
+    return ClipRect(
+      child: Transform.translate(
+        offset: Offset(0, math.min(0.0, end - edge - _height)),
+        child: Container(
+          height: _height,
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          decoration: BoxDecoration(
+            color: Color.alphaBlend(AppColors.brandGreenLight, Colors.white),
+            border: const Border(bottom: BorderSide(color: AppColors.brandGreen, width: 1.5)),
+          ),
+          child: Row(
+            children: [
+              widget.step.isStop ? CityTourStopBadge(widget.step.number) : CityTourModeBadge(widget.step),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Text(
+                  widget.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.2,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

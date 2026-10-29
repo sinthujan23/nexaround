@@ -154,6 +154,31 @@ class CityTourStopBadge extends StatelessWidget {
   }
 }
 
+/// A ride's or a break's icon in a circle, where a stop has its number.
+class CityTourModeBadge extends StatelessWidget {
+  final CityTourStep step;
+
+  const CityTourModeBadge(this.step, {super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 28,
+      height: 28,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        shape: BoxShape.circle,
+        border: Border.all(color: AppColors.border, width: 1.5),
+      ),
+      child: Icon(
+        step.isBreak ? Icons.restaurant_rounded : cityTourModeIcon(step.mode),
+        size: 15,
+        color: AppColors.textSecondary,
+      ),
+    );
+  }
+}
+
 /// A guide in a list: cover, title, intro and its facts.
 class CityTourCardTile extends StatelessWidget {
   final CityTourCard card;
@@ -361,7 +386,8 @@ class CityTourMap extends StatelessWidget {
 /// One step of the route: a numbered stop, or the ride to the next one, on a
 /// grey line that joins them. Walks, rides and breaks sit on a subtle grey card.
 /// On a trip the step in hand sits on a light green card edged in the app's
-/// green, and the steps done or skipped fade to grey.
+/// green, the steps done or skipped fade to grey, and the line fills in green
+/// as far as the trip has come.
 class CityTourStepTile extends StatelessWidget {
   final CityTourStep step;
   final bool isFirst;
@@ -383,6 +409,7 @@ class CityTourStepTile extends StatelessWidget {
   });
 
   static const double _rail = 28;
+  static const double _gap = 22;
 
   /// How far the step in hand's card reaches past its text.
   static const double _cardPad = 10;
@@ -396,6 +423,10 @@ class CityTourStepTile extends StatelessWidget {
   ]);
 
   bool get _isNow => time?.isCurrent ?? false;
+
+  /// How far above the tile's bottom edge the step in hand's card ends.
+  static double cardEndInset(CityTourStep step, {required bool isLast}) =>
+      (isLast ? 0 : _gap) - (step.isStop ? _cardPad : 0);
 
   @override
   Widget build(BuildContext context) {
@@ -437,34 +468,46 @@ class CityTourStepTile extends StatelessWidget {
         ],
       );
     }
-    final tile = Stack(
+    final done = time?.isDone ?? false;
+    Widget row = Padding(
+      padding: EdgeInsets.only(top: room, bottom: (isLast ? 0 : _gap) + room),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: _rail,
+            child: step.isStop ? CityTourStopBadge(step.number) : CityTourModeBadge(step),
+          ),
+          const SizedBox(width: 14),
+          Expanded(child: content),
+        ],
+      ),
+    );
+    if (done) row = ColorFiltered(colorFilter: _doneFilter, child: row);
+    // The line into the badge is green once the steps before it are done,
+    // and the line out of it once this one is.
+    final mid = room + _rail / 2;
+    return Stack(
       children: [
-        if (!(isFirst && isLast))
+        if (!isFirst)
           Positioned(
             left: _rail / 2 - 1,
-            top: isFirst ? room + _rail / 2 : 0,
-            bottom: isLast ? null : 0,
-            height: isLast ? room + _rail / 2 : null,
+            top: 0,
+            height: mid,
             width: 2,
-            child: const ColoredBox(color: AppColors.border),
+            child: ColoredBox(color: done || _isNow ? AppColors.brandGreen : AppColors.border),
           ),
-        Padding(
-          padding: EdgeInsets.only(top: room, bottom: (isLast ? 0 : 22) + room),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SizedBox(
-                width: _rail,
-                child: step.isStop ? CityTourStopBadge(step.number) : _modeBadge(),
-              ),
-              const SizedBox(width: 14),
-              Expanded(child: content),
-            ],
+        if (!isLast)
+          Positioned(
+            left: _rail / 2 - 1,
+            top: mid,
+            bottom: 0,
+            width: 2,
+            child: ColoredBox(color: done ? AppColors.brandGreen : AppColors.border),
           ),
-        ),
+        row,
       ],
     );
-    return (time?.isDone ?? false) ? ColorFiltered(colorFilter: _doneFilter, child: tile) : tile;
   }
 
   /// "Done 11:52", "Skipped", "Now · until 11:45", or the planned "11:45 – 12:05".
@@ -508,23 +551,6 @@ class CityTourStepTile extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _modeBadge() {
-    return Container(
-      width: _rail,
-      height: _rail,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        shape: BoxShape.circle,
-        border: Border.all(color: AppColors.border, width: 1.5),
-      ),
-      child: Icon(
-        step.isBreak ? Icons.restaurant_rounded : cityTourModeIcon(step.mode),
-        size: 15,
-        color: AppColors.textSecondary,
       ),
     );
   }
