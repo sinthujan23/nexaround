@@ -352,8 +352,9 @@ class CityTourMap extends StatelessWidget {
 }
 
 /// One step of the route: a numbered stop, or the ride to the next one, on a
-/// grey line that joins them. On a trip the step in hand sits on a light green
-/// card edged in the app's green, and the steps done or skipped fade to grey.
+/// grey line that joins them. Walks, rides and breaks sit on a subtle grey card.
+/// On a trip the step in hand sits on a light green card edged in the app's
+/// green, and the steps done or skipped fade to grey.
 class CityTourStepTile extends StatelessWidget {
   final CityTourStep step;
   final bool isFirst;
@@ -398,9 +399,12 @@ class CityTourStepTile extends StatelessWidget {
         step.isStop ? _stop() : (step.isBreak ? _break() : _move()),
       ],
     );
-    if (_isNow) {
+    // A walk, ride or break always sits on a subtle grey card, so the places
+    // stand out; the tile leaves room for it above and below.
+    final room = step.isStop ? 0.0 : _cardPad;
+    if (_isNow || !step.isStop) {
       // Drawn past the text rather than padding it, so nothing moves when
-      // the step comes up.
+      // a stop comes up.
       content = Stack(
         clipBehavior: Clip.none,
         children: [
@@ -410,11 +414,16 @@ class CityTourStepTile extends StatelessWidget {
             right: -_cardPad,
             bottom: -_cardPad,
             child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: AppColors.brandGreenLight,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: AppColors.brandGreen, width: 1.5),
-              ),
+              decoration: _isNow
+                  ? BoxDecoration(
+                      color: AppColors.brandGreenLight,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: AppColors.brandGreen, width: 1.5),
+                    )
+                  : BoxDecoration(
+                      color: AppColors.surface,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
             ),
           ),
           content,
@@ -426,14 +435,14 @@ class CityTourStepTile extends StatelessWidget {
         if (!(isFirst && isLast))
           Positioned(
             left: _rail / 2 - 1,
-            top: isFirst ? _rail / 2 : 0,
+            top: isFirst ? room + _rail / 2 : 0,
             bottom: isLast ? null : 0,
-            height: isLast ? _rail / 2 : null,
+            height: isLast ? room + _rail / 2 : null,
             width: 2,
             child: const ColoredBox(color: AppColors.border),
           ),
         Padding(
-          padding: EdgeInsets.only(bottom: isLast ? 0 : 22),
+          padding: EdgeInsets.only(top: room, bottom: (isLast ? 0 : 22) + room),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -520,8 +529,8 @@ class CityTourStepTile extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: const EdgeInsets.only(top: 1),
+          const Padding(
+            padding: EdgeInsets.only(top: 1),
             child: Icon(Icons.info_outline_rounded, size: 14, color: AppColors.textTertiary),
           ),
           const SizedBox(width: 4),
@@ -577,7 +586,7 @@ class CityTourStepTile extends StatelessWidget {
           if (caption != null) ...[
             Text(
               caption,
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 10.5,
                 fontWeight: FontWeight.w800,
                 letterSpacing: 1.1,
@@ -588,7 +597,7 @@ class CityTourStepTile extends StatelessWidget {
           ],
           Text(
             step.name,
-            style: TextStyle(
+            style: const TextStyle(
               fontSize: 17,
               height: 1.25,
               fontWeight: FontWeight.w800,
@@ -654,7 +663,7 @@ class CityTourStepTile extends StatelessWidget {
                 if (extras.isNotEmpty)
                   TextSpan(
                     text: ' · ${extras.join(' · ')}',
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontWeight: FontWeight.w500,
                       color: AppColors.textSecondary,
                     ),
@@ -667,7 +676,7 @@ class CityTourStepTile extends StatelessWidget {
             const SizedBox(height: 3),
             Text(
               step.directions,
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 14,
                 height: 1.45,
                 fontWeight: FontWeight.w500,
@@ -694,7 +703,7 @@ class CityTourStepTile extends StatelessWidget {
         const SizedBox(width: 4),
         Text(
           text,
-          style: TextStyle(
+          style: const TextStyle(
             fontSize: 12.5,
             fontWeight: FontWeight.w500,
             color: AppColors.textSecondary,
