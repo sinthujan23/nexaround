@@ -352,7 +352,7 @@ class CityTourMap extends StatelessWidget {
 }
 
 /// One step of the route: a numbered stop, or the ride to the next one, on a
-/// grey line that joins them. On a trip the step in hand sits on a light grey
+/// grey line that joins them. On a trip the step in hand sits on a light green
 /// card edged in the app's green, and the steps done or skipped fade to grey.
 class CityTourStepTile extends StatelessWidget {
   final CityTourStep step;
@@ -411,7 +411,7 @@ class CityTourStepTile extends StatelessWidget {
             bottom: -_cardPad,
             child: DecoratedBox(
               decoration: BoxDecoration(
-                color: AppColors.surface,
+                color: AppColors.brandGreenLight,
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(color: AppColors.brandGreen, width: 1.5),
               ),
