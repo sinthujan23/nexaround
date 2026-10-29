@@ -53,6 +53,13 @@ String cityTourSpan(int minutes) {
   return m == 0 ? '$h h' : '$h h $m min';
 }
 
+/// A step's time from the guide, marked as an estimate: "2 hr 45 min (est)".
+/// Left as written when the guide already says so ("about 2 hours").
+String cityTourEst(String time) =>
+    _alreadyEstimate.hasMatch(time) ? time : '$time (est)';
+
+final _alreadyEstimate = RegExp(r'\b(est|estimated|approx|about|around)\b|~', caseSensitive: false);
+
 /// "On time", "15 min behind", "10 min ahead": the trip against its plan.
 String cityTourPace(int behindMinutes) {
   if (behindMinutes.abs() < 5) return 'On time';
@@ -558,7 +565,7 @@ class CityTourStepTile extends StatelessWidget {
               children: [
                 if (step.duration.isNotEmpty)
                   TextSpan(
-                    text: ' · ${step.duration}',
+                    text: ' · ${cityTourEst(step.duration)}',
                     style: const TextStyle(fontWeight: FontWeight.w500, color: AppColors.textSecondary),
                   ),
               ],
@@ -612,7 +619,7 @@ class CityTourStepTile extends StatelessWidget {
               runSpacing: 4,
               children: [
                 if (step.timeHere.isNotEmpty)
-                  _meta(Icons.hourglass_bottom_rounded, step.timeHere),
+                  _meta(Icons.hourglass_bottom_rounded, cityTourEst(step.timeHere)),
                 if (step.price.isNotEmpty)
                   _meta(Icons.confirmation_number_rounded, step.price),
               ],
@@ -647,7 +654,7 @@ class CityTourStepTile extends StatelessWidget {
 
   Widget _move() {
     final extras = [
-      if (step.duration.isNotEmpty) step.duration,
+      if (step.duration.isNotEmpty) cityTourEst(step.duration),
       if (step.cost.isNotEmpty) step.cost,
     ];
     return Padding(
