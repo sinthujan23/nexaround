@@ -516,8 +516,8 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
                 ImageFiltered(
                   enabled: !shaded,
                   imageFilter: ImageFilter.blur(
-                    sigmaX: 3,
-                    sigmaY: 3,
+                    sigmaX: 1,
+                    sigmaY: 1,
                     tileMode: TileMode.clamp,
                   ),
                   child: imageBytes != null
