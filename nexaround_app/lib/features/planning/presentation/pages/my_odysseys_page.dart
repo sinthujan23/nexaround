@@ -389,9 +389,11 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
             _buildCuratedHubCard(
               tag: 'CITY GUIDES',
               tagIcon: Icons.route_rounded,
-              tagColor: const Color(0xFFB388FF),
+              // deeper purple: the label is filled, with white text on it
+              tagColor: const Color(0xFF7C4DFF),
               badge: 'STEP BY STEP',
               shaded: false,
+              solidTag: true,
               title: 'City Guides',
               subtitle:
                   'Where to start, which ride to take and what to see at every stop, with tickets and tours on the way.',
@@ -473,9 +475,12 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
     // false keeps the photo bright: only a light shade behind the text,
     // plus a shadow on the text and a darker badge so both stay readable
     bool shaded = true,
+    // tag filled with tagColor and white text, as on the light card
+    bool solidTag = false,
     required VoidCallback onTap,
   }) {
     const navy = Color(0xFF0F172A);
+    final solid = light || solidTag;
     final textShadows = shaded
         ? null
         : [
@@ -587,7 +592,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
                         Container(
                           padding: const EdgeInsets.symmetric(
                               horizontal: 8, vertical: 3.5),
-                          decoration: light
+                          decoration: solid
                               ? BoxDecoration(
                                   color: tagColor,
                                   borderRadius: BorderRadius.circular(6),
@@ -611,7 +616,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Icon(tagIcon,
-                                  color: light
+                                  color: solid
                                       ? (tagTextColor ?? Colors.white)
                                       : tagColor,
                                   size: 11.5),
@@ -622,7 +627,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
                                   fontSize: 8.5,
                                   fontWeight: FontWeight.w900,
                                   letterSpacing: 1.1,
-                                  color: light
+                                  color: solid
                                       ? (tagTextColor ?? Colors.white)
                                       : tagColor,
                                 ),
