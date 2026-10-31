@@ -17,6 +17,7 @@ import 'package:nexaround_app/core/error/user_message.dart';
 import 'package:nexaround_app/features/experiences/presentation/pages/experiences_page.dart';
 import 'package:nexaround_app/features/auth/presentation/pages/home_page.dart';
 import 'dart:typed_data';
+import 'dart:ui' show ImageFilter;
 import 'package:nexaround_app/features/planning/presentation/widgets/walking_challenge_asset.dart';
 
 class MyOdysseysPage extends StatefulWidget {
@@ -509,17 +510,27 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
           child: Stack(
             fit: StackFit.expand,
             children: [
-              if (imageBytes != null)
-                Image.memory(
-                  imageBytes,
-                  fit: BoxFit.cover,
-                )
-              else if (imageAsset != null)
-                Image.asset(
-                  imageAsset,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) =>
-                      const SizedBox.shrink(),
+              if (imageBytes != null || imageAsset != null)
+                // the unshaded cards blur their photo so the white text on
+                // it reads clearly; clamp keeps the card edges solid
+                ImageFiltered(
+                  enabled: !shaded,
+                  imageFilter: ImageFilter.blur(
+                    sigmaX: 3,
+                    sigmaY: 3,
+                    tileMode: TileMode.clamp,
+                  ),
+                  child: imageBytes != null
+                      ? Image.memory(
+                          imageBytes,
+                          fit: BoxFit.cover,
+                        )
+                      : Image.asset(
+                          imageAsset!,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) =>
+                              const SizedBox.shrink(),
+                        ),
                 ),
               if (shaded)
                 DecoratedBox(
