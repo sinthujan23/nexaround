@@ -14,7 +14,6 @@ import 'package:nexaround_app/features/city_tours/domain/city_tour_trip.dart';
 import 'package:nexaround_app/features/city_tours/presentation/widgets/city_tour_widgets.dart';
 import 'package:nexaround_app/features/experiences/presentation/pages/experience_link_page.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_description.dart';
-import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// Opens a guide from its id alone (a trip reminder): from the device's copy
@@ -539,7 +538,7 @@ class _CityTourPageState extends State<CityTourPage> {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(PhosphorIconsFill.mapPin, size: 13, color: Colors.white),
+                            const Icon(Icons.location_on_rounded, size: 13, color: Colors.white),
                             const SizedBox(width: 5),
                             Text(
                               place,
@@ -648,18 +647,18 @@ class _CityTourPageState extends State<CityTourPage> {
                   ),
                 ),
                 leading: _barButton(
-                  icon: PhosphorIconsBold.arrowLeft,
+                  icon: Icons.arrow_back_rounded,
                   onTap: () => Navigator.pop(context),
                 ),
                 actions: [
                   if (trip != null && !trip.isFinished)
                     _barButton(
-                      icon: PhosphorIconsBold.dotsThree,
+                      icon: Icons.more_horiz_rounded,
                       onTap: null,
                       child: PopupMenuButton<String>(
                         padding: EdgeInsets.zero,
                         icon: Icon(
-                          PhosphorIconsBold.dotsThree,
+                          Icons.more_horiz_rounded,
                           color: _collapsed ? _navy : Colors.white,
                           size: 22,
                         ),
@@ -806,7 +805,7 @@ class _CityTourPageState extends State<CityTourPage> {
           _heading(
             'YOUR PLAN · ${days.length} DAY${days.length == 1 ? '' : 'S'}',
             link: 'Change',
-            icon: PhosphorIconsBold.slidersHorizontal,
+            icon: Icons.tune_rounded,
             onTap: () => setState(() => _plan = null),
           ),
           const SizedBox(height: 10),

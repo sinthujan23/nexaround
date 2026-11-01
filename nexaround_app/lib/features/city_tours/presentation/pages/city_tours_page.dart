@@ -7,7 +7,6 @@ import 'package:nexaround_app/features/city_tours/data/city_tours_service.dart';
 import 'package:nexaround_app/features/city_tours/domain/city_tour.dart';
 import 'package:nexaround_app/features/city_tours/presentation/pages/city_tour_page.dart';
 import 'package:nexaround_app/features/city_tours/presentation/widgets/city_tour_widgets.dart';
-import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:video_player/video_player.dart';
 
 /// Curated Hubs → City Tours: the cities that have guides, under the header
@@ -142,7 +141,7 @@ class _CityToursPageState extends State<CityToursPage> {
       child: Row(
         children: [
           _CircleButton(
-            icon: PhosphorIconsBold.arrowLeft,
+            icon: Icons.arrow_back_rounded,
             onTap: () => Navigator.pop(context),
           ),
           const SizedBox(width: 10),
@@ -179,8 +178,8 @@ class _CityToursPageState extends State<CityToursPage> {
           const SizedBox(width: 10),
           _CircleButton(
             icon: _searching
-                ? PhosphorIconsBold.x
-                : PhosphorIconsBold.magnifyingGlass,
+                ? Icons.close_rounded
+                : Icons.search_rounded,
             onTap: _toggleSearch,
           ),
         ],
@@ -284,7 +283,7 @@ class _CityToursPageState extends State<CityToursPage> {
       children: [
         Expanded(
           child: _Counter(
-            icon: PhosphorIconsDuotone.buildings,
+            icon: Icons.apartment_rounded,
             value: cities.length,
             label: cities.length == 1 ? 'city' : 'cities',
             tint: const Color(0xFFE6F6F5),
@@ -294,7 +293,7 @@ class _CityToursPageState extends State<CityToursPage> {
         const SizedBox(width: 8),
         Expanded(
           child: _Counter(
-            icon: PhosphorIconsDuotone.path,
+            icon: Icons.alt_route_rounded,
             value: guides,
             label: guides == 1 ? 'guide' : 'guides',
             tint: const Color(0xFFEFEAFE),
@@ -304,7 +303,7 @@ class _CityToursPageState extends State<CityToursPage> {
         const SizedBox(width: 8),
         Expanded(
           child: _Counter(
-            icon: PhosphorIconsDuotone.globeHemisphereWest,
+            icon: Icons.public_rounded,
             value: countries.length,
             label: countries.length == 1 ? 'country' : 'countries',
             tint: const Color(0xFFFEF3DC),
@@ -341,7 +340,7 @@ class _CityToursPageState extends State<CityToursPage> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   if (country == null) ...[
-                    Icon(PhosphorIconsBold.squaresFour, size: 14, color: colour),
+                    Icon(Icons.grid_view_rounded, size: 14, color: colour),
                     const SizedBox(width: 5),
                   ],
                   Text(
@@ -451,7 +450,7 @@ class _CityToursPageState extends State<CityToursPage> {
                         )
                       else if (filtered.isEmpty)
                         const _Message(
-                          icon: PhosphorIconsBold.magnifyingGlass,
+                          icon: Icons.search_rounded,
                           title: 'No cities match',
                         )
                       else
@@ -537,7 +536,7 @@ class _Counter extends StatelessWidget {
               color: tint,
               borderRadius: BorderRadius.circular(12),
             ),
-            child: PhosphorIcon(icon, size: 21, color: colour),
+            child: Icon(icon, size: 21, color: colour),
           ),
           const SizedBox(width: 8),
           Expanded(
@@ -651,7 +650,7 @@ class _CityTile extends StatelessWidget {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(PhosphorIconsBold.path, size: 12, color: Colors.white),
+                      const Icon(Icons.alt_route_rounded, size: 12, color: Colors.white),
                       const SizedBox(width: 4),
                       Text(
                         count == 1 ? '1 guide' : '$count guides',
@@ -677,7 +676,7 @@ class _CityTile extends StatelessWidget {
                     shape: BoxShape.circle,
                     border: Border.all(color: Colors.white.withValues(alpha: 0.35)),
                   ),
-                  child: const Icon(PhosphorIconsBold.arrowUpRight,
+                  child: const Icon(Icons.north_east_rounded,
                       size: 15, color: Colors.white),
                 ),
               ),
@@ -704,7 +703,7 @@ class _CityTile extends StatelessWidget {
                       const SizedBox(height: 2),
                       Row(
                         children: [
-                          const Icon(PhosphorIconsFill.mapPin,
+                          const Icon(Icons.location_on_rounded,
                               size: 12, color: Color(0xE6FFFFFF)),
                           const SizedBox(width: 3),
                           Expanded(

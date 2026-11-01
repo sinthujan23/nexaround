@@ -9,7 +9,6 @@ import 'package:nexaround_app/core/constants/api_constants.dart';
 import 'package:nexaround_app/features/city_tours/domain/city_tour.dart';
 import 'package:nexaround_app/features/city_tours/domain/city_tour_trip.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_description.dart';
-import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 // The admin panel draws a copy of these screens as its preview
 // (nexaround_admin/src/components/CityTourPreview.jsx), so a change to sizes,
@@ -475,9 +474,9 @@ class CityTourTick extends StatelessWidget {
     }
     final Widget face;
     if (state == CityTourStepState.done) {
-      face = Icon(PhosphorIconsBold.check, size: size * 0.48, color: fg);
+      face = Icon(Icons.check_rounded, size: size * 0.48, color: fg);
     } else if (state == CityTourStepState.skipped) {
-      face = Icon(PhosphorIconsBold.skipForward, size: size * 0.42, color: fg);
+      face = Icon(Icons.skip_next_rounded, size: size * 0.42, color: fg);
     } else if (step.isStop) {
       face = Text(
         '${step.number}',
@@ -642,8 +641,8 @@ class CityTourStopCard extends StatelessWidget {
                           ? Container(
                               color: AppColors.surface,
                               alignment: Alignment.center,
-                              child: const PhosphorIcon(
-                                PhosphorIconsDuotone.mapPin,
+                              child: const Icon(
+                                Icons.location_on_rounded,
                                 size: 24,
                                 color: _slate,
                               ),
@@ -702,7 +701,7 @@ class CityTourStopCard extends StatelessWidget {
                     const SizedBox(height: 2),
                     Row(
                       children: [
-                        const Icon(PhosphorIconsBold.clock, size: 12, color: AppColors.textTertiary),
+                        const Icon(Icons.schedule_rounded, size: 12, color: AppColors.textTertiary),
                         const SizedBox(width: 4),
                         Flexible(
                           child: Text(
@@ -719,7 +718,7 @@ class CityTourStopCard extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 8),
-            const _RoundIcon(icon: PhosphorIconsBold.caretDown),
+            const _RoundIcon(icon: Icons.keyboard_arrow_down_rounded),
           ],
         ),
       ),
@@ -871,7 +870,7 @@ class CityTourStopCard extends StatelessWidget {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(PhosphorIconsBold.clock, size: 12, color: Colors.white),
+                    const Icon(Icons.schedule_rounded, size: 12, color: Colors.white),
                     const SizedBox(width: 4),
                     Text(
                       until,
@@ -916,7 +915,7 @@ class CityTourStopCard extends StatelessWidget {
                 ),
                 if (onToggle != null) ...[
                   const SizedBox(width: 8),
-                  const Icon(PhosphorIconsBold.caretUp, size: 16, color: Color(0xCCFFFFFF)),
+                  const Icon(Icons.keyboard_arrow_up_rounded, size: 16, color: Color(0xCCFFFFFF)),
                 ],
               ],
             ),
@@ -960,7 +959,7 @@ class CityTourStopCard extends StatelessWidget {
           ),
           if (onToggle != null) ...[
             const SizedBox(width: 8),
-            const _RoundIcon(icon: PhosphorIconsBold.caretUp),
+            const _RoundIcon(icon: Icons.keyboard_arrow_up_rounded),
           ],
         ],
       ),
@@ -978,7 +977,7 @@ class CityTourStopCard extends StatelessWidget {
           children: [
             if (step.timeHere.isNotEmpty)
               _Chip(
-                icon: PhosphorIconsDuotone.hourglassMedium,
+                icon: Icons.hourglass_top_rounded,
                 text: cityTourEst(step.timeHere),
                 fg: const Color(0xFF5B21B6),
                 bg: const Color(0xFFF3EEFF),
@@ -986,7 +985,7 @@ class CityTourStopCard extends StatelessWidget {
               ),
             if (step.price.isNotEmpty)
               _Chip(
-                icon: PhosphorIconsDuotone.ticket,
+                icon: Icons.confirmation_number_rounded,
                 text: step.price,
                 fg: const Color(0xFF166534),
                 bg: const Color(0xFFE7F5EC),
@@ -1095,7 +1094,7 @@ class CityTourLegPill extends StatelessWidget {
           if (_hasMore) ...[
             const SizedBox(width: 4),
             Icon(
-              open ? PhosphorIconsBold.caretUp : PhosphorIconsBold.caretDown,
+              open ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
               size: 12,
               color: const Color(0xFF94A3B8),
             ),
@@ -1146,7 +1145,7 @@ class CityTourLegPill extends StatelessWidget {
       if (span != null)
         Row(
           children: [
-            const Icon(PhosphorIconsBold.clock, size: 13, color: AppColors.textTertiary),
+            const Icon(Icons.schedule_rounded, size: 13, color: AppColors.textTertiary),
             const SizedBox(width: 5),
             Text(span, style: const TextStyle(fontSize: 12.5, color: _slate)),
           ],
@@ -1257,7 +1256,7 @@ class _TapHint extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Icon(PhosphorIconsFill.handTap, size: 15, color: AppColors.brandGreen),
+          const Icon(Icons.touch_app_rounded, size: 15, color: AppColors.brandGreen),
           const SizedBox(width: 7),
           Expanded(
             child: Text.rich(
@@ -1313,7 +1312,7 @@ class _Chip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          PhosphorIcon(icon, size: 15, color: iconColour),
+          Icon(icon, size: 15, color: iconColour),
           const SizedBox(width: 5),
           Flexible(
             child: Text(
@@ -1345,7 +1344,7 @@ class _NoteBox extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const PhosphorIcon(PhosphorIconsDuotone.info, size: 15, color: Color(0xFFD97706)),
+          const Icon(Icons.info_outline_rounded, size: 15, color: Color(0xFFD97706)),
           const SizedBox(width: 7),
           Expanded(
             child: Text(
@@ -1404,7 +1403,7 @@ class _SkipButton extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(PhosphorIconsBold.skipForward, size: 14, color: Color(0xFF475569)),
+            const Icon(Icons.skip_next_rounded, size: 14, color: Color(0xFF475569)),
             const SizedBox(width: 6),
             Text(
               label,
@@ -1436,7 +1435,7 @@ class _UndoButton extends StatelessWidget {
         child: const Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(PhosphorIconsBold.arrowCounterClockwise, size: 13, color: _done),
+            Icon(Icons.replay_rounded, size: 13, color: _done),
             SizedBox(width: 4),
             Text('Undo', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: _done)),
           ],
@@ -1538,7 +1537,7 @@ class CityTourLinkButton extends StatelessWidget {
                   border: Border.all(color: _line),
                 ),
                 child: Icon(
-                  link.isExperience ? PhosphorIconsBold.caretRight : PhosphorIconsBold.arrowUpRight,
+                  link.isExperience ? Icons.keyboard_arrow_right_rounded : Icons.north_east_rounded,
                   size: 15,
                   color: AppColors.brandGreen,
                 ),
@@ -1564,7 +1563,7 @@ class CityTourLinkButton extends StatelessWidget {
         'assets/images/${link.partner}_logo.png',
         fit: BoxFit.contain,
         errorBuilder: (_, __, ___) =>
-            const Icon(PhosphorIconsBold.arrowUpRight, size: 18, color: AppColors.textSecondary),
+            const Icon(Icons.north_east_rounded, size: 18, color: AppColors.textSecondary),
       ),
     );
   }
@@ -1655,7 +1654,7 @@ class CityTourTripBar extends StatelessWidget {
                 backgroundColor: AppColors.brandGreen,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
               ),
-              icon: const Icon(PhosphorIconsFill.play, size: 18),
+              icon: const Icon(Icons.play_arrow_rounded, size: 18),
               label: Text(
                 startLabel,
                 style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
@@ -1669,7 +1668,7 @@ class CityTourTripBar extends StatelessWidget {
     final took = (trip.finishedAt ?? DateTime.now()).difference(trip.startedAt).inMinutes;
     return Row(
       children: [
-        const PhosphorIcon(PhosphorIconsDuotone.flagCheckered, size: 26, color: AppColors.brandGreen),
+        const Icon(Icons.flag_rounded, size: 26, color: AppColors.brandGreen),
         const SizedBox(width: 12),
         Expanded(
           child: Column(
@@ -2053,16 +2052,16 @@ class CityTourStatsCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final items = <Widget>[
       if (card.dayCount > 1)
-        _stat(PhosphorIconsDuotone.calendarBlank, '${card.dayCount}', 'days',
+        _stat(Icons.calendar_today_rounded, '${card.dayCount}', 'days',
             const Color(0xFFE6F6F5), const Color(0xFF0D9488)),
       if (card.stopCount > 0)
-        _stat(PhosphorIconsDuotone.mapPin, '${card.stopCount}', card.stopCount == 1 ? 'stop' : 'stops',
+        _stat(Icons.location_on_rounded, '${card.stopCount}', card.stopCount == 1 ? 'stop' : 'stops',
             const Color(0xFFEFEAFE), const Color(0xFF7C3AED)),
       if (card.duration.isNotEmpty)
-        _stat(PhosphorIconsDuotone.clock, card.duration, 'time',
+        _stat(Icons.schedule_rounded, card.duration, 'time',
             const Color(0xFFFEF3DC), const Color(0xFFD97706)),
       if (card.budget.isNotEmpty)
-        _stat(PhosphorIconsDuotone.wallet, card.budget, 'budget',
+        _stat(Icons.account_balance_wallet_rounded, card.budget, 'budget',
             const Color(0xFFE7F5EC), const Color(0xFF15803D)),
     ];
     return Container(
@@ -2095,7 +2094,7 @@ class CityTourStatsCard extends StatelessWidget {
           height: 32,
           alignment: Alignment.center,
           decoration: BoxDecoration(color: tint, borderRadius: BorderRadius.circular(11)),
-          child: PhosphorIcon(icon, size: 18, color: colour),
+          child: Icon(icon, size: 18, color: colour),
         ),
         const SizedBox(height: 4),
         Padding(
@@ -2207,8 +2206,8 @@ class CityTourDayCards extends StatelessWidget {
                   color: on ? Colors.white.withValues(alpha: 0.12) : const Color(0xFFE6F4F4),
                   shape: BoxShape.circle,
                 ),
-                child: PhosphorIcon(
-                  PhosphorIconsDuotone.calendarDots,
+                child: Icon(
+                  Icons.calendar_month_rounded,
                   size: 22,
                   color: on ? const Color(0xFF5EEAD4) : AppColors.brandGreen,
                 ),
