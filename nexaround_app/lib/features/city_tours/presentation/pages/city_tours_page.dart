@@ -1,15 +1,18 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/error/user_message.dart';
 import 'package:nexaround_app/features/city_tours/data/city_tours_service.dart';
 import 'package:nexaround_app/features/city_tours/domain/city_tour.dart';
 import 'package:nexaround_app/features/city_tours/presentation/pages/city_tour_page.dart';
 import 'package:nexaround_app/features/city_tours/presentation/widgets/city_tour_widgets.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:video_player/video_player.dart';
 
-/// Curated Hubs → City Tours: the cities that have guides. A city with one
-/// guide opens it straight away; with more, its list of guides.
+/// Curated Hubs → City Tours: the cities that have guides, under the header
+/// video. A city with one guide opens it straight away; with more, its list
+/// of guides.
 class CityToursPage extends StatefulWidget {
   const CityToursPage({super.key});
 
@@ -17,12 +20,13 @@ class CityToursPage extends StatefulWidget {
   State<CityToursPage> createState() => _CityToursPageState();
 }
 
+const _navy = Color(0xFF0F172A);
+
 class _CityToursPageState extends State<CityToursPage> {
   final _service = CityToursService();
   VideoPlayerController? _videoController;
   final TextEditingController _searchController = TextEditingController();
-  final ScrollController _scrollController = ScrollController();
-  bool _isScrolled = false;
+  bool _searching = false;
 
   List<CityTourCard>? _tours;
   bool _loading = true;
@@ -35,15 +39,6 @@ class _CityToursPageState extends State<CityToursPage> {
     super.initState();
     _searchController.addListener(() {
       if (mounted) setState(() => _search = _searchController.text);
-    });
-    _scrollController.addListener(() {
-      if (!mounted) return;
-      final collapsedOffset = 200 - kToolbarHeight - 24;
-      final isScrolled = _scrollController.hasClients &&
-          _scrollController.offset > collapsedOffset;
-      if (isScrolled != _isScrolled) {
-        setState(() => _isScrolled = isScrolled);
-      }
     });
     final cached = _service.cachedTours();
     if (cached.isNotEmpty) {
@@ -73,7 +68,6 @@ class _CityToursPageState extends State<CityToursPage> {
   @override
   void dispose() {
     _searchController.dispose();
-    _scrollController.dispose();
     _videoController?.dispose();
     super.dispose();
   }
@@ -110,6 +104,16 @@ class _CityToursPageState extends State<CityToursPage> {
     );
   }
 
+  // The search button opens a search box in the top bar; its close button
+  // clears the search too.
+  void _toggleSearch() {
+    if (_searching) {
+      _searchController.clear();
+      FocusScope.of(context).unfocus();
+    }
+    setState(() => _searching = !_searching);
+  }
+
   List<String> _countries(List<CityTourCity> cities) {
     final set = cities.map((c) => c.country).where((c) => c.isNotEmpty).toSet();
     return set.toList()..sort();
@@ -132,19 +136,256 @@ class _CityToursPageState extends State<CityToursPage> {
     return list;
   }
 
-  Widget _countryChip(String label, bool isSelected, ValueChanged<bool> onSelected) {
-    return ChoiceChip(
-      label: Text(label),
-      selected: isSelected,
-      onSelected: onSelected,
-      selectedColor: AppColors.brandGreen,
-      labelStyle: TextStyle(
-        color: isSelected ? Colors.white : AppColors.textSecondary,
-        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+  Widget _topBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+      child: Row(
+        children: [
+          _CircleButton(
+            icon: PhosphorIconsBold.arrowLeft,
+            onTap: () => Navigator.pop(context),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: _searching
+                ? Container(
+                    height: 42,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: AppColors.surface,
+                      borderRadius: BorderRadius.circular(21),
+                    ),
+                    child: TextField(
+                      controller: _searchController,
+                      autofocus: true,
+                      textInputAction: TextInputAction.search,
+                      style: const TextStyle(fontSize: 14),
+                      decoration: const InputDecoration(
+                        hintText: 'Search cities, countries…',
+                        hintStyle: TextStyle(
+                            fontSize: 14, color: AppColors.textTertiary),
+                        filled: false,
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        isDense: true,
+                        contentPadding:
+                            EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      ),
+                    ),
+                  )
+                : const SizedBox.shrink(),
+          ),
+          const SizedBox(width: 10),
+          _CircleButton(
+            icon: _searching
+                ? PhosphorIconsBold.x
+                : PhosphorIconsBold.magnifyingGlass,
+            onTap: _toggleSearch,
+          ),
+        ],
       ),
-      backgroundColor: AppColors.surface,
-      side: BorderSide.none,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+    );
+  }
+
+  // The header video in a rounded window, with the title on it.
+  Widget _videoWindow() {
+    final video = _videoController;
+    return Container(
+      height: 252,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(28),
+        boxShadow: [
+          BoxShadow(
+            color: _navy.withValues(alpha: 0.24),
+            blurRadius: 30,
+            offset: const Offset(0, 14),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(28),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            if (video != null && video.value.isInitialized)
+              FittedBox(
+                fit: BoxFit.cover,
+                clipBehavior: Clip.hardEdge,
+                child: SizedBox(
+                  width: video.value.size.width,
+                  height: video.value.size.height,
+                  child: VideoPlayer(video),
+                ),
+              )
+            else
+              Image.asset(
+                'assets/images/city_tours_bg.jpg',
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => const DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [Color(0xFF1A1A2E), Color(0xFF16213E)],
+                    ),
+                  ),
+                ),
+              ),
+            const DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Color(0x000F172A), Color(0xE60F172A)],
+                  stops: [0.35, 1.0],
+                ),
+              ),
+            ),
+            const Positioned(
+              left: 18,
+              right: 18,
+              bottom: 16,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'City Guides',
+                    style: TextStyle(
+                      fontSize: 34,
+                      height: 1.0,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -1,
+                      color: Colors.white,
+                    ),
+                  ),
+                  SizedBox(height: 6),
+                  Text(
+                    'Where to start, which ride to take and what to see at every stop, with tickets and tours on the way.',
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      height: 1.45,
+                      color: Color(0xD9FFFFFF),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _counters(List<CityTourCity> cities, List<String> countries) {
+    final guides = _tours?.length ?? 0;
+    return Row(
+      children: [
+        Expanded(
+          child: _Counter(
+            icon: PhosphorIconsDuotone.buildings,
+            value: cities.length,
+            label: cities.length == 1 ? 'city' : 'cities',
+            tint: const Color(0xFFE6F6F5),
+            colour: const Color(0xFF0D9488),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _Counter(
+            icon: PhosphorIconsDuotone.path,
+            value: guides,
+            label: guides == 1 ? 'guide' : 'guides',
+            tint: const Color(0xFFEFEAFE),
+            colour: const Color(0xFF7C3AED),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _Counter(
+            icon: PhosphorIconsDuotone.globeHemisphereWest,
+            value: countries.length,
+            label: countries.length == 1 ? 'country' : 'countries',
+            tint: const Color(0xFFFEF3DC),
+            colour: const Color(0xFFD97706),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _chips(List<String> countries) {
+    return SizedBox(
+      height: 38,
+      child: ListView.separated(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        scrollDirection: Axis.horizontal,
+        itemCount: countries.length + 1,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (_, i) {
+          // the first chip is "All"; tapping a picked country unpicks it
+          final country = i == 0 ? null : countries[i - 1];
+          final on = _selectedCountry == country;
+          final colour = on ? Colors.white : AppColors.textSecondary;
+          return GestureDetector(
+            onTap: () => setState(
+                () => _selectedCountry = on && country != null ? null : country),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              decoration: BoxDecoration(
+                color: on ? _navy : AppColors.surface,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (country == null) ...[
+                    Icon(PhosphorIconsBold.squaresFour, size: 14, color: colour),
+                    const SizedBox(width: 5),
+                  ],
+                  Text(
+                    country ?? 'All',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: on ? FontWeight.w700 : FontWeight.w600,
+                      color: colour,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  // The cities as a photo wall: two columns whose tiles take turns at
+  // different heights.
+  Widget _wall(List<CityTourCity> cities) {
+    const leftHeights = [214.0, 158.0, 200.0];
+    const rightHeights = [158.0, 214.0, 190.0];
+    final left = <Widget>[];
+    final right = <Widget>[];
+    for (var i = 0; i < cities.length; i++) {
+      final column = i.isEven ? left : right;
+      final heights = i.isEven ? leftHeights : rightHeights;
+      if (column.isNotEmpty) column.add(const SizedBox(height: 10));
+      final city = cities[i];
+      column.add(_CityTile(
+        city: city,
+        height: heights[(i ~/ 2) % heights.length],
+        onTap: () => _openCity(city),
+      ));
+    }
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(child: Column(children: left)),
+        const SizedBox(width: 10),
+        Expanded(child: Column(children: right)),
+      ],
     );
   }
 
@@ -153,378 +394,328 @@ class _CityToursPageState extends State<CityToursPage> {
     final cities = CityTourCity.group(_tours ?? const []);
     final countries = _countries(cities);
     final filtered = _filter(cities);
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: RefreshIndicator(
-        color: AppColors.brandGreen,
-        onRefresh: _fetch,
-        child: CustomScrollView(
-          controller: _scrollController,
-          physics: const AlwaysScrollableScrollPhysics(),
-          slivers: [
-            // ── App Bar ────────────────────────────────────────────────────
-            SliverAppBar(
-              pinned: true,
-              expandedHeight: 200,
-              backgroundColor:
-                  _isScrolled ? Colors.white : const Color(0xFF0F172A),
-              elevation: _isScrolled ? 2 : 0,
-              scrolledUnderElevation: 2,
-              leading: Padding(
-                padding: const EdgeInsets.all(8),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: _isScrolled
-                        ? Colors.black.withValues(alpha: 0.06)
-                        : Colors.black.withValues(alpha: 0.4),
-                    shape: BoxShape.circle,
-                  ),
-                  child: IconButton(
-                    icon: Icon(Icons.arrow_back_ios_new_rounded,
-                        size: 16,
-                        color: _isScrolled ? Colors.black : Colors.white),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                ),
-              ),
-              flexibleSpace: FlexibleSpaceBar(
-                centerTitle: true,
-                title: Text(
-                  'City Guides',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    color: _isScrolled ? Colors.black : Colors.white,
-                    shadows: _isScrolled
-                        ? null
-                        : const [
-                            Shadow(color: Colors.black, blurRadius: 6),
-                          ],
-                  ),
-                ),
-                background: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    if (_videoController != null &&
-                        _videoController!.value.isInitialized)
-                      FittedBox(
-                        fit: BoxFit.cover,
-                        child: SizedBox(
-                          width: _videoController!.value.size.width,
-                          height: _videoController!.value.size.height,
-                          child: VideoPlayer(_videoController!),
-                        ),
-                      )
-                    else
-                      Image.asset(
-                        'assets/images/city_tours_bg.jpg',
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => const DecoratedBox(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [Color(0xFF1A1A2E), Color(0xFF16213E)],
-                            ),
+    const side = EdgeInsets.symmetric(horizontal: 16);
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.dark,
+      child: Scaffold(
+        backgroundColor: AppColors.background,
+        body: SafeArea(
+          bottom: false,
+          child: Column(
+            children: [
+              _topBar(),
+              Expanded(
+                child: RefreshIndicator(
+                  color: AppColors.brandGreen,
+                  onRefresh: _fetch,
+                  child: ListView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: EdgeInsets.only(
+                        bottom: 32 + MediaQuery.paddingOf(context).bottom),
+                    children: [
+                      Padding(padding: side, child: _videoWindow()),
+                      if (cities.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        Padding(padding: side, child: _counters(cities, countries)),
+                      ],
+                      if (countries.isNotEmpty) ...[
+                        const SizedBox(height: 14),
+                        _chips(countries),
+                      ],
+                      const SizedBox(height: 14),
+                      if (_loading)
+                        const Padding(
+                          padding: EdgeInsets.only(top: 48),
+                          child: Center(
+                            child: CircularProgressIndicator(
+                                color: AppColors.brandGreen),
                           ),
-                        ),
-                      ),
-                    Container(
-                      decoration: const BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Colors.black38,
-                            Colors.black87,
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            // ── Search Bar & Filter ────────────────────────────────────────
-            SliverToBoxAdapter(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                    child: TextField(
-                      controller: _searchController,
-                      decoration: InputDecoration(
-                        hintText: 'Search cities, countries…',
-                        hintStyle:
-                            const TextStyle(color: AppColors.textTertiary),
-                        prefixIcon: const Icon(Icons.search_rounded,
-                            color: AppColors.textTertiary),
-                        filled: true,
-                        fillColor: AppColors.surface,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          borderSide: BorderSide.none,
-                        ),
-                        contentPadding:
-                            const EdgeInsets.symmetric(vertical: 14),
-                      ),
-                    ),
-                  ),
-                  if (countries.isNotEmpty)
-                    SizedBox(
-                      height: 40,
-                      child: ListView.separated(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        scrollDirection: Axis.horizontal,
-                        itemCount: countries.length + 1,
-                        separatorBuilder: (context, index) =>
-                            const SizedBox(width: 8),
-                        itemBuilder: (context, index) {
-                          if (index == 0) {
-                            return _countryChip(
-                              'All',
-                              _selectedCountry == null,
-                              (selected) {
-                                if (selected) {
-                                  setState(() => _selectedCountry = null);
-                                }
-                              },
-                            );
-                          }
-                          final country = countries[index - 1];
-                          return _countryChip(
-                            country,
-                            _selectedCountry == country,
-                            (selected) => setState(() =>
-                                _selectedCountry = selected ? country : null),
-                          );
-                        },
-                      ),
-                    ),
-                  const SizedBox(height: 8),
-                ],
-              ),
-            ),
-
-            // ── Content ────────────────────────────────────────────────────
-            if (_loading)
-              const SliverFillRemaining(
-                hasScrollBody: false,
-                child: Center(
-                  child: CircularProgressIndicator(color: AppColors.brandGreen),
-                ),
-              )
-            else if (_error != null)
-              SliverFillRemaining(
-                hasScrollBody: false,
-                child: _Message(
-                  icon: Icons.wifi_off_rounded,
-                  title: _error!,
-                  action: TextButton(
-                    onPressed: () {
-                      setState(() => _loading = true);
-                      _fetch();
-                    },
-                    child: const Text('Try again'),
-                  ),
-                ),
-              )
-            else if (cities.isEmpty)
-              const SliverFillRemaining(
-                hasScrollBody: false,
-                child: _Message(
-                  icon: Icons.route_rounded,
-                  title: 'No city guides yet',
-                  text: 'New cities are on the way.',
-                ),
-              )
-            else
-              SliverPadding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                sliver: SliverGrid(
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    mainAxisSpacing: 12,
-                    crossAxisSpacing: 12,
-                    childAspectRatio: 0.82,
-                  ),
-                  delegate: SliverChildBuilderDelegate(
-                    (context, index) => _CityCard(
-                      city: filtered[index],
-                      onTap: () => _openCity(filtered[index]),
-                    ),
-                    childCount: filtered.length,
+                        )
+                      else if (_error != null)
+                        _Message(
+                          icon: Icons.wifi_off_rounded,
+                          title: _error!,
+                          action: TextButton(
+                            onPressed: () {
+                              setState(() => _loading = true);
+                              _fetch();
+                            },
+                            child: const Text('Try again'),
+                          ),
+                        )
+                      else if (cities.isEmpty)
+                        const _Message(
+                          icon: Icons.route_rounded,
+                          title: 'No city guides yet',
+                          text: 'New cities are on the way.',
+                        )
+                      else if (filtered.isEmpty)
+                        const _Message(
+                          icon: PhosphorIconsBold.magnifyingGlass,
+                          title: 'No cities match',
+                        )
+                      else
+                        Padding(padding: side, child: _wall(filtered)),
+                    ],
                   ),
                 ),
               ),
-
-            const SliverToBoxAdapter(child: SizedBox(height: 32)),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-// ── City Card ───────────────────────────────────────────────────────────────
+// ── Page parts ──────────────────────────────────────────────────────────────
 
-/// A city as a Museum-list card: photo on top with the guide count, name and
-/// country below.
-class _CityCard extends StatelessWidget {
-  final CityTourCity city;
+class _CircleButton extends StatelessWidget {
+  final IconData icon;
   final VoidCallback onTap;
 
-  const _CityCard({required this.city, required this.onTap});
+  const _CircleButton({required this.icon, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: const Color(0xFFF1F5F9),
+      shape: const CircleBorder(),
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onTap,
+        child: SizedBox(
+          width: 42,
+          height: 42,
+          child: Icon(icon, size: 20, color: _navy),
+        ),
+      ),
+    );
+  }
+}
+
+/// A count under the video (cities, guides, countries) with its two-tone
+/// icon on a soft colour tile.
+class _Counter extends StatelessWidget {
+  final IconData icon;
+  final int value;
+  final String label;
+  final Color tint;
+  final Color colour;
+
+  const _Counter({
+    required this.icon,
+    required this.value,
+    required this.label,
+    required this.tint,
+    required this.colour,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(9),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFEEF0F3)),
+        boxShadow: [
+          BoxShadow(
+            color: _navy.withValues(alpha: 0.05),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: tint,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: PhosphorIcon(icon, size: 21, color: colour),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '$value',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    height: 1.0,
+                    fontWeight: FontWeight.w900,
+                    color: _navy,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                // shrinks rather than cuts "countries" on narrow phones
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    label,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Color(0xFF64748B),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A city on the photo wall: its cover, the guide count, an open arrow, and
+/// the name and country at the bottom.
+class _CityTile extends StatelessWidget {
+  final CityTourCity city;
+  final double height;
+  final VoidCallback onTap;
+
+  const _CityTile({required this.city, required this.height, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     final count = city.tours.length;
-    // one guide: its length ("1 to 8 days"), as the museum card's third line
-    final duration = count == 1 ? city.tours.first.duration : '';
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: onTap,
-        child: Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppColors.border),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        height: height,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(22),
+          boxShadow: [
+            BoxShadow(
+              color: _navy.withValues(alpha: 0.14),
+              blurRadius: 16,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(22),
+          child: Stack(
+            fit: StackFit.expand,
             children: [
-              // Top part: cover photo + guide count
-              Expanded(
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    ClipRRect(
-                      borderRadius:
-                          const BorderRadius.vertical(top: Radius.circular(15)),
-                      child: city.coverUrl.isEmpty
-                          ? Container(
-                              decoration: const BoxDecoration(
-                                gradient: AppColors.secondaryGradient,
-                              ),
-                            )
-                          : CachedNetworkImage(
-                              imageUrl: cityTourMediaUrl(city.coverUrl),
-                              fit: BoxFit.cover,
-                              memCacheWidth: 1080, // grid card at 3x DPR
-                              placeholder: (context, url) => Container(
-                                color: AppColors.surface,
-                                child: const Center(
-                                  child: SizedBox(
-                                    width: 20,
-                                    height: 20,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 1.5,
-                                      color: AppColors.brandGreen,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              errorWidget: (context, url, error) => Container(
-                                color: AppColors.surface,
-                                child: const Center(
-                                  child: Icon(
-                                    Icons.location_city_rounded,
-                                    size: 32,
-                                    color: AppColors.textTertiary,
-                                  ),
-                                ),
-                              ),
-                            ),
+              if (city.coverUrl.isEmpty)
+                Container(
+                  decoration: const BoxDecoration(
+                    gradient: AppColors.secondaryGradient,
+                  ),
+                )
+              else
+                CachedNetworkImage(
+                  imageUrl: cityTourMediaUrl(city.coverUrl),
+                  fit: BoxFit.cover,
+                  memCacheWidth: 600, // half-width tile at 3x DPR
+                  placeholder: (_, __) => Container(color: AppColors.surface),
+                  errorWidget: (_, __, ___) => Container(
+                    color: AppColors.surface,
+                    child: const Icon(
+                      Icons.location_city_rounded,
+                      size: 32,
+                      color: AppColors.textTertiary,
                     ),
-                    Positioned(
-                      top: 8,
-                      right: 8,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: AppColors.brandGreen,
-                          borderRadius: BorderRadius.circular(8),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.25),
-                              blurRadius: 4,
-                              offset: const Offset(0, 1),
-                            ),
-                          ],
-                        ),
-                        child: Text(
-                          count == 1 ? '1 guide' : '$count guides',
-                          style: const TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                            letterSpacing: 0.2,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
+                  ),
+                ),
+              const DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.topCenter,
+                    colors: [Color(0xBF000000), Color(0x00000000)],
+                    stops: [0.0, 0.55],
+                  ),
                 ),
               ),
-              // Bottom part: city details
-              Padding(
-                padding: const EdgeInsets.all(12),
+              Positioned(
+                top: 9,
+                left: 9,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: _navy.withValues(alpha: 0.45),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(PhosphorIconsBold.path, size: 12, color: Colors.white),
+                      const SizedBox(width: 4),
+                      Text(
+                        count == 1 ? '1 guide' : '$count guides',
+                        style: const TextStyle(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Positioned(
+                top: 8,
+                right: 8,
+                child: Container(
+                  width: 30,
+                  height: 30,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.2),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.35)),
+                  ),
+                  child: const Icon(PhosphorIconsBold.arrowUpRight,
+                      size: 15, color: Colors.white),
+                ),
+              ),
+              Positioned(
+                left: 12,
+                right: 12,
+                bottom: 11,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
                       city.city,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        height: 1.2,
-                      ),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 17,
+                        height: 1.15,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                      ),
                     ),
                     if (city.country.isNotEmpty) ...[
-                      const SizedBox(height: 6),
+                      const SizedBox(height: 2),
                       Row(
                         children: [
-                          const Icon(Icons.place_rounded,
-                              size: 11, color: AppColors.textTertiary),
+                          const Icon(PhosphorIconsFill.mapPin,
+                              size: 12, color: Color(0xE6FFFFFF)),
                           const SizedBox(width: 3),
                           Expanded(
                             child: Text(
                               city.country,
-                              style: const TextStyle(
-                                fontSize: 11,
-                                color: AppColors.textSecondary,
-                              ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                    if (duration.isNotEmpty) ...[
-                      const SizedBox(height: 3),
-                      Row(
-                        children: [
-                          const Icon(Icons.schedule_rounded,
-                              size: 11, color: AppColors.textTertiary),
-                          const SizedBox(width: 3),
-                          Expanded(
-                            child: Text(
-                              duration,
                               style: const TextStyle(
-                                fontSize: 10,
-                                color: AppColors.textTertiary,
+                                fontSize: 11.5,
+                                color: Color(0xE6FFFFFF),
                               ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
                         ],
