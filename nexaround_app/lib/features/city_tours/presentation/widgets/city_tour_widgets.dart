@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -7,6 +9,7 @@ import 'package:nexaround_app/core/constants/api_constants.dart';
 import 'package:nexaround_app/features/city_tours/domain/city_tour.dart';
 import 'package:nexaround_app/features/city_tours/domain/city_tour_trip.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_description.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 // The admin panel draws a copy of these screens as its preview
 // (nexaround_admin/src/components/CityTourPreview.jsx), so a change to sizes,
@@ -149,31 +152,6 @@ class CityTourStopBadge extends StatelessWidget {
           fontSize: size * 0.45,
           fontWeight: FontWeight.w800,
         ),
-      ),
-    );
-  }
-}
-
-/// A ride's or a break's icon in a circle, where a stop has its number.
-class CityTourModeBadge extends StatelessWidget {
-  final CityTourStep step;
-
-  const CityTourModeBadge(this.step, {super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 28,
-      height: 28,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        shape: BoxShape.circle,
-        border: Border.all(color: AppColors.border, width: 1.5),
-      ),
-      child: Icon(
-        step.isBreak ? Icons.restaurant_rounded : cityTourModeIcon(step.mode),
-        size: 15,
-        color: AppColors.textSecondary,
       ),
     );
   }
@@ -383,378 +361,1105 @@ class CityTourMap extends StatelessWidget {
   }
 }
 
-/// One step of the route: a numbered stop, or the ride to the next one, on a
-/// grey line that joins them. Walks, rides and breaks sit on a subtle grey card.
-/// On a trip the step in hand sits on a light green card edged in the app's
-/// green, the steps done or skipped fade to grey, and the line fills in green
-/// as far as the trip has come.
-class CityTourStepTile extends StatelessWidget {
+// ── The route's steps ───────────────────────────────────────────────────────
+
+const _navy = Color(0xFF0F172A);
+const _slate = Color(0xFF64748B);
+const _line = Color(0xFFE5E9EF);
+const _done = Color(0xFF16A34A);
+const _doneLine = Color(0xFFCDEBD8);
+
+/// Where a step stands: no trip on its day ([plain]), finished, skipped, the
+/// step in hand, or still to come.
+enum CityTourStepState { plain, done, skipped, current, upcoming }
+
+/// A step's state from its place in a trip's schedule; [plain] without one.
+CityTourStepState cityTourStepState(CityTourStepTime? time) {
+  if (time == null) return CityTourStepState.plain;
+  if (time.isDone) return time.skipped ? CityTourStepState.skipped : CityTourStepState.done;
+  return time.isCurrent ? CityTourStepState.current : CityTourStepState.upcoming;
+}
+
+/// "11:30 AM – 12:45 PM" from a step's times, or its own "1 hr (est)" with
+/// none.
+String? cityTourStepSpan(BuildContext context, CityTourStep step, CityTourStepTime? time) {
+  if (time != null) {
+    return '${cityTourClock(context, time.start)} – ${cityTourClock(context, time.end)}';
+  }
+  if (step.isStop && step.timeHere.isNotEmpty) return cityTourEst(step.timeHere);
+  return null;
+}
+
+/// A step's circle: a stop's number, or a ride's or break's icon. On a trip,
+/// a tap on the step in hand's circle marks it done (as in Odyssey) and it
+/// turns into a green tick; a skipped one shows a grey skip mark.
+class CityTourTick extends StatelessWidget {
   final CityTourStep step;
-  final bool isFirst;
-  final bool isLast;
-  final bool isLastStop;
-  final void Function(CityTourLink link) onLinkTap;
+  final CityTourStepState state;
+  final double size;
 
-  /// The step's place in a running or finished trip; null with no trip.
-  final CityTourStepTime? time;
+  /// Drawn on a photo: the step in hand gets a white ring, not a teal one.
+  final bool onPhoto;
+  final VoidCallback? onTap;
 
-  const CityTourStepTile({
+  const CityTourTick({
     super.key,
     required this.step,
-    required this.isFirst,
-    required this.isLast,
-    required this.isLastStop,
-    required this.onLinkTap,
-    this.time,
+    required this.state,
+    this.size = 36,
+    this.onPhoto = false,
+    this.onTap,
   });
-
-  static const double _rail = 28;
-  static const double _gap = 22;
-
-  /// How far the step in hand's card reaches past its text.
-  static const double _cardPad = 10;
-
-  /// Grey, and faded towards the white page.
-  static const ColorFilter _doneFilter = ColorFilter.matrix(<double>[
-    0.2126, 0.7152, 0.0722, 0, 0,
-    0.2126, 0.7152, 0.0722, 0, 0,
-    0.2126, 0.7152, 0.0722, 0, 0,
-    0, 0, 0, 0.45, 0,
-  ]);
-
-  bool get _isNow => time?.isCurrent ?? false;
-
-  /// How far above the tile's bottom edge the step in hand's card ends.
-  static double cardEndInset(CityTourStep step, {required bool isLast}) =>
-      (isLast ? 0 : _gap) - (step.isStop ? _cardPad : 0);
 
   @override
   Widget build(BuildContext context) {
-    Widget content = Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (time != null) _time(context, time!),
-        step.isStop ? _stop() : (step.isBreak ? _break() : _move()),
-      ],
-    );
-    // A walk, ride or break always sits on a subtle grey card, so the places
-    // stand out; the tile leaves room for it above and below.
-    final room = step.isStop ? 0.0 : _cardPad;
-    if (_isNow || !step.isStop) {
-      // Drawn past the text rather than padding it, so nothing moves when
-      // a stop comes up.
-      content = Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Positioned(
-            left: -_cardPad,
-            top: -_cardPad,
-            right: -_cardPad,
-            bottom: -_cardPad,
-            child: DecoratedBox(
-              decoration: _isNow
-                  ? BoxDecoration(
-                      color: AppColors.brandGreenLight,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: AppColors.brandGreen, width: 1.5),
-                    )
-                  : BoxDecoration(
-                      color: AppColors.surface,
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-            ),
+    final Color fg;
+    final BoxDecoration box;
+    switch (state) {
+      case CityTourStepState.done:
+        fg = Colors.white;
+        box = BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF22C55E), Color(0xFF15803D)],
           ),
-          content,
-        ],
+          boxShadow: [
+            BoxShadow(color: _done.withValues(alpha: 0.35), blurRadius: 10, offset: const Offset(0, 4)),
+          ],
+        );
+      case CityTourStepState.skipped:
+        fg = Colors.white;
+        box = const BoxDecoration(shape: BoxShape.circle, color: Color(0xFFCBD5E1));
+      case CityTourStepState.current:
+        fg = AppColors.brandGreen;
+        box = BoxDecoration(
+          shape: BoxShape.circle,
+          color: onPhoto ? Colors.white.withValues(alpha: 0.95) : Colors.white,
+          border: Border.all(color: onPhoto ? Colors.white : AppColors.brandGreen, width: 2.5),
+          boxShadow: [
+            BoxShadow(
+              color: onPhoto
+                  ? Colors.white.withValues(alpha: 0.3)
+                  : AppColors.brandGreen.withValues(alpha: 0.15),
+              spreadRadius: 5,
+            ),
+          ],
+        );
+      case CityTourStepState.upcoming:
+        fg = step.isStop ? _slate : Colors.white;
+        box = step.isStop
+            ? BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white,
+                border: Border.all(color: const Color(0xFFCBD5E1), width: 2),
+              )
+            : const BoxDecoration(shape: BoxShape.circle, color: Color(0xFF334155));
+      case CityTourStepState.plain:
+        fg = Colors.white;
+        box = step.isStop
+            ? BoxDecoration(
+                shape: BoxShape.circle,
+                color: step.number == 1 ? AppColors.brandGreen : _navy,
+                border: Border.all(color: Colors.white, width: 2),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.2),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              )
+            : const BoxDecoration(shape: BoxShape.circle, color: Color(0xFF334155));
+    }
+    final Widget face;
+    if (state == CityTourStepState.done) {
+      face = Icon(PhosphorIconsBold.check, size: size * 0.48, color: fg);
+    } else if (state == CityTourStepState.skipped) {
+      face = Icon(PhosphorIconsBold.skipForward, size: size * 0.42, color: fg);
+    } else if (step.isStop) {
+      face = Text(
+        '${step.number}',
+        style: TextStyle(fontSize: size * 0.42, fontWeight: FontWeight.w900, color: fg),
+      );
+    } else {
+      face = Icon(
+        step.isBreak ? Icons.restaurant_rounded : cityTourModeIcon(step.mode),
+        size: size * 0.56,
+        color: fg,
       );
     }
-    final done = time?.isDone ?? false;
-    Widget row = Padding(
-      padding: EdgeInsets.only(top: room, bottom: (isLast ? 0 : _gap) + room),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: _rail,
-            child: step.isStop ? CityTourStopBadge(step.number) : CityTourModeBadge(step),
-          ),
-          const SizedBox(width: 14),
-          Expanded(child: content),
-        ],
-      ),
+    final circle = Container(
+      width: size,
+      height: size,
+      alignment: Alignment.center,
+      decoration: box,
+      child: face,
     );
-    if (done) row = ColorFiltered(colorFilter: _doneFilter, child: row);
-    // The line into the badge is green once the steps before it are done,
-    // and the line out of it once this one is.
-    final mid = room + _rail / 2;
-    return Stack(
-      children: [
-        if (!isFirst)
-          Positioned(
-            left: _rail / 2 - 1,
-            top: 0,
-            height: mid,
-            width: 2,
-            child: ColoredBox(color: done || _isNow ? AppColors.brandGreen : AppColors.border),
-          ),
-        if (!isLast)
-          Positioned(
-            left: _rail / 2 - 1,
-            top: mid,
-            bottom: 0,
-            width: 2,
-            child: ColoredBox(color: done ? AppColors.brandGreen : AppColors.border),
-          ),
-        row,
-      ],
-    );
+    if (onTap == null) return circle;
+    return GestureDetector(onTap: onTap, behavior: HitTestBehavior.opaque, child: circle);
+  }
+}
+
+/// A stop on the route as a card. With no trip each stop is open: its photo
+/// with the name on it, times, notes, story and partner buttons. On a trip
+/// the stop in hand is open and edged in teal, finished stops shrink to a
+/// slim green card, and stops still to come wait as closed cards; a tap on
+/// a card opens or closes it.
+class CityTourStopCard extends StatelessWidget {
+  final CityTourStep step;
+
+  /// Its planned or trip times; null when the day has no start time.
+  final CityTourStepTime? time;
+  final CityTourStepState state;
+  final bool open;
+
+  /// "START HERE" or "LAST STOP", on a day nobody is following.
+  final String? caption;
+
+  /// The last step marked done or skipped, so its Undo shows.
+  final bool canUndo;
+  final VoidCallback? onTick;
+  final VoidCallback? onToggle;
+  final VoidCallback? onUndo;
+  final VoidCallback? onSkip;
+  final void Function(CityTourLink link) onLinkTap;
+
+  const CityTourStopCard({
+    super.key,
+    required this.step,
+    required this.time,
+    required this.state,
+    required this.open,
+    required this.onLinkTap,
+    this.caption,
+    this.canUndo = false,
+    this.onTick,
+    this.onToggle,
+    this.onUndo,
+    this.onSkip,
+  });
+
+  bool get _finished => state == CityTourStepState.done || state == CityTourStepState.skipped;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!open && _finished) return _doneCard(context);
+    if (!open && state == CityTourStepState.upcoming) return _closedCard(context);
+    return _openCard(context);
   }
 
-  /// "Done 11:52", "Skipped", "Now · until 11:45", or the planned "11:45 – 12:05".
-  Widget _time(BuildContext context, CityTourStepTime t) {
-    final String text;
-    final Color color;
-    final IconData icon;
-    if (t.isDone && t.skipped) {
-      text = 'Skipped';
-      color = AppColors.textTertiary;
-      icon = Icons.skip_next_rounded;
-    } else if (t.isDone) {
-      text = 'Done ${cityTourClock(context, t.doneAt!)}';
-      color = AppColors.brandGreen;
-      icon = Icons.check_circle_rounded;
-    } else if (t.isCurrent) {
-      final over = DateTime.now().isAfter(t.end);
-      text = over
-          ? 'Now · planned until ${cityTourClock(context, t.end)}'
-          : 'Now · until ${cityTourClock(context, t.end)}';
-      color = over ? const Color(0xFFD97706) : AppColors.brandGreen;
-      icon = Icons.play_circle_rounded;
-    } else {
-      text = '${cityTourClock(context, t.start)} – ${cityTourClock(context, t.end)}';
-      color = AppColors.textTertiary;
-      icon = Icons.schedule_rounded;
-    }
-    return Padding(
-      padding: EdgeInsets.only(top: step.isStop ? 2 : 5, bottom: step.isStop ? 2 : 0),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: color),
-          const SizedBox(width: 4),
-          Text(
-            text,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: t.isDone || t.isCurrent ? FontWeight.w800 : FontWeight.w600,
-              color: color,
-            ),
-          ),
-        ],
-      ),
-    );
+  String _doneText(BuildContext context) {
+    final at = time?.doneAt;
+    if (state == CityTourStepState.skipped) return 'Skipped';
+    return at == null ? 'Done' : 'Done ${cityTourClock(context, at)}';
   }
 
-  /// The guide's "Closure / Access" line: "Closed Tuesdays. Book ahead."
-  Widget _access() {
-    return Padding(
-      padding: const EdgeInsets.only(top: 6),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Padding(
-            padding: EdgeInsets.only(top: 1),
-            child: Icon(Icons.info_outline_rounded, size: 14, color: AppColors.textTertiary),
-          ),
-          const SizedBox(width: 4),
-          Expanded(
-            child: Text(
-              step.accessNote,
-              style: const TextStyle(fontSize: 12.5, height: 1.4, color: AppColors.textSecondary),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _break() {
-    return Padding(
-      padding: const EdgeInsets.only(top: 5),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text.rich(
-            TextSpan(
-              text: step.breakTitle.isEmpty ? 'Break' : step.breakTitle,
-              style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.textPrimary),
-              children: [
-                if (step.duration.isNotEmpty)
-                  TextSpan(
-                    text: ' · ${cityTourEst(step.duration)}',
-                    style: const TextStyle(fontWeight: FontWeight.w500, color: AppColors.textSecondary),
+  Widget _doneCard(BuildContext context) {
+    final skipped = state == CityTourStepState.skipped;
+    return GestureDetector(
+      onTap: onToggle,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        padding: const EdgeInsets.all(11),
+        decoration: BoxDecoration(
+          color: skipped ? AppColors.surface : null,
+          gradient: skipped
+              ? null
+              : const LinearGradient(colors: [Color(0xFFF0FBF4), Color(0xFFE8F7EE)]),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: skipped ? AppColors.border : _doneLine),
+        ),
+        child: Row(
+          children: [
+            CityTourTick(step: step, state: state, size: 34, onTap: onTick),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    step.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 15.5,
+                      fontWeight: FontWeight.w800,
+                      color: _slate,
+                      decoration: TextDecoration.lineThrough,
+                      decorationColor: Color(0xFF94A3B8),
+                    ),
                   ),
-              ],
-            ),
-            style: const TextStyle(fontSize: 13, height: 1.3),
-          ),
-          if (step.accessNote.isNotEmpty) _access(),
-          if (step.bodyMd.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            ExperienceDescription(markdown: step.bodyMd),
-          ],
-          ..._links(10),
-        ],
-      ),
-    );
-  }
-
-  Widget _stop() {
-    final caption = isFirst ? 'START HERE' : (isLastStop ? 'LAST STOP' : null);
-    return Padding(
-      padding: const EdgeInsets.only(top: 2),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (caption != null) ...[
-            Text(
-              caption,
-              style: const TextStyle(
-                fontSize: 10.5,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 1.1,
-                color: AppColors.brandGreen,
+                  const SizedBox(height: 1),
+                  Text(
+                    _doneText(context),
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: skipped ? AppColors.textTertiary : _done,
+                    ),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 2),
+            if (canUndo) ...[
+              const SizedBox(width: 8),
+              _UndoButton(onTap: onUndo),
+            ],
           ],
-          Text(
-            step.name,
-            style: const TextStyle(
-              fontSize: 17,
-              height: 1.25,
-              fontWeight: FontWeight.w800,
-              letterSpacing: -0.2,
-              color: AppColors.textPrimary,
+        ),
+      ),
+    );
+  }
+
+  Widget _closedCard(BuildContext context) {
+    final span = cityTourStepSpan(context, step, time);
+    return GestureDetector(
+      onTap: onToggle,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        padding: const EdgeInsets.all(9),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: _line),
+          boxShadow: [
+            BoxShadow(color: _navy.withValues(alpha: 0.06), blurRadius: 18, offset: const Offset(0, 6)),
+          ],
+        ),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 62,
+              height: 62,
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: step.photoUrl.isEmpty
+                          ? Container(
+                              color: AppColors.surface,
+                              alignment: Alignment.center,
+                              child: const PhosphorIcon(
+                                PhosphorIconsDuotone.mapPin,
+                                size: 24,
+                                color: _slate,
+                              ),
+                            )
+                          : CachedNetworkImage(
+                              imageUrl: cityTourMediaUrl(step.photoUrl),
+                              fit: BoxFit.cover,
+                              memCacheWidth: 200,
+                              placeholder: (_, __) => Container(color: AppColors.surface),
+                              errorWidget: (_, __, ___) => Container(color: AppColors.surfaceVariant),
+                            ),
+                    ),
+                  ),
+                  Positioned(
+                    left: 5,
+                    top: 5,
+                    child: GestureDetector(
+                      onTap: onTick,
+                      child: Container(
+                        width: 22,
+                        height: 22,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.2),
+                              blurRadius: 6,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Text(
+                          '${step.number}',
+                          style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w900, color: _navy),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    step.name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: _navy),
+                  ),
+                  if (span != null) ...[
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        const Icon(PhosphorIconsBold.clock, size: 12, color: AppColors.textTertiary),
+                        const SizedBox(width: 4),
+                        Flexible(
+                          child: Text(
+                            span,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 12, color: _slate),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            const _RoundIcon(icon: PhosphorIconsBold.caretDown),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _openCard(BuildContext context) {
+    final current = state == CityTourStepState.current;
+    final hasPhoto = step.photoUrl.isNotEmpty;
+    final body = _body(context);
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(
+          color: current ? AppColors.brandGreen.withValues(alpha: 0.5) : _line,
+          width: current ? 1.5 : 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: current
+                ? AppColors.brandGreen.withValues(alpha: 0.18)
+                : _navy.withValues(alpha: 0.06),
+            blurRadius: current ? 40 : 18,
+            offset: Offset(0, current ? 18 : 6),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(25),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            GestureDetector(
+              onTap: onToggle,
+              behavior: HitTestBehavior.opaque,
+              child: hasPhoto ? _photoHeader(context) : _plainHeader(context),
+            ),
+            if (body.isNotEmpty)
+              Padding(
+                padding: EdgeInsets.fromLTRB(15, hasPhoto ? 14 : 0, 15, 16),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: body),
+              )
+            else
+              const SizedBox(height: 4),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// The pill at the photo's top left: NOW, Done, Skipped, or the caption.
+  Widget? _badge(BuildContext context) {
+    switch (state) {
+      case CityTourStepState.current:
+        return _Pill(
+          color: const Color(0xFFF59E0B),
+          shadow: const Color(0xFFF59E0B),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 7,
+                height: 7,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                  boxShadow: [BoxShadow(color: Colors.white.withValues(alpha: 0.4), spreadRadius: 3)],
+                ),
+              ),
+              const SizedBox(width: 7),
+              const Text(
+                'NOW',
+                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w900, letterSpacing: 1, color: Colors.white),
+              ),
+            ],
+          ),
+        );
+      case CityTourStepState.done:
+      case CityTourStepState.skipped:
+        return _Pill(
+          color: state == CityTourStepState.done ? _done : const Color(0xFF94A3B8),
+          child: Text(
+            _doneText(context),
+            style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: Colors.white),
+          ),
+        );
+      case CityTourStepState.plain:
+        final caption = this.caption;
+        if (caption == null) return null;
+        return _Pill(
+          color: AppColors.brandGreen,
+          child: Text(
+            caption,
+            style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w900, letterSpacing: 1.1, color: Colors.white),
+          ),
+        );
+      case CityTourStepState.upcoming:
+        return null;
+    }
+  }
+
+  /// "until 12:45 PM" on the step in hand ("planned until" once it runs over).
+  String? _until(BuildContext context) {
+    final t = time;
+    if (state != CityTourStepState.current || t == null) return null;
+    final over = DateTime.now().isAfter(t.end);
+    return '${over ? 'planned until' : 'until'} ${cityTourClock(context, t.end)}';
+  }
+
+  Widget _photoHeader(BuildContext context) {
+    final badge = _badge(context);
+    final until = _until(context);
+    final span = cityTourStepSpan(context, step, time);
+    return SizedBox(
+      height: 210,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          CachedNetworkImage(
+            imageUrl: cityTourMediaUrl(step.photoUrl),
+            fit: BoxFit.cover,
+            memCacheWidth: 1080,
+            placeholder: (_, __) => Container(color: AppColors.surface),
+            errorWidget: (_, __, ___) => Container(color: AppColors.surfaceVariant),
+          ),
+          const DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color(0x4D000000), Color(0x00000000), Color(0xD9020617)],
+                stops: [0.0, 0.35, 1.0],
+              ),
             ),
           ),
-          if (step.timeHere.isNotEmpty || step.price.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            Wrap(
-              spacing: 12,
-              runSpacing: 4,
-              children: [
-                if (step.timeHere.isNotEmpty)
-                  _meta(Icons.hourglass_bottom_rounded, cityTourEst(step.timeHere)),
-                if (step.price.isNotEmpty)
-                  _meta(Icons.confirmation_number_rounded, step.price),
-              ],
-            ),
-          ],
-          if (step.accessNote.isNotEmpty) _access(),
-          if (step.photoUrl.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(14),
-              child: AspectRatio(
-                aspectRatio: 16 / 10,
-                child: CachedNetworkImage(
-                  imageUrl: cityTourMediaUrl(step.photoUrl),
-                  fit: BoxFit.cover,
-                  memCacheWidth: 1080,
-                  placeholder: (_, __) => Container(color: AppColors.surface),
-                  errorWidget: (_, __, ___) => Container(color: AppColors.surfaceVariant),
+          if (badge != null) Positioned(left: 12, top: 12, child: badge),
+          if (until != null)
+            Positioned(
+              right: 12,
+              top: 12,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                decoration: BoxDecoration(
+                  color: const Color(0x66020617),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(PhosphorIconsBold.clock, size: 12, color: Colors.white),
+                    const SizedBox(width: 4),
+                    Text(
+                      until,
+                      style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Colors.white),
+                    ),
+                  ],
                 ),
               ),
             ),
-          ],
-          if (step.bodyMd.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            ExperienceDescription(markdown: step.bodyMd),
-          ],
-          ..._links(12),
+          Positioned(
+            left: 14,
+            right: 14,
+            bottom: 14,
+            child: Row(
+              children: [
+                CityTourTick(step: step, state: state, size: 40, onPhoto: true, onTap: onTick),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        step.name,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 21,
+                          height: 1.15,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: -0.4,
+                          color: Colors.white,
+                        ),
+                      ),
+                      if (span != null)
+                        Text(
+                          span,
+                          style: const TextStyle(fontSize: 12.5, color: Color(0xD9FFFFFF)),
+                        ),
+                    ],
+                  ),
+                ),
+                if (onToggle != null) ...[
+                  const SizedBox(width: 8),
+                  const Icon(PhosphorIconsBold.caretUp, size: 16, color: Color(0xCCFFFFFF)),
+                ],
+              ],
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _move() {
+  Widget _plainHeader(BuildContext context) {
+    final badge = _badge(context);
+    final until = _until(context);
+    final span = cityTourStepSpan(context, step, time);
+    final line = [if (span != null) span, if (until != null) until].join(' · ');
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(15, 14, 15, 12),
+      child: Row(
+        children: [
+          CityTourTick(step: step, state: state, size: 40, onTap: onTick),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (badge != null) ...[badge, const SizedBox(height: 6)],
+                Text(
+                  step.name,
+                  style: const TextStyle(
+                    fontSize: 19,
+                    height: 1.2,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.3,
+                    color: _navy,
+                  ),
+                ),
+                if (line.isNotEmpty)
+                  Text(line, style: const TextStyle(fontSize: 12.5, color: _slate)),
+              ],
+            ),
+          ),
+          if (onToggle != null) ...[
+            const SizedBox(width: 8),
+            const _RoundIcon(icon: PhosphorIconsBold.caretUp),
+          ],
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _body(BuildContext context) {
+    final current = state == CityTourStepState.current;
+    final parts = <Widget>[
+      if (current) _TapHint(number: '${step.number}'),
+      if (step.timeHere.isNotEmpty || step.price.isNotEmpty)
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            if (step.timeHere.isNotEmpty)
+              _Chip(
+                icon: PhosphorIconsDuotone.hourglassMedium,
+                text: cityTourEst(step.timeHere),
+                fg: const Color(0xFF5B21B6),
+                bg: const Color(0xFFF3EEFF),
+                iconColour: const Color(0xFF7C3AED),
+              ),
+            if (step.price.isNotEmpty)
+              _Chip(
+                icon: PhosphorIconsDuotone.ticket,
+                text: step.price,
+                fg: const Color(0xFF166534),
+                bg: const Color(0xFFE7F5EC),
+                iconColour: const Color(0xFF15803D),
+              ),
+          ],
+        ),
+      if (step.accessNote.isNotEmpty) _NoteBox(text: step.accessNote),
+      if (step.bodyMd.isNotEmpty) ExperienceDescription(markdown: step.bodyMd),
+      if (step.links.isNotEmpty) _Links(links: step.links, onLinkTap: onLinkTap),
+      if (current && onSkip != null) _SkipButton(onTap: onSkip),
+      if (_finished && canUndo) Align(alignment: Alignment.centerLeft, child: _UndoButton(onTap: onUndo)),
+    ];
+    return [
+      for (var i = 0; i < parts.length; i++) ...[
+        if (i > 0) const SizedBox(height: 12),
+        parts[i],
+      ],
+    ];
+  }
+}
+
+/// The way from one stop to the next, or a break, as a pill on a dashed line:
+/// "Metro · 15 min (est) · Travel to Hôtel des Invalides". A tap opens its
+/// directions, notes and partner buttons below it. On a trip the leg in hand
+/// is edged in teal with its circle to tick, and a finished one shows a tick.
+class CityTourLegPill extends StatelessWidget {
+  final CityTourStep step;
+  final CityTourStepTime? time;
+  final CityTourStepState state;
+  final bool open;
+  final bool canUndo;
+  final VoidCallback? onTick;
+  final VoidCallback? onToggle;
+  final VoidCallback? onUndo;
+  final VoidCallback? onSkip;
+  final void Function(CityTourLink link) onLinkTap;
+
+  const CityTourLegPill({
+    super.key,
+    required this.step,
+    required this.time,
+    required this.state,
+    required this.open,
+    required this.onLinkTap,
+    this.canUndo = false,
+    this.onTick,
+    this.onToggle,
+    this.onUndo,
+    this.onSkip,
+  });
+
+  bool get _hasMore =>
+      step.directions.isNotEmpty ||
+      step.accessNote.isNotEmpty ||
+      step.bodyMd.isNotEmpty ||
+      step.links.isNotEmpty ||
+      state == CityTourStepState.current ||
+      canUndo;
+
+  @override
+  Widget build(BuildContext context) {
+    final current = state == CityTourStepState.current;
+    final finished = state == CityTourStepState.done || state == CityTourStepState.skipped;
+    final title = step.isBreak
+        ? (step.breakTitle.isEmpty ? 'Break' : step.breakTitle)
+        : (step.modeLabel.isEmpty ? 'Walk' : step.modeLabel);
     final extras = [
       if (step.duration.isNotEmpty) cityTourEst(step.duration),
       if (step.cost.isNotEmpty) step.cost,
+      if (!open && step.directions.isNotEmpty) step.directions,
     ];
-    return Padding(
-      padding: const EdgeInsets.only(top: 5),
+    final pill = Container(
+      padding: const EdgeInsets.fromLTRB(4, 4, 12, 4),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: current ? AppColors.brandGreen : _line, width: current ? 1.5 : 1),
+        boxShadow: [
+          BoxShadow(color: _navy.withValues(alpha: 0.05), blurRadius: 8, offset: const Offset(0, 2)),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CityTourTick(step: step, state: state, size: 24, onTap: onTick),
+          const SizedBox(width: 7),
+          Flexible(
+            child: Text.rich(
+              TextSpan(
+                text: title,
+                style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF334155)),
+                children: [
+                  if (extras.isNotEmpty)
+                    TextSpan(
+                      text: ' · ${extras.join(' · ')}',
+                      style: const TextStyle(fontWeight: FontWeight.w600, color: _slate),
+                    ),
+                ],
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 12),
+            ),
+          ),
+          if (_hasMore) ...[
+            const SizedBox(width: 4),
+            Icon(
+              open ? PhosphorIconsBold.caretUp : PhosphorIconsBold.caretDown,
+              size: 12,
+              color: const Color(0xFF94A3B8),
+            ),
+          ],
+        ],
+      ),
+    );
+    final t = time;
+    final String? now = current && t != null
+        ? '${DateTime.now().isAfter(t.end) ? 'Now · planned until' : 'Now · until'} ${cityTourClock(context, t.end)}'
+        : null;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const _Dash(height: 12),
+        Center(
+          child: GestureDetector(
+            onTap: _hasMore ? onToggle : null,
+            behavior: HitTestBehavior.opaque,
+            child: Opacity(opacity: finished ? 0.6 : 1, child: pill),
+          ),
+        ),
+        if (now != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              now,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFFD97706)),
+            ),
+          ),
+        if (open && _hasMore)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: _details(context),
+          ),
+        const _Dash(height: 12),
+      ],
+    );
+  }
+
+  Widget _details(BuildContext context) {
+    final current = state == CityTourStepState.current;
+    final finished = state == CityTourStepState.done || state == CityTourStepState.skipped;
+    final span = cityTourStepSpan(context, step, time);
+    final parts = <Widget>[
+      if (current) _TapHint(icon: step.isBreak ? null : cityTourModeIcon(step.mode)),
+      if (span != null)
+        Row(
+          children: [
+            const Icon(PhosphorIconsBold.clock, size: 13, color: AppColors.textTertiary),
+            const SizedBox(width: 5),
+            Text(span, style: const TextStyle(fontSize: 12.5, color: _slate)),
+          ],
+        ),
+      if (step.directions.isNotEmpty)
+        Text(
+          step.directions,
+          style: const TextStyle(fontSize: 14, height: 1.45, fontWeight: FontWeight.w600, color: _navy),
+        ),
+      if (step.accessNote.isNotEmpty) _NoteBox(text: step.accessNote),
+      if (step.bodyMd.isNotEmpty) ExperienceDescription(markdown: step.bodyMd),
+      if (step.links.isNotEmpty) _Links(links: step.links, onLinkTap: onLinkTap),
+      if (current && onSkip != null) _SkipButton(onTap: onSkip, label: 'Skip this'),
+      if (finished && canUndo) Align(alignment: Alignment.centerLeft, child: _UndoButton(onTap: onUndo)),
+    ];
+    return Container(
+      padding: const EdgeInsets.all(13),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: current ? AppColors.brandGreen.withValues(alpha: 0.5) : _line),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text.rich(
-            TextSpan(
-              text: step.modeLabel.isEmpty ? 'Walk' : step.modeLabel,
-              style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.textPrimary),
-              children: [
-                if (extras.isNotEmpty)
-                  TextSpan(
-                    text: ' · ${extras.join(' · ')}',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w500,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-              ],
-            ),
-            style: const TextStyle(fontSize: 13, height: 1.3),
-          ),
-          if (step.directions.isNotEmpty) ...[
-            const SizedBox(height: 3),
-            Text(
-              step.directions,
-              style: const TextStyle(
-                fontSize: 14,
-                height: 1.45,
-                fontWeight: FontWeight.w500,
-                color: AppColors.textPrimary,
-              ),
-            ),
+          for (var i = 0; i < parts.length; i++) ...[
+            if (i > 0) const SizedBox(height: 10),
+            parts[i],
           ],
-          if (step.accessNote.isNotEmpty) _access(),
-          if (step.bodyMd.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            ExperienceDescription(markdown: step.bodyMd),
-          ],
-          ..._links(10),
         ],
       ),
     );
   }
+}
 
-  Widget _meta(IconData icon, String text) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 14, color: AppColors.textTertiary),
-        const SizedBox(width: 4),
-        Text(
-          text,
-          style: const TextStyle(
-            fontSize: 12.5,
-            fontWeight: FontWeight.w500,
-            color: AppColors.textSecondary,
+/// The dashed line between the route's cards.
+class _Dash extends StatelessWidget {
+  final double height;
+
+  const _Dash({required this.height});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(height: height, child: const CustomPaint(painter: _DashPainter()));
+  }
+}
+
+class _DashPainter extends CustomPainter {
+  const _DashPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = const Color(0xFFCBD5E1)
+      ..strokeWidth = 2;
+    final x = size.width / 2;
+    for (var y = 0.0; y < size.height; y += 8) {
+      canvas.drawLine(Offset(x, y), Offset(x, math.min(y + 4, size.height)), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_DashPainter old) => false;
+}
+
+/// A coloured pill on a stop's photo: NOW, Done 10:24, START HERE.
+class _Pill extends StatelessWidget {
+  final Color color;
+  final Color? shadow;
+  final Widget child;
+
+  const _Pill({required this.color, required this.child, this.shadow});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: shadow == null
+            ? null
+            : [BoxShadow(color: shadow!.withValues(alpha: 0.45), blurRadius: 12, offset: const Offset(0, 4))],
+      ),
+      child: child,
+    );
+  }
+}
+
+/// "Tap the 3 when you are done", on the step in hand.
+class _TapHint extends StatelessWidget {
+  /// A stop's number; a ride shows its [icon] instead.
+  final String? number;
+  final IconData? icon;
+
+  const _TapHint({this.number, this.icon});
+
+  @override
+  Widget build(BuildContext context) {
+    const style = TextStyle(fontSize: 13, color: Color(0xFF0F5257));
+    final number = this.number;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      decoration: BoxDecoration(
+        color: const Color(0xFFE6F4F4),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          const Icon(PhosphorIconsFill.handTap, size: 15, color: AppColors.brandGreen),
+          const SizedBox(width: 7),
+          Expanded(
+            child: Text.rich(
+              TextSpan(
+                text: 'Tap the ',
+                children: [
+                  if (number != null)
+                    TextSpan(text: number, style: const TextStyle(fontWeight: FontWeight.w900))
+                  else
+                    TextSpan(
+                      text: icon == null ? 'circle' : '',
+                      children: [
+                        if (icon != null)
+                          WidgetSpan(
+                            alignment: PlaceholderAlignment.middle,
+                            child: Icon(icon, size: 15, color: const Color(0xFF0F5257)),
+                          ),
+                      ],
+                    ),
+                  const TextSpan(text: ' when you are done'),
+                ],
+              ),
+              style: style,
+            ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A small tinted chip with a two-tone icon: "1 hr 15 min (est)".
+class _Chip extends StatelessWidget {
+  final IconData icon;
+  final String text;
+  final Color fg;
+  final Color bg;
+  final Color iconColour;
+
+  const _Chip({
+    required this.icon,
+    required this.text,
+    required this.fg,
+    required this.bg,
+    required this.iconColour,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(11)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          PhosphorIcon(icon, size: 15, color: iconColour),
+          const SizedBox(width: 5),
+          Flexible(
+            child: Text(
+              text,
+              style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: fg),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The guide's "Closure / Access" note, in an amber box.
+class _NoteBox extends StatelessWidget {
+  final String text;
+
+  const _NoteBox({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF8EB),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const PhosphorIcon(PhosphorIconsDuotone.info, size: 15, color: Color(0xFFD97706)),
+          const SizedBox(width: 7),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(fontSize: 12.5, height: 1.4, color: Color(0xFF92400E)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// "TICKETS & TOURS" and the step's partner buttons.
+class _Links extends StatelessWidget {
+  final List<CityTourLink> links;
+  final void Function(CityTourLink link) onLinkTap;
+
+  const _Links({required this.links, required this.onLinkTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Text(
+          'TICKETS & TOURS',
+          style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w900, letterSpacing: 1.3, color: _slate),
         ),
+        for (final link in links) ...[
+          const SizedBox(height: 8),
+          CityTourLinkButton(link: link, onTap: () => onLinkTap(link)),
+        ],
       ],
     );
   }
+}
 
-  List<Widget> _links(double gap) {
-    if (step.links.isEmpty) return const [];
-    return [
-      SizedBox(height: gap),
-      for (var i = 0; i < step.links.length; i++) ...[
-        if (i > 0) const SizedBox(height: 8),
-        CityTourLinkButton(link: step.links[i], onTap: () => onLinkTap(step.links[i])),
-      ],
-    ];
+class _SkipButton extends StatelessWidget {
+  final VoidCallback? onTap;
+  final String label;
+
+  const _SkipButton({required this.onTap, this.label = 'Skip this stop'});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.border, width: 1.5),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(PhosphorIconsBold.skipForward, size: 14, color: Color(0xFF475569)),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF475569)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _UndoButton extends StatelessWidget {
+  final VoidCallback? onTap;
+
+  const _UndoButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: _doneLine),
+        ),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(PhosphorIconsBold.arrowCounterClockwise, size: 13, color: _done),
+            SizedBox(width: 4),
+            Text('Undo', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: _done)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RoundIcon extends StatelessWidget {
+  final IconData icon;
+
+  const _RoundIcon({required this.icon});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 32,
+      height: 32,
+      alignment: Alignment.center,
+      decoration: const BoxDecoration(color: Color(0xFFF1F5F9), shape: BoxShape.circle),
+      child: Icon(icon, size: 15, color: const Color(0xFF475569)),
+    );
   }
 }
 
@@ -769,21 +1474,21 @@ class CityTourLinkButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final package = link.package;
     return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(14),
+      color: const Color(0xFFF7F8FA),
+      borderRadius: BorderRadius.circular(16),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
         child: Container(
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: AppColors.border),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFFEEF0F3)),
           ),
           child: Row(
             children: [
               if (link.isExperience) _photo(package) else _logo(),
-              const SizedBox(width: 12),
+              const SizedBox(width: 11),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -793,9 +1498,9 @@ class CityTourLinkButton extends StatelessWidget {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        fontSize: 14,
+                        fontSize: 13.5,
                         height: 1.3,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w800,
                         color: AppColors.textPrimary,
                       ),
                     ),
@@ -806,7 +1511,7 @@ class CityTourLinkButton extends StatelessWidget {
                           : '${link.partnerName} · opens their site',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                      style: const TextStyle(fontSize: 11.5, color: _slate),
                     ),
                     if (link.isExperience && (package?.priceLabel ?? '').isNotEmpty) ...[
                       const SizedBox(height: 3),
@@ -823,10 +1528,20 @@ class CityTourLinkButton extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              Icon(
-                link.isExperience ? Icons.chevron_right_rounded : Icons.open_in_new_rounded,
-                size: link.isExperience ? 22 : 18,
-                color: AppColors.textTertiary,
+              Container(
+                width: 30,
+                height: 30,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: _line),
+                ),
+                child: Icon(
+                  link.isExperience ? PhosphorIconsBold.caretRight : PhosphorIconsBold.arrowUpRight,
+                  size: 15,
+                  color: AppColors.brandGreen,
+                ),
               ),
             ],
           ),
@@ -842,14 +1557,14 @@ class CityTourLinkButton extends StatelessWidget {
       padding: const EdgeInsets.all(5),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(11),
         border: Border.all(color: AppColors.surfaceVariant),
       ),
       child: Image.asset(
         'assets/images/${link.partner}_logo.png',
         fit: BoxFit.contain,
         errorBuilder: (_, __, ___) =>
-            const Icon(Icons.open_in_new_rounded, size: 18, color: AppColors.textSecondary),
+            const Icon(PhosphorIconsBold.arrowUpRight, size: 18, color: AppColors.textSecondary),
       ),
     );
   }
@@ -857,7 +1572,7 @@ class CityTourLinkButton extends StatelessWidget {
   Widget _photo(CityTourPackage? package) {
     final url = package?.photoUrl ?? '';
     return ClipRRect(
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(11),
       child: SizedBox(
         width: 52,
         height: 52,
@@ -878,18 +1593,14 @@ class CityTourLinkButton extends StatelessWidget {
   }
 }
 
-/// The bar under a guide: "Start trip"; then, on a trip, the step in hand
-/// with "Skip" and "Mark done"; then "Trip finished".
+/// The bar under a guide: "Start trip" ("Start Day 2" in a guide of
+/// several days), and "Trip finished" once every step is done. While a trip
+/// runs there is no bar: each step's circle marks it done.
 class CityTourTripBar extends StatelessWidget {
   final CityTourTrip? trip;
   final CityTourSchedule? schedule;
-
-  /// What the step in hand is called: a stop's name, or "Metro to Louvre".
-  final String currentTitle;
   final bool busy;
   final VoidCallback onStart;
-  final VoidCallback onMarkDone;
-  final VoidCallback onSkip;
   final VoidCallback onClose;
 
   /// "Start trip", or "Start Day 2" in a guide of several days.
@@ -899,12 +1610,9 @@ class CityTourTripBar extends StatelessWidget {
     super.key,
     required this.trip,
     required this.schedule,
-    required this.currentTitle,
     required this.busy,
     this.startLabel = 'Start trip',
     required this.onStart,
-    required this.onMarkDone,
-    required this.onSkip,
     required this.onClose,
   });
 
@@ -933,7 +1641,7 @@ class CityTourTripBar extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           const Text(
-            'Plans your times from now and reminds you at each stop.',
+            'Plans your times from now. Tap each stop’s circle as you finish it.',
             textAlign: TextAlign.center,
             style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
           ),
@@ -947,7 +1655,7 @@ class CityTourTripBar extends StatelessWidget {
                 backgroundColor: AppColors.brandGreen,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
               ),
-              icon: const Icon(Icons.play_arrow_rounded, size: 22),
+              icon: const Icon(PhosphorIconsFill.play, size: 18),
               label: Text(
                 startLabel,
                 style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
@@ -958,98 +1666,31 @@ class CityTourTripBar extends StatelessWidget {
       );
     }
 
-    if (trip.isFinished) {
-      final took = trip.finishedAt!.difference(trip.startedAt).inMinutes;
-      return Row(
-        children: [
-          const Icon(Icons.flag_rounded, size: 26, color: AppColors.brandGreen),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  'Trip finished',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  'Took ${cityTourSpan(took)} · ${cityTourPace(schedule.behindMinutes).toLowerCase()}',
-                  style: const TextStyle(fontSize: 12.5, color: AppColors.textSecondary),
-                ),
-              ],
-            ),
-          ),
-          TextButton(
-            onPressed: busy ? null : onClose,
-            child: const Text('Close', style: TextStyle(fontWeight: FontWeight.w800)),
-          ),
-        ],
-      );
-    }
-
-    final time = schedule.current == null ? null : schedule.times[schedule.current!.id];
-    final over = time != null && DateTime.now().isAfter(time.end);
-    final when = time == null
-        ? ''
-        : over
-            ? 'Planned until ${cityTourClock(context, time.end)}'
-            : 'Until ${cityTourClock(context, time.end)}';
+    final took = (trip.finishedAt ?? DateTime.now()).difference(trip.startedAt).inMinutes;
     return Row(
       children: [
+        const PhosphorIcon(PhosphorIconsDuotone.flagCheckered, size: 26, color: AppColors.brandGreen),
+        const SizedBox(width: 12),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                over ? 'TIME TO MOVE ON' : 'NOW',
-                style: TextStyle(
-                  fontSize: 10.5,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 1.1,
-                  color: over ? const Color(0xFFD97706) : AppColors.brandGreen,
-                ),
+              const Text(
+                'Trip finished',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
               ),
               const SizedBox(height: 2),
               Text(
-                currentTitle,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                [if (when.isNotEmpty) when, cityTourPace(schedule.behindMinutes)].join(' · '),
+                'Took ${cityTourSpan(took)} · ${cityTourPace(schedule.behindMinutes).toLowerCase()}',
                 style: const TextStyle(fontSize: 12.5, color: AppColors.textSecondary),
               ),
             ],
           ),
         ),
-        const SizedBox(width: 12),
-        OutlinedButton(
-          onPressed: busy ? null : onSkip,
-          style: OutlinedButton.styleFrom(
-            foregroundColor: AppColors.textPrimary,
-            side: const BorderSide(color: AppColors.border),
-            minimumSize: const Size(0, 46),
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-          ),
-          child: const Text('Skip', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800)),
-        ),
-        const SizedBox(width: 8),
-        FilledButton.icon(
-          onPressed: busy ? null : onMarkDone,
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.brandGreen,
-            minimumSize: const Size(0, 46),
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-          ),
-          icon: const Icon(Icons.check_rounded, size: 20),
-          label: const Text('Mark done', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800)),
+        TextButton(
+          onPressed: busy ? null : onClose,
+          child: const Text('Close', style: TextStyle(fontWeight: FontWeight.w800)),
         ),
       ],
     );
@@ -1315,49 +1956,289 @@ class _CityTourPlanPickerState extends State<CityTourPlanPicker> {
   }
 }
 
-/// The traveller's days as tabs: "Day 1", "Day 2"…, numbered in their plan.
-class CityTourDayTabs extends StatelessWidget {
-  final List<CityTourDay> days;
-  final String selectedId;
-  final ValueChanged<String> onSelect;
+/// A ring of how far a trip has come: "2/5" in the middle.
+class CityTourProgressRing extends StatelessWidget {
+  final int done;
+  final int total;
+  final double size;
 
-  const CityTourDayTabs({
+  /// On the dark day card: a light track and a mint arc.
+  final bool dark;
+
+  const CityTourProgressRing({
     super.key,
-    required this.days,
-    required this.selectedId,
-    required this.onSelect,
+    required this.done,
+    required this.total,
+    this.size = 44,
+    this.dark = false,
   });
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 34,
+      width: size,
+      height: size,
+      child: CustomPaint(
+        painter: _RingPainter(
+          share: total == 0 ? 0 : done / total,
+          track: dark ? Colors.white.withValues(alpha: 0.22) : const Color(0xFFE2E8F0),
+          arc: dark ? const Color(0xFF5EEAD4) : _done,
+          stroke: size * 0.1,
+        ),
+        child: Center(
+          child: Text(
+            '$done/$total',
+            style: TextStyle(
+              fontSize: size >= 40 ? 11.5 : 9,
+              fontWeight: FontWeight.w900,
+              color: dark ? Colors.white : _navy,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RingPainter extends CustomPainter {
+  final double share;
+  final Color track;
+  final Color arc;
+  final double stroke;
+
+  const _RingPainter({required this.share, required this.track, required this.arc, required this.stroke});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    final ring = rect.deflate(stroke / 2 + 1);
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke
+      ..strokeCap = StrokeCap.round;
+    canvas.drawArc(ring, 0, math.pi * 2, false, paint..color = track);
+    if (share > 0) {
+      canvas.drawArc(ring, -math.pi / 2, math.pi * 2 * share.clamp(0.0, 1.0), false, paint..color = arc);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_RingPainter old) =>
+      old.share != share || old.track != track || old.arc != arc || old.stroke != stroke;
+}
+
+/// The guide's numbers on a white card: days, stops, time and budget, each
+/// with a two-tone icon on a soft colour tile. It sits on the cover's
+/// bottom edge.
+class CityTourStatsCard extends StatelessWidget {
+  final CityTourCard card;
+
+  const CityTourStatsCard({super.key, required this.card});
+
+  static const double height = 108;
+
+  /// Whether the guide has any number to show.
+  static bool shows(CityTourCard card) =>
+      card.dayCount > 1 || card.stopCount > 0 || card.duration.isNotEmpty || card.budget.isNotEmpty;
+
+  @override
+  Widget build(BuildContext context) {
+    final items = <Widget>[
+      if (card.dayCount > 1)
+        _stat(PhosphorIconsDuotone.calendarBlank, '${card.dayCount}', 'days',
+            const Color(0xFFE6F6F5), const Color(0xFF0D9488)),
+      if (card.stopCount > 0)
+        _stat(PhosphorIconsDuotone.mapPin, '${card.stopCount}', card.stopCount == 1 ? 'stop' : 'stops',
+            const Color(0xFFEFEAFE), const Color(0xFF7C3AED)),
+      if (card.duration.isNotEmpty)
+        _stat(PhosphorIconsDuotone.clock, card.duration, 'time',
+            const Color(0xFFFEF3DC), const Color(0xFFD97706)),
+      if (card.budget.isNotEmpty)
+        _stat(PhosphorIconsDuotone.wallet, card.budget, 'budget',
+            const Color(0xFFE7F5EC), const Color(0xFF15803D)),
+    ];
+    return Container(
+      height: height,
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: [
+          BoxShadow(color: _navy.withValues(alpha: 0.14), blurRadius: 34, offset: const Offset(0, 14)),
+        ],
+      ),
+      child: Row(
+        children: [
+          for (var i = 0; i < items.length; i++) ...[
+            if (i > 0) const VerticalDivider(width: 1, thickness: 1, color: Color(0xFFEEF0F3)),
+            Expanded(child: items[i]),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _stat(IconData icon, String value, String label, Color tint, Color colour) {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Container(
+          width: 32,
+          height: 32,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(color: tint, borderRadius: BorderRadius.circular(11)),
+          child: PhosphorIcon(icon, size: 18, color: colour),
+        ),
+        const SizedBox(height: 4),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Text(
+            value,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 13.5, height: 1.15, fontWeight: FontWeight.w900, color: _navy),
+          ),
+        ),
+        Text(label, style: const TextStyle(fontSize: 10.5, color: _slate)),
+      ],
+    );
+  }
+}
+
+/// The traveller's days as cards to swipe: the one on screen in a dark to
+/// teal gradient. The day a trip is on shows a ring of its stops done and
+/// the trip's pace; any other a calendar mark and its times.
+class CityTourDayCards extends StatelessWidget {
+  final List<CityTourDay> days;
+  final String selectedId;
+  final ValueChanged<String> onSelect;
+
+  /// The day a trip is on, with its stops done, of how many, and its pace.
+  final String? tripDayId;
+  final int stopsDone;
+  final int stopsTotal;
+  final String pace;
+
+  const CityTourDayCards({
+    super.key,
+    required this.days,
+    required this.selectedId,
+    required this.onSelect,
+    this.tripDayId,
+    this.stopsDone = 0,
+    this.stopsTotal = 0,
+    this.pace = '',
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 96,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
+        clipBehavior: Clip.none,
         itemCount: days.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
-        itemBuilder: (_, i) {
-          final on = days[i].id == selectedId;
-          return GestureDetector(
-            onTap: () => onSelect(days[i].id),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: on ? AppColors.primary : AppColors.surface,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Text(
-                'Day ${i + 1}',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: on ? Colors.white : AppColors.textPrimary,
+        separatorBuilder: (_, __) => const SizedBox(width: 10),
+        itemBuilder: (_, i) => _card(context, days[i], i + 1),
+      ),
+    );
+  }
+
+  Widget _card(BuildContext context, CityTourDay day, int number) {
+    final on = day.id == selectedId;
+    final onTrip = day.id == tripDayId;
+    final line = onTrip
+        ? [ '$stopsDone of $stopsTotal done', if (pace.isNotEmpty) pace ].join(' · ')
+        : cityTourDayLine(context, day);
+    return GestureDetector(
+      onTap: () => onSelect(day.id),
+      child: Container(
+        width: 268,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: on ? null : Colors.white,
+          gradient: on
+              ? const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFF0F172A), Color(0xFF0B3B47), Color(0xFF007A7C)],
+                  stops: [0.0, 0.6, 1.3],
+                )
+              : null,
+          borderRadius: BorderRadius.circular(22),
+          border: on ? null : Border.all(color: _line),
+          boxShadow: on
+              ? [
+                  BoxShadow(
+                    color: AppColors.brandGreen.withValues(alpha: 0.28),
+                    blurRadius: 26,
+                    offset: const Offset(0, 12),
+                  ),
+                ]
+              : null,
+        ),
+        child: Row(
+          children: [
+            if (onTrip)
+              CityTourProgressRing(done: stopsDone, total: stopsTotal, dark: on)
+            else
+              Container(
+                width: 44,
+                height: 44,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: on ? Colors.white.withValues(alpha: 0.12) : const Color(0xFFE6F4F4),
+                  shape: BoxShape.circle,
+                ),
+                child: PhosphorIcon(
+                  PhosphorIconsDuotone.calendarDots,
+                  size: 22,
+                  color: on ? const Color(0xFF5EEAD4) : AppColors.brandGreen,
                 ),
               ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    'DAY $number',
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.3,
+                      color: on ? const Color(0xFF5EEAD4) : AppColors.brandGreen,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    day.title.isEmpty ? 'Day $number' : day.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 14.5,
+                      height: 1.25,
+                      fontWeight: FontWeight.w800,
+                      color: on ? Colors.white : _navy,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    line,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      color: on ? Colors.white.withValues(alpha: 0.7) : _slate,
+                    ),
+                  ),
+                ],
+              ),
             ),
-          );
-        },
+          ],
+        ),
       ),
     );
   }

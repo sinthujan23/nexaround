@@ -16,7 +16,10 @@ const STATUS_BAR = 62;
 const FRAME = 10;
 const OUTER_W = PHONE_W + FRAME * 2;
 const OUTER_H = PHONE_H + FRAME * 2;
-const HERO = Math.round(PHONE_W * 0.62) + STATUS_BAR;
+// The cover's photo (0.86 of the width, under the status bar) and the stats
+// card sitting half on it (CityTourStatsCard.height).
+const COVER = STATUS_BAR + Math.round(PHONE_W * 0.86);
+const STATS_H = 108;
 // The app's own map: Mapbox streets, with the public token the app loads at
 // start (GET /config/keys; it is set in Settings). Without a token,
 // OpenStreetMap: CARTO's free tiles, the app's own fallback, now answer
@@ -36,6 +39,15 @@ const loadMapToken = () => {
 const Icon = ({ name, size, color, style }) => (
   <span className="material-icons-round" style={{ fontSize: size, color, ...style }} aria-hidden="true">{name}</span>
 );
+
+/** A Phosphor icon (the app's phosphor_flutter): bold, fill or duotone. */
+const Ph = ({ name, weight = 'bold', size, color, style }) => (
+  <i className={`ph-${weight} ph-${name}`} style={{ fontSize: size, color, lineHeight: 1, flex: 'none', ...style }} aria-hidden="true" />
+);
+
+/** cityTourEst: a guide's time marked as an estimate, unless it says so. */
+const ALREADY_EST = /\b(est|estimated|approx|about|around)\b|~/i;
+const est = (time) => (ALREADY_EST.test(time) ? time : `${time} (est)`);
 
 function Inline({ text }) {
   return inlineRuns(text).map((run, i) => {
@@ -111,10 +123,6 @@ function facts(content) {
     </>
   );
 }
-
-const StopBadge = ({ number }) => (
-  <span className={`ctp-badge ${number === 1 ? 'start' : ''}`}>{number}</span>
-);
 
 /** CityTourMap, as drawn inside the page: no panning, an "Open map" pill. */
 function RouteMap({ stops }) {
@@ -205,7 +213,7 @@ function LinkButton({ link, partners }) {
           <span className="ctp-link-sub">{pkg.vendor_name}</span>
           {pkg.price_label && <span className="ctp-link-price">{pkg.price_label}</span>}
         </span>
-        <Icon name="chevron_right" size={22} color="#9E9E9E" />
+        <span className="ctp-link-go"><Ph name="caret-right" size={15} color="#007A7C" /></span>
       </div>
     );
   }
@@ -222,118 +230,135 @@ function LinkButton({ link, partners }) {
         <span className="ctp-link-label">{link.label || `Book on ${name}`}</span>
         <span className="ctp-link-sub">{name} · opens their site</span>
       </span>
-      <Icon name="open_in_new" size={18} color="#9E9E9E" />
+      <span className="ctp-link-go"><Ph name="arrow-up-right" size={15} color="#007A7C" /></span>
     </div>
   );
 }
 
-function Links({ links, partners, gap }) {
+/** "TICKETS & TOURS" and a step's partner buttons. */
+function Links({ links, partners }) {
   if (!links?.length) return null;
   return (
-    <div className="ctp-links" style={{ marginTop: gap }}>
+    <div className="ctp-links">
+      <div className="ctp-links-head">TICKETS &amp; TOURS</div>
       {links.map((l) => <LinkButton key={l.id} link={l} partners={partners} />)}
     </div>
   );
 }
 
-/** The planned "9:00 AM – 11:45 AM" above a step (CityTourStepTile._time). */
-function PlannedTime({ time, stop }) {
-  if (!time) return null;
-  return (
-    <div className="ctp-time" style={{ paddingTop: stop ? 2 : 5, paddingBottom: stop ? 2 : 0 }}>
-      <Icon name="schedule" size={14} color="#9E9E9E" />
-      {formatClock(time[0])} – {formatClock(time[1])}
-    </div>
-  );
-}
+const span = (time) => (time ? `${formatClock(time[0])} – ${formatClock(time[1])}` : null);
 
-function AccessNote({ text }) {
-  if (!text) return null;
-  return (
-    <div className="ctp-access">
-      <Icon name="info_outline" size={14} color="#9E9E9E" />
-      <span>{text}</span>
-    </div>
-  );
-}
-
-function Step({ step, number, isFirst, isLast, isLastStop, partners, time }) {
-  const line = !(isFirst && isLast) && (
-    <span
-      className="ctp-rail"
-      style={isLast ? { top: isFirst ? 14 : 0, height: 14 } : { top: isFirst ? 14 : 0, bottom: 0 }}
-    />
-  );
-  if (step.type === 'break') {
-    return (
-      <div className="ctp-step" style={{ paddingBottom: isLast ? 0 : 22 }}>
-        {line}
-        <span className="ctp-mode"><Icon name="restaurant" size={15} color="#545454" /></span>
-        <div className="ctp-step-body">
-          <PlannedTime time={time} />
-          <div style={{ paddingTop: 5 }}>
-            <div className="ctp-move-line">
-              <strong>{step.title || 'Break'}</strong>
-              {step.duration && <span> · {step.duration}</span>}
-            </div>
-            <AccessNote text={step.access_note} />
-            {step.body_md && <div style={{ marginTop: 8 }}><AppMarkdown text={step.body_md} /></div>}
-            <Links links={step.links} partners={partners} gap={10} />
-          </div>
-        </div>
-      </div>
-    );
-  }
+/** CityTourTick before a trip: a stop's number (the start teal), or a ride's icon. */
+function Tick({ step, number, size }) {
   if (step.type === 'stop') {
-    const caption = isFirst ? 'START HERE' : isLastStop ? 'LAST STOP' : null;
     return (
-      <div className="ctp-step" style={{ paddingBottom: isLast ? 0 : 22 }}>
-        {line}
-        <StopBadge number={number} />
-        <div className="ctp-step-body">
-          <PlannedTime time={time} stop />
-          <div style={{ paddingTop: 2 }}>
-          {caption && <div className="ctp-caption">{caption}</div>}
-          <div className="ctp-stop-name">{step.name}</div>
-          {(step.time_here || step.price) && (
-            <div className="ctp-meta">
-              {step.time_here && <span><Icon name="hourglass_bottom" size={14} color="#9E9E9E" />{step.time_here}</span>}
-              {step.price && <span><Icon name="confirmation_number" size={14} color="#9E9E9E" />{step.price}</span>}
-            </div>
-          )}
-          <AccessNote text={step.access_note} />
-          {step.photo_url && <img className="ctp-stop-photo" src={mediaUrl(step.photo_url)} alt="" />}
-          {step.body_md && <div style={{ marginTop: 10 }}><AppMarkdown text={step.body_md} /></div>}
-          <Links links={step.links} partners={partners} gap={12} />
-          </div>
-        </div>
-      </div>
+      <span className={`ctp-tick ${number === 1 ? 'start' : ''}`} style={{ width: size, height: size, fontSize: size * 0.42 }}>
+        {number}
+      </span>
     );
   }
-  const mode = modeOf(step.mode);
-  const extras = [step.duration, step.cost].filter(Boolean);
+  const icon = step.type === 'break' ? 'restaurant' : modeOf(step.mode).icon;
   return (
-    <div className="ctp-step" style={{ paddingBottom: isLast ? 0 : 22 }}>
-      {line}
-      <span className="ctp-mode"><Icon name={mode.icon} size={15} color="#545454" /></span>
-      <div className="ctp-step-body">
-        <PlannedTime time={time} />
-        <div style={{ paddingTop: 5 }}>
-          <div className="ctp-move-line">
-            <strong>{mode.label}</strong>
-            {extras.length > 0 && <span> · {extras.join(' · ')}</span>}
-          </div>
-          {step.title && <div className="ctp-move-dir">{step.title}</div>}
-          <AccessNote text={step.access_note} />
-          {step.body_md && <div style={{ marginTop: 8 }}><AppMarkdown text={step.body_md} /></div>}
-          <Links links={step.links} partners={partners} gap={10} />
-        </div>
+    <span className="ctp-tick leg" style={{ width: size, height: size }}>
+      <Icon name={icon} size={size * 0.56} color="#fff" />
+    </span>
+  );
+}
+
+/** The guide's "Closure / Access" note, in an amber box. */
+const NoteBox = ({ text }) => (
+  <div className="ctp-notebox"><Ph name="info" weight="duotone" size={15} color="#D97706" /><span>{text}</span></div>
+);
+
+/** CityTourStopCard before a trip: open, the name on the photo. */
+function StopCard({ step, number, caption, time, partners }) {
+  const when = span(time) || (step.time_here ? est(step.time_here) : null);
+  const badge = caption && <span className="ctp-sc-badge">{caption}</span>;
+  const parts = [
+    (step.time_here || step.price) && (
+      <div key="chips" className="ctp-chips">
+        {step.time_here && (
+          <span className="ctp-chip purple"><Ph name="hourglass-medium" weight="duotone" size={15} color="#7C3AED" />{est(step.time_here)}</span>
+        )}
+        {step.price && (
+          <span className="ctp-chip green"><Ph name="ticket" weight="duotone" size={15} color="#15803D" />{step.price}</span>
+        )}
       </div>
+    ),
+    step.access_note && <NoteBox key="note" text={step.access_note} />,
+    step.body_md && <AppMarkdown key="md" text={step.body_md} />,
+    step.links?.length > 0 && <Links key="links" links={step.links} partners={partners} />,
+  ].filter(Boolean);
+  return (
+    <div className="ctp-sc">
+      {step.photo_url ? (
+        <div className="ctp-sc-photo">
+          <img src={mediaUrl(step.photo_url)} alt="" />
+          <div className="ctp-sc-shade" />
+          {badge && <span className="ctp-sc-badge-at">{badge}</span>}
+          <div className="ctp-sc-foot">
+            <Tick step={step} number={number} size={40} />
+            <div>
+              <div className="ctp-sc-name">{step.name}</div>
+              {when && <div className="ctp-sc-when">{when}</div>}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="ctp-sc-head">
+          <Tick step={step} number={number} size={40} />
+          <div>
+            {badge && <div style={{ marginBottom: 6 }}>{badge}</div>}
+            <div className="ctp-sc-name dark">{step.name}</div>
+            {when && <div className="ctp-sc-when dark">{when}</div>}
+          </div>
+        </div>
+      )}
+      {parts.length > 0
+        ? <div className="ctp-sc-body" style={{ paddingTop: step.photo_url ? 14 : 0 }}>{parts}</div>
+        : <div style={{ height: 4 }} />}
     </div>
   );
 }
 
-/** One day's route: its map, then each step with its planned time. */
+/** CityTourLegPill: a walk, ride or break as a pill on a dashed line; a click opens it. */
+function LegPill({ step, time, partners }) {
+  const [open, setOpen] = useState(false);
+  const isBreak = step.type === 'break';
+  const title = isBreak ? (step.title || 'Break') : modeOf(step.mode).label;
+  const directions = isBreak ? '' : step.title;
+  const extras = [step.duration && est(step.duration), step.cost, !open && directions].filter(Boolean);
+  const more = Boolean(directions || step.access_note || step.body_md || step.links?.length);
+  const when = span(time);
+  return (
+    <div>
+      <div className="ctp-dash" />
+      <div className="ctp-leg-row">
+        <div className={`ctp-leg ${more ? 'more' : ''}`} onClick={() => more && setOpen(!open)}>
+          <Tick step={step} size={24} />
+          <span className="ctp-leg-text">
+            <strong>{title}</strong>{extras.length > 0 && <span> · {extras.join(' · ')}</span>}
+          </span>
+          {more && <Ph name={open ? 'caret-up' : 'caret-down'} size={12} color="#94A3B8" />}
+        </div>
+      </div>
+      {open && more && (
+        <div className="ctp-leg-card">
+          {when && <div className="ctp-leg-when"><Ph name="clock" size={13} color="#9E9E9E" />{when}</div>}
+          {directions && <div className="ctp-leg-dir">{directions}</div>}
+          {step.access_note && <NoteBox text={step.access_note} />}
+          {step.body_md && <AppMarkdown text={step.body_md} />}
+          <Links links={step.links} partners={partners} />
+        </div>
+      )}
+      <div className="ctp-dash" />
+    </div>
+  );
+}
+
+const hasPin = (s) => s.lat != null && s.lng != null && s.lat !== '' && s.lng !== '';
+
+/** One day's route: its map, then a card for each stop and a pill for each leg. */
 function DayRoute({ day, partners }) {
   const steps = day.steps || [];
   const numbers = stopNumbers(steps);
@@ -343,14 +368,83 @@ function DayRoute({ day, partners }) {
   return (
     <>
       <RouteMap key={day.id} stops={stops} />
-      <div style={{ height: 18 }} />
+      {stops.some(hasPin) && <div style={{ height: 14 }} />}
       {steps.map((s, i) => (
-        <Step
-          key={s.id} step={s} number={numbers[s.id]} partners={partners} time={plan.times[s.id]}
-          isFirst={i === 0} isLast={i === steps.length - 1} isLastStop={s.id === lastStopId}
-        />
+        <Fragment key={s.id}>
+          {i > 0 && s.type === 'stop' && steps[i - 1].type === 'stop' && <div style={{ height: 12 }} />}
+          {s.type === 'stop'
+            ? (
+              <StopCard
+                step={s} number={numbers[s.id]} time={plan.times[s.id]} partners={partners}
+                caption={i === 0 ? 'START HERE' : s.id === lastStopId ? 'LAST STOP' : null}
+              />
+            )
+            : <LegPill step={s} time={plan.times[s.id]} partners={partners} />}
+        </Fragment>
       ))}
     </>
+  );
+}
+
+/** A small grey heading with a teal link: "YOUR PLAN · 2 DAYS   Change". */
+function Heading({ text, link, icon, onClick }) {
+  return (
+    <div className="ctp-heading">
+      <span>{text}</span>
+      {link && (
+        <span className="ctp-heading-link" onClick={onClick}>
+          {icon && <Ph name={icon} size={13} color="#007A7C" />}{link}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** The guide's numbers (CityTourStatsCard). */
+function stats(content) {
+  const stops = allSteps(content).filter((s) => s.type === 'stop').length;
+  const days = (content.days || []).length;
+  return [
+    days > 1 && { icon: 'calendar-blank', value: `${days}`, label: 'days', tint: '#E6F6F5', colour: '#0D9488' },
+    stops > 0 && { icon: 'map-pin', value: `${stops}`, label: stops === 1 ? 'stop' : 'stops', tint: '#EFEAFE', colour: '#7C3AED' },
+    content.duration && { icon: 'clock', value: content.duration, label: 'time', tint: '#FEF3DC', colour: '#D97706' },
+    content.budget && { icon: 'wallet', value: content.budget, label: 'budget', tint: '#E7F5EC', colour: '#15803D' },
+  ].filter(Boolean);
+}
+
+/** The cover: photo, place and title on it, and the stats card on its edge. */
+function Cover({ content }) {
+  const items = stats(content);
+  const half = items.length ? STATS_H / 2 : 0;
+  const place = [content.city, content.country].filter(Boolean).join(' · ');
+  return (
+    <div className="ctp-cover" style={{ height: COVER + half }}>
+      <div className="ctp-cover-photo" style={{ bottom: half }}>
+        {content.cover_url
+          ? <img src={mediaUrl(content.cover_url)} alt="" />
+          : <div className="ctp-hero-empty">Cover photo</div>}
+        <div className="ctp-cover-shade" />
+        <div className="ctp-cover-text" style={{ bottom: half ? half + 14 : 24 }}>
+          {place && <span className="ctp-place-chip"><Ph name="map-pin" weight="fill" size={13} color="#fff" />{place}</span>}
+          <div className="ctp-cover-title">{content.title || 'Title'}</div>
+        </div>
+      </div>
+      <StatusBar light />
+      <span className="ctp-glass"><Ph name="arrow-left" size={20} color="#fff" /></span>
+      {items.length > 0 && (
+        <div className="ctp-stats" style={{ height: STATS_H }}>
+          {items.map((it) => (
+            <div key={it.label} className="ctp-stat">
+              <span className="ctp-stat-icon" style={{ background: it.tint }}>
+                <Ph name={it.icon} weight="duotone" size={18} color={it.colour} />
+              </span>
+              <b>{it.value}</b>
+              <span>{it.label}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -451,63 +545,57 @@ function GuidePage({ content, partners, activeDayId }) {
     ? planDays.find((d) => d.id === tab) || planDays[0]
     : days[0];
   const shownNumber = shown ? planDays.indexOf(shown) + 1 : 1;
-  const place = [content.city, content.country].filter(Boolean).join(' · ');
   return (
-    <div className="ctp-page">
-      <div className="ctp-hero" style={{ height: HERO }}>
-        {content.cover_url
-          ? <img src={mediaUrl(content.cover_url)} alt="" />
-          : <div className="ctp-hero-empty">Cover photo</div>}
-        <StatusBar light />
-        <span className="ctp-back"><Icon name="arrow_back" size={20} color="#000" /></span>
-      </div>
-      <div className="ctp-head">
-        {place && <div className="ctp-place">{place.toUpperCase()}</div>}
-        <div className="ctp-title">{content.title || 'Title'}</div>
-        {content.summary && <div className="ctp-summary">{content.summary}</div>}
-        <div className="ctp-facts">{facts(content)}</div>
-      </div>
+    <div className="ctp-page guide">
+      <Cover content={content} />
+      {content.summary && <div className="ctp-summary">{content.summary}</div>}
       <div className="ctp-body">
+        {content.intro_md && <div style={{ marginBottom: 20 }}><AppMarkdown text={content.intro_md} /></div>}
         {!several && shown && (
           <>
-            {content.intro_md && <div style={{ marginBottom: 20 }}><AppMarkdown text={content.intro_md} /></div>}
-            <div className="ctp-route-title" style={{ marginTop: 0 }}>The route</div>
+            <Heading text="THE ROUTE" />
+            <div style={{ height: 12 }} />
             <DayRoute day={shown} partners={partners} />
           </>
         )}
-        {several && (
+        {several && (!shown ? (
+          <Planner days={days} onShow={(chosen) => { setPlan(chosen); setTab(chosen[0]); }} />
+        ) : (
           <>
-            {content.intro_md && <div style={{ marginBottom: 20 }}><AppMarkdown text={content.intro_md} /></div>}
-            {!shown ? (
-              <Planner days={days} onShow={(ids) => { setPlan(ids); setTab(ids[0]); }} />
-            ) : (
-              <>
-                <div className="ctp-plan-head">
-                  <span className="ctp-caption">YOUR PLAN · {planDays.length} DAY{planDays.length === 1 ? '' : 'S'}</span>
-                  <span className="ctp-plan-change" onClick={() => setPlan(null)}>Change</span>
-                </div>
-                <div className="ctp-daytabs">
-                  {planDays.map((d, i) => (
-                    <span key={d.id} className={`ctp-daytab ${d.id === shown.id ? 'on' : ''}`} onClick={() => setTab(d.id)}>
-                      Day {i + 1}
+            <Heading
+              text={`YOUR PLAN · ${planDays.length} DAY${planDays.length === 1 ? '' : 'S'}`}
+              link="Change" icon="sliders-horizontal" onClick={() => setPlan(null)}
+            />
+            <div className="ctp-daycards">
+              {planDays.map((d, i) => {
+                const on = d.id === shown.id;
+                return (
+                  <div key={d.id} className={`ctp-daycard ${on ? 'on' : ''}`} onClick={() => setTab(d.id)}>
+                    <span className="ctp-daycard-icon">
+                      <Ph name="calendar-dots" weight="duotone" size={22} color={on ? '#5EEAD4' : '#007A7C'} />
                     </span>
-                  ))}
-                </div>
-                <div className="ctp-day-title">{shown.title || `Day ${shownNumber}`}</div>
-                <div className="ctp-day-meta">{dayLine(shown)}</div>
-                <div style={{ height: 14 }} />
-                <DayRoute day={shown} partners={partners} />
-              </>
-            )}
+                    <div>
+                      <div className="ctp-daycard-day">DAY {i + 1}</div>
+                      <div className="ctp-daycard-title">{d.title || `Day ${i + 1}`}</div>
+                      <div className="ctp-daycard-line">{dayLine(d)}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{ height: 20 }} />
+            <Heading text={`DAY ${shownNumber} · STOPS`} />
+            <div style={{ height: 12 }} />
+            <DayRoute day={shown} partners={partners} />
           </>
-        )}
+        ))}
       </div>
       {shown && (shown.steps || []).length > 0 && (
         // CityTourTripBar before a trip starts (the page's bottomNavigationBar).
         <div className="ctp-tripbar">
-          <div className="ctp-tripbar-note">Plans your times from now and reminds you at each stop.</div>
+          <div className="ctp-tripbar-note">Plans your times from now. Tap each stop’s circle as you finish it.</div>
           <div className="ctp-trip-btn">
-            <Icon name="play_arrow" size={22} color="#fff" />{several ? `Start Day ${shownNumber}` : 'Start trip'}
+            <Ph name="play" weight="fill" size={18} color="#fff" />{several ? `Start Day ${shownNumber}` : 'Start trip'}
           </div>
         </div>
       )}

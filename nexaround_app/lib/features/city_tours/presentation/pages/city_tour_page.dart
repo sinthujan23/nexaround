@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderAbstractViewport;
+import 'package:flutter/services.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/error/user_message.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
@@ -13,6 +14,7 @@ import 'package:nexaround_app/features/city_tours/domain/city_tour_trip.dart';
 import 'package:nexaround_app/features/city_tours/presentation/widgets/city_tour_widgets.dart';
 import 'package:nexaround_app/features/experiences/presentation/pages/experience_link_page.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_description.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// Opens a guide from its id alone (a trip reminder): from the device's copy
@@ -39,20 +41,27 @@ Future<void> openCityTourById(BuildContext context, String tourId) async {
   );
 }
 
-/// One guide: the cover, what it is, the stops on a map, then the route step
-/// by step with its partner buttons. Opened from a list with the guide's
-/// card, which draws the header while the rest loads.
+const _navy = Color(0xFF0F172A);
+const _page = Color(0xFFF7F8FA);
+const _slate = Color(0xFF64748B);
+
+/// One guide: the cover with its title and a card of its numbers, what it
+/// is, the stops on a map, then the route as cards: a card for each stop
+/// and a pill on a dashed line for each walk, ride or break. Opened from a
+/// list with the guide's card, which draws the header while the rest loads.
 ///
 /// A guide of several days first asks the traveller for their plan: how many
 /// days they have (the first ones), or which days' places they want. The
-/// plan is kept on the device; the days then show as tabs.
+/// plan is kept on the device; the days then show as cards to swipe.
 ///
 /// A signed-in traveller can start a day's trip: every step gets a planned
-/// time, the bar at the bottom asks them to mark the step in hand done or
-/// skip it, and the times after it move to match (the server pushes a
-/// reminder when a step runs over). The step in hand is edged in green, the ones
-/// behind are greyed, and each mark scrolls the page on to the next. Scrolled
-/// into, the step in hand keeps its number and name under the bar at the top.
+/// time and the times after it move as steps are marked (the server pushes a
+/// reminder when a step runs over). As in Odyssey, a tap on the step in
+/// hand's circle marks it done: finished stops shrink to slim green cards
+/// (the last one marked keeps an Undo), the stop in hand stays open with its
+/// Skip, and the stops to come wait closed. Each mark scrolls the page on to
+/// the next. Scrolled into, any open stop keeps its circle and name pinned
+/// under the bar at the top.
 class CityTourPage extends StatefulWidget {
   final CityTourCard card;
 
@@ -63,8 +72,9 @@ class CityTourPage extends StatefulWidget {
 }
 
 class _CityTourPageState extends State<CityTourPage> {
-  // The cover's height, as a share of the screen width.
-  static const double _heroFraction = 0.62;
+  // The cover's photo, as a share of the screen width; the stats card sits
+  // half on it.
+  static const double _photoFraction = 0.86;
 
   final _service = CityToursService();
   final ScrollController _scroll = ScrollController();
@@ -82,6 +92,8 @@ class _CityTourPageState extends State<CityTourPage> {
   Timer? _tick;
   // Each step on screen, to scroll to the step in hand after a mark.
   final Map<String, GlobalKey> _stepKeys = {};
+  // Steps the traveller opened or closed against their usual state.
+  final Set<String> _flipped = {};
 
   @override
   void initState() {
@@ -107,9 +119,15 @@ class _CityTourPageState extends State<CityTourPage> {
     super.dispose();
   }
 
+  /// The cover's height under the status bar: the photo, and half the
+  /// stats card below it.
+  double _coverHeight(double width, CityTourCard card) =>
+      width * _photoFraction + (CityTourStatsCard.shows(card) ? CityTourStatsCard.height / 2 : 0);
+
   void _onScroll() {
+    final card = _tour?.card ?? widget.card;
     final collapseAt =
-        MediaQuery.of(context).size.width * _heroFraction - kToolbarHeight - 24;
+        _coverHeight(MediaQuery.of(context).size.width, card) - kToolbarHeight - 24;
     final collapsed = _scroll.offset > collapseAt;
     if (collapsed != _collapsed) setState(() => _collapsed = collapsed);
   }
@@ -191,6 +209,7 @@ class _CityTourPageState extends State<CityTourPage> {
         setState(() {
           _trip = trip;
           _dayId = day.id;
+          _flipped.clear();
         });
       }
     }, 'start the trip');
@@ -233,14 +252,17 @@ class _CityTourPageState extends State<CityTourPage> {
     return trip.dayId == day.id || (trip.dayId.isEmpty && day.id == tour.days.first.id);
   }
 
-  /// "Mark done", or "Skip" with [skip].
+  /// Marks the step in hand done, or skips it with [skip].
   Future<void> _markDone(CityTourStep step, DateTime at, {bool skip = false}) async {
     if (_tripBusy) return;
     setState(() => _tripBusy = true);
     try {
       final trip = await _service.markDone(widget.card.id, step.id, at, skip: skip);
       if (!mounted) return;
-      setState(() => _trip = trip);
+      setState(() {
+        _trip = trip;
+        _flipped.clear();
+      });
       _revealCurrent(trip);
       _say(
         trip.isFinished
@@ -287,8 +309,70 @@ class _CityTourPageState extends State<CityTourPage> {
   Future<void> _undo() async {
     await _tripChange(() async {
       final trip = await _service.undoDone(widget.card.id);
-      if (mounted) setState(() => _trip = trip);
+      if (mounted) {
+        setState(() {
+          _trip = trip;
+          _flipped.clear();
+        });
+      }
     }, 'undo that');
+  }
+
+  /// A tap on a step's circle. On the step in hand it marks it done; on the
+  /// last step marked it offers to undo it; anywhere else it says why not.
+  Future<void> _tapTick(
+    CityTour tour,
+    CityTourDay day,
+    CityTourStep step,
+    CityTourSchedule? schedule,
+    String? lastMarkedId,
+  ) async {
+    if (_tripBusy) return;
+    if (schedule == null) {
+      if (!CacheService.isLoggedIn()) {
+        _say('Sign in to start a trip, then tick each stop as you finish it.');
+        return;
+      }
+      final which = tour.hasDays ? 'Day ${_planDays(tour).indexOf(day) + 1}' : 'the trip';
+      _say(
+        'Start $which first, then tick each stop as you finish it.',
+        action: SnackBarAction(label: 'Start', onPressed: () => _startTrip(day)),
+      );
+      return;
+    }
+    final time = schedule.times[step.id];
+    if (time == null) return;
+    if (time.isCurrent) {
+      await _markDone(step, DateTime.now());
+      return;
+    }
+    if (time.isDone) {
+      if (step.id != lastMarkedId) {
+        _say('Only the last step you marked can be undone.');
+        return;
+      }
+      final undo = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Not done yet?'),
+          content: Text('“${_stepTitle(day, step)}” goes back to being the step in hand.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Keep it'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Undo'),
+            ),
+          ],
+        ),
+      );
+      if (undo == true) await _undo();
+      return;
+    }
+    final current = schedule.current;
+    if (current != null) _say('Finish or skip “${_stepTitle(day, current)}” first.');
   }
 
   Future<void> _endTrip() async {
@@ -315,7 +399,12 @@ class _CityTourPageState extends State<CityTourPage> {
   Future<void> _closeTrip() async {
     await _tripChange(() async {
       await _service.endTrip(widget.card.id);
-      if (mounted) setState(() => _trip = null);
+      if (mounted) {
+        setState(() {
+          _trip = null;
+          _flipped.clear();
+        });
+      }
     }, 'end the trip');
   }
 
@@ -327,6 +416,17 @@ class _CityTourPageState extends State<CityTourPage> {
     final index = day.steps.indexOf(step);
     final next = day.steps.skip(index + 1).where((s) => s.isStop).firstOrNull;
     return next == null ? how : '$how to ${next.name}';
+  }
+
+  /// Whether a step's card is open: with no trip every stop is; on a trip
+  /// only the step in hand. A tap flips it.
+  bool _isOpen(CityTourStep step, CityTourStepState state) {
+    final usual = state == CityTourStepState.current || (step.isStop && state == CityTourStepState.plain);
+    return _flipped.contains(step.id) ? !usual : usual;
+  }
+
+  void _flip(String stepId) {
+    setState(() => _flipped.contains(stepId) ? _flipped.remove(stepId) : _flipped.add(stepId));
   }
 
   Future<void> _openLink(CityTourLink link) async {
@@ -362,38 +462,160 @@ class _CityTourPageState extends State<CityTourPage> {
     );
   }
 
+  /// A round button on the cover: frosted glass on the photo, plain grey
+  /// once the bar has collapsed.
+  Widget _barButton({required IconData icon, required VoidCallback? onTap, Widget? child}) {
+    return Padding(
+      padding: const EdgeInsets.all(8),
+      child: Material(
+        color: _collapsed ? const Color(0xFFF1F5F9) : Colors.white.withValues(alpha: 0.18),
+        shape: CircleBorder(
+          side: _collapsed ? BorderSide.none : BorderSide(color: Colors.white.withValues(alpha: 0.35)),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: child ??
+            IconButton(
+              padding: EdgeInsets.zero,
+              icon: Icon(icon, color: _collapsed ? _navy : Colors.white, size: 20),
+              onPressed: onTap,
+            ),
+      ),
+    );
+  }
+
+  Widget _cover(CityTourCard card) {
+    final place = [card.city, card.country].where((s) => s.isNotEmpty).join(' · ');
+    final stats = CityTourStatsCard.shows(card);
+    const half = CityTourStatsCard.height / 2;
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        const ColoredBox(color: _page),
+        Positioned(
+          left: 0,
+          right: 0,
+          top: 0,
+          bottom: stats ? half : 0,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              if (card.coverUrl.isEmpty)
+                Container(color: AppColors.surfaceVariant)
+              else
+                CachedNetworkImage(
+                  imageUrl: cityTourMediaUrl(card.coverUrl),
+                  fit: BoxFit.cover,
+                  memCacheWidth: 1440,
+                  placeholder: (_, __) => Container(color: AppColors.surface),
+                  errorWidget: (_, __, ___) => Container(color: AppColors.surfaceVariant),
+                ),
+              const DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Color(0x73020617), Color(0x00020617), Color(0x00020617), Color(0xE0020617)],
+                    stops: [0.0, 0.28, 0.45, 1.0],
+                  ),
+                ),
+              ),
+              Positioned(
+                left: 20,
+                right: 20,
+                bottom: stats ? half + 14 : 24,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (place.isNotEmpty)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.18),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(PhosphorIconsFill.mapPin, size: 13, color: Colors.white),
+                            const SizedBox(width: 5),
+                            Text(
+                              place,
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white),
+                            ),
+                          ],
+                        ),
+                      ),
+                    const SizedBox(height: 10),
+                    Text(
+                      card.title,
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 30,
+                        height: 1.08,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -0.9,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (stats)
+          Positioned(
+            left: 16,
+            right: 16,
+            bottom: 0,
+            height: CityTourStatsCard.height,
+            child: CityTourStatsCard(card: card),
+          ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final card = _tour?.card ?? widget.card;
     final width = MediaQuery.of(context).size.width;
-    final place = [card.city, card.country].where((s) => s.isNotEmpty).join(' · ');
     final tour = _tour;
     final trip = _trip;
     final days = tour == null ? const <CityTourDay>[] : _planDays(tour);
     final day = _shownDay(days);
     final dayTrip = tour != null && day != null && _tripOn(tour, day) ? trip : null;
     final schedule = day == null ? null : dayTrip?.schedule(day.steps, DateTime.now());
-    final current = schedule?.current;
     final number = day == null ? 0 : days.indexOf(day) + 1;
-    final currentKey = current == null ? null : _stepKeys.putIfAbsent(current.id, GlobalKey.new);
+    final running = dayTrip != null && !dayTrip.isFinished;
+
+    // The stops on screen that are open, for the pinned header.
+    final pins = <_Pin>[];
+    if (day != null) {
+      for (final step in day.steps) {
+        if (!step.isStop) continue;
+        final state = cityTourStepState(schedule?.times[step.id]);
+        if (!_isOpen(step, state)) continue;
+        pins.add(_Pin(_stepKeys.putIfAbsent(step.id, GlobalKey.new), step, state));
+      }
+    }
+    final stops = day?.stops ?? const <CityTourStep>[];
+    final stopsDone = schedule == null
+        ? 0
+        : stops.where((s) => schedule.times[s.id]?.isDone ?? false).length;
 
     return Scaffold(
-      backgroundColor: Colors.white,
-      bottomNavigationBar: tour == null || day == null || day.steps.isEmpty
+      backgroundColor: _page,
+      bottomNavigationBar: tour == null || day == null || day.steps.isEmpty || running
           ? null
           : CityTourTripBar(
               trip: dayTrip,
               schedule: schedule,
-              currentTitle: current == null ? '' : _stepTitle(day, current),
               busy: _tripBusy,
               startLabel: tour.hasDays ? 'Start Day $number' : 'Start trip',
               onStart: () => _startTrip(day),
-              onMarkDone: () {
-                if (current != null) _markDone(current, DateTime.now());
-              },
-              onSkip: () {
-                if (current != null) _markDone(current, DateTime.now(), skip: true);
-              },
               onClose: _closeTrip,
             ),
       body: Stack(
@@ -403,9 +625,10 @@ class _CityTourPageState extends State<CityTourPage> {
             slivers: [
               SliverAppBar(
                 pinned: true,
-                expandedHeight: width * _heroFraction,
+                expandedHeight: _coverHeight(width, card),
                 backgroundColor: Colors.white,
                 surfaceTintColor: Colors.white,
+                systemOverlayStyle: _collapsed ? SystemUiOverlayStyle.dark : SystemUiOverlayStyle.light,
                 centerTitle: false,
                 titleSpacing: 4,
                 title: AnimatedOpacity(
@@ -423,110 +646,102 @@ class _CityTourPageState extends State<CityTourPage> {
                     ),
                   ),
                 ),
-                leading: Padding(
-                  padding: const EdgeInsets.all(8),
-                  child: Material(
-                    color: Colors.white.withValues(alpha: 0.92),
-                    shape: const CircleBorder(),
-                    child: IconButton(
-                      padding: EdgeInsets.zero,
-                      icon: const Icon(Icons.arrow_back_rounded, color: AppColors.textPrimary, size: 20),
-                      onPressed: () => Navigator.pop(context),
-                    ),
-                  ),
+                leading: _barButton(
+                  icon: PhosphorIconsBold.arrowLeft,
+                  onTap: () => Navigator.pop(context),
                 ),
                 actions: [
                   if (trip != null && !trip.isFinished)
-                    Padding(
-                      padding: const EdgeInsets.all(8),
-                      child: Material(
-                        color: Colors.white.withValues(alpha: 0.92),
-                        shape: const CircleBorder(),
-                        child: PopupMenuButton<String>(
-                          padding: EdgeInsets.zero,
-                          icon: const Icon(Icons.more_horiz_rounded, color: AppColors.textPrimary, size: 20),
-                          onSelected: (_) => _endTrip(),
-                          itemBuilder: (_) => const [
-                            PopupMenuItem(value: 'end', child: Text('End trip')),
-                          ],
+                    _barButton(
+                      icon: PhosphorIconsBold.dotsThree,
+                      onTap: null,
+                      child: PopupMenuButton<String>(
+                        padding: EdgeInsets.zero,
+                        icon: Icon(
+                          PhosphorIconsBold.dotsThree,
+                          color: _collapsed ? _navy : Colors.white,
+                          size: 22,
                         ),
+                        onSelected: (_) => _endTrip(),
+                        itemBuilder: (_) => const [
+                          PopupMenuItem(value: 'end', child: Text('End trip')),
+                        ],
                       ),
                     ),
                 ],
-                flexibleSpace: FlexibleSpaceBar(
-                  background: card.coverUrl.isEmpty
-                      ? Container(color: AppColors.surfaceVariant)
-                      : CachedNetworkImage(
-                          imageUrl: cityTourMediaUrl(card.coverUrl),
-                          fit: BoxFit.cover,
-                          memCacheWidth: 1440,
-                          placeholder: (_, __) => Container(color: AppColors.surface),
-                          errorWidget: (_, __, ___) => Container(color: AppColors.surfaceVariant),
-                        ),
-                ),
+                flexibleSpace: FlexibleSpaceBar(background: _cover(card)),
               ),
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (place.isNotEmpty)
-                        Text(
-                          place.toUpperCase(),
-                          style: const TextStyle(
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 1.2,
-                            color: AppColors.brandGreen,
-                          ),
-                        ),
-                      const SizedBox(height: 6),
-                      Text(
-                        card.title,
-                        style: const TextStyle(
-                          fontSize: 24,
-                          height: 1.2,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: -0.4,
-                          color: AppColors.textPrimary,
-                        ),
-                      ),
-                      if (card.summary.isNotEmpty) ...[
-                        const SizedBox(height: 8),
-                        Text(
-                          card.summary,
-                          style: const TextStyle(
-                            fontSize: 14.5,
-                            height: 1.5,
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                      ],
-                      const SizedBox(height: 14),
-                      Wrap(spacing: 8, runSpacing: 8, children: cityTourFacts(card)),
-                    ],
+              if (card.summary.isNotEmpty)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                    child: Text(
+                      card.summary,
+                      style: const TextStyle(fontSize: 14.5, height: 1.5, color: Color(0xFF475569)),
+                    ),
                   ),
                 ),
-              ),
               ..._body(days, day, schedule),
             ],
           ),
-          if (day != null && current != null && currentKey != null)
+          if (tour != null && day != null && pins.isNotEmpty)
             Positioned(
               top: MediaQuery.of(context).padding.top + kToolbarHeight,
               left: 0,
               right: 0,
-              child: _StickyStep(
+              child: _PinnedStep(
                 scroll: _scroll,
-                tileKey: currentKey,
-                step: current,
-                title: _stepTitle(day, current),
-                cardEndInset: CityTourStepTile.cardEndInset(current, isLast: current.id == day.steps.last.id),
+                pins: pins,
+                times: schedule?.times ?? cityTourDayPlan(day, DateTime.now()),
+                progress: schedule == null ? null : (stopsDone, stops.length),
+                onTick: (step) => _tapTick(tour, day, step, schedule, _lastMarked(day, schedule)),
               ),
             ),
         ],
       ),
+    );
+  }
+
+  /// The last step marked done or skipped on the day, which Undo takes back.
+  String? _lastMarked(CityTourDay day, CityTourSchedule? schedule) {
+    if (schedule == null) return null;
+    String? last;
+    for (final step in day.steps) {
+      if (schedule.times[step.id]?.isDone ?? false) last = step.id;
+    }
+    return last;
+  }
+
+  /// A small grey heading over a part of the page, with a teal link.
+  Widget _heading(String text, {String? link, IconData? icon, VoidCallback? onTap, String? note}) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            text,
+            style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w900, letterSpacing: 1.3, color: _slate),
+          ),
+        ),
+        if (note != null)
+          Text(note, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: _slate)),
+        if (link != null)
+          GestureDetector(
+            onTap: onTap,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (icon != null) ...[
+                  Icon(icon, size: 13, color: AppColors.brandGreen),
+                  const SizedBox(width: 4),
+                ],
+                Text(
+                  link,
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: AppColors.brandGreen),
+                ),
+              ],
+            ),
+          ),
+      ],
     );
   }
 
@@ -576,66 +791,54 @@ class _CityTourPageState extends State<CityTourPage> {
       }
     } else {
       final number = days.indexOf(day) + 1;
+      final stops = day.stops;
+      final stopsDone = schedule == null
+          ? 0
+          : stops.where((s) => schedule.times[s.id]?.isDone ?? false).length;
+      final pace = schedule == null
+          ? ''
+          : (_trip?.isFinished ?? false)
+              ? 'finished'
+              : cityTourPace(schedule.behindMinutes).toLowerCase();
       if (tour.hasDays) {
         children.addAll([
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'YOUR PLAN · ${days.length} DAY${days.length == 1 ? '' : 'S'}',
-                  style: const TextStyle(
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 1.1,
-                    color: AppColors.brandGreen,
-                  ),
-                ),
-              ),
-              GestureDetector(
-                onTap: () => setState(() => _plan = null),
-                child: const Text(
-                  'Change',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: AppColors.brandGreen),
-                ),
-              ),
-            ],
+          _heading(
+            'YOUR PLAN · ${days.length} DAY${days.length == 1 ? '' : 'S'}',
+            link: 'Change',
+            icon: PhosphorIconsBold.slidersHorizontal,
+            onTap: () => setState(() => _plan = null),
           ),
           const SizedBox(height: 10),
-          CityTourDayTabs(days: days, selectedId: day.id, onSelect: (id) => setState(() => _dayId = id)),
-          const SizedBox(height: 16),
-          Text(
-            day.title.isEmpty ? 'Day $number' : day.title,
-            style: const TextStyle(
-              fontSize: 19,
-              height: 1.25,
-              fontWeight: FontWeight.w800,
-              letterSpacing: -0.2,
-              color: AppColors.textPrimary,
-            ),
+          CityTourDayCards(
+            days: days,
+            selectedId: day.id,
+            onSelect: (id) => setState(() {
+              _dayId = id;
+              _flipped.clear();
+            }),
+            tripDayId: schedule == null ? null : day.id,
+            stopsDone: stopsDone,
+            stopsTotal: stops.length,
+            pace: pace,
           ),
-          const SizedBox(height: 4),
-          Text(
-            cityTourDayLine(context, day),
-            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: AppColors.textSecondary),
+          const SizedBox(height: 20),
+          _heading(
+            'DAY $number · STOPS',
+            note: schedule == null ? null : '$stopsDone of ${stops.length} done',
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
         ]);
       } else {
-        children.addAll(const [
-          Text(
-            'The route',
-            style: TextStyle(
-              fontSize: 19,
-              fontWeight: FontWeight.w800,
-              letterSpacing: -0.2,
-              color: AppColors.textPrimary,
-            ),
+        children.addAll([
+          _heading(
+            'THE ROUTE',
+            note: schedule == null
+                ? null
+                : ['$stopsDone of ${stops.length} done', if (pace.isNotEmpty) pace].join(' · '),
           ),
-          SizedBox(height: 14),
+          const SizedBox(height: 12),
         ]);
       }
-      final stops = day.stops;
-      final lastStopId = stops.isEmpty ? null : stops.last.id;
       if (stops.any((s) => s.hasPin)) {
         children.addAll([
           CityTourMap(
@@ -643,26 +846,56 @@ class _CityTourPageState extends State<CityTourPage> {
             stops: stops,
             onExpand: () => _openMap(tour.hasDays && day.title.isNotEmpty ? day.title : tour.card.title, day),
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 14),
         ]);
       }
       // A day someone is on shows the trip's times; any other its plan.
       final times = schedule?.times ?? cityTourDayPlan(day, DateTime.now());
+      final lastMarked = _lastMarked(day, schedule);
+      final lastStopId = stops.length > 1 ? stops.last.id : null;
       for (var i = 0; i < day.steps.length; i++) {
-        children.add(CityTourStepTile(
-          key: _stepKeys.putIfAbsent(day.steps[i].id, GlobalKey.new),
-          step: day.steps[i],
-          isFirst: i == 0,
-          isLast: i == day.steps.length - 1,
-          isLastStop: stops.length > 1 && day.steps[i].id == lastStopId,
-          onLinkTap: _openLink,
-          time: times[day.steps[i].id],
-        ));
+        final step = day.steps[i];
+        final state = cityTourStepState(schedule?.times[step.id]);
+        final key = _stepKeys.putIfAbsent(step.id, GlobalKey.new);
+        void tick() => _tapTick(tour, day, step, schedule, lastMarked);
+        if (i > 0 && step.isStop && day.steps[i - 1].isStop) children.add(const SizedBox(height: 12));
+        children.add(step.isStop
+            ? CityTourStopCard(
+                key: key,
+                step: step,
+                time: times[step.id],
+                state: state,
+                open: _isOpen(step, state),
+                caption: state != CityTourStepState.plain
+                    ? null
+                    : i == 0
+                        ? 'START HERE'
+                        : (step.id == lastStopId ? 'LAST STOP' : null),
+                canUndo: step.id == lastMarked,
+                onTick: tick,
+                onToggle: schedule == null ? null : () => _flip(step.id),
+                onUndo: _undo,
+                onSkip: () => _markDone(step, DateTime.now(), skip: true),
+                onLinkTap: _openLink,
+              )
+            : CityTourLegPill(
+                key: key,
+                step: step,
+                time: times[step.id],
+                state: state,
+                open: _isOpen(step, state),
+                canUndo: step.id == lastMarked,
+                onTick: tick,
+                onToggle: () => _flip(step.id),
+                onUndo: _undo,
+                onSkip: () => _markDone(step, DateTime.now(), skip: true),
+                onLinkTap: _openLink,
+              ));
       }
     }
     return [
       SliverPadding(
-        padding: EdgeInsets.fromLTRB(20, 18, 20, 32 + MediaQuery.of(context).padding.bottom),
+        padding: EdgeInsets.fromLTRB(16, 18, 16, 32 + MediaQuery.of(context).padding.bottom),
         // Built all at once, not as they scroll in, so the step in hand can
         // be found and scrolled to (_revealCurrent).
         sliver: SliverToBoxAdapter(
@@ -673,29 +906,41 @@ class _CityTourPageState extends State<CityTourPage> {
   }
 }
 
-/// The step in hand's number and name, held under the bar at the top while
-/// the traveller scrolls through its card. The card's end pushes it away.
-class _StickyStep extends StatefulWidget {
-  final ScrollController scroll;
-  final GlobalKey tileKey;
+/// An open stop's card, which can pin its header under the bar.
+class _Pin {
+  final GlobalKey key;
   final CityTourStep step;
-  final String title;
-  final double cardEndInset;
+  final CityTourStepState state;
 
-  const _StickyStep({
+  const _Pin(this.key, this.step, this.state);
+}
+
+/// The open stop the traveller is scrolling through: its circle, photo, name
+/// and times held under the bar at the top, with the day's progress ring.
+/// The card's end pushes it away, and the next open stop takes its place.
+class _PinnedStep extends StatefulWidget {
+  final ScrollController scroll;
+  final List<_Pin> pins;
+  final Map<String, CityTourStepTime> times;
+
+  /// The day's stops done, of how many, while a trip is on it.
+  final (int, int)? progress;
+  final void Function(CityTourStep step) onTick;
+
+  const _PinnedStep({
     required this.scroll,
-    required this.tileKey,
-    required this.step,
-    required this.title,
-    required this.cardEndInset,
+    required this.pins,
+    required this.times,
+    required this.progress,
+    required this.onTick,
   });
 
   @override
-  State<_StickyStep> createState() => _StickyStepState();
+  State<_PinnedStep> createState() => _PinnedStepState();
 }
 
-class _StickyStepState extends State<_StickyStep> {
-  static const double _height = 52;
+class _PinnedStepState extends State<_PinnedStep> {
+  static const double _height = 68;
 
   @override
   void initState() {
@@ -705,13 +950,13 @@ class _StickyStepState extends State<_StickyStep> {
   }
 
   @override
-  void didUpdateWidget(_StickyStep old) {
+  void didUpdateWidget(_PinnedStep old) {
     super.didUpdateWidget(old);
     if (old.scroll != widget.scroll) {
       old.scroll.removeListener(_moved);
       widget.scroll.addListener(_moved);
     }
-    // The step's tile may move once this frame is laid out.
+    // The cards may move once this frame is laid out.
     WidgetsBinding.instance.addPostFrameCallback((_) => _moved());
   }
 
@@ -727,44 +972,86 @@ class _StickyStepState extends State<_StickyStep> {
 
   @override
   Widget build(BuildContext context) {
-    final box = widget.tileKey.currentContext?.findRenderObject();
-    final viewport = RenderAbstractViewport.maybeOf(box);
-    if (box is! RenderBox || !box.hasSize || viewport == null || !widget.scroll.hasClients) {
-      return const SizedBox.shrink();
-    }
-    // Where the tile sits in the list, less how far the list has scrolled:
-    // right for this frame, where its painted place would be a frame behind.
-    final top = viewport.getOffsetToReveal(box, 0).offset - widget.scroll.offset;
-    final end = top + box.size.height - widget.cardEndInset;
+    if (!widget.scroll.hasClients) return const SizedBox.shrink();
     final edge = MediaQuery.of(context).padding.top + kToolbarHeight;
-    if (top >= edge || end <= edge) return const SizedBox.shrink();
-    return ClipRect(
-      child: Transform.translate(
-        offset: Offset(0, math.min(0.0, end - edge - _height)),
+    for (final pin in widget.pins) {
+      final box = pin.key.currentContext?.findRenderObject();
+      final viewport = RenderAbstractViewport.maybeOf(box);
+      if (box is! RenderBox || !box.hasSize || viewport == null) continue;
+      // Where the card sits in the list, less how far the list has scrolled:
+      // right for this frame, where its painted place would be a frame behind.
+      final top = viewport.getOffsetToReveal(box, 0).offset - widget.scroll.offset;
+      final end = top + box.size.height;
+      if (top >= edge || end <= edge) continue;
+      return ClipRect(
+        child: Transform.translate(
+          offset: Offset(0, math.min(0.0, end - edge - _height)),
+          child: _card(context, pin),
+        ),
+      );
+    }
+    return const SizedBox.shrink();
+  }
+
+  Widget _card(BuildContext context, _Pin pin) {
+    final step = pin.step;
+    final span = cityTourStepSpan(context, step, widget.times[step.id]);
+    final progress = widget.progress;
+    return SizedBox(
+      height: _height,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 6, 12, 4),
         child: Container(
-          height: _height,
-          padding: const EdgeInsets.symmetric(horizontal: 20),
+          padding: const EdgeInsets.symmetric(horizontal: 10),
           decoration: BoxDecoration(
-            color: Color.alphaBlend(AppColors.brandGreenLight, Colors.white),
-            border: const Border(bottom: BorderSide(color: AppColors.brandGreen, width: 1.5)),
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: const Color(0xFFE5E9EF)),
+            boxShadow: [
+              BoxShadow(color: _navy.withValues(alpha: 0.08), blurRadius: 14, offset: const Offset(0, 4)),
+            ],
           ),
           child: Row(
             children: [
-              widget.step.isStop ? CityTourStopBadge(widget.step.number) : CityTourModeBadge(widget.step),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Text(
-                  widget.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -0.2,
-                    color: AppColors.textPrimary,
+              CityTourTick(step: step, state: pin.state, size: 30, onTap: () => widget.onTick(step)),
+              const SizedBox(width: 10),
+              if (step.photoUrl.isNotEmpty) ...[
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(11),
+                  child: SizedBox(
+                    width: 40,
+                    height: 40,
+                    child: CachedNetworkImage(
+                      imageUrl: cityTourMediaUrl(step.photoUrl),
+                      fit: BoxFit.cover,
+                      memCacheWidth: 160,
+                      placeholder: (_, __) => Container(color: AppColors.surface),
+                      errorWidget: (_, __, ___) => Container(color: AppColors.surfaceVariant),
+                    ),
                   ),
                 ),
+                const SizedBox(width: 10),
+              ],
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      step.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: _navy),
+                    ),
+                    if (span != null)
+                      Text(span, style: const TextStyle(fontSize: 11.5, color: _slate)),
+                  ],
+                ),
               ),
+              if (progress != null) ...[
+                const SizedBox(width: 8),
+                CityTourProgressRing(done: progress.$1, total: progress.$2, size: 34),
+              ],
             ],
           ),
         ),
