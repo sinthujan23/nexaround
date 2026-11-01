@@ -2035,7 +2035,15 @@ class CityTourStatsCard extends StatelessWidget {
 
   const CityTourStatsCard({super.key, required this.card});
 
+  /// Its height at 100% text size.
   static const double height = 108;
+
+  /// Its height on this phone: the values and labels grow with the phone's
+  /// text size, so the card grows with them.
+  static double heightFor(BuildContext context) {
+    const text = 48.0; // two lines of value and the label, at 100%
+    return height + math.max(0.0, MediaQuery.textScalerOf(context).scale(text) - text);
+  }
 
   /// Whether the guide has any number to show.
   static bool shows(CityTourCard card) =>
@@ -2058,7 +2066,7 @@ class CityTourStatsCard extends StatelessWidget {
             const Color(0xFFE7F5EC), const Color(0xFF15803D)),
     ];
     return Container(
-      height: height,
+      height: heightFor(context),
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 12),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -2133,14 +2141,21 @@ class CityTourDayCards extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 96,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        clipBehavior: Clip.none,
-        itemCount: days.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 10),
-        itemBuilder: (_, i) => _card(context, days[i], i + 1),
+    // The cards take the height their text needs at the phone's text size
+    // (at least 96), all the same height; there are only a few days.
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      clipBehavior: Clip.none,
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (var i = 0; i < days.length; i++) ...[
+              if (i > 0) const SizedBox(width: 10),
+              _card(context, days[i], i + 1),
+            ],
+          ],
+        ),
       ),
     );
   }
@@ -2155,6 +2170,7 @@ class CityTourDayCards extends StatelessWidget {
       onTap: () => onSelect(day.id),
       child: Container(
         width: 268,
+        constraints: const BoxConstraints(minHeight: 96),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
           color: on ? null : Colors.white,

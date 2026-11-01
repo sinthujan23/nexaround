@@ -4089,7 +4089,7 @@ a.btn { text-decoration: none; }
 .ctp-stat > span:last-child { font-size: 10.5px; color: #64748b; }
 .ctp-daycards { display: flex; gap: 10px; margin: 10px -16px 0 0; padding-right: 16px; overflow-x: auto; scrollbar-width: none; }
 .ctp-daycard {
-  flex: none; width: 268px; height: 96px; box-sizing: border-box; padding: 12px 14px; border-radius: 22px;
+  flex: none; width: 268px; min-height: 96px; box-sizing: border-box; padding: 12px 14px; border-radius: 22px;
   display: flex; align-items: center; gap: 12px; background: #fff; border: 1px solid #e5e9ef; cursor: pointer;
 }
 .ctp-daycard.on {

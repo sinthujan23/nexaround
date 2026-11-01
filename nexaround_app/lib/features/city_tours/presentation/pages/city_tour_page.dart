@@ -122,7 +122,7 @@ class _CityTourPageState extends State<CityTourPage> {
   /// The cover's height under the status bar: the photo, and half the
   /// stats card below it.
   double _coverHeight(double width, CityTourCard card) =>
-      width * _photoFraction + (CityTourStatsCard.shows(card) ? CityTourStatsCard.height / 2 : 0);
+      width * _photoFraction + (CityTourStatsCard.shows(card) ? CityTourStatsCard.heightFor(context) / 2 : 0);
 
   void _onScroll() {
     final card = _tour?.card ?? widget.card;
@@ -486,7 +486,8 @@ class _CityTourPageState extends State<CityTourPage> {
   Widget _cover(CityTourCard card) {
     final place = [card.city, card.country].where((s) => s.isNotEmpty).join(' · ');
     final stats = CityTourStatsCard.shows(card);
-    const half = CityTourStatsCard.height / 2;
+    final statsHeight = CityTourStatsCard.heightFor(context);
+    final half = statsHeight / 2;
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -571,7 +572,7 @@ class _CityTourPageState extends State<CityTourPage> {
             left: 16,
             right: 16,
             bottom: 0,
-            height: CityTourStatsCard.height,
+            height: statsHeight,
             child: CityTourStatsCard(card: card),
           ),
       ],
