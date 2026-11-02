@@ -370,19 +370,22 @@ const _done = AppColors.brandGreen;
 const _doneLine = Color(0xFFBFE1E2);
 
 /// Where a step stands: no trip on its day ([plain]), finished, skipped, the
-/// step in hand, or still to come.
+/// step in hand, or still to come. A stop passed over (one further on was
+/// ticked first) is still to come; a ride or break passed over counts done.
 enum CityTourStepState { plain, done, skipped, current, upcoming }
 
 /// A step's state from its place in a trip's schedule; [plain] without one.
 CityTourStepState cityTourStepState(CityTourStepTime? time) {
   if (time == null) return CityTourStepState.plain;
   if (time.isDone) return time.skipped ? CityTourStepState.skipped : CityTourStepState.done;
+  if (time.passed) return CityTourStepState.done;
   return time.isCurrent ? CityTourStepState.current : CityTourStepState.upcoming;
 }
 
 /// "11:30 AM – 12:45 PM" from a step's times, or its own "1 hr (est)" with
-/// none.
+/// none; nothing for a step passed over.
 String? cityTourStepSpan(BuildContext context, CityTourStep step, CityTourStepTime? time) {
+  if (time != null && (time.missed || time.passed)) return null;
   if (time != null) {
     return '${cityTourClock(context, time.start)} – ${cityTourClock(context, time.end)}';
   }
@@ -515,12 +518,13 @@ class CityTourTick extends StatelessWidget {
 
 /// A stop on the route as a card. With no trip each stop is open: its photo
 /// with the name on it, times, notes, story and partner buttons. On a trip
-/// the stop in hand is open and edged in teal with a "Yet to visit" button
-/// that marks it visited; a visited stop opened is tinted teal with its
-/// button teal "Visited". Visited stops shrink to a teal-tinted card with a
-/// "Visited" chip, ones passed over to a white card with "Not visited", and
-/// stops still to come wait as closed cards; a tap on a card opens or
-/// closes it.
+/// the stop in hand is open and edged in teal, and every stop opened has a
+/// "Yet to visit" button that marks it visited, in any order; a visited stop
+/// opened is tinted teal with its button teal "Visited". Visited stops shrink
+/// to a teal-tinted card with a "Visited" chip, ones skipped to a white card
+/// with "Not visited", ones passed over (a stop further on ticked first) to
+/// a closed card with "Yet to visit", and stops still to come wait as closed
+/// cards; a tap on a card opens or closes it.
 class CityTourStopCard extends StatelessWidget {
   final CityTourStep step;
 
@@ -637,7 +641,9 @@ class CityTourStopCard extends StatelessWidget {
                 ),
               ],
             ),
-      trailing: const _RoundIcon(icon: Icons.keyboard_arrow_down_rounded),
+      trailing: (time?.missed ?? false)
+          ? _StatusChip(visited: false, label: 'Yet to visit', onTap: onVisited)
+          : const _RoundIcon(icon: Icons.keyboard_arrow_down_rounded),
     );
   }
 
@@ -994,40 +1000,28 @@ class CityTourStopCard extends StatelessWidget {
 
   List<Widget> _body(BuildContext context) {
     final current = state == CityTourStepState.current;
+    // On a trip the visit button sits beside the time and price chips, at
+    // the top, rather than under everything.
+    final visit = onVisited != null && state != CityTourStepState.plain
+        ? _VisitedButton(
+            visited: state == CityTourStepState.done,
+            label: state == CityTourStepState.skipped ? 'Not visited' : null,
+            onTap: onVisited,
+          )
+        : null;
+    final hasChips = step.timeHere.isNotEmpty || step.price.isNotEmpty;
     final parts = <Widget>[
       if (current) _TapHint(number: '${step.number}'),
-      if (step.timeHere.isNotEmpty || step.price.isNotEmpty)
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
+      if (hasChips || visit != null)
+        Row(
           children: [
-            if (step.timeHere.isNotEmpty)
-              _Chip(
-                icon: Icons.hourglass_top_rounded,
-                text: cityTourEst(step.timeHere),
-                fg: const Color(0xFF5B21B6),
-                bg: const Color(0xFFF3EEFF),
-                iconColour: const Color(0xFF7C3AED),
-              ),
-            if (step.price.isNotEmpty)
-              _Chip(
-                icon: Icons.confirmation_number_rounded,
-                text: step.price,
-                fg: const Color(0xFF166534),
-                bg: const Color(0xFFE7F5EC),
-                iconColour: const Color(0xFF15803D),
-              ),
+            Expanded(child: hasChips ? _chips() : const SizedBox.shrink()),
+            if (visit != null) ...[const SizedBox(width: 8), visit],
           ],
         ),
       if (step.accessNote.isNotEmpty) _NoteBox(text: step.accessNote),
       if (step.bodyMd.isNotEmpty) ExperienceDescription(markdown: step.bodyMd),
       if (step.links.isNotEmpty) _Links(links: step.links, onLinkTap: onLinkTap),
-      if (onVisited != null && (current || _finished))
-        _VisitedButton(
-          visited: state == CityTourStepState.done,
-          label: state == CityTourStepState.skipped ? 'Not visited' : null,
-          onTap: onVisited,
-        ),
     ];
     return [
       for (var i = 0; i < parts.length; i++) ...[
@@ -1035,6 +1029,32 @@ class CityTourStopCard extends StatelessWidget {
         parts[i],
       ],
     ];
+  }
+
+  /// The stop's "1 hr (est)" and price chips.
+  Widget _chips() {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        if (step.timeHere.isNotEmpty)
+          _Chip(
+            icon: Icons.hourglass_top_rounded,
+            text: cityTourEst(step.timeHere),
+            fg: const Color(0xFF5B21B6),
+            bg: const Color(0xFFF3EEFF),
+            iconColour: const Color(0xFF7C3AED),
+          ),
+        if (step.price.isNotEmpty)
+          _Chip(
+            icon: Icons.confirmation_number_rounded,
+            text: step.price,
+            fg: const Color(0xFF166534),
+            bg: const Color(0xFFE7F5EC),
+            iconColour: const Color(0xFF15803D),
+          ),
+      ],
+    );
   }
 }
 
@@ -1515,12 +1535,14 @@ class _VisitedButton extends StatelessWidget {
   }
 }
 
-/// A shut finished stop's status: teal "Visited", or grey "Not visited".
+/// A shut stop's status: teal "Visited", or grey "Not visited" ([label]
+/// "Yet to visit" on one passed over).
 class _StatusChip extends StatelessWidget {
   final bool visited;
+  final String label;
   final VoidCallback? onTap;
 
-  const _StatusChip({required this.visited, required this.onTap});
+  const _StatusChip({required this.visited, required this.onTap, this.label = 'Not visited'});
 
   @override
   Widget build(BuildContext context) {
@@ -1550,7 +1572,7 @@ class _StatusChip extends StatelessWidget {
             ),
             const SizedBox(width: 5),
             Text(
-              visited ? 'Visited' : 'Not visited',
+              visited ? 'Visited' : label,
               style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: fg),
             ),
           ],

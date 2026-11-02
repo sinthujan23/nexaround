@@ -42,6 +42,11 @@ class CityTourTripDoneIn(BaseModel):
     skip: bool = False
 
 
+class CityTourTripUndoIn(BaseModel):
+    # The step to take back; none: the last one in the day's order.
+    step_id: Optional[str] = Field(None, max_length=36)
+
+
 class CityTourListItem(BaseModel):
     id: uuid.UUID
     title: str

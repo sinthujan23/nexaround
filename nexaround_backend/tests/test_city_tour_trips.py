@@ -62,14 +62,52 @@ def test_due_step_follows_the_last_done_time():
     assert trips.due_step(T0, steps, every, plan) is None
 
 
-def test_mark_done_only_the_step_in_hand():
+def test_mark_done_any_step_in_any_order():
     steps = _steps()
     now = T0 + timedelta(minutes=90)
     done = trips.mark_done(T0, steps, {}, "a", None, now)
     assert done == {"a": now.isoformat()}
-    # A later step first, or one already done, is not the step in hand.
-    assert trips.mark_done(T0, steps, {}, "c", None, now) is None
+    # A stop further on can be ticked first, and the one passed over later.
+    ahead = trips.mark_done(T0, steps, {}, "c", None, now)
+    assert ahead == {"c": now.isoformat()}
+    later = now + timedelta(minutes=5)
+    assert trips.mark_done(T0, steps, ahead, "a", None, later) == {**ahead, "a": later.isoformat()}
+    # One already done (a second tap), or not in the day, changes nothing.
     assert trips.mark_done(T0, steps, done, "a", None, now) is None
+    assert trips.mark_done(T0, steps, {}, "gone", None, now) is None
+
+
+def test_the_step_in_hand_follows_the_furthest_step_marked():
+    steps = _steps()
+    plan = trips.plan_minutes({"steps": steps})
+    at = T0 + timedelta(minutes=40)
+    # "c" ticked first: "a" and "b" were passed over, and "d" is in hand.
+    step, ends = trips.due_step(T0, steps, {"c": at.isoformat()}, plan)
+    assert step["id"] == "d" and ends == at + timedelta(minutes=plan["d"])
+    # Ticking the passed-over stop later does not move the step in hand.
+    both = {"c": at.isoformat(), "a": (at + timedelta(minutes=30)).isoformat()}
+    step, ends = trips.due_step(T0, steps, both, plan)
+    assert step["id"] == "d" and ends == at + timedelta(minutes=plan["d"])
+    assert trips.furthest(steps, {}) == -1 and trips.furthest(steps, both) == 2
+
+
+def test_any_step_can_be_taken_back():
+    steps = _steps()
+    done = {"a": T0.isoformat(), "c": T0.isoformat()}
+    assert trips.unmark(done, "a") == {"c": T0.isoformat()}
+    assert trips.unmark(done, "b") == done
+    step, _ = trips.due_step(T0, steps, trips.unmark(done, "c"), trips.plan_minutes({"steps": steps}))
+    assert step["id"] == "b"
+
+
+def test_the_trip_finishes_when_its_last_step_is_marked():
+    steps = _steps()
+    end = T0 + timedelta(hours=5)
+    # Stops passed over do not hold it back; taking the last one back reopens it.
+    assert trips.finished_time(steps, {"e": end.isoformat()}) == end
+    assert trips.finished_time(steps, {"a": end.isoformat()}) is None
+    assert trips.finished_time([], {}) is None
+    assert trips.due_step(T0, steps, {"e": end.isoformat()}, {}) is None
 
 
 def test_mark_done_keeps_the_tap_time_within_the_step():

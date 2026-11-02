@@ -101,9 +101,9 @@ class CityToursService {
     return (await _saveTrip(tourId, response.data))!;
   }
 
-  /// Takes back the last "Mark done" or "Skip".
-  Future<CityTourTrip> undoDone(String tourId) async {
-    final response = await _dio.post('$_base/$tourId/trip/undo');
+  /// Takes back a step's "Mark done" or "Skip": any one, in any order.
+  Future<CityTourTrip> undoDone(String tourId, String stepId) async {
+    final response = await _dio.post('$_base/$tourId/trip/undo', data: {'step_id': stepId});
     return (await _saveTrip(tourId, response.data))!;
   }
 

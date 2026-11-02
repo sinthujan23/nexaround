@@ -7,9 +7,16 @@ planned minutes, read from the guide's own words: a stop's "time to spend"
 middle, rounded to 5 minutes, and a step with no time it can read gets a
 default.
 
-The app lays the day out from these: a step starts when the one before it was
-marked done (the first, at the start), and the steps after it follow on, so
-marking a step done late or early moves the rest. The worker pushes one
+Steps can be marked in any order: a traveller who forgot to tick a stop can
+tick it later, and one who jumps ahead ticks the stop they are at. The step in
+hand is the one after the furthest step marked; steps before that one left
+unmarked were passed over (the app shows a stop passed over as still to visit,
+and a ride or break as done). Any marked step can be taken back.
+
+The app lays the day out from these: the step in hand starts when the
+furthest step marked was marked (the first step, at the start), and the steps
+after it follow on, so marking a step done late or early moves the rest. The
+trip is finished once its last step is marked. The worker pushes one
 "Done at …?" reminder per step once it runs past its minutes (reminder_loop).
 
 "Skip" ends a step the same way, at the time it was tapped, and notes it in
@@ -116,33 +123,37 @@ def as_time(value) -> Optional[datetime]:
         return None
 
 
+def furthest(steps: list[dict], done: dict) -> int:
+    """Where the furthest step marked sits in the day; -1 before any."""
+    return max((i for i, s in enumerate(steps) if s.get("id") in done), default=-1)
+
+
 def due_step(
     started_at: datetime, steps: list[dict], done: dict, minutes: dict[str, int],
 ) -> Optional[tuple[dict, datetime]]:
-    """The step in hand (the first not marked done) and when it is planned to
-    end: the end of the step before it, plus its own minutes. None once every
-    step is done."""
-    since = started_at
-    for step in steps:
-        at = as_time(done.get(step.get("id")))
-        if at is not None:
-            since = at
-            continue
-        planned = minutes.get(step.get("id"), DEFAULT_MINUTES.get(step.get("type"), 30))
-        return step, since + timedelta(minutes=planned)
-    return None
+    """The step in hand (the one after the furthest step marked; the first,
+    before any) and when it is planned to end: when that furthest step was
+    marked (or the start), plus its own minutes. None once the last step is
+    marked."""
+    last = furthest(steps, done)
+    if last + 1 >= len(steps):
+        return None
+    since = as_time(done.get(steps[last].get("id"))) if last >= 0 else None
+    step = steps[last + 1]
+    planned = minutes.get(step.get("id"), DEFAULT_MINUTES.get(step.get("type"), 30))
+    return step, (since or started_at) + timedelta(minutes=planned)
 
 
 def mark_done(
     started_at: datetime, steps: list[dict], done: dict, step_id: str,
     at: Optional[datetime], now: datetime,
 ) -> Optional[dict]:
-    """The trip's done times with `step_id` marked, or None when it is not the
-    step in hand (already done: a second tap; or one further on). `at` is when
-    the traveller tapped, which a retry after a dropped connection keeps; it is
-    held between the step's start and now."""
-    due = due_step(started_at, steps, done, {})
-    if due is None or due[0].get("id") != step_id:
+    """The trip's done times with `step_id` marked, or None when it is not a
+    step of the day or is marked already (a second tap). Any step can be
+    marked, in any order. `at` is when the traveller tapped, which a retry
+    after a dropped connection keeps; it is held between the step's start (the
+    last step before it marked, or the start) and now."""
+    if step_id in done or all(s.get("id") != step_id for s in steps):
         return None
     since = started_at
     for step in steps:
@@ -155,9 +166,20 @@ def mark_done(
 
 
 def undo_last(steps: list[dict], done: dict) -> dict:
-    """The done times without the last step marked."""
+    """The done times without the last step marked, in the day's order (what
+    an app from before marking in any order sends)."""
     marked = [s.get("id") for s in steps if s.get("id") in done]
     return {k: v for k, v in done.items() if k != marked[-1]} if marked else dict(done)
+
+
+def unmark(done: dict, step_id: str) -> dict:
+    """The done times without `step_id`: any step marked can be taken back."""
+    return {k: v for k, v in done.items() if k != step_id}
+
+
+def finished_time(steps: list[dict], done: dict) -> Optional[datetime]:
+    """When the trip finished: when its last step was marked; None until then."""
+    return as_time(done.get(steps[-1].get("id"))) if steps else None
 
 
 def still_skipped(skipped: list, done: dict) -> list[str]:

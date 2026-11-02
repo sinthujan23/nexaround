@@ -53,23 +53,37 @@ class CityTourTrip {
 
   int minutesFor(CityTourStep step) => minutes[step.id] ?? cityTourPlannedMinutes(step);
 
-  /// Every step's times as of [now]. A step starts when the one before it was
-  /// marked done or skipped (the first, at the start); the step in hand runs
-  /// its planned minutes, or on until now when it runs over; the rest follow
-  /// on. A skipped step's minutes leave the plan the pace is measured against.
+  /// Every step's times as of [now]. Steps are marked in any order: the step
+  /// in hand is the one after the furthest step marked (the first, before
+  /// any), and starts when that one was marked (or at the start); it runs its
+  /// planned minutes, or on until now when it runs over, and the rest follow
+  /// on. Steps before it left unmarked were passed over: a stop is [missed]
+  /// (still to visit, and can be ticked), a ride or break [passed] (counted
+  /// done). A skipped or missed stop's minutes leave the plan the pace is
+  /// measured against. Matches the server's due_step.
   CityTourSchedule schedule(List<CityTourStep> steps, DateTime now) {
     final times = <String, CityTourStepTime>{};
     CityTourStep? current;
+    var furthest = -1;
+    for (var i = 0; i < steps.length; i++) {
+      if (done.containsKey(steps[i].id)) furthest = i;
+    }
     var cursor = startedAt;
     var planned = startedAt;
-    for (final step in steps) {
+    for (var i = 0; i < steps.length; i++) {
+      final step = steps[i];
       final length = Duration(minutes: minutesFor(step));
       final doneAt = done[step.id];
       final wasSkipped = doneAt != null && skipped.contains(step.id);
-      if (!wasSkipped) planned = planned.add(length);
+      final missed = doneAt == null && i < furthest && step.isStop;
+      if (!wasSkipped && !missed) planned = planned.add(length);
       if (doneAt != null) {
-        times[step.id] = CityTourStepTime(start: cursor, end: doneAt, doneAt: doneAt, skipped: wasSkipped);
+        // A stop ticked late, after one further on, starts no later than it ends.
+        final start = doneAt.isBefore(cursor) ? doneAt : cursor;
+        times[step.id] = CityTourStepTime(start: start, end: doneAt, doneAt: doneAt, skipped: wasSkipped);
         cursor = doneAt;
+      } else if (i < furthest) {
+        times[step.id] = CityTourStepTime(start: cursor, end: cursor, missed: missed, passed: !missed);
       } else if (current == null) {
         current = step;
         final end = cursor.add(length);
@@ -99,19 +113,29 @@ class CityTourStepTime {
   /// Done by "Skip" rather than "Mark done".
   final bool skipped;
 
+  /// A stop passed over: one further on was ticked first. Still to visit,
+  /// and can be ticked.
+  final bool missed;
+
+  /// A ride or break before the furthest step ticked, left unmarked: counted
+  /// done, but nothing to take back.
+  final bool passed;
+
   const CityTourStepTime({
     required this.start,
     required this.end,
     this.doneAt,
     this.isCurrent = false,
     this.skipped = false,
+    this.missed = false,
+    this.passed = false,
   });
 
   bool get isDone => doneAt != null;
 }
 
 /// The day laid out: each step's times, the step in hand ([current], null
-/// once all are done), when the trip should end, and how far that is behind
+/// once the last step is marked), when the trip should end, and how far that is behind
 /// the plan made at the start (negative: ahead).
 class CityTourSchedule {
   final Map<String, CityTourStepTime> times;

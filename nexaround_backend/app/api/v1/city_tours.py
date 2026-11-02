@@ -22,7 +22,7 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.core.rate_limiter import RateLimiter, get_client_ip, get_redis_client
 from app.models.city_tour import CityTour, CityTourTap, CityTourTrip
-from app.schemas.city_tour import CityTourTripDoneIn, CityTourTripStartIn
+from app.schemas.city_tour import CityTourTripDoneIn, CityTourTripStartIn, CityTourTripUndoIn
 from app.services import city_tour_trips as trips
 from app.services import city_tours
 
@@ -119,13 +119,6 @@ async def _shown_trip(db: AsyncSession, tour_id: uuid.UUID, user_id) -> CityTour
     )).scalar_one_or_none()
 
 
-async def _running_trip(db: AsyncSession, tour_id: uuid.UUID, user_id) -> CityTourTrip:
-    trip = await _shown_trip(db, tour_id, user_id)
-    if trip is None or trip.finished_at is not None:
-        raise HTTPException(status_code=404, detail="This trip has ended.")
-    return trip
-
-
 @router.get("/{tour_id}/trip")
 async def get_trip(
     tour_id: uuid.UUID,
@@ -173,11 +166,13 @@ async def mark_step_done(
     db: AsyncSession = Depends(get_db),
     user=Depends(get_current_user),
 ):
-    """Mark the step in hand done, or skip it (`skip`). A second tap on a step
-    already done (a retry) changes nothing; marking a later step first is
-    refused (409)."""
+    """Mark a step done, or skip it (`skip`): any step of the day, in any
+    order, also on a finished trip still shown (a stop forgotten on the way).
+    A second tap on a step already done (a retry) changes nothing."""
     tour = await live_tour(db, tour_id)
-    trip = await _running_trip(db, tour.id, user.id)
+    trip = await _shown_trip(db, tour.id, user.id)
+    if trip is None:
+        raise HTTPException(status_code=404, detail="This trip has ended.")
     steps = trips.trip_steps(tour.live_content, trip.day_id)
     done = trip.done or {}
     if body.step_id not in done:
@@ -185,12 +180,11 @@ async def mark_step_done(
             trip.started_at, steps, done, body.step_id, body.at, datetime.now(timezone.utc),
         )
         if marked is None:
-            raise HTTPException(status_code=409, detail="Mark the steps before this one done first.")
+            raise HTTPException(status_code=404, detail="That step is not in this day any more.")
         trip.done = marked
         if body.skip:
             trip.skipped = [*(trip.skipped or []), body.step_id]
-        if trips.all_done(steps, marked):
-            trip.finished_at = trips.as_time(marked[body.step_id])
+        trip.finished_at = trips.finished_time(steps, marked)
         await db.commit()
     return {"trip": trips.view(trip, tour.live_content)}
 
@@ -198,17 +192,23 @@ async def mark_step_done(
 @router.post("/{tour_id}/trip/undo")
 async def undo_step_done(
     tour_id: uuid.UUID,
+    body: Optional[CityTourTripUndoIn] = None,
     db: AsyncSession = Depends(get_db),
     user=Depends(get_current_user),
 ):
-    """Take back the last "Mark done" or skip, including the one that finished the trip."""
+    """Take back one step's "Mark done" or skip (`step_id`), any one, including
+    the one that finished the trip; with no step, the last in the day's order."""
     tour = await live_tour(db, tour_id)
     trip = await _shown_trip(db, tour.id, user.id)
     if trip is None:
         raise HTTPException(status_code=404, detail="This trip has ended.")
-    trip.done = trips.undo_last(trips.trip_steps(tour.live_content, trip.day_id), trip.done or {})
+    steps = trips.trip_steps(tour.live_content, trip.day_id)
+    if body is not None and body.step_id:
+        trip.done = trips.unmark(trip.done or {}, body.step_id)
+    else:
+        trip.done = trips.undo_last(steps, trip.done or {})
     trip.skipped = trips.still_skipped(trip.skipped, trip.done)
-    trip.finished_at = None
+    trip.finished_at = trips.finished_time(steps, trip.done)
     await db.commit()
     return {"trip": trips.view(trip, tour.live_content)}
 
