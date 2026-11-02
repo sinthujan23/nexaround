@@ -88,10 +88,15 @@ class _CityTourPageState extends State<CityTourPage> {
   String? _dayId;
   // Redraws the times while a trip runs: a step running over pushes the rest on.
   Timer? _tick;
-  // Each step on screen, to scroll to the step in hand after a mark.
+  // Each step on screen, for the pinned header to find.
   final Map<String, GlobalKey> _stepKeys = {};
-  // Steps the traveller opened or closed against their usual state.
-  final Set<String> _flipped = {};
+  // On a trip one sight is open at a time, and only the traveller opens or
+  // folds it (ticking never does). Until they first open, fold or tick one,
+  // the sight in hand is the open one.
+  String? _openStop;
+  bool _openChosen = false;
+  // Ride and break pills opened to show their details.
+  final Set<String> _openLegs = {};
 
   @override
   void initState() {
@@ -201,7 +206,7 @@ class _CityTourPageState extends State<CityTourPage> {
         setState(() {
           _trip = trip;
           _dayId = day.id;
-          _flipped.clear();
+          _resetOpen();
         });
       }
     }, 'start the trip');
@@ -245,26 +250,16 @@ class _CityTourPageState extends State<CityTourPage> {
   }
 
   /// Marks a stop visited, any stop in any order (rides and breaks are not
-  /// ticked). With [stay] (its "Yet to visit" button or chip, or a stop not
-  /// in hand) the page stays where it is rather than scrolling on to the stop
-  /// in hand, and with [holdOpen] its open card stays open, now teal.
-  Future<void> _markDone(
-    CityTourStep step,
-    DateTime at, {
-    bool stay = false,
-    bool holdOpen = false,
-  }) async {
+  /// ticked). The card turns green where it is: nothing opens, folds or
+  /// scrolls.
+  Future<void> _markDone(CityTourStep step, DateTime at) async {
     if (_tripBusy) return;
+    _keepOpenAsIs();
     setState(() => _tripBusy = true);
     try {
       final trip = await _service.markDone(widget.card.id, step.id, at);
       if (!mounted) return;
-      setState(() {
-        _trip = trip;
-        _flipped.clear();
-        if (holdOpen) _holdOpen(trip, step);
-      });
-      if (!stay) _revealCurrent(trip);
+      setState(() => _trip = trip);
       _say(
         trip.isFinished ? 'Trip finished. Well done!' : 'Marked as visited.',
         action: SnackBarAction(label: 'Undo', onPressed: () => _undo(step.id)),
@@ -274,10 +269,7 @@ class _CityTourPageState extends State<CityTourPage> {
       if (mounted) {
         _say(
           userMessageFor(e, action: 'mark this visited'),
-          action: SnackBarAction(
-            label: 'Try again',
-            onPressed: () => _markDone(step, at, stay: stay, holdOpen: holdOpen),
-          ),
+          action: SnackBarAction(label: 'Try again', onPressed: () => _markDone(step, at)),
         );
       }
     } finally {
@@ -285,70 +277,55 @@ class _CityTourPageState extends State<CityTourPage> {
     }
   }
 
-  /// Scrolls the step in hand up under the bar at the top, once it is drawn.
-  void _revealCurrent(CityTourTrip trip) {
-    final tour = _tour;
-    if (tour == null || trip.isFinished) return;
-    // A trip from before days follows the first day.
-    final day = tour.dayById(trip.dayId) ?? (tour.days.isEmpty ? null : tour.days.first);
-    if (day == null) return;
-    final next = trip.schedule(day.steps, DateTime.now()).current;
-    if (next == null) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final box = _stepKeys[next.id]?.currentContext?.findRenderObject() as RenderBox?;
-      if (!mounted || box == null || !box.attached || !_scroll.hasClients) return;
-      final top = MediaQuery.of(context).padding.top + kToolbarHeight + 16;
-      final position = _scroll.position;
-      final target = position.pixels + box.localToGlobal(Offset.zero).dy - top;
-      _scroll.animateTo(
-        target.clamp(position.minScrollExtent, position.maxScrollExtent),
-        duration: const Duration(milliseconds: 450),
-        curve: Curves.easeInOutCubic,
-      );
-    });
-  }
-
   /// A stop's "Yet to visit" / "Visited" button or chip, on any stop in any
   /// order: one not visited becomes visited, one visited (or skipped) goes
-  /// back to yet to visit. An open card stays open.
+  /// back to yet to visit.
   Future<void> _toggleVisited(CityTourStep step, CityTourSchedule? schedule) async {
     if (_tripBusy || schedule == null) return;
     final time = schedule.times[step.id];
     if (time == null) return;
-    final open = _isOpen(step, cityTourStepState(time));
     if (time.isDone) {
-      await _undo(step.id, holdOpen: open ? step : null);
+      await _undo(step.id);
     } else {
-      await _markDone(step, DateTime.now(), stay: true, holdOpen: open);
+      await _markDone(step, DateTime.now());
     }
   }
 
-  /// Takes back [stepId]'s tick; the card of [holdOpen] stays open. Any
+  /// Takes back [stepId]'s tick, leaving what is open as it is. Any
   /// "Visited … Undo" still showing goes, so it can't take back something
   /// else.
-  Future<void> _undo(String stepId, {CityTourStep? holdOpen}) async {
+  Future<void> _undo(String stepId) async {
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    _keepOpenAsIs();
     await _tripChange(() async {
       final trip = await _service.undoDone(widget.card.id, stepId);
-      if (mounted) {
-        setState(() {
-          _trip = trip;
-          _flipped.clear();
-          if (holdOpen != null) _holdOpen(trip, holdOpen);
-        });
-      }
+      if (mounted) setState(() => _trip = trip);
     }, 'undo that');
   }
 
-  /// Keeps [step]'s card open through a trip change made from inside it.
-  void _holdOpen(CityTourTrip trip, CityTourStep step) {
+  /// The running trip laid out on its own day.
+  CityTourSchedule? _tripSchedule() {
     final tour = _tour;
-    if (tour == null) return;
+    final trip = _trip;
+    if (tour == null || trip == null) return null;
     // A trip from before days follows the first day.
     final day = tour.dayById(trip.dayId) ?? (tour.days.isEmpty ? null : tour.days.first);
-    if (day == null) return;
-    final state = cityTourStepState(trip.schedule(day.steps, DateTime.now()).times[step.id]);
-    if (!_usuallyOpen(step, state)) _flipped.add(step.id);
+    return day == null ? null : trip.schedule(day.steps, DateTime.now());
+  }
+
+  /// Fixes the open sight before a tick changes which sight is in hand, so
+  /// the default (the sight in hand is open) doesn't move it.
+  void _keepOpenAsIs() {
+    if (_openChosen) return;
+    _openStop = _tripSchedule()?.current?.id;
+    _openChosen = true;
+  }
+
+  /// Back to the default: the sight in hand open, every ride folded.
+  void _resetOpen() {
+    _openStop = null;
+    _openChosen = false;
+    _openLegs.clear();
   }
 
   /// A tap on a stop's number: marks it visited, any stop in any order; on
@@ -375,7 +352,7 @@ class _CityTourPageState extends State<CityTourPage> {
     final time = schedule.times[step.id];
     if (time == null) return;
     if (!time.isDone) {
-      await _markDone(step, DateTime.now(), stay: !time.isCurrent);
+      await _markDone(step, DateTime.now());
       return;
     }
     final undo = await showDialog<bool>(
@@ -448,7 +425,7 @@ class _CityTourPageState extends State<CityTourPage> {
       if (mounted) {
         setState(() {
           _trip = null;
-          _flipped.clear();
+          _resetOpen();
         });
       }
     }, 'end the trip');
@@ -464,18 +441,26 @@ class _CityTourPageState extends State<CityTourPage> {
     return next == null ? how : '$how to ${next.name}';
   }
 
-  /// Whether a step's card is open: with no trip every stop is; on a trip
-  /// only the step in hand. A tap flips it.
-  bool _isOpen(CityTourStep step, CityTourStepState state) {
-    final usual = _usuallyOpen(step, state);
-    return _flipped.contains(step.id) ? !usual : usual;
+  /// Whether a step's card is open. Reading the guide with no trip, every
+  /// sight is; on a trip, the one sight the traveller opened (at first, the
+  /// one in hand). Rides and breaks open on their own taps.
+  bool _isOpen(CityTourStep step, CityTourSchedule? schedule) {
+    if (!step.isStop) return _openLegs.contains(step.id);
+    if (schedule == null) return true;
+    return step.id == (_openChosen ? _openStop : schedule.current?.id);
   }
 
-  bool _usuallyOpen(CityTourStep step, CityTourStepState state) =>
-      state == CityTourStepState.current || (step.isStop && state == CityTourStepState.plain);
+  /// Opens a sight (folding the one open) or folds it.
+  void _toggleStop(String stepId, CityTourSchedule schedule) {
+    final open = _openChosen ? _openStop : schedule.current?.id;
+    setState(() {
+      _openChosen = true;
+      _openStop = open == stepId ? null : stepId;
+    });
+  }
 
-  void _flip(String stepId) {
-    setState(() => _flipped.contains(stepId) ? _flipped.remove(stepId) : _flipped.add(stepId));
+  void _toggleLeg(String stepId) {
+    setState(() => _openLegs.contains(stepId) ? _openLegs.remove(stepId) : _openLegs.add(stepId));
   }
 
   Future<void> _openLink(CityTourLink link) async {
@@ -582,7 +567,7 @@ class _CityTourPageState extends State<CityTourPage> {
       for (final step in day.steps) {
         if (!step.isStop) continue;
         final state = cityTourStepState(schedule?.times[step.id]);
-        if (!_isOpen(step, state)) continue;
+        if (!_isOpen(step, schedule)) continue;
         pins.add(_Pin(_stepKeys.putIfAbsent(step.id, GlobalKey.new), step, state));
       }
     }
@@ -816,7 +801,7 @@ class _CityTourPageState extends State<CityTourPage> {
             selectedId: day.id,
             onSelect: (id) => setState(() {
               _dayId = id;
-              _flipped.clear();
+              _resetOpen();
             }),
             tripDayId: schedule == null ? null : day.id,
             stopsDone: stopsDone,
@@ -863,22 +848,22 @@ class _CityTourPageState extends State<CityTourPage> {
                 step: step,
                 time: schedule?.times[step.id],
                 state: state,
-                open: _isOpen(step, state),
+                open: _isOpen(step, schedule),
                 caption: state != CityTourStepState.plain
                     ? null
                     : i == 0
                         ? 'START HERE'
                         : (step.id == lastStopId ? 'LAST STOP' : null),
                 onTick: tick,
-                onToggle: schedule == null ? null : () => _flip(step.id),
+                onToggle: schedule == null ? null : () => _toggleStop(step.id, schedule),
                 onVisited: schedule == null ? null : () => _toggleVisited(step, schedule),
                 onLinkTap: _openLink,
               )
             : CityTourLegPill(
                 key: key,
                 step: step,
-                open: _isOpen(step, state),
-                onToggle: () => _flip(step.id),
+                open: _isOpen(step, schedule),
+                onToggle: () => _toggleLeg(step.id),
                 onLinkTap: _openLink,
               ));
       }
@@ -886,8 +871,8 @@ class _CityTourPageState extends State<CityTourPage> {
     return [
       SliverPadding(
         padding: EdgeInsets.fromLTRB(16, 18, 16, 32 + MediaQuery.of(context).padding.bottom),
-        // Built all at once, not as they scroll in, so the step in hand can
-        // be found and scrolled to (_revealCurrent).
+        // Built all at once, not as they scroll in, so the pinned header can
+        // find every open sight.
         sliver: SliverToBoxAdapter(
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children),
         ),

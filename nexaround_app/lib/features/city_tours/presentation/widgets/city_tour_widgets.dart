@@ -41,6 +41,24 @@ IconData cityTourModeIcon(String mode) {
   }
 }
 
+/// How long a stop card takes to open, close or shrink to "Visited", and a
+/// leg's details to slide open (client: a card snapping shut went unnoticed).
+const cityTourMorph = Duration(milliseconds: 350);
+
+/// Lays the card going out over the card coming in without taking room, so
+/// the space shrinks or grows straight to the new card's size while the two
+/// fade into each other.
+Widget _morphLayout(Widget? current, List<Widget> previous) {
+  return Stack(
+    fit: StackFit.passthrough,
+    alignment: Alignment.topCenter,
+    children: [
+      for (final old in previous) Positioned(left: 0, right: 0, top: 0, child: IgnorePointer(child: old)),
+      if (current != null) current,
+    ],
+  );
+}
+
 /// A clock time in the phone's own style: "11:45" or "11:45 AM".
 String cityTourClock(BuildContext context, DateTime time) =>
     MaterialLocalizations.of(context).formatTimeOfDay(
@@ -533,7 +551,8 @@ class CityTourTick extends StatelessWidget {
 /// to a teal-tinted card with a "Visited" chip, ones skipped to a white card
 /// with "Not visited", ones passed over (a stop further on ticked first) to
 /// a closed card with "Yet to visit", and stops still to come wait as closed
-/// cards; a tap on a card opens or closes it.
+/// cards. Only the traveller opens or folds a card (a tap on it, or "Show
+/// less" at its foot); ticking never does.
 class CityTourStopCard extends StatelessWidget {
   final CityTourStep step;
 
@@ -570,9 +589,32 @@ class CityTourStopCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (!open && _finished) return _doneCard(context);
-    if (!open && state == CityTourStepState.upcoming) return _closedCard(context);
-    return _openCard(context);
+    final String shape;
+    final Widget card;
+    if (!open && _finished) {
+      shape = 'done';
+      card = _doneCard(context);
+    } else if (!open && state == CityTourStepState.upcoming) {
+      shape = 'closed';
+      card = _closedCard(context);
+    } else {
+      shape = 'open';
+      card = _openCard(context);
+    }
+    // Opening, closing or shrinking to "Visited" changes size smoothly while
+    // the old look fades into the new (blue into teal), rather than jumping.
+    return AnimatedSize(
+      duration: cityTourMorph,
+      curve: Curves.easeInOutCubic,
+      alignment: Alignment.topCenter,
+      child: AnimatedSwitcher(
+        duration: cityTourMorph,
+        switchInCurve: Curves.easeOut,
+        switchOutCurve: Curves.easeIn,
+        layoutBuilder: _morphLayout,
+        child: KeyedSubtree(key: ValueKey(shape), child: card),
+      ),
+    );
   }
 
   String get _doneText => state == CityTourStepState.skipped ? 'Not visited' : 'Visited';
@@ -748,7 +790,10 @@ class CityTourStopCard extends StatelessWidget {
     final visited = state == CityTourStepState.done;
     final hasPhoto = step.photoUrl.isNotEmpty;
     final body = _body(context);
-    return Container(
+    // Turning visited while open, the blue fades to teal.
+    return AnimatedContainer(
+      duration: cityTourMorph,
+      curve: Curves.easeInOut,
       decoration: BoxDecoration(
         color: visited ? _visitedFill : _sight,
         borderRadius: BorderRadius.circular(26),
@@ -895,10 +940,6 @@ class CityTourStopCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                if (onToggle != null) ...[
-                  const SizedBox(width: 8),
-                  const Icon(Icons.keyboard_arrow_up_rounded, size: 16, color: Color(0xCCFFFFFF)),
-                ],
               ],
             ),
           ),
@@ -934,10 +975,6 @@ class CityTourStopCard extends StatelessWidget {
               ],
             ),
           ),
-          if (onToggle != null) ...[
-            const SizedBox(width: 8),
-            const _RoundIcon(icon: Icons.keyboard_arrow_up_rounded),
-          ],
         ],
       ),
     );
@@ -965,6 +1002,7 @@ class CityTourStopCard extends StatelessWidget {
       if (step.accessNote.isNotEmpty) _NoteBox(text: step.accessNote),
       if (step.bodyMd.isNotEmpty) ExperienceDescription(markdown: step.bodyMd),
       if (step.links.isNotEmpty) _Links(links: step.links, onLinkTap: onLinkTap),
+      if (onToggle != null) _ShowLess(onTap: onToggle),
     ];
     return [
       for (var i = 0; i < parts.length; i++) ...[
@@ -1089,11 +1127,17 @@ class CityTourLegPill extends StatelessWidget {
             child: pill,
           ),
         ),
-        if (open && _hasMore)
-          Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: _details(context),
-          ),
+        AnimatedSize(
+          duration: cityTourMorph,
+          curve: Curves.easeInOutCubic,
+          alignment: Alignment.topCenter,
+          child: open && _hasMore
+              ? Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: _details(context),
+                )
+              : const SizedBox(width: double.infinity),
+        ),
         const _Dash(height: 12),
       ],
     );
@@ -1147,8 +1191,9 @@ class _DashPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    // Dark slate so the route reads clearly between the cards (client).
     final paint = Paint()
-      ..color = const Color(0xFFCBD5E1)
+      ..color = const Color(0xFF64748B)
       ..strokeWidth = 2;
     final x = size.width / 2;
     for (var y = 0.0; y < size.height; y += 8) {
@@ -1381,6 +1426,38 @@ class _StatusChip extends StatelessWidget {
               style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: fg),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// "Show less ⌃" at the foot of an open sight on a trip: folds it without
+/// scrolling back up to its photo.
+class _ShowLess extends StatelessWidget {
+  final VoidCallback? onTap;
+
+  const _ShowLess({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Show less',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF475569)),
+              ),
+              SizedBox(width: 4),
+              Icon(Icons.keyboard_arrow_up_rounded, size: 18, color: Color(0xFF475569)),
+            ],
+          ),
         ),
       ),
     );

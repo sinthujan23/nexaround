@@ -4091,7 +4091,7 @@ a.btn { text-decoration: none; }
 }
 .ctp-dash {
   width: 2px; height: 12px; margin: 0 auto;
-  background: repeating-linear-gradient(to bottom, #cbd5e1 0 4px, transparent 4px 8px);
+  background: repeating-linear-gradient(to bottom, #64748b 0 4px, transparent 4px 8px);
 }
 .ctp-leg-row { display: flex; justify-content: center; }
 .ctp-leg {
