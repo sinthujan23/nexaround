@@ -392,7 +392,7 @@ String? cityTourStepSpan(BuildContext context, CityTourStep step, CityTourStepTi
 
 /// A step's circle: a stop's number, or a ride's or break's icon. On a trip,
 /// a tap on the step in hand's circle marks it done (as in Odyssey) and it
-/// turns into a green tick; a skipped one shows a grey skip mark.
+/// turns into a teal tick; a skipped one looks like one still to come.
 class CityTourTick extends StatelessWidget {
   final CityTourStep step;
   final CityTourStepState state;
@@ -400,6 +400,10 @@ class CityTourTick extends StatelessWidget {
 
   /// Drawn on a photo: the step in hand gets a white ring, not a teal one.
   final bool onPhoto;
+
+  /// Drawn on a dark leg pill: a walk or break waiting its turn is a white
+  /// circle with a navy icon, so it shows on the dark.
+  final bool onDark;
   final VoidCallback? onTap;
 
   const CityTourTick({
@@ -408,11 +412,14 @@ class CityTourTick extends StatelessWidget {
     required this.state,
     this.size = 36,
     this.onPhoto = false,
+    this.onDark = false,
     this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
+    // No grey skip mark: a skipped step keeps its number or icon.
+    final state = this.state == CityTourStepState.skipped ? CityTourStepState.upcoming : this.state;
     final Color fg;
     final BoxDecoration box;
     switch (state) {
@@ -448,16 +455,19 @@ class CityTourTick extends StatelessWidget {
           ],
         );
       case CityTourStepState.upcoming:
-        fg = step.isStop ? _slate : Colors.white;
+        fg = step.isStop ? _slate : (onDark ? _navy : Colors.white);
         box = step.isStop
             ? BoxDecoration(
                 shape: BoxShape.circle,
                 color: Colors.white,
                 border: Border.all(color: const Color(0xFFCBD5E1), width: 2),
               )
-            : const BoxDecoration(shape: BoxShape.circle, color: Color(0xFF334155));
+            : BoxDecoration(
+                shape: BoxShape.circle,
+                color: onDark ? Colors.white : const Color(0xFF334155),
+              );
       case CityTourStepState.plain:
-        fg = Colors.white;
+        fg = !step.isStop && onDark ? _navy : Colors.white;
         box = step.isStop
             ? BoxDecoration(
                 shape: BoxShape.circle,
@@ -471,13 +481,14 @@ class CityTourTick extends StatelessWidget {
                   ),
                 ],
               )
-            : const BoxDecoration(shape: BoxShape.circle, color: Color(0xFF334155));
+            : BoxDecoration(
+                shape: BoxShape.circle,
+                color: onDark ? Colors.white : const Color(0xFF334155),
+              );
     }
     final Widget face;
     if (state == CityTourStepState.done) {
       face = Icon(Icons.check_rounded, size: size * 0.48, color: fg);
-    } else if (state == CityTourStepState.skipped) {
-      face = Icon(Icons.skip_next_rounded, size: size * 0.42, color: fg);
     } else if (step.isStop) {
       face = Text(
         '${step.number}',
@@ -504,9 +515,12 @@ class CityTourTick extends StatelessWidget {
 
 /// A stop on the route as a card. With no trip each stop is open: its photo
 /// with the name on it, times, notes, story and partner buttons. On a trip
-/// the stop in hand is open and edged in teal, finished stops shrink to a
-/// slim green card, and stops still to come wait as closed cards; a tap on
-/// a card opens or closes it.
+/// the stop in hand is open and edged in teal with a "Yet to visit" button
+/// that marks it visited; a visited stop opened is tinted teal with its
+/// button teal "Visited". Visited stops shrink to a teal-tinted card with a
+/// "Visited" chip, ones passed over to a white card with "Not visited", and
+/// stops still to come wait as closed cards; a tap on a card opens or
+/// closes it.
 class CityTourStopCard extends StatelessWidget {
   final CityTourStep step;
 
@@ -518,12 +532,12 @@ class CityTourStopCard extends StatelessWidget {
   /// "START HERE" or "LAST STOP", on a day nobody is following.
   final String? caption;
 
-  /// The last step marked done or skipped, so its Undo shows.
-  final bool canUndo;
   final VoidCallback? onTick;
   final VoidCallback? onToggle;
-  final VoidCallback? onUndo;
-  final VoidCallback? onSkip;
+
+  /// The "Yet to visit" / "Visited" / "Not visited" button: marks the stop
+  /// in hand visited, or sets the last one marked back.
+  final VoidCallback? onVisited;
   final void Function(CityTourLink link) onLinkTap;
 
   const CityTourStopCard({
@@ -534,11 +548,9 @@ class CityTourStopCard extends StatelessWidget {
     required this.open,
     required this.onLinkTap,
     this.caption,
-    this.canUndo = false,
     this.onTick,
     this.onToggle,
-    this.onUndo,
-    this.onSkip,
+    this.onVisited,
   });
 
   bool get _finished => state == CityTourStepState.done || state == CityTourStepState.skipped;
@@ -552,82 +564,97 @@ class CityTourStopCard extends StatelessWidget {
 
   String _doneText(BuildContext context) {
     final at = time?.doneAt;
-    if (state == CityTourStepState.skipped) return 'Skipped';
-    return at == null ? 'Done' : 'Done ${cityTourClock(context, at)}';
+    if (state == CityTourStepState.skipped) return 'Not visited';
+    return at == null ? 'Visited' : 'Visited · ${cityTourClock(context, at)}';
   }
 
+  /// A finished stop, shrunk: like a closed card, with its status chip.
   Widget _doneCard(BuildContext context) {
-    final skipped = state == CityTourStepState.skipped;
-    return GestureDetector(
-      onTap: onToggle,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        padding: const EdgeInsets.all(11),
-        decoration: BoxDecoration(
-          color: skipped ? AppColors.surface : null,
-          gradient: skipped
-              ? null
-              : const LinearGradient(colors: [Color(0xFFF0F8F8), Color(0xFFE6F4F4)]),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: skipped ? AppColors.border : _doneLine),
-        ),
-        child: Row(
-          children: [
-            CityTourTick(step: step, state: state, size: 34, onTap: onTick),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    step.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 15.5,
-                      fontWeight: FontWeight.w800,
-                      color: _slate,
-                      decoration: TextDecoration.lineThrough,
-                      decorationColor: Color(0xFF94A3B8),
-                    ),
-                  ),
-                  const SizedBox(height: 1),
-                  Text(
-                    _doneText(context),
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: skipped ? AppColors.textTertiary : _done,
-                    ),
-                  ),
+    final visited = state == CityTourStepState.done;
+    return _compactCard(
+      decoration: BoxDecoration(
+        color: visited ? null : Colors.white,
+        gradient: visited ? const LinearGradient(colors: [Color(0xFFF0F8F8), Color(0xFFE6F4F4)]) : null,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: visited ? _doneLine : _line),
+      ),
+      mark: visited
+          ? Container(
+              width: 22,
+              height: 22,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [AppColors.brandGreen, AppColors.brandGreenDark],
+                ),
+                border: Border.all(color: Colors.white, width: 1.5),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 6, offset: const Offset(0, 2)),
                 ],
               ),
-            ),
-            if (canUndo) ...[
-              const SizedBox(width: 8),
-              _UndoButton(onTap: onUndo),
-            ],
-          ],
-        ),
-      ),
+              child: const Icon(Icons.check_rounded, size: 13, color: Colors.white),
+            )
+          : null,
+      subtitle: visited
+          ? Text(
+              _doneText(context),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: _done),
+            )
+          : null,
+      trailing: _StatusChip(visited: visited, onTap: onVisited),
     );
   }
 
   Widget _closedCard(BuildContext context) {
     final span = cityTourStepSpan(context, step, time);
+    return _compactCard(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: _line),
+        boxShadow: [
+          BoxShadow(color: _navy.withValues(alpha: 0.06), blurRadius: 18, offset: const Offset(0, 6)),
+        ],
+      ),
+      subtitle: span == null
+          ? null
+          : Row(
+              children: [
+                const Icon(Icons.schedule_rounded, size: 12, color: AppColors.textTertiary),
+                const SizedBox(width: 4),
+                Flexible(
+                  child: Text(
+                    span,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 12, color: _slate),
+                  ),
+                ),
+              ],
+            ),
+      trailing: const _RoundIcon(icon: Icons.keyboard_arrow_down_rounded),
+    );
+  }
+
+  /// A shut card: the photo with the stop's number (or [mark]) on it, the
+  /// name, an optional line under it, and [trailing] at the right.
+  Widget _compactCard({
+    required BoxDecoration decoration,
+    required Widget trailing,
+    Widget? mark,
+    Widget? subtitle,
+  }) {
     return GestureDetector(
       onTap: onToggle,
       behavior: HitTestBehavior.opaque,
       child: Container(
         padding: const EdgeInsets.all(9),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: _line),
-          boxShadow: [
-            BoxShadow(color: _navy.withValues(alpha: 0.06), blurRadius: 18, offset: const Offset(0, 6)),
-          ],
-        ),
+        decoration: decoration,
         child: Row(
           children: [
             SizedBox(
@@ -662,26 +689,27 @@ class CityTourStopCard extends StatelessWidget {
                     top: 5,
                     child: GestureDetector(
                       onTap: onTick,
-                      child: Container(
-                        width: 22,
-                        height: 22,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.2),
-                              blurRadius: 6,
-                              offset: const Offset(0, 2),
+                      child: mark ??
+                          Container(
+                            width: 22,
+                            height: 22,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.2),
+                                  blurRadius: 6,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
-                        child: Text(
-                          '${step.number}',
-                          style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w900, color: _navy),
-                        ),
-                      ),
+                            child: Text(
+                              '${step.number}',
+                              style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w900, color: _navy),
+                            ),
+                          ),
                     ),
                   ),
                 ],
@@ -698,28 +726,15 @@ class CityTourStopCard extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: _navy),
                   ),
-                  if (span != null) ...[
+                  if (subtitle != null) ...[
                     const SizedBox(height: 2),
-                    Row(
-                      children: [
-                        const Icon(Icons.schedule_rounded, size: 12, color: AppColors.textTertiary),
-                        const SizedBox(width: 4),
-                        Flexible(
-                          child: Text(
-                            span,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 12, color: _slate),
-                          ),
-                        ),
-                      ],
-                    ),
+                    subtitle,
                   ],
                 ],
               ),
             ),
             const SizedBox(width: 8),
-            const _RoundIcon(icon: Icons.keyboard_arrow_down_rounded),
+            trailing,
           ],
         ),
       ),
@@ -728,14 +743,24 @@ class CityTourStopCard extends StatelessWidget {
 
   Widget _openCard(BuildContext context) {
     final current = state == CityTourStepState.current;
+    final visited = state == CityTourStepState.done;
     final hasPhoto = step.photoUrl.isNotEmpty;
     final body = _body(context);
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: visited ? null : Colors.white,
+        gradient: visited
+            ? const LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color(0xFFF0F8F8), Color(0xFFE6F4F4)],
+              )
+            : null,
         borderRadius: BorderRadius.circular(26),
         border: Border.all(
-          color: current ? AppColors.brandGreen.withValues(alpha: 0.5) : _line,
+          color: current
+              ? AppColors.brandGreen.withValues(alpha: 0.5)
+              : (visited ? _doneLine : _line),
           width: current ? 1.5 : 1,
         ),
         boxShadow: [
@@ -771,7 +796,7 @@ class CityTourStopCard extends StatelessWidget {
     );
   }
 
-  /// The pill at the photo's top left: NOW, Done, Skipped, or the caption.
+  /// The pill at the photo's top left: NOW, Visited, Not visited, or the caption.
   Widget? _badge(BuildContext context) {
     switch (state) {
       case CityTourStepState.current:
@@ -997,8 +1022,12 @@ class CityTourStopCard extends StatelessWidget {
       if (step.accessNote.isNotEmpty) _NoteBox(text: step.accessNote),
       if (step.bodyMd.isNotEmpty) ExperienceDescription(markdown: step.bodyMd),
       if (step.links.isNotEmpty) _Links(links: step.links, onLinkTap: onLinkTap),
-      if (current && onSkip != null) _SkipButton(onTap: onSkip),
-      if (_finished && canUndo) Align(alignment: Alignment.centerLeft, child: _UndoButton(onTap: onUndo)),
+      if (onVisited != null && (current || _finished))
+        _VisitedButton(
+          visited: state == CityTourStepState.done,
+          label: state == CityTourStepState.skipped ? 'Not visited' : null,
+          onTap: onVisited,
+        ),
     ];
     return [
       for (var i = 0; i < parts.length; i++) ...[
@@ -1009,10 +1038,12 @@ class CityTourStopCard extends StatelessWidget {
   }
 }
 
-/// The way from one stop to the next, or a break, as a pill on a dashed line:
-/// "Metro · 15 min (est) · Travel to Hôtel des Invalides". A tap opens its
-/// directions, notes and partner buttons below it. On a trip the leg in hand
-/// is edged in teal with its circle to tick, and a finished one shows a tick.
+/// The way from one stop to the next, or a break, as a dark navy pill on a
+/// dashed line, like the stop numbers, so it stands apart from the white stop
+/// cards: "Metro · 15 min (est) · Travel to Hôtel des Invalides". A tap opens
+/// its directions, notes and partner buttons below it. On a trip the leg in
+/// hand is edged in teal with its circle to tick, a finished one shows a
+/// teal tick and a skipped one says "Skipped", both still full colour.
 class CityTourLegPill extends StatelessWidget {
   final CityTourStep step;
   final CityTourStepTime? time;
@@ -1050,7 +1081,6 @@ class CityTourLegPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final current = state == CityTourStepState.current;
-    final finished = state == CityTourStepState.done || state == CityTourStepState.skipped;
     final title = step.isBreak
         ? (step.breakTitle.isEmpty ? 'Break' : step.breakTitle)
         : (step.modeLabel.isEmpty ? 'Walk' : step.modeLabel);
@@ -1062,28 +1092,30 @@ class CityTourLegPill extends StatelessWidget {
     final pill = Container(
       padding: const EdgeInsets.fromLTRB(4, 4, 12, 4),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: _navy,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: current ? AppColors.brandGreen : _line, width: current ? 1.5 : 1),
+        border: current ? Border.all(color: AppColors.brandGreen, width: 2) : null,
         boxShadow: [
-          BoxShadow(color: _navy.withValues(alpha: 0.05), blurRadius: 8, offset: const Offset(0, 2)),
+          current
+              ? BoxShadow(color: AppColors.brandGreen.withValues(alpha: 0.35), blurRadius: 12, offset: const Offset(0, 3))
+              : BoxShadow(color: _navy.withValues(alpha: 0.22), blurRadius: 10, offset: const Offset(0, 3)),
         ],
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          CityTourTick(step: step, state: state, size: 24, onTap: onTick),
+          CityTourTick(step: step, state: state, size: 24, onDark: true, onTap: onTick),
           const SizedBox(width: 7),
           Flexible(
             child: Text.rich(
               TextSpan(
                 text: title,
-                style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF334155)),
+                style: const TextStyle(fontWeight: FontWeight.w800, color: Colors.white),
                 children: [
                   if (extras.isNotEmpty)
                     TextSpan(
                       text: ' · ${extras.join(' · ')}',
-                      style: const TextStyle(fontWeight: FontWeight.w600, color: _slate),
+                      style: TextStyle(fontWeight: FontWeight.w600, color: Colors.white.withValues(alpha: 0.72)),
                     ),
                 ],
               ),
@@ -1092,12 +1124,17 @@ class CityTourLegPill extends StatelessWidget {
               style: const TextStyle(fontSize: 12),
             ),
           ),
+          if (state == CityTourStepState.skipped)
+            Text(
+              ' · Skipped',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Colors.white.withValues(alpha: 0.55)),
+            ),
           if (_hasMore) ...[
             const SizedBox(width: 4),
             Icon(
               open ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
               size: 12,
-              color: const Color(0xFF94A3B8),
+              color: Colors.white.withValues(alpha: 0.6),
             ),
           ],
         ],
@@ -1115,7 +1152,7 @@ class CityTourLegPill extends StatelessWidget {
           child: GestureDetector(
             onTap: _hasMore ? onToggle : null,
             behavior: HitTestBehavior.opaque,
-            child: Opacity(opacity: finished ? 0.6 : 1, child: pill),
+            child: pill,
           ),
         ),
         if (now != null)
@@ -1388,7 +1425,7 @@ class _SkipButton extends StatelessWidget {
   final VoidCallback? onTap;
   final String label;
 
-  const _SkipButton({required this.onTap, this.label = 'Skip this stop'});
+  const _SkipButton({required this.onTap, this.label = 'Skip this'});
 
   @override
   Widget build(BuildContext context) {
@@ -1409,6 +1446,112 @@ class _SkipButton extends StatelessWidget {
             Text(
               label,
               style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF475569)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A stop's visit toggle: "Yet to visit" in white with an empty circle, or
+/// "Visited" filled in the theme teal with a tick.
+class _VisitedButton extends StatelessWidget {
+  final bool visited;
+
+  /// In place of "Yet to visit": "Not visited", for a stop passed over.
+  final String? label;
+  final VoidCallback? onTap;
+
+  const _VisitedButton({required this.visited, required this.onTap, this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    final fg = visited ? Colors.white : const Color(0xFF475569);
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOut,
+        padding: const EdgeInsets.fromLTRB(12, 9, 16, 9),
+        decoration: BoxDecoration(
+          color: visited ? null : Colors.white,
+          gradient: visited
+              ? const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [AppColors.brandGreen, AppColors.brandGreenDark],
+                )
+              : null,
+          borderRadius: BorderRadius.circular(14),
+          border: visited ? null : Border.all(color: AppColors.border, width: 1.5),
+          boxShadow: visited
+              ? [
+                  BoxShadow(
+                    color: AppColors.brandGreen.withValues(alpha: 0.3),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ]
+              : null,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              visited ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+              size: 17,
+              color: fg,
+            ),
+            const SizedBox(width: 7),
+            Text(
+              visited ? 'Visited' : (label ?? 'Yet to visit'),
+              style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: fg),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A shut finished stop's status: teal "Visited", or grey "Not visited".
+class _StatusChip extends StatelessWidget {
+  final bool visited;
+  final VoidCallback? onTap;
+
+  const _StatusChip({required this.visited, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final fg = visited ? Colors.white : const Color(0xFF475569);
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(8, 6, 11, 6),
+        decoration: BoxDecoration(
+          color: visited ? null : const Color(0xFFF1F5F9),
+          gradient: visited
+              ? const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [AppColors.brandGreen, AppColors.brandGreenDark],
+                )
+              : null,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              visited ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+              size: 14,
+              color: fg,
+            ),
+            const SizedBox(width: 5),
+            Text(
+              visited ? 'Visited' : 'Not visited',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: fg),
             ),
           ],
         ),

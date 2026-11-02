@@ -244,8 +244,10 @@ class _CityTourPageState extends State<CityTourPage> {
     return trip.dayId == day.id || (trip.dayId.isEmpty && day.id == tour.days.first.id);
   }
 
-  /// Marks the step in hand done, or skips it with [skip].
-  Future<void> _markDone(CityTourStep step, DateTime at, {bool skip = false}) async {
+  /// Marks the step in hand done, or skips it with [skip]. With [visited]
+  /// (its "Yet to visit" button) the stop stays open, now teal, rather than
+  /// shrinking while the page scrolls on to the next step.
+  Future<void> _markDone(CityTourStep step, DateTime at, {bool skip = false, bool visited = false}) async {
     if (_tripBusy) return;
     setState(() => _tripBusy = true);
     try {
@@ -254,12 +256,15 @@ class _CityTourPageState extends State<CityTourPage> {
       setState(() {
         _trip = trip;
         _flipped.clear();
+        if (visited) _flipped.add(step.id);
       });
-      _revealCurrent(trip);
+      if (!visited) _revealCurrent(trip);
       _say(
         trip.isFinished
             ? 'Trip finished. Well done!'
-            : (skip ? 'Skipped. Times updated.' : 'Marked done. Times updated.'),
+            : (skip
+                ? 'Skipped. Times updated.'
+                : (visited ? 'Visited. Times updated.' : 'Marked done. Times updated.')),
         action: SnackBarAction(label: 'Undo', onPressed: _undo),
       );
     } catch (e) {
@@ -267,7 +272,10 @@ class _CityTourPageState extends State<CityTourPage> {
       if (mounted) {
         _say(
           userMessageFor(e, action: skip ? 'skip this' : 'mark this done'),
-          action: SnackBarAction(label: 'Try again', onPressed: () => _markDone(step, at, skip: skip)),
+          action: SnackBarAction(
+            label: 'Try again',
+            onPressed: () => _markDone(step, at, skip: skip, visited: visited),
+          ),
         );
       }
     } finally {
@@ -296,6 +304,23 @@ class _CityTourPageState extends State<CityTourPage> {
         curve: Curves.easeInOutCubic,
       );
     });
+  }
+
+  /// The stop card's "Yet to visit" / "Visited" button: the stop in hand
+  /// becomes visited; the last stop marked goes back to yet to visit.
+  Future<void> _toggleVisited(CityTourStep step, CityTourSchedule? schedule, String? lastMarkedId) async {
+    if (_tripBusy || schedule == null) return;
+    final time = schedule.times[step.id];
+    if (time == null) return;
+    if (time.isCurrent) {
+      await _markDone(step, DateTime.now(), visited: true);
+    } else if (time.isDone) {
+      if (step.id == lastMarkedId) {
+        await _undo();
+      } else {
+        _say('Only the last stop you marked can go back to yet to visit.');
+      }
+    }
   }
 
   Future<void> _undo() async {
@@ -364,7 +389,9 @@ class _CityTourPageState extends State<CityTourPage> {
       return;
     }
     final current = schedule.current;
-    if (current != null) _say('Finish or skip “${_stepTitle(day, current)}” first.');
+    if (current != null) {
+      _say('${current.isStop ? 'Finish' : 'Finish or skip'} “${_stepTitle(day, current)}” first.');
+    }
   }
 
   Future<void> _endTrip() async {
@@ -826,11 +853,9 @@ class _CityTourPageState extends State<CityTourPage> {
                     : i == 0
                         ? 'START HERE'
                         : (step.id == lastStopId ? 'LAST STOP' : null),
-                canUndo: step.id == lastMarked,
                 onTick: tick,
                 onToggle: schedule == null ? null : () => _flip(step.id),
-                onUndo: _undo,
-                onSkip: () => _markDone(step, DateTime.now(), skip: true),
+                onVisited: schedule == null ? null : () => _toggleVisited(step, schedule, lastMarked),
                 onLinkTap: _openLink,
               )
             : CityTourLegPill(
