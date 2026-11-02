@@ -1,18 +1,38 @@
 import { useState, useEffect, startTransition } from 'react';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import './index.css';
-import { apiPost } from './api';
+import { apiGet, apiPost } from './api';
 import { NAV_ITEMS, NAV_REDIRECTS, LOGIN_PATH, canSee, homePathFor } from './nav';
-import { sessionRole } from './session';
+import { sessionRole, tokenExpired } from './session';
 import Login from './pages/Login';
 import AdminLayout from './components/layout/AdminLayout';
 import NetworkStatusBar from './components/NetworkStatusBar';
+import { PageLoading } from './components/Kit';
+
+const EXPIRED = 'Session expired. Please sign in again.';
+
+// The token saved on this device when the page opened. One whose expiry time
+// has already passed never opens the panel: it goes straight to sign-in.
+function savedSignIn() {
+  const saved = localStorage.getItem('admin_token');
+  const expired = Boolean(saved) && tokenExpired(saved);
+  return { token: expired ? null : saved, error: expired ? EXPIRED : '' };
+}
 
 function App() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [token, setToken] = useState(localStorage.getItem('admin_token'));
-  const [error, setError] = useState('');
+  const [start] = useState(savedSignIn);
+  const [token, setToken] = useState(start.token);
+  const [error, setError] = useState(start.error);
+  // A token that hasn't run out can still be dead (signed out from Devices &
+  // Sessions, a creator's login switched off), so the server confirms it
+  // before any page shows. A token fresh from the sign-in form needs no check.
+  const [checking, setChecking] = useState(start.token !== null);
+
+  useEffect(() => {
+    if (start.error) localStorage.removeItem('admin_token');
+  }, [start]);
 
   // Signed out, every URL redirects to /login and remembers the page in
   // state.from, so signing in (e.g. after an expired session) returns to it.
@@ -26,6 +46,22 @@ function App() {
     window.addEventListener('auth:unauthorized', handleUnauthorized);
     return () => window.removeEventListener('auth:unauthorized', handleUnauthorized);
   }, []);
+
+  // A 401 signs out through auth:unauthorized above (registered first). Any
+  // other failure (offline, server error) opens the panel: its pages show
+  // their own errors.
+  useEffect(() => {
+    if (!checking) return undefined;
+    let current = true;
+    apiGet('/admin/session')
+      .catch(() => {})
+      .finally(() => {
+        if (current) setChecking(false);
+      });
+    return () => {
+      current = false;
+    };
+  }, [checking]);
 
   // No navigate() here: the signed-in /login route below does the redirect.
   const handleLogin = (newToken) => {
@@ -57,6 +93,17 @@ function App() {
             element={<Navigate to={LOGIN_PATH} replace state={{ from: location.pathname + location.search }} />}
           />
         </Routes>
+      </>
+    );
+  }
+
+  if (checking) {
+    return (
+      <>
+        <NetworkStatusBar />
+        <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center' }}>
+          <PageLoading />
+        </div>
       </>
     );
   }

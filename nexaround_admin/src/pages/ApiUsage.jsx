@@ -666,7 +666,7 @@ export default function ApiUsage() {
       </Card>
 
       {/* ── Funnel + SKU cost ────────────────────────────────────── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '20px', marginTop: '20px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(360px, 100%), 1fr))', gap: '20px', marginTop: '20px' }}>
         <Card title="Where requests were served from">
           <div style={{ display: 'grid', gap: '16px' }}>
             {funnel.length === 0 && <EmptyState>No data in this window.</EmptyState>}
@@ -848,7 +848,7 @@ export default function ApiUsage() {
       </Card>
 
       {/* ── Top consumers + provider health ──────────────────────── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '20px', marginTop: '20px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(360px, 100%), 1fr))', gap: '20px', marginTop: '20px' }}>
         <Card title="Top consumers">
           <div className="table-wrap">
             <table>

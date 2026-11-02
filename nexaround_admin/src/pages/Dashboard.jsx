@@ -260,7 +260,7 @@ function ApiUsageCard({ usage }) {
           {providers.length === 0 ? (
             <EmptyState>No third-party API requests in the last {USAGE_DAYS} days.</EmptyState>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '16px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(240px, 100%), 1fr))', gap: '16px' }}>
               {providers.map((p) => (
                 <ProviderTile key={p.provider} provider={p} days={data.days} onOpen={() => setSelected(p)} />
               ))}
@@ -330,12 +330,12 @@ function ExplorerBars({ months }) {
   return (
     <figure style={{ margin: 0 }}>
       <figcaption className="bento-sub" style={{ fontWeight: 600, marginBottom: '8px' }}>New explorers per month</figcaption>
-      <div style={{ display: 'flex', alignItems: 'flex-end', gap: '14px', height: '140px' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 'clamp(4px, 2vw, 14px)', height: '140px' }}>
         {months.map((m, i) => (
           <div
             key={m.month}
             title={`${monthLabel(m.month)}${i === current ? ' so far' : ''}: ${plural(m.signups, 'signup', 'signups')}`}
-            style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', gap: '6px', height: '100%' }}
+            style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', gap: '6px', height: '100%' }}
           >
             {(i === peak || i === current) && <span style={{ fontSize: '12px', fontWeight: 700 }}>{m.signups.toLocaleString()}</span>}
             <div style={{

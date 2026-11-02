@@ -2150,30 +2150,6 @@ a.btn { text-decoration: none; }
   .form-grid-3 { grid-template-columns: 1fr 1fr; }
 }
 
-/* Mobile & tablet responsive sidebar */
-@media (max-width: 900px) {
-  .admin-layout { flex-direction: column; }
-
-  .sidebar {
-    position: relative;
-    width: 100%;
-    height: auto;
-    flex-direction: row;
-    flex-wrap: wrap;
-    align-items: center;
-  }
-
-  .sidebar-logo { padding: 12px 16px; flex: 1; min-width: 0; }
-  .sidebar-logo .brand-sub { display: none; }
-  .sidebar-nav { order: 3; flex: 0 0 100%; flex-direction: row; overflow-x: auto; padding: 0 12px 12px; gap: 4px; }
-  .nav-section-label { display: none; }
-  .nav-item { width: auto; white-space: nowrap; padding: 8px 12px; }
-  .sidebar-footer { margin: 0 12px 0 0; padding: 0; background: none; }
-  .admin-user { display: none; }
-
-  .main-content { margin-left: 0; }
-}
-
 /* ===== GENERAL ERROR ALERT ===== */
 .login-error {
   display: flex;
@@ -4148,3 +4124,189 @@ a.btn { text-decoration: none; }
 }
 .ctp-leg-when { display: flex; align-items: center; gap: 5px; font-size: 12.5px; color: #64748b; }
 .ctp-leg-dir { font-size: 14px; line-height: 1.45; font-weight: 600; color: #0f172a; }
+
+/* ===================================================================== */
+/* ===== SMALL SCREENS                                               ===== */
+/* Kept last so these win over the desktop rules above. Nothing here     */
+/* applies wider than 900px, so the desktop panel is unchanged.          */
+/* ===================================================================== */
+
+/* The menu button, its scrim and the close button exist on small screens only. */
+.mobile-nav-toggle, .sidebar-scrim, .sidebar-close { display: none; }
+
+/* Phones and portrait tablets: the sidebar becomes a slide-out menu. Keep the
+   width in step with PHONE_NAV in Sidebar.jsx. */
+@media (max-width: 900px) {
+  .sidebar {
+    width: min(300px, 86vw);
+    height: 100vh;
+    height: 100dvh;
+    z-index: 1001;
+    transform: translateX(-100%);
+    visibility: hidden;
+    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), visibility 0s linear 0.25s;
+  }
+  .sidebar.open {
+    transform: none;
+    visibility: visible;
+    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: 12px 0 40px rgba(0, 0, 0, 0.25);
+  }
+  .sidebar-scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: rgba(18, 18, 18, 0.45);
+    animation: modalFadeIn 0.2s ease-out;
+  }
+  .sidebar-logo { padding: 14px 14px 12px 20px; }
+  .sidebar-close {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: auto;
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+    border: none;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.85);
+    cursor: pointer;
+  }
+  .nav-item { padding: 12px; }
+
+  /* Sits in the page header's left corner; the header is sticky at the top. */
+  .mobile-nav-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: fixed;
+    top: 8px;
+    left: 10px;
+    z-index: 60;
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    color: var(--text-primary);
+    cursor: pointer;
+  }
+  .mobile-nav-dot {
+    position: absolute;
+    top: 7px;
+    right: 7px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #ffb300;
+    box-shadow: 0 0 0 2px var(--bg-card);
+  }
+
+  .main-content { margin-left: 0; min-width: 0; }
+  .page-header { height: 56px; padding: 0 16px 0 62px; }
+  .page-header > div { min-width: 0; }
+  .page-title { font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .page-body { padding: 20px; min-width: 0; }
+
+  /* Under 16px, iOS zooms the page in on every field the user taps. */
+  .form-input, .form-textarea, .form-select, .xp-select, .search-bar input,
+  input[type='text'], input[type='search'], input[type='email'], input[type='url'],
+  input[type='number'], input[type='password'], input[type='tel'], input[type='date'],
+  input[type='time'], input[type='datetime-local'], select, textarea { font-size: 16px; }
+
+  /* Tab rows scroll sideways instead of running off the screen. */
+  .seg, .xp-tabs {
+    max-width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .seg::-webkit-scrollbar, .xp-tabs::-webkit-scrollbar { display: none; }
+  .seg-btn, .xp-tab { flex-shrink: 0; }
+
+  .xp-toast { max-width: calc(100vw - 32px); text-align: center; }
+  .enquiry-popups { right: 12px; bottom: 12px; width: calc(100vw - 24px); }
+
+  /* The City Tours tables clip their rounded corners; let them scroll too. */
+  .ctt-card { overflow-x: auto; overflow-y: hidden; }
+}
+
+/* Touch screens have no hover, so row actions show at full strength. */
+@media (hover: none) {
+  .list-item-actions { opacity: 1; }
+}
+
+/* Phones. */
+@media (max-width: 640px) {
+  .page-body { padding: 16px 14px 32px; }
+
+  .card { padding: 16px; margin-bottom: 16px; }
+  .card-header { flex-wrap: wrap; gap: 10px; }
+  .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-bottom: 20px; }
+  .stat-card { padding: 16px; border-radius: 16px; }
+  .two-col, .three-col, .form-grid-2, .form-grid-3, .dl-grid { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+
+  .xp-toolbar, .xp-toolbar-right { width: 100%; }
+  .xp-toolbar .search-bar { width: 100%; flex: 1 1 100%; }
+
+  .modal-overlay { padding: 12px; }
+  .modal-content { width: 100%; padding: 18px 16px; max-height: calc(100vh - 24px); max-height: calc(100dvh - 24px); }
+
+  .drawer-head { padding: 16px; }
+  .drawer-body { padding: 16px 16px 28px; }
+  .drawer-foot { padding: 12px 16px; flex-wrap: wrap; }
+
+  .xp-detail-head { padding: 16px 16px 0; }
+  .xp-body { padding: 16px 16px 24px; }
+  .xp-savebar { padding: 12px 16px; flex-wrap: wrap; }
+
+  /* List rows (explorers, review queue): actions drop under the text. */
+  .modern-list-item { flex-wrap: wrap; gap: 10px 12px; padding: 12px 14px; }
+  .list-item-main { flex: 1 1 220px; min-width: 0; }
+  .list-item-content { min-width: 0; }
+  .list-item-meta { flex-wrap: wrap; row-gap: 4px; }
+  .list-item-meta > span { overflow-wrap: anywhere; }
+  .list-item-actions { margin-left: auto; }
+
+  /* The explorers filter pop-up opens from a button at the left edge. */
+  .filter-popover-menu { left: 0; right: auto; width: min(320px, calc(100vw - 32px)); }
+
+  /* City Tours guide rows: the badges and dates go under the title. */
+  .ctg-row {
+    display: grid;
+    grid-template-columns: 72px minmax(0, 1fr);
+    grid-template-areas: "thumb main" "thumb badges" ". side";
+    align-items: start;
+    gap: 6px 12px;
+  }
+  .ctg-thumb { grid-area: thumb; width: 72px; }
+  .ctg-main { grid-area: main; }
+  .ctg-badges { grid-area: badges; justify-content: flex-start; }
+  .ctg-badges:empty { display: none; }
+  .ctg-side {
+    grid-area: side; flex-direction: row; flex-wrap: wrap; align-items: baseline;
+    gap: 2px 10px; min-width: 0; white-space: normal;
+  }
+
+  /* Audit trail: each event is a small card instead of a squeezed row. */
+  .aud-table, .aud-table tbody { display: block; }
+  .aud-table thead { display: none; }
+  .aud-table tr.aud-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "person time" "event event" "device status";
+    gap: 8px 12px;
+    padding: 14px 2px;
+  }
+  .aud-table tr.aud-row td { padding: 0; }
+  .aud-table tr.aud-row td:nth-child(1) { grid-area: time; text-align: right; }
+  .aud-table tr.aud-row td:nth-child(2) { grid-area: person; }
+  .aud-table tr.aud-row td:nth-child(3) { grid-area: event; }
+  .aud-table tr.aud-row td:nth-child(4) { grid-area: device; font-size: 12.5px; }
+  .aud-table tr.aud-row td:nth-child(5) { grid-area: status; align-self: end; }
+  .aud-table tr.aud-row td:nth-child(6) { display: none; }
+  .aud-table tr.aud-detail-row { display: block; }
+  .aud-table tr.aud-detail-row td { display: block; padding: 4px 2px 16px; }
+}

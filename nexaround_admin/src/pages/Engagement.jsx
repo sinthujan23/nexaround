@@ -200,7 +200,7 @@ export default function Engagement() {
       </div>
 
       {/* Real Broadcast Metrics (Replaced dummy cards) */}
-      <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginBottom: '24px' }}>
+      <div className="stats-grid" style={{ marginBottom: '24px' }}>
         <div className="stat-card">
           <div className="stat-card-header">
             <span className="stat-label">Total Campaigns</span>

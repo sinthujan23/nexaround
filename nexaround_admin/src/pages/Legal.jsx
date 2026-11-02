@@ -72,7 +72,7 @@ export default function Legal() {
         Have any change of meaning reviewed by your lawyer before publishing it.
       </p>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 20, marginBottom: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(340px, 100%), 1fr))', gap: 20, marginBottom: 20 }}>
         {(docs.data || []).map((doc) => (
           <DocumentCard key={doc.kind} doc={doc} onEdit={() => setEditing(doc)} />
         ))}

@@ -325,6 +325,21 @@ async def admin_logout(request: Request, authorization: str = Header(...)):
     return {"status": "signed_out"}
 
 
+@router.get("/session")
+async def admin_session(request: Request, authorization: str = Header(...)):
+    """Whether this device's sign-in still works, asked by the panel before it
+    shows any page, so a dead session goes straight to the sign-in form.
+
+    Content creators ask too: same panel, their own session rows. Not live → 401.
+    """
+    token = authorization.split(" ")[1] if authorization.startswith("Bearer ") else ""
+    payload = decode_token(token) or {}
+    if await creator_auth.from_token(payload, request) is not None:
+        return {"role": creator_auth.ROLE}
+    await verify_admin_token(request, authorization)
+    return {"role": "admin"}
+
+
 @router.get("/dashboard", response_model=AdminDashboardStats)
 async def get_dashboard_stats(
     db: AsyncSession = Depends(get_db),

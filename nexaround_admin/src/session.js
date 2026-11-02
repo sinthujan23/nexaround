@@ -3,8 +3,7 @@
 // panel shows City Tours only. The server decides what each may do; this only
 // picks what the panel shows, so a hand-edited token gains nothing.
 
-function claims() {
-  const token = localStorage.getItem('admin_token');
+function claims(token = localStorage.getItem('admin_token')) {
   if (!token) return {};
   try {
     const part = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
@@ -19,6 +18,13 @@ function claims() {
 
 export const ADMIN = 'admin';
 export const CREATOR = 'creator';
+
+/** Whether this token's expiry time (`exp`, in seconds) has passed. A token
+ * with no readable expiry counts as not expired: the server decides then. */
+export const tokenExpired = (token) => {
+  const { exp } = claims(token);
+  return typeof exp === 'number' && exp * 1000 <= Date.now();
+};
 
 export const sessionRole = () => (claims().role === CREATOR ? CREATOR : ADMIN);
 
