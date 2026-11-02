@@ -117,6 +117,7 @@ class ExplorerActivity(BaseModel):
     avg_daily_30d: float
     regulars_30d: int    # active on `regular_days` or more of the last 30 days
     regular_days: int
+    min_visit_seconds: int  # a day counts when one visit lasted at least this long
     daily: ActivityView
     weekly: ActivityView
     monthly: ActivityView
@@ -561,6 +562,9 @@ async def get_dashboard_api_usage(
 
 # Active on this many of the last 30 days, about once a week, makes a regular.
 REGULAR_DAYS = 4
+# A day counts as active when one visit lasted at least this long, so brief
+# accidental opens do not.
+ACTIVE_VISIT_SECONDS = 30
 FREQUENT_LIMIT = 10
 
 
@@ -623,9 +627,10 @@ async def get_explorer_activity(
 ):
     """Active explorers per Sri Lanka day, week and month, and who comes back most.
 
-    An explorer is active on a day when the app reported a session for them
-    (user_sessions) or they used a feature that shows up in our API telemetry
-    (api_events). Sessions and time in the app come from user_sessions only.
+    An explorer is active on a day when the app reported a visit of at least
+    ACTIVE_VISIT_SECONDS for them (user_sessions). API requests do not count:
+    they also come from brief accidental opens, and one explorer who said he
+    had not used the app for weeks ranked first on them (November 2026).
     """
     today = datetime.now(DASHBOARD_TZ).date()
     day_starts = [today - timedelta(days=i) for i in range(29, -1, -1)]
@@ -640,28 +645,22 @@ async def get_explorer_activity(
     # 60 days back covers the 30 days before the last 30, for the change figure.
     since_day = min(month_starts[0], today - timedelta(days=59))
 
+    # One row per explorer per day that had a long enough visit. Their shorter
+    # visits that day still count towards sessions and time in the app.
     rows = (await db.execute(text("""
-        WITH activity AS (
-            SELECT user_id, (created_at AT TIME ZONE :tz)::date AS day, created_at AS at,
-                   1 AS sessions, duration_seconds AS seconds
-            FROM user_sessions
-            WHERE created_at >= :since AND user_id IS NOT NULL
-            UNION ALL
-            SELECT user_id, (ts AT TIME ZONE :tz)::date, max(ts), 0, 0
-            FROM api_events
-            WHERE ts >= :since AND user_id IS NOT NULL
-            GROUP BY 1, 2
-        )
-        SELECT u.id AS user_id, a.day, sum(a.sessions) AS sessions, sum(a.seconds) AS seconds,
-               max(a.at) AS last_at, u.display_name, u.email, u.avatar_url,
+        SELECT u.id AS user_id, (s.created_at AT TIME ZONE :tz)::date AS day,
+               count(*) AS sessions, sum(s.duration_seconds) AS seconds,
+               max(s.created_at) AS last_at, u.display_name, u.email, u.avatar_url,
                (u.created_at AT TIME ZONE :tz)::date AS joined
-        FROM activity a JOIN users u ON u.id = a.user_id
-        WHERE u.id != :official
-        GROUP BY u.id, a.day
+        FROM user_sessions s JOIN users u ON u.id = s.user_id
+        WHERE s.created_at >= :since AND u.id != :official
+        GROUP BY u.id, 2
+        HAVING max(s.duration_seconds) >= :min_visit
     """), {
         "tz": DASHBOARD_TZ_NAME,
         "since": datetime.combine(since_day, time.min, tzinfo=DASHBOARD_TZ),
         "official": OFFICIAL_USER_ID,
+        "min_visit": ACTIVE_VISIT_SECONDS,
     })).mappings().all()
 
     people: dict = {}  # user_id -> profile and latest activity
@@ -695,6 +694,7 @@ async def get_explorer_activity(
         avg_daily_30d=round(sum(len(days.get(d, {})) for d in day_starts) / len(day_starts), 1),
         regulars_30d=sum(1 for n in days_active_30d.values() if n >= REGULAR_DAYS),
         regular_days=REGULAR_DAYS,
+        min_visit_seconds=ACTIVE_VISIT_SECONDS,
         daily=_activity_view(day_starts, lambda d: d, days, people),
         weekly=_activity_view(week_starts, lambda d: d - timedelta(days=d.weekday()), days, people),
         monthly=_activity_view(month_starts, lambda d: d.replace(day=1), days, people),

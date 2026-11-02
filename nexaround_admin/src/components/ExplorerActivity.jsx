@@ -238,7 +238,8 @@ function FrequentList({ view, top, periods, range }) {
 
 /**
  * Daily, weekly and monthly active explorers for the Users page. An explorer
- * counts as active when they opened the app or used a feature that day.
+ * counts as active on a day when one of their visits lasted at least
+ * `min_visit_seconds` (30 s), so brief accidental opens do not count.
  */
 export default function ExplorerActivity() {
   const { data, loading, error, refetch } = useApi('/admin/users/activity');
@@ -318,7 +319,7 @@ export default function ExplorerActivity() {
             <TrendingUpIcon size={18} style={{ color: 'var(--accent)' }} />
             Explorer activity
           </h2>
-          <p>Explorers who opened the app or used a feature · Sri Lanka time</p>
+          <p>Explorers who spent {data?.min_visit_seconds ?? 30}+ seconds in the app in one visit · Sri Lanka time</p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           {updatedAt && <Badge tone="ghost">Updated {updatedAt}</Badge>}

@@ -775,9 +775,8 @@ class _CityTourPageState extends State<CityTourPage> {
             tripDayId: schedule == null ? null : day.id,
             stopsDone: stopsDone,
             stopsTotal: stops.length,
-            pace: pace,
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 18),
           _heading(
             'DAY $number · STOPS',
             note: schedule == null ? null : '$stopsDone of ${stops.length} done',

@@ -2027,19 +2027,18 @@ class _RingPainter extends CustomPainter {
       old.share != share || old.track != track || old.arc != arc || old.stroke != stroke;
 }
 
-/// The traveller's days as cards to swipe: the one on screen in a dark to
-/// teal gradient. The day a trip is on shows a ring of its stops done and
-/// the trip's pace; any other a calendar mark and its times.
+/// The traveller's days as small pills: "Day 1", "Day 2"… The one on screen
+/// is filled in a dark to teal gradient, and the day a trip is on carries a
+/// ring of its stops done. They scroll sideways when there are many.
 class CityTourDayCards extends StatelessWidget {
   final List<CityTourDay> days;
   final String selectedId;
   final ValueChanged<String> onSelect;
 
-  /// The day a trip is on, with its stops done, of how many, and its pace.
+  /// The day a trip is on, with its stops done and of how many.
   final String? tripDayId;
   final int stopsDone;
   final int stopsTotal;
-  final String pace;
 
   const CityTourDayCards({
     super.key,
@@ -2049,42 +2048,32 @@ class CityTourDayCards extends StatelessWidget {
     this.tripDayId,
     this.stopsDone = 0,
     this.stopsTotal = 0,
-    this.pace = '',
   });
 
   @override
   Widget build(BuildContext context) {
-    // The cards take the height their text needs at the phone's text size
-    // (at least 96), all the same height; there are only a few days.
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       clipBehavior: Clip.none,
-      child: IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            for (var i = 0; i < days.length; i++) ...[
-              if (i > 0) const SizedBox(width: 10),
-              _card(context, days[i], i + 1),
-            ],
+      child: Row(
+        children: [
+          for (var i = 0; i < days.length; i++) ...[
+            if (i > 0) const SizedBox(width: 8),
+            _pill(days[i], i + 1),
           ],
-        ),
+        ],
       ),
     );
   }
 
-  Widget _card(BuildContext context, CityTourDay day, int number) {
+  Widget _pill(CityTourDay day, int number) {
     final on = day.id == selectedId;
     final onTrip = day.id == tripDayId;
-    final line = onTrip
-        ? [ '$stopsDone of $stopsTotal done', if (pace.isNotEmpty) pace ].join(' · ')
-        : cityTourDayLine(context, day);
     return GestureDetector(
       onTap: () => onSelect(day.id),
       child: Container(
-        width: 268,
-        constraints: const BoxConstraints(minHeight: 96),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        constraints: const BoxConstraints(minHeight: 44),
+        padding: EdgeInsets.fromLTRB(onTrip ? 6 : 18, 6, 18, 6),
         decoration: BoxDecoration(
           color: on ? null : Colors.white,
           gradient: on
@@ -2100,70 +2089,26 @@ class CityTourDayCards extends StatelessWidget {
           boxShadow: on
               ? [
                   BoxShadow(
-                    color: AppColors.brandGreen.withValues(alpha: 0.28),
-                    blurRadius: 26,
-                    offset: const Offset(0, 12),
+                    color: AppColors.brandGreen.withValues(alpha: 0.25),
+                    blurRadius: 14,
+                    offset: const Offset(0, 6),
                   ),
                 ]
               : null,
         ),
         child: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            if (onTrip)
-              CityTourProgressRing(done: stopsDone, total: stopsTotal, dark: on)
-            else
-              Container(
-                width: 44,
-                height: 44,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: on ? Colors.white.withValues(alpha: 0.12) : const Color(0xFFE6F4F4),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  Icons.calendar_month_rounded,
-                  size: 22,
-                  color: on ? const Color(0xFF5EEAD4) : AppColors.brandGreen,
-                ),
-              ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    'DAY $number',
-                    style: TextStyle(
-                      fontSize: 10.5,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 1.3,
-                      color: on ? const Color(0xFF5EEAD4) : AppColors.brandGreen,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    day.title.isEmpty ? 'Day $number' : day.title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 14.5,
-                      height: 1.25,
-                      fontWeight: FontWeight.w800,
-                      color: on ? Colors.white : _navy,
-                    ),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    line,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 11.5,
-                      color: on ? Colors.white.withValues(alpha: 0.7) : _slate,
-                    ),
-                  ),
-                ],
+            if (onTrip) ...[
+              CityTourProgressRing(done: stopsDone, total: stopsTotal, size: 32, dark: on),
+              const SizedBox(width: 8),
+            ],
+            Text(
+              'Day $number',
+              style: TextStyle(
+                fontSize: 14.5,
+                fontWeight: FontWeight.w800,
+                color: on ? Colors.white : _navy,
               ),
             ),
           ],

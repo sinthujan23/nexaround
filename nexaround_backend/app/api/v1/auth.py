@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from fastapi import APIRouter, Depends, Header, Form
 from fastapi.responses import RedirectResponse
@@ -184,6 +185,17 @@ async def register_fcm_token(
 
 class _SessionPing(BaseModel):
     duration_seconds: int = 0
+    # Sent by builds from November 2026. One id per visit: the app reports a
+    # visit while it is still on screen and again when it ends, and resends a
+    # report that did not get through, all as the same row.
+    visit_id: Optional[uuid.UUID] = None
+    # When the reported time was measured up to. A report resent on a later
+    # open still lands on the day the visit happened.
+    ended_at: Optional[datetime] = None
+
+
+# A resent report older than this is dropped rather than back-dated.
+_SESSION_MAX_AGE = timedelta(days=7)
 
 
 @router.post("/me/session", response_model=MessageResponse)
@@ -192,23 +204,58 @@ async def record_session(
     authorization: str = Header(None),
     db: AsyncSession = Depends(get_db),
 ):
-    """Record a finished foreground session (seconds) — feeds the admin's real
-    DAU and average-session-length metrics. The app posts this when it goes to
-    the background. Auth is best-effort: an expired token still no-ops cleanly
-    instead of erroring, so analytics never breaks the app."""
+    """Record time in the app (seconds) — feeds the admin's explorer activity,
+    DAU and average-session-length metrics.
+
+    No token: kept without a name (a signed-out visit). A token that no longer
+    works gets 401, so the app renews it and resends; until November 2026 such
+    reports were kept without a name, which lost about one visit in six.
+    """
+    from sqlalchemy import func
+    from sqlalchemy.dialects.postgresql import insert
+    from app.core.exceptions import NotFoundException, UnauthorizedException
     from app.models.analytics import UserSession
+
     user_id = None
-    try:
-        token = (authorization or "").replace("Bearer ", "")
-        if token:
+    token = (authorization or "").replace("Bearer ", "").strip()
+    if token:
+        try:
             user = await AuthService(db).get_current_user(token)
-            user_id = user.id
-    except Exception:
-        user_id = None
+        except (UnauthorizedException, NotFoundException):
+            raise UnauthorizedException(detail="Session expired")
+        user_id = user.id
+
     secs = max(0, min(int(data.duration_seconds or 0), 24 * 3600))
-    if secs > 0:
-        db.add(UserSession(user_id=user_id, duration_seconds=secs))
-        await db.commit()
+    if secs <= 0:
+        return MessageResponse(message="ok")
+
+    now = datetime.now(timezone.utc)
+    at = now
+    if data.ended_at is not None:
+        at = data.ended_at if data.ended_at.tzinfo else data.ended_at.replace(tzinfo=timezone.utc)
+        if at < now - _SESSION_MAX_AGE:
+            return MessageResponse(message="ok")
+        at = min(at, now)
+
+    if data.visit_id is None:
+        db.add(UserSession(user_id=user_id, duration_seconds=secs, created_at=at))
+    else:
+        # Later reports of the same visit only ever lengthen it. A row already
+        # under someone else's name is never touched.
+        stmt = insert(UserSession).values(
+            id=data.visit_id, user_id=user_id, duration_seconds=secs, created_at=at,
+        )
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[UserSession.id],
+            set_={
+                "duration_seconds": func.greatest(UserSession.duration_seconds, stmt.excluded.duration_seconds),
+                "created_at": func.greatest(UserSession.created_at, stmt.excluded.created_at),
+                "user_id": func.coalesce(UserSession.user_id, stmt.excluded.user_id),
+            },
+            where=UserSession.user_id.is_(None) | (UserSession.user_id == stmt.excluded.user_id),
+        )
+        await db.execute(stmt)
+    await db.commit()
     return MessageResponse(message="ok")
 
 

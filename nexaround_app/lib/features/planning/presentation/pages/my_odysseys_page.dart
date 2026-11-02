@@ -345,14 +345,6 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
                       ),
                     ],
                   ),
-                  const Text(
-                    '4 Portals Available',
-                    style: TextStyle(
-                      fontSize: 9.5,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF64748B),
-                    ),
-                  ),
                 ],
               ),
             ),

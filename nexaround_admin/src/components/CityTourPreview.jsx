@@ -534,24 +534,18 @@ function GuidePage({ content, partners, activeDayId }) {
               text={`YOUR PLAN · ${planDays.length} DAY${planDays.length === 1 ? '' : 'S'}`}
               link="Change" icon="sliders-horizontal" onClick={() => setPlan(null)}
             />
-            <div className="ctp-daycards">
-              {planDays.map((d, i) => {
-                const on = d.id === shown.id;
-                return (
-                  <div key={d.id} className={`ctp-daycard ${on ? 'on' : ''}`} onClick={() => setTab(d.id)}>
-                    <span className="ctp-daycard-icon">
-                      <Ph name="calendar-dots" weight="duotone" size={22} color={on ? '#5EEAD4' : '#007A7C'} />
-                    </span>
-                    <div>
-                      <div className="ctp-daycard-day">DAY {i + 1}</div>
-                      <div className="ctp-daycard-title">{d.title || `Day ${i + 1}`}</div>
-                      <div className="ctp-daycard-line">{dayLine(d)}</div>
-                    </div>
-                  </div>
-                );
-              })}
+            <div className="ctp-daypills">
+              {planDays.map((d, i) => (
+                <span
+                  key={d.id}
+                  className={`ctp-daypill ${d.id === shown.id ? 'on' : ''}`}
+                  onClick={() => setTab(d.id)}
+                >
+                  Day {i + 1}
+                </span>
+              ))}
             </div>
-            <div style={{ height: 20 }} />
+            <div style={{ height: 18 }} />
             <Heading text={`DAY ${shownNumber} · STOPS`} />
             <div style={{ height: 12 }} />
             <DayRoute day={shown} partners={partners} />
