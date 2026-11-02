@@ -365,8 +365,9 @@ class CityTourMap extends StatelessWidget {
 const _navy = Color(0xFF0F172A);
 const _slate = Color(0xFF64748B);
 const _line = Color(0xFFE5E9EF);
-const _done = Color(0xFF16A34A);
-const _doneLine = Color(0xFFCDEBD8);
+// Finished steps wear the app's own teal, like the start pin on the map.
+const _done = AppColors.brandGreen;
+const _doneLine = Color(0xFFBFE1E2);
 
 /// Where a step stands: no trip on its day ([plain]), finished, skipped, the
 /// step in hand, or still to come.
@@ -422,7 +423,7 @@ class CityTourTick extends StatelessWidget {
           gradient: const LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [Color(0xFF22C55E), Color(0xFF15803D)],
+            colors: [AppColors.brandGreen, AppColors.brandGreenDark],
           ),
           boxShadow: [
             BoxShadow(color: _done.withValues(alpha: 0.35), blurRadius: 10, offset: const Offset(0, 4)),
@@ -566,7 +567,7 @@ class CityTourStopCard extends StatelessWidget {
           color: skipped ? AppColors.surface : null,
           gradient: skipped
               ? null
-              : const LinearGradient(colors: [Color(0xFFF0FBF4), Color(0xFFE8F7EE)]),
+              : const LinearGradient(colors: [Color(0xFFF0F8F8), Color(0xFFE6F4F4)]),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: skipped ? AppColors.border : _doneLine),
         ),
