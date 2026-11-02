@@ -2010,7 +2010,7 @@ class _CityTourPlanPickerState extends State<CityTourPlanPicker> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Day ${i + 1} · ${widget.days[i].title.isEmpty ? 'Places to see' : widget.days[i].title}',
+                              widget.days[i].title.isEmpty ? 'Places to see' : widget.days[i].title,
                               style: const TextStyle(
                                 fontSize: 14,
                                 height: 1.3,

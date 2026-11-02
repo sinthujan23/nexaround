@@ -449,14 +449,14 @@ function Planner({ days, onShow }) {
         <>
           <div className="ctp-planner-or">Pick the sets of places you want</div>
           <div>
-            {days.map((d, i) => (
+            {days.map((d) => (
               <div key={d.id} className="ctp-daypick" onClick={() => toggle(d.id)}>
                 <Icon
                   name={picked.includes(d.id) ? 'check_box' : 'check_box_outline_blank'} size={22}
                   color={picked.includes(d.id) ? '#007A7C' : '#9E9E9E'}
                 />
                 <span>
-                  <strong>Day {i + 1} · {d.title || 'Places to see'}</strong>
+                  <strong>{d.title || 'Places to see'}</strong>
                   <span>{dayLine(d)}</span>
                 </span>
               </div>
