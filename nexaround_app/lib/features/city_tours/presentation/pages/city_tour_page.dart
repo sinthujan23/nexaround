@@ -71,9 +71,8 @@ class CityTourPage extends StatefulWidget {
 }
 
 class _CityTourPageState extends State<CityTourPage> {
-  // The cover's photo, as a share of the screen width; the stats card sits
-  // half on it.
-  static const double _photoFraction = 0.86;
+  // The cover's height, as a share of the screen width.
+  static const double _heroFraction = 0.62;
 
   final _service = CityToursService();
   final ScrollController _scroll = ScrollController();
@@ -118,15 +117,9 @@ class _CityTourPageState extends State<CityTourPage> {
     super.dispose();
   }
 
-  /// The cover's height under the status bar: the photo, and half the
-  /// stats card below it.
-  double _coverHeight(double width, CityTourCard card) =>
-      width * _photoFraction + (CityTourStatsCard.shows(card) ? CityTourStatsCard.heightFor(context) / 2 : 0);
-
   void _onScroll() {
-    final card = _tour?.card ?? widget.card;
     final collapseAt =
-        _coverHeight(MediaQuery.of(context).size.width, card) - kToolbarHeight - 24;
+        MediaQuery.of(context).size.width * _heroFraction - kToolbarHeight - 24;
     final collapsed = _scroll.offset > collapseAt;
     if (collapsed != _collapsed) setState(() => _collapsed = collapsed);
   }
@@ -482,98 +475,32 @@ class _CityTourPageState extends State<CityTourPage> {
     );
   }
 
+  /// The cover photo, shaded at the top so the status bar and the round
+  /// buttons stay readable on it.
   Widget _cover(CityTourCard card) {
-    final place = [card.city, card.country].where((s) => s.isNotEmpty).join(' · ');
-    final stats = CityTourStatsCard.shows(card);
-    final statsHeight = CityTourStatsCard.heightFor(context);
-    final half = statsHeight / 2;
     return Stack(
       fit: StackFit.expand,
       children: [
-        const ColoredBox(color: _page),
-        Positioned(
-          left: 0,
-          right: 0,
-          top: 0,
-          bottom: stats ? half : 0,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              if (card.coverUrl.isEmpty)
-                Container(color: AppColors.surfaceVariant)
-              else
-                CachedNetworkImage(
-                  imageUrl: cityTourMediaUrl(card.coverUrl),
-                  fit: BoxFit.cover,
-                  memCacheWidth: 1440,
-                  placeholder: (_, __) => Container(color: AppColors.surface),
-                  errorWidget: (_, __, ___) => Container(color: AppColors.surfaceVariant),
-                ),
-              const DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [Color(0x73020617), Color(0x00020617), Color(0x00020617), Color(0xE0020617)],
-                    stops: [0.0, 0.28, 0.45, 1.0],
-                  ),
-                ),
-              ),
-              Positioned(
-                left: 20,
-                right: 20,
-                bottom: stats ? half + 14 : 24,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (place.isNotEmpty)
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.18),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.location_on_rounded, size: 13, color: Colors.white),
-                            const SizedBox(width: 5),
-                            Text(
-                              place,
-                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white),
-                            ),
-                          ],
-                        ),
-                      ),
-                    const SizedBox(height: 10),
-                    Text(
-                      card.title,
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 30,
-                        height: 1.08,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: -0.9,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+        if (card.coverUrl.isEmpty)
+          Container(color: AppColors.surfaceVariant)
+        else
+          CachedNetworkImage(
+            imageUrl: cityTourMediaUrl(card.coverUrl),
+            fit: BoxFit.cover,
+            memCacheWidth: 1440,
+            placeholder: (_, __) => Container(color: AppColors.surface),
+            errorWidget: (_, __, ___) => Container(color: AppColors.surfaceVariant),
+          ),
+        const DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Color(0x73020617), Color(0x00020617)],
+              stops: [0.0, 0.45],
+            ),
           ),
         ),
-        if (stats)
-          Positioned(
-            left: 16,
-            right: 16,
-            bottom: 0,
-            height: statsHeight,
-            child: CityTourStatsCard(card: card),
-          ),
       ],
     );
   }
@@ -582,6 +509,7 @@ class _CityTourPageState extends State<CityTourPage> {
   Widget build(BuildContext context) {
     final card = _tour?.card ?? widget.card;
     final width = MediaQuery.of(context).size.width;
+    final place = [card.city, card.country].where((s) => s.isNotEmpty).join(' · ');
     final tour = _tour;
     final trip = _trip;
     final days = tour == null ? const <CityTourDay>[] : _planDays(tour);
@@ -625,7 +553,7 @@ class _CityTourPageState extends State<CityTourPage> {
             slivers: [
               SliverAppBar(
                 pinned: true,
-                expandedHeight: _coverHeight(width, card),
+                expandedHeight: width * _heroFraction,
                 backgroundColor: Colors.white,
                 surfaceTintColor: Colors.white,
                 systemOverlayStyle: _collapsed ? SystemUiOverlayStyle.dark : SystemUiOverlayStyle.light,
@@ -671,16 +599,44 @@ class _CityTourPageState extends State<CityTourPage> {
                 ],
                 flexibleSpace: FlexibleSpaceBar(background: _cover(card)),
               ),
-              if (card.summary.isNotEmpty)
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                    child: Text(
-                      card.summary,
-                      style: const TextStyle(fontSize: 14.5, height: 1.5, color: Color(0xFF475569)),
-                    ),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (place.isNotEmpty)
+                        Text(
+                          place.toUpperCase(),
+                          style: const TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 1.2,
+                            color: AppColors.brandGreen,
+                          ),
+                        ),
+                      const SizedBox(height: 6),
+                      Text(
+                        card.title,
+                        style: const TextStyle(
+                          fontSize: 24,
+                          height: 1.2,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.4,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      if (card.summary.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          card.summary,
+                          style: const TextStyle(fontSize: 14.5, height: 1.5, color: Color(0xFF475569)),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
+              ),
               ..._body(days, day, schedule),
             ],
           ),

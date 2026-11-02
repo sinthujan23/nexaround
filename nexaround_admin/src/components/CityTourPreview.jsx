@@ -16,10 +16,7 @@ const STATUS_BAR = 62;
 const FRAME = 10;
 const OUTER_W = PHONE_W + FRAME * 2;
 const OUTER_H = PHONE_H + FRAME * 2;
-// The cover's photo (0.86 of the width, under the status bar) and the stats
-// card sitting half on it (CityTourStatsCard.height).
-const COVER = STATUS_BAR + Math.round(PHONE_W * 0.86);
-const STATS_H = 108;
+const HERO = Math.round(PHONE_W * 0.62) + STATUS_BAR;
 // The app's own map: Mapbox streets, with the public token the app loads at
 // start (GET /config/keys; it is set in Settings). Without a token,
 // OpenStreetMap: CARTO's free tiles, the app's own fallback, now answer
@@ -400,54 +397,6 @@ function Heading({ text, link, icon, onClick }) {
   );
 }
 
-/** The guide's numbers (CityTourStatsCard). */
-function stats(content) {
-  const stops = allSteps(content).filter((s) => s.type === 'stop').length;
-  const days = (content.days || []).length;
-  return [
-    days > 1 && { icon: 'calendar-blank', value: `${days}`, label: 'days', tint: '#E6F6F5', colour: '#0D9488' },
-    stops > 0 && { icon: 'map-pin', value: `${stops}`, label: stops === 1 ? 'stop' : 'stops', tint: '#EFEAFE', colour: '#7C3AED' },
-    content.duration && { icon: 'clock', value: content.duration, label: 'time', tint: '#FEF3DC', colour: '#D97706' },
-    content.budget && { icon: 'wallet', value: content.budget, label: 'budget', tint: '#E7F5EC', colour: '#15803D' },
-  ].filter(Boolean);
-}
-
-/** The cover: photo, place and title on it, and the stats card on its edge. */
-function Cover({ content }) {
-  const items = stats(content);
-  const half = items.length ? STATS_H / 2 : 0;
-  const place = [content.city, content.country].filter(Boolean).join(' · ');
-  return (
-    <div className="ctp-cover" style={{ height: COVER + half }}>
-      <div className="ctp-cover-photo" style={{ bottom: half }}>
-        {content.cover_url
-          ? <img src={mediaUrl(content.cover_url)} alt="" />
-          : <div className="ctp-hero-empty">Cover photo</div>}
-        <div className="ctp-cover-shade" />
-        <div className="ctp-cover-text" style={{ bottom: half ? half + 14 : 24 }}>
-          {place && <span className="ctp-place-chip"><Ph name="map-pin" weight="fill" size={13} color="#fff" />{place}</span>}
-          <div className="ctp-cover-title">{content.title || 'Title'}</div>
-        </div>
-      </div>
-      <StatusBar light />
-      <span className="ctp-glass"><Ph name="arrow-left" size={20} color="#fff" /></span>
-      {items.length > 0 && (
-        <div className="ctp-stats" style={{ height: STATS_H }}>
-          {items.map((it) => (
-            <div key={it.label} className="ctp-stat">
-              <span className="ctp-stat-icon" style={{ background: it.tint }}>
-                <Ph name={it.icon} weight="duotone" size={18} color={it.colour} />
-              </span>
-              <b>{it.value}</b>
-              <span>{it.label}</span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 const dayLine = (day) => {
   const plan = dayPlan(day);
   const places = (day.steps || []).filter((s) => s.type === 'stop').length;
@@ -524,6 +473,20 @@ function Planner({ days, onShow }) {
   );
 }
 
+/** The cover photo, shaded at the top for the status bar and the back button. */
+function Hero({ content }) {
+  return (
+    <div className="ctp-hero" style={{ height: HERO }}>
+      {content.cover_url
+        ? <img src={mediaUrl(content.cover_url)} alt="" />
+        : <div className="ctp-hero-empty">Cover photo</div>}
+      <div className="ctp-hero-shade" />
+      <StatusBar light />
+      <span className="ctp-glass"><Ph name="arrow-left" size={20} color="#fff" /></span>
+    </div>
+  );
+}
+
 function GuidePage({ content, partners, activeDayId }) {
   const days = content.days || [];
   const ids = days.map((d) => d.id);
@@ -545,10 +508,15 @@ function GuidePage({ content, partners, activeDayId }) {
     ? planDays.find((d) => d.id === tab) || planDays[0]
     : days[0];
   const shownNumber = shown ? planDays.indexOf(shown) + 1 : 1;
+  const place = [content.city, content.country].filter(Boolean).join(' · ');
   return (
     <div className="ctp-page guide">
-      <Cover content={content} />
-      {content.summary && <div className="ctp-summary">{content.summary}</div>}
+      <Hero content={content} />
+      <div className="ctp-head">
+        {place && <div className="ctp-place">{place.toUpperCase()}</div>}
+        <div className="ctp-title">{content.title || 'Title'}</div>
+        {content.summary && <div className="ctp-summary">{content.summary}</div>}
+      </div>
       <div className="ctp-body">
         {content.intro_md && <div style={{ marginBottom: 20 }}><AppMarkdown text={content.intro_md} /></div>}
         {!several && shown && (
