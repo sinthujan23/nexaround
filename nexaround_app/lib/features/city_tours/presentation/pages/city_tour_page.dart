@@ -394,12 +394,34 @@ class _CityTourPageState extends State<CityTourPage> {
     }
   }
 
+  /// Asks first, saying what goes: ending can't be undone, and the day's
+  /// ticks and reminders go with it.
   Future<void> _endTrip() async {
+    final tour = _tour;
+    final trip = _trip;
+    var lost = 'Your progress';
+    // A trip from before days follows the first day.
+    final day = tour == null || trip == null
+        ? null
+        : (tour.dayById(trip.dayId) ?? (tour.days.isEmpty ? null : tour.days.first));
+    if (tour != null && trip != null && day != null) {
+      final times = trip.schedule(day.steps, DateTime.now()).times;
+      final stops = day.stops;
+      final visited = stops.where((s) {
+        final t = times[s.id];
+        return t != null && t.isDone && !t.skipped;
+      }).length;
+      final number = _planDays(tour).indexOf(day) + 1;
+      final which = tour.hasDays && number > 0 ? ' on Day $number' : '';
+      lost = 'Your progress$which ($visited of ${stops.length} visited)';
+    }
     final end = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('End this trip?'),
-        content: const Text('You can start the guide again any time.'),
+        content: Text(
+          '$lost will be cleared and the stop reminders will stop. This can\'t be undone.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -407,6 +429,7 @@ class _CityTourPageState extends State<CityTourPage> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.error),
             child: const Text('End trip'),
           ),
         ],
