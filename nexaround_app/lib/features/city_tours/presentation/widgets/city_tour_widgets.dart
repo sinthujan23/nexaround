@@ -369,6 +369,14 @@ const _line = Color(0xFFE5E9EF);
 const _done = AppColors.brandGreen;
 const _doneLine = Color(0xFFBFE1E2);
 
+// A sight still to see: light blue, so it holds the eye over the dark ride
+// pills and stands apart from a visited one (light teal).
+const _sight = Color(0xFFEEF5FF);
+const _sightLine = Color(0xFFD6E6FB);
+
+// A break's pill: warm amber, apart from the navy rides.
+const _breakPill = Color(0xFF92400E);
+
 /// Where a step stands: no trip on its day ([plain]), finished, skipped, the
 /// step in hand, or still to come. A stop passed over (one further on was
 /// ticked first) is still to come; a ride or break passed over counts done.
@@ -404,9 +412,9 @@ class CityTourTick extends StatelessWidget {
   /// Drawn on a photo: the step in hand gets a white ring, not a teal one.
   final bool onPhoto;
 
-  /// Drawn on a dark leg pill: a walk or break waiting its turn is a white
-  /// circle with a navy icon, so it shows on the dark.
-  final bool onDark;
+  /// Drawn on a dark leg pill of this colour: a walk or break waiting its
+  /// turn is a white circle with its icon in the pill's colour.
+  final Color? onDark;
   final VoidCallback? onTap;
 
   const CityTourTick({
@@ -415,7 +423,7 @@ class CityTourTick extends StatelessWidget {
     required this.state,
     this.size = 36,
     this.onPhoto = false,
-    this.onDark = false,
+    this.onDark,
     this.onTap,
   });
 
@@ -458,7 +466,7 @@ class CityTourTick extends StatelessWidget {
           ],
         );
       case CityTourStepState.upcoming:
-        fg = step.isStop ? _slate : (onDark ? _navy : Colors.white);
+        fg = step.isStop ? _slate : (onDark ?? Colors.white);
         box = step.isStop
             ? BoxDecoration(
                 shape: BoxShape.circle,
@@ -467,10 +475,10 @@ class CityTourTick extends StatelessWidget {
               )
             : BoxDecoration(
                 shape: BoxShape.circle,
-                color: onDark ? Colors.white : const Color(0xFF334155),
+                color: onDark != null ? Colors.white : const Color(0xFF334155),
               );
       case CityTourStepState.plain:
-        fg = !step.isStop && onDark ? _navy : Colors.white;
+        fg = step.isStop ? Colors.white : (onDark ?? Colors.white);
         box = step.isStop
             ? BoxDecoration(
                 shape: BoxShape.circle,
@@ -486,7 +494,7 @@ class CityTourTick extends StatelessWidget {
               )
             : BoxDecoration(
                 shape: BoxShape.circle,
-                color: onDark ? Colors.white : const Color(0xFF334155),
+                color: onDark != null ? Colors.white : const Color(0xFF334155),
               );
     }
     final Widget face;
@@ -618,9 +626,9 @@ class CityTourStopCard extends StatelessWidget {
     final span = cityTourStepSpan(context, step, time);
     return _compactCard(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: _sight,
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: _line),
+        border: Border.all(color: _sightLine),
         boxShadow: [
           BoxShadow(color: _navy.withValues(alpha: 0.06), blurRadius: 18, offset: const Offset(0, 6)),
         ],
@@ -754,7 +762,7 @@ class CityTourStopCard extends StatelessWidget {
     final body = _body(context);
     return Container(
       decoration: BoxDecoration(
-        color: visited ? null : Colors.white,
+        color: visited ? null : _sight,
         gradient: visited
             ? const LinearGradient(
                 begin: Alignment.topCenter,
@@ -766,7 +774,7 @@ class CityTourStopCard extends StatelessWidget {
         border: Border.all(
           color: current
               ? AppColors.brandGreen.withValues(alpha: 0.5)
-              : (visited ? _doneLine : _line),
+              : (visited ? _doneLine : _sightLine),
           width: current ? 1.5 : 1,
         ),
         boxShadow: [
@@ -1058,9 +1066,10 @@ class CityTourStopCard extends StatelessWidget {
   }
 }
 
-/// The way from one stop to the next, or a break, as a dark navy pill on a
-/// dashed line, like the stop numbers, so it stands apart from the white stop
-/// cards: "Metro · 15 min (est) · Travel to Hôtel des Invalides". A tap opens
+/// The way from one stop to the next as a dark navy pill on a dashed line,
+/// like the stop numbers, or a break as a warm amber one, so they stand apart
+/// from the light blue sights: "Metro · 15 min (est) · Travel to Hôtel des
+/// Invalides". A tap opens
 /// its directions, notes and partner buttons below it. On a trip the leg in
 /// hand is edged in teal with its circle to tick, a finished one shows a
 /// teal tick and a skipped one says "Skipped", both still full colour.
@@ -1109,22 +1118,23 @@ class CityTourLegPill extends StatelessWidget {
       if (step.cost.isNotEmpty) step.cost,
       if (!open && step.directions.isNotEmpty) step.directions,
     ];
+    final fill = step.isBreak ? _breakPill : _navy;
     final pill = Container(
       padding: const EdgeInsets.fromLTRB(4, 4, 12, 4),
       decoration: BoxDecoration(
-        color: _navy,
+        color: fill,
         borderRadius: BorderRadius.circular(18),
         border: current ? Border.all(color: AppColors.brandGreen, width: 2) : null,
         boxShadow: [
           current
               ? BoxShadow(color: AppColors.brandGreen.withValues(alpha: 0.35), blurRadius: 12, offset: const Offset(0, 3))
-              : BoxShadow(color: _navy.withValues(alpha: 0.22), blurRadius: 10, offset: const Offset(0, 3)),
+              : BoxShadow(color: fill.withValues(alpha: 0.22), blurRadius: 10, offset: const Offset(0, 3)),
         ],
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          CityTourTick(step: step, state: state, size: 24, onDark: true, onTap: onTick),
+          CityTourTick(step: step, state: state, size: 24, onDark: fill, onTap: onTick),
           const SizedBox(width: 7),
           Flexible(
             child: Text.rich(
@@ -1639,7 +1649,7 @@ class CityTourLinkButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final package = link.package;
     return Material(
-      color: const Color(0xFFF7F8FA),
+      color: Colors.white,
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
         onTap: onTap,
@@ -1648,7 +1658,7 @@ class CityTourLinkButton extends StatelessWidget {
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFFEEF0F3)),
+            border: Border.all(color: const Color(0xFFE2E8F0)),
           ),
           child: Row(
             children: [

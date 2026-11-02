@@ -257,7 +257,7 @@ function Tick({ step, number, size }) {
   const icon = step.type === 'break' ? 'restaurant' : modeOf(step.mode).icon;
   return (
     <span className="ctp-tick leg" style={{ width: size, height: size }}>
-      <Icon name={icon} size={size * 0.56} color="#0f172a" />
+      <Icon name={icon} size={size * 0.56} color={step.type === 'break' ? '#92400e' : '#0f172a'} />
     </span>
   );
 }
@@ -318,7 +318,7 @@ function StopCard({ step, number, caption, time, partners }) {
   );
 }
 
-/** CityTourLegPill: a walk, ride or break as a dark navy pill on a dashed line; a click opens it. */
+/** CityTourLegPill: a walk or ride as a dark navy pill on a dashed line (a break amber); a click opens it. */
 function LegPill({ step, time, partners }) {
   const [open, setOpen] = useState(false);
   const isBreak = step.type === 'break';
@@ -331,7 +331,7 @@ function LegPill({ step, time, partners }) {
     <div>
       <div className="ctp-dash" />
       <div className="ctp-leg-row">
-        <div className={`ctp-leg ${more ? 'more' : ''}`} onClick={() => more && setOpen(!open)}>
+        <div className={`ctp-leg ${isBreak ? 'break' : ''} ${more ? 'more' : ''}`} onClick={() => more && setOpen(!open)}>
           <Tick step={step} size={24} />
           <span className="ctp-leg-text">
             <strong>{title}</strong>{extras.length > 0 && <span> · {extras.join(' · ')}</span>}
