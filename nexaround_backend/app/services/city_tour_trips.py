@@ -7,17 +7,19 @@ planned minutes, read from the guide's own words: a stop's "time to spend"
 middle, rounded to 5 minutes, and a step with no time it can read gets a
 default.
 
-Steps can be marked in any order: a traveller who forgot to tick a stop can
-tick it later, and one who jumps ahead ticks the stop they are at. The step in
-hand is the one after the furthest step marked; steps before that one left
-unmarked were passed over (the app shows a stop passed over as still to visit,
-and a ride or break as done). Any marked step can be taken back.
+Only stops are ticked ("Visited"), in any order: a traveller who forgot to
+tick a stop can tick it later, and one who jumps ahead ticks the stop they are
+at. Rides and breaks are not ticked any more (an app from before still can).
+The stop in hand is the first stop after the furthest step marked; stops
+before that one left unmarked were passed over (the app shows them still to
+visit). Any marked step can be taken back.
 
-The app lays the day out from these: the step in hand starts when the
-furthest step marked was marked (the first step, at the start), and the steps
-after it follow on, so marking a step done late or early moves the rest. The
-trip is finished once its last step is marked. The worker pushes one
-"Done at …?" reminder per step once it runs past its minutes (reminder_loop).
+The app lays the day out from these: the stretch to the stop in hand starts
+when the furthest step was marked (the first step, at the start), the rides
+and breaks before it run their minutes, and the steps after it follow on, so
+ticking a stop late or early moves the rest. The trip is finished once its
+last stop is ticked. The worker pushes one "Done at …?" reminder per stop once
+it runs past its minutes (reminder_loop).
 
 "Skip" ends a step the same way, at the time it was tapped, and notes it in
 `skipped`, so the app can say "Skipped" and leave its minutes out of the pace.
@@ -131,17 +133,18 @@ def furthest(steps: list[dict], done: dict) -> int:
 def due_step(
     started_at: datetime, steps: list[dict], done: dict, minutes: dict[str, int],
 ) -> Optional[tuple[dict, datetime]]:
-    """The step in hand (the one after the furthest step marked; the first,
-    before any) and when it is planned to end: when that furthest step was
-    marked (or the start), plus its own minutes. None once the last step is
-    marked."""
+    """The stop in hand (the first stop after the furthest step marked) and
+    when it is planned to end: when that furthest step was marked (or the
+    start), plus the minutes of the rides and breaks on the way and its own.
+    None once no stop is left after it."""
     last = furthest(steps, done)
-    if last + 1 >= len(steps):
-        return None
     since = as_time(done.get(steps[last].get("id"))) if last >= 0 else None
-    step = steps[last + 1]
-    planned = minutes.get(step.get("id"), DEFAULT_MINUTES.get(step.get("type"), 30))
-    return step, (since or started_at) + timedelta(minutes=planned)
+    total = 0
+    for step in steps[last + 1:]:
+        total += minutes.get(step.get("id"), DEFAULT_MINUTES.get(step.get("type"), 30))
+        if step.get("type") == STOP:
+            return step, (since or started_at) + timedelta(minutes=total)
+    return None
 
 
 def mark_done(
@@ -178,8 +181,10 @@ def unmark(done: dict, step_id: str) -> dict:
 
 
 def finished_time(steps: list[dict], done: dict) -> Optional[datetime]:
-    """When the trip finished: when its last step was marked; None until then."""
-    return as_time(done.get(steps[-1].get("id"))) if steps else None
+    """When the trip finished: when its last stop (the last step, in a day
+    with none) was marked; None until then."""
+    stops = [s for s in steps if s.get("type") == STOP] or steps
+    return as_time(done.get(stops[-1].get("id"))) if stops else None
 
 
 def still_skipped(skipped: list, done: dict) -> list[str]:
@@ -196,27 +201,20 @@ def _next_stop(steps: list[dict], index: int) -> Optional[dict]:
 
 
 def reminder_text(steps: list[dict], step: dict) -> tuple[str, str]:
-    """The push for a step past its planned time: (title, body)."""
+    """The push for a stop past its planned time: (title, body)."""
     index = next((i for i, s in enumerate(steps) if s.get("id") == step.get("id")), 0)
-    if step.get("type") == BREAK:
-        nxt = next((s for s in steps[index + 1:] if s.get("type") != BREAK), None)
-        what = (nxt.get("name") if nxt and nxt.get("type") == STOP else "") or "the next step"
-        return f"{step.get('title') or 'Break'} over?", f"Next: {what}. Mark it done to update your times."
-    if step.get("type") == STOP:
-        title = f"Done at {step.get('name') or 'this stop'}?"
-        after = steps[index + 1] if index + 1 < len(steps) else None
-        if after is None:
-            return title, "That's the last stop. Mark it done to finish your trip."
-        if after.get("type") == MOVE:
-            nxt = _next_stop(steps, index + 1)
-            how = TRANSPORT_MODES.get(after.get("mode") or "walk", "Walk")
-            where = f" to {nxt['name']}" if nxt and nxt.get("name") else ""
-            return title, f"Next: {how}{where}. Mark it done to update your times."
-        return title, f"Next: {after.get('name') or 'the next stop'}. Mark it done to update your times."
+    title = f"Done at {step.get('name') or 'this stop'}?"
     nxt = _next_stop(steps, index)
-    if nxt and nxt.get("name"):
-        return f"Arrived at {nxt['name']}?", "Mark the ride done to update your times."
-    return "Still on the way?", "Mark the ride done to update your times."
+    if nxt is None:
+        return title, "That's the last stop. Mark it visited to finish your trip."
+    after = steps[index + 1]
+    if after.get("type") == MOVE:
+        how = TRANSPORT_MODES.get(after.get("mode") or "walk", "Walk")
+        where = f" to {nxt['name']}" if nxt.get("name") else ""
+        return title, f"Next: {how}{where}. Mark it visited to update your times."
+    if after.get("type") == BREAK:
+        return title, f"Next: {after.get('title') or 'a break'}. Mark it visited to update your times."
+    return title, f"Next: {nxt.get('name') or 'the next stop'}. Mark it visited to update your times."
 
 
 def view(trip, content: dict) -> dict:

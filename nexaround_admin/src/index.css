@@ -4077,8 +4077,6 @@ a.btn { text-decoration: none; }
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
 .ctp-sc-name.dark { font-size: 19px; line-height: 1.2; letter-spacing: -0.3px; color: #0f172a; display: block; }
-.ctp-sc-when { font-size: 12.5px; color: rgba(255, 255, 255, 0.85); }
-.ctp-sc-when.dark { color: #64748b; }
 .ctp-sc-body { display: flex; flex-direction: column; gap: 12px; padding: 14px 15px 16px; }
 .ctp-chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .ctp-chip {
@@ -4109,7 +4107,6 @@ a.btn { text-decoration: none; }
   display: flex; flex-direction: column; gap: 10px; margin-top: 8px; padding: 13px;
   background: #fff; border: 1px solid #e5e9ef; border-radius: 18px;
 }
-.ctp-leg-when { display: flex; align-items: center; gap: 5px; font-size: 12.5px; color: #64748b; }
 .ctp-leg-dir { font-size: 14px; line-height: 1.45; font-weight: 600; color: #0f172a; }
 
 /* ===================================================================== */

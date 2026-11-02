@@ -54,9 +54,13 @@ def test_due_step_follows_the_last_done_time():
     step, ends = trips.due_step(T0, steps, {}, plan)
     assert step["id"] == "a" and ends == T0 + timedelta(minutes=105)
 
+    # Rides are not ticked: next is the stop, after the metro and its own time.
     late = T0 + timedelta(minutes=130)
     step, ends = trips.due_step(T0, steps, {"a": late.isoformat()}, plan)
-    assert step["id"] == "b" and ends == late + timedelta(minutes=20)
+    assert step["id"] == "c" and ends == late + timedelta(minutes=20 + 150)
+    # A ride ticked by an app from before still counts.
+    step, ends = trips.due_step(T0, steps, {"a": late.isoformat(), "b": late.isoformat()}, plan)
+    assert step["id"] == "c" and ends == late + timedelta(minutes=150)
 
     every = {s["id"]: (T0 + timedelta(hours=1)).isoformat() for s in steps}
     assert trips.due_step(T0, steps, every, plan) is None
@@ -81,13 +85,13 @@ def test_the_step_in_hand_follows_the_furthest_step_marked():
     steps = _steps()
     plan = trips.plan_minutes({"steps": steps})
     at = T0 + timedelta(minutes=40)
-    # "c" ticked first: "a" and "b" were passed over, and "d" is in hand.
+    # "c" ticked first: "a" was passed over, and "e" is in hand (walk "d" on the way).
     step, ends = trips.due_step(T0, steps, {"c": at.isoformat()}, plan)
-    assert step["id"] == "d" and ends == at + timedelta(minutes=plan["d"])
-    # Ticking the passed-over stop later does not move the step in hand.
+    assert step["id"] == "e" and ends == at + timedelta(minutes=plan["d"] + plan["e"])
+    # Ticking the passed-over stop later does not move the stop in hand.
     both = {"c": at.isoformat(), "a": (at + timedelta(minutes=30)).isoformat()}
     step, ends = trips.due_step(T0, steps, both, plan)
-    assert step["id"] == "d" and ends == at + timedelta(minutes=plan["d"])
+    assert step["id"] == "e" and ends == at + timedelta(minutes=plan["d"] + plan["e"])
     assert trips.furthest(steps, {}) == -1 and trips.furthest(steps, both) == 2
 
 
@@ -97,10 +101,10 @@ def test_any_step_can_be_taken_back():
     assert trips.unmark(done, "a") == {"c": T0.isoformat()}
     assert trips.unmark(done, "b") == done
     step, _ = trips.due_step(T0, steps, trips.unmark(done, "c"), trips.plan_minutes({"steps": steps}))
-    assert step["id"] == "b"
+    assert step["id"] == "c"
 
 
-def test_the_trip_finishes_when_its_last_step_is_marked():
+def test_the_trip_finishes_when_its_last_stop_is_ticked():
     steps = _steps()
     end = T0 + timedelta(hours=5)
     # Stops passed over do not hold it back; taking the last one back reopens it.
@@ -108,6 +112,10 @@ def test_the_trip_finishes_when_its_last_step_is_marked():
     assert trips.finished_time(steps, {"a": end.isoformat()}) is None
     assert trips.finished_time([], {}) is None
     assert trips.due_step(T0, steps, {"e": end.isoformat()}, {}) is None
+    # A ride or break after the last stop doesn't need ticking.
+    tail = [*steps, {"id": "f", "type": "move", "mode": "walk"}]
+    assert trips.finished_time(tail, {"e": end.isoformat()}) == end
+    assert trips.due_step(T0, tail, {"e": end.isoformat()}, {}) is None
 
 
 def test_mark_done_keeps_the_tap_time_within_the_step():
@@ -159,11 +167,10 @@ def test_the_trip_view_lists_skipped_steps():
 def test_reminder_text():
     steps = _steps()
     assert trips.reminder_text(steps, steps[0]) == (
-        "Done at Eiffel Tower?", "Next: Metro to Louvre. Mark it done to update your times.",
+        "Done at Eiffel Tower?", "Next: Metro to Louvre. Mark it visited to update your times.",
     )
-    assert trips.reminder_text(steps, steps[1])[0] == "Arrived at Louvre?"
     assert trips.reminder_text(steps, steps[4]) == (
-        "Done at Notre-Dame?", "That's the last stop. Mark it done to finish your trip.",
+        "Done at Notre-Dame?", "That's the last stop. Mark it visited to finish your trip.",
     )
 
 
@@ -202,13 +209,14 @@ def test_breaks_plan_their_own_minutes():
     assert trips.step_minutes({"type": "break", "duration": ""}) == 45
 
 
-def test_break_reminder_names_what_comes_next():
+def test_stop_reminder_names_the_break_next():
     steps = [
-        {"id": "a", "type": "break", "title": "Lunch / Rest"},
-        {"id": "b", "type": "stop", "name": "Musée d'Orsay"},
+        {"id": "a", "type": "stop", "name": "Louvre"},
+        {"id": "b", "type": "break", "title": "Lunch / Rest"},
+        {"id": "c", "type": "stop", "name": "Musée d'Orsay"},
     ]
     title, body = trips.reminder_text(steps, steps[0])
-    assert title == "Lunch / Rest over?" and "Musée d'Orsay" in body
+    assert title == "Done at Louvre?" and body.startswith("Next: Lunch / Rest.")
 
 
 def test_a_live_guide_from_before_days_still_plans_its_trip():

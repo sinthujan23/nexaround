@@ -367,7 +367,11 @@ const _slate = Color(0xFF64748B);
 const _line = Color(0xFFE5E9EF);
 // Finished steps wear the app's own teal, like the start pin on the map.
 const _done = AppColors.brandGreen;
-const _doneLine = Color(0xFFBFE1E2);
+
+// A visited sight: a clear theme-teal (green) tint, told apart at a glance
+// from the light blue sights still to see.
+const _visitedFill = Color(0xFFD8EEEE);
+const _visitedLine = Color(0xFF8CCACB);
 
 // A sight still to see: light blue, so it holds the eye over the dark ride
 // pills and stands apart from a visited one (light teal).
@@ -390,15 +394,12 @@ CityTourStepState cityTourStepState(CityTourStepTime? time) {
   return time.isCurrent ? CityTourStepState.current : CityTourStepState.upcoming;
 }
 
-/// "11:30 AM – 12:45 PM" from a step's times, or its own "1 hr (est)" with
-/// none; nothing for a step passed over.
-String? cityTourStepSpan(BuildContext context, CityTourStep step, CityTourStepTime? time) {
-  if (time != null && (time.missed || time.passed)) return null;
-  if (time != null) {
-    return '${cityTourClock(context, time.start)} – ${cityTourClock(context, time.end)}';
-  }
-  if (step.isStop && step.timeHere.isNotEmpty) return cityTourEst(step.timeHere);
-  return null;
+/// A step's own estimated length, "1 hr 15 min (est)": a stop's time to
+/// spend, a ride's or break's duration. Clock times are not shown (client:
+/// the estimate is enough); the trip still plans with them.
+String? cityTourStepEst(CityTourStep step) {
+  final text = step.isStop ? step.timeHere : step.duration;
+  return text.isEmpty ? null : cityTourEst(text);
 }
 
 /// A step's circle: a stop's number, or a ride's or break's icon. On a trip,
@@ -536,7 +537,7 @@ class CityTourTick extends StatelessWidget {
 class CityTourStopCard extends StatelessWidget {
   final CityTourStep step;
 
-  /// Its planned or trip times; null when the day has no start time.
+  /// Its place in the trip (visited, passed over…); null with no trip.
   final CityTourStepTime? time;
   final CityTourStepState state;
   final bool open;
@@ -574,21 +575,16 @@ class CityTourStopCard extends StatelessWidget {
     return _openCard(context);
   }
 
-  String _doneText(BuildContext context) {
-    final at = time?.doneAt;
-    if (state == CityTourStepState.skipped) return 'Not visited';
-    return at == null ? 'Visited' : 'Visited · ${cityTourClock(context, at)}';
-  }
+  String get _doneText => state == CityTourStepState.skipped ? 'Not visited' : 'Visited';
 
   /// A finished stop, shrunk: like a closed card, with its status chip.
   Widget _doneCard(BuildContext context) {
     final visited = state == CityTourStepState.done;
     return _compactCard(
       decoration: BoxDecoration(
-        color: visited ? null : Colors.white,
-        gradient: visited ? const LinearGradient(colors: [Color(0xFFF0F8F8), Color(0xFFE6F4F4)]) : null,
+        color: visited ? _visitedFill : Colors.white,
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: visited ? _doneLine : _line),
+        border: Border.all(color: visited ? _visitedLine : _line),
       ),
       mark: visited
           ? Container(
@@ -610,20 +606,12 @@ class CityTourStopCard extends StatelessWidget {
               child: const Icon(Icons.check_rounded, size: 13, color: Colors.white),
             )
           : null,
-      subtitle: visited
-          ? Text(
-              _doneText(context),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: _done),
-            )
-          : null,
       trailing: _StatusChip(visited: visited, onTap: onVisited),
     );
   }
 
   Widget _closedCard(BuildContext context) {
-    final span = cityTourStepSpan(context, step, time);
+    final span = cityTourStepEst(step);
     return _compactCard(
       decoration: BoxDecoration(
         color: _sight,
@@ -637,7 +625,7 @@ class CityTourStopCard extends StatelessWidget {
           ? null
           : Row(
               children: [
-                const Icon(Icons.schedule_rounded, size: 12, color: AppColors.textTertiary),
+                const Icon(Icons.hourglass_top_rounded, size: 12, color: AppColors.textTertiary),
                 const SizedBox(width: 4),
                 Flexible(
                   child: Text(
@@ -762,19 +750,12 @@ class CityTourStopCard extends StatelessWidget {
     final body = _body(context);
     return Container(
       decoration: BoxDecoration(
-        color: visited ? null : _sight,
-        gradient: visited
-            ? const LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Color(0xFFF0F8F8), Color(0xFFE6F4F4)],
-              )
-            : null,
+        color: visited ? _visitedFill : _sight,
         borderRadius: BorderRadius.circular(26),
         border: Border.all(
           color: current
               ? AppColors.brandGreen.withValues(alpha: 0.5)
-              : (visited ? _doneLine : _sightLine),
+              : (visited ? _visitedLine : _sightLine),
           width: current ? 1.5 : 1,
         ),
         boxShadow: [
@@ -842,7 +823,7 @@ class CityTourStopCard extends StatelessWidget {
         return _Pill(
           color: state == CityTourStepState.done ? _done : const Color(0xFF94A3B8),
           child: Text(
-            _doneText(context),
+            _doneText,
             style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: Colors.white),
           ),
         );
@@ -861,18 +842,8 @@ class CityTourStopCard extends StatelessWidget {
     }
   }
 
-  /// "until 12:45 PM" on the step in hand ("planned until" once it runs over).
-  String? _until(BuildContext context) {
-    final t = time;
-    if (state != CityTourStepState.current || t == null) return null;
-    final over = DateTime.now().isAfter(t.end);
-    return '${over ? 'planned until' : 'until'} ${cityTourClock(context, t.end)}';
-  }
-
   Widget _photoHeader(BuildContext context) {
     final badge = _badge(context);
-    final until = _until(context);
-    final span = cityTourStepSpan(context, step, time);
     return SizedBox(
       height: 210,
       child: Stack(
@@ -896,30 +867,6 @@ class CityTourStopCard extends StatelessWidget {
             ),
           ),
           if (badge != null) Positioned(left: 12, top: 12, child: badge),
-          if (until != null)
-            Positioned(
-              right: 12,
-              top: 12,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-                decoration: BoxDecoration(
-                  color: const Color(0x66020617),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.schedule_rounded, size: 12, color: Colors.white),
-                    const SizedBox(width: 4),
-                    Text(
-                      until,
-                      style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Colors.white),
-                    ),
-                  ],
-                ),
-              ),
-            ),
           Positioned(
             left: 14,
             right: 14,
@@ -945,11 +892,6 @@ class CityTourStopCard extends StatelessWidget {
                           color: Colors.white,
                         ),
                       ),
-                      if (span != null)
-                        Text(
-                          span,
-                          style: const TextStyle(fontSize: 12.5, color: Color(0xD9FFFFFF)),
-                        ),
                     ],
                   ),
                 ),
@@ -967,9 +909,6 @@ class CityTourStopCard extends StatelessWidget {
 
   Widget _plainHeader(BuildContext context) {
     final badge = _badge(context);
-    final until = _until(context);
-    final span = cityTourStepSpan(context, step, time);
-    final line = [if (span != null) span, if (until != null) until].join(' · ');
     return Padding(
       padding: const EdgeInsets.fromLTRB(15, 14, 15, 12),
       child: Row(
@@ -992,8 +931,6 @@ class CityTourStopCard extends StatelessWidget {
                     color: _navy,
                   ),
                 ),
-                if (line.isNotEmpty)
-                  Text(line, style: const TextStyle(fontSize: 12.5, color: _slate)),
               ],
             ),
           ),
@@ -1007,7 +944,6 @@ class CityTourStopCard extends StatelessWidget {
   }
 
   List<Widget> _body(BuildContext context) {
-    final current = state == CityTourStepState.current;
     // On a trip the visit button sits beside the time and price chips, at
     // the top, rather than under everything.
     final visit = onVisited != null && state != CityTourStepState.plain
@@ -1019,7 +955,6 @@ class CityTourStopCard extends StatelessWidget {
         : null;
     final hasChips = step.timeHere.isNotEmpty || step.price.isNotEmpty;
     final parts = <Widget>[
-      if (current) _TapHint(number: '${step.number}'),
       if (hasChips || visit != null)
         Row(
           children: [
@@ -1069,47 +1004,28 @@ class CityTourStopCard extends StatelessWidget {
 /// The way from one stop to the next as a dark navy pill on a dashed line,
 /// like the stop numbers, or a break as a warm amber one, so they stand apart
 /// from the light blue sights: "Metro · 15 min (est) · Travel to Hôtel des
-/// Invalides". A tap opens
-/// its directions, notes and partner buttons below it. On a trip the leg in
-/// hand is edged in teal with its circle to tick, a finished one shows a
-/// teal tick and a skipped one says "Skipped", both still full colour.
+/// Invalides". Only for reading: rides and breaks are never ticked, on a trip
+/// or not (only sights are). A tap opens its directions, notes and partner
+/// buttons below it.
 class CityTourLegPill extends StatelessWidget {
   final CityTourStep step;
-  final CityTourStepTime? time;
-  final CityTourStepState state;
   final bool open;
-  final bool canUndo;
-  final VoidCallback? onTick;
   final VoidCallback? onToggle;
-  final VoidCallback? onUndo;
-  final VoidCallback? onSkip;
   final void Function(CityTourLink link) onLinkTap;
 
   const CityTourLegPill({
     super.key,
     required this.step,
-    required this.time,
-    required this.state,
     required this.open,
     required this.onLinkTap,
-    this.canUndo = false,
-    this.onTick,
     this.onToggle,
-    this.onUndo,
-    this.onSkip,
   });
 
   bool get _hasMore =>
-      step.directions.isNotEmpty ||
-      step.accessNote.isNotEmpty ||
-      step.bodyMd.isNotEmpty ||
-      step.links.isNotEmpty ||
-      state == CityTourStepState.current ||
-      canUndo;
+      step.directions.isNotEmpty || step.accessNote.isNotEmpty || step.bodyMd.isNotEmpty || step.links.isNotEmpty;
 
   @override
   Widget build(BuildContext context) {
-    final current = state == CityTourStepState.current;
     final title = step.isBreak
         ? (step.breakTitle.isEmpty ? 'Break' : step.breakTitle)
         : (step.modeLabel.isEmpty ? 'Walk' : step.modeLabel);
@@ -1124,17 +1040,14 @@ class CityTourLegPill extends StatelessWidget {
       decoration: BoxDecoration(
         color: fill,
         borderRadius: BorderRadius.circular(18),
-        border: current ? Border.all(color: AppColors.brandGreen, width: 2) : null,
         boxShadow: [
-          current
-              ? BoxShadow(color: AppColors.brandGreen.withValues(alpha: 0.35), blurRadius: 12, offset: const Offset(0, 3))
-              : BoxShadow(color: fill.withValues(alpha: 0.22), blurRadius: 10, offset: const Offset(0, 3)),
+          BoxShadow(color: fill.withValues(alpha: 0.22), blurRadius: 10, offset: const Offset(0, 3)),
         ],
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          CityTourTick(step: step, state: state, size: 24, onDark: fill, onTap: onTick),
+          CityTourTick(step: step, state: CityTourStepState.plain, size: 24, onDark: fill),
           const SizedBox(width: 7),
           Flexible(
             child: Text.rich(
@@ -1154,11 +1067,6 @@ class CityTourLegPill extends StatelessWidget {
               style: const TextStyle(fontSize: 12),
             ),
           ),
-          if (state == CityTourStepState.skipped)
-            Text(
-              ' · Skipped',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Colors.white.withValues(alpha: 0.55)),
-            ),
           if (_hasMore) ...[
             const SizedBox(width: 4),
             Icon(
@@ -1170,10 +1078,6 @@ class CityTourLegPill extends StatelessWidget {
         ],
       ),
     );
-    final t = time;
-    final String? now = current && t != null
-        ? '${DateTime.now().isAfter(t.end) ? 'Now · planned until' : 'Now · until'} ${cityTourClock(context, t.end)}'
-        : null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -1185,15 +1089,6 @@ class CityTourLegPill extends StatelessWidget {
             child: pill,
           ),
         ),
-        if (now != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: Text(
-              now,
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFFD97706)),
-            ),
-          ),
         if (open && _hasMore)
           Padding(
             padding: const EdgeInsets.only(top: 8),
@@ -1205,19 +1100,7 @@ class CityTourLegPill extends StatelessWidget {
   }
 
   Widget _details(BuildContext context) {
-    final current = state == CityTourStepState.current;
-    final finished = state == CityTourStepState.done || state == CityTourStepState.skipped;
-    final span = cityTourStepSpan(context, step, time);
     final parts = <Widget>[
-      if (current) _TapHint(icon: step.isBreak ? null : cityTourModeIcon(step.mode)),
-      if (span != null)
-        Row(
-          children: [
-            const Icon(Icons.schedule_rounded, size: 13, color: AppColors.textTertiary),
-            const SizedBox(width: 5),
-            Text(span, style: const TextStyle(fontSize: 12.5, color: _slate)),
-          ],
-        ),
       if (step.directions.isNotEmpty)
         Text(
           step.directions,
@@ -1226,15 +1109,13 @@ class CityTourLegPill extends StatelessWidget {
       if (step.accessNote.isNotEmpty) _NoteBox(text: step.accessNote),
       if (step.bodyMd.isNotEmpty) ExperienceDescription(markdown: step.bodyMd),
       if (step.links.isNotEmpty) _Links(links: step.links, onLinkTap: onLinkTap),
-      if (current && onSkip != null) _SkipButton(onTap: onSkip, label: 'Skip this'),
-      if (finished && canUndo) Align(alignment: Alignment.centerLeft, child: _UndoButton(onTap: onUndo)),
     ];
     return Container(
       padding: const EdgeInsets.all(13),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: current ? AppColors.brandGreen.withValues(alpha: 0.5) : _line),
+        border: Border.all(color: _line),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1299,59 +1180,6 @@ class _Pill extends StatelessWidget {
             : [BoxShadow(color: shadow!.withValues(alpha: 0.45), blurRadius: 12, offset: const Offset(0, 4))],
       ),
       child: child,
-    );
-  }
-}
-
-/// "Tap the 3 when you are done", on the step in hand.
-class _TapHint extends StatelessWidget {
-  /// A stop's number; a ride shows its [icon] instead.
-  final String? number;
-  final IconData? icon;
-
-  const _TapHint({this.number, this.icon});
-
-  @override
-  Widget build(BuildContext context) {
-    const style = TextStyle(fontSize: 13, color: Color(0xFF0F5257));
-    final number = this.number;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-      decoration: BoxDecoration(
-        color: const Color(0xFFE6F4F4),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.touch_app_rounded, size: 15, color: AppColors.brandGreen),
-          const SizedBox(width: 7),
-          Expanded(
-            child: Text.rich(
-              TextSpan(
-                text: 'Tap the ',
-                children: [
-                  if (number != null)
-                    TextSpan(text: number, style: const TextStyle(fontWeight: FontWeight.w900))
-                  else
-                    TextSpan(
-                      text: icon == null ? 'circle' : '',
-                      children: [
-                        if (icon != null)
-                          WidgetSpan(
-                            alignment: PlaceholderAlignment.middle,
-                            child: Icon(icon, size: 15, color: const Color(0xFF0F5257)),
-                          ),
-                      ],
-                    ),
-                  const TextSpan(text: ' when you are done'),
-                ],
-              ),
-              style: style,
-            ),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -1447,39 +1275,6 @@ class _Links extends StatelessWidget {
           CityTourLinkButton(link: link, onTap: () => onLinkTap(link)),
         ],
       ],
-    );
-  }
-}
-
-class _SkipButton extends StatelessWidget {
-  final VoidCallback? onTap;
-  final String label;
-
-  const _SkipButton({required this.onTap, this.label = 'Skip this'});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: AppColors.border, width: 1.5),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.skip_next_rounded, size: 14, color: Color(0xFF475569)),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF475569)),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }
@@ -1585,35 +1380,6 @@ class _StatusChip extends StatelessWidget {
               visited ? 'Visited' : label,
               style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: fg),
             ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _UndoButton extends StatelessWidget {
-  final VoidCallback? onTap;
-
-  const _UndoButton({required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: _doneLine),
-        ),
-        child: const Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.replay_rounded, size: 13, color: _done),
-            SizedBox(width: 4),
-            Text('Undo', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: _done)),
           ],
         ),
       ),

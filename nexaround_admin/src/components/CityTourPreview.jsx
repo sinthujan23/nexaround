@@ -243,8 +243,6 @@ function Links({ links, partners }) {
   );
 }
 
-const span = (time) => (time ? `${formatClock(time[0])} – ${formatClock(time[1])}` : null);
-
 /** CityTourTick before a trip: a stop's number (the start teal), or a ride's icon. */
 function Tick({ step, number, size }) {
   if (step.type === 'stop') {
@@ -267,9 +265,8 @@ const NoteBox = ({ text }) => (
   <div className="ctp-notebox"><Ph name="info" weight="duotone" size={15} color="#D97706" /><span>{text}</span></div>
 );
 
-/** CityTourStopCard before a trip: open, the name on the photo. */
-function StopCard({ step, number, caption, time, partners }) {
-  const when = span(time) || (step.time_here ? est(step.time_here) : null);
+/** CityTourStopCard before a trip: open, the name on the photo; its time is the chip's estimate, no clock. */
+function StopCard({ step, number, caption, partners }) {
   const badge = caption && <span className="ctp-sc-badge">{caption}</span>;
   const parts = [
     (step.time_here || step.price) && (
@@ -297,7 +294,6 @@ function StopCard({ step, number, caption, time, partners }) {
             <Tick step={step} number={number} size={40} />
             <div>
               <div className="ctp-sc-name">{step.name}</div>
-              {when && <div className="ctp-sc-when">{when}</div>}
             </div>
           </div>
         </div>
@@ -307,7 +303,6 @@ function StopCard({ step, number, caption, time, partners }) {
           <div>
             {badge && <div style={{ marginBottom: 6 }}>{badge}</div>}
             <div className="ctp-sc-name dark">{step.name}</div>
-            {when && <div className="ctp-sc-when dark">{when}</div>}
           </div>
         </div>
       )}
@@ -319,14 +314,13 @@ function StopCard({ step, number, caption, time, partners }) {
 }
 
 /** CityTourLegPill: a walk or ride as a dark navy pill on a dashed line (a break amber); a click opens it. */
-function LegPill({ step, time, partners }) {
+function LegPill({ step, partners }) {
   const [open, setOpen] = useState(false);
   const isBreak = step.type === 'break';
   const title = isBreak ? (step.title || 'Break') : modeOf(step.mode).label;
   const directions = isBreak ? '' : step.title;
   const extras = [step.duration && est(step.duration), step.cost, !open && directions].filter(Boolean);
   const more = Boolean(directions || step.access_note || step.body_md || step.links?.length);
-  const when = span(time);
   return (
     <div>
       <div className="ctp-dash" />
@@ -341,7 +335,6 @@ function LegPill({ step, time, partners }) {
       </div>
       {open && more && (
         <div className="ctp-leg-card">
-          {when && <div className="ctp-leg-when"><Ph name="clock" size={13} color="#9E9E9E" />{when}</div>}
           {directions && <div className="ctp-leg-dir">{directions}</div>}
           {step.access_note && <NoteBox text={step.access_note} />}
           {step.body_md && <AppMarkdown text={step.body_md} />}
@@ -359,7 +352,6 @@ const hasPin = (s) => s.lat != null && s.lng != null && s.lat !== '' && s.lng !=
 function DayRoute({ day, partners }) {
   const steps = day.steps || [];
   const numbers = stopNumbers(steps);
-  const plan = dayPlan(day);
   const stops = steps.filter((s) => s.type === 'stop').map((s) => ({ ...s, number: numbers[s.id] }));
   const lastStopId = stops.length > 1 ? stops[stops.length - 1].id : null;
   return (
@@ -372,11 +364,11 @@ function DayRoute({ day, partners }) {
           {s.type === 'stop'
             ? (
               <StopCard
-                step={s} number={numbers[s.id]} time={plan.times[s.id]} partners={partners}
+                step={s} number={numbers[s.id]} partners={partners}
                 caption={i === 0 ? 'START HERE' : s.id === lastStopId ? 'LAST STOP' : null}
               />
             )
-            : <LegPill step={s} time={plan.times[s.id]} partners={partners} />}
+            : <LegPill step={s} partners={partners} />}
         </Fragment>
       ))}
     </>

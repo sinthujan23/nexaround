@@ -53,20 +53,25 @@ class CityTourTrip {
 
   int minutesFor(CityTourStep step) => minutes[step.id] ?? cityTourPlannedMinutes(step);
 
-  /// Every step's times as of [now]. Steps are marked in any order: the step
-  /// in hand is the one after the furthest step marked (the first, before
-  /// any), and starts when that one was marked (or at the start); it runs its
-  /// planned minutes, or on until now when it runs over, and the rest follow
-  /// on. Steps before it left unmarked were passed over: a stop is [missed]
-  /// (still to visit, and can be ticked), a ride or break [passed] (counted
-  /// done). A skipped or missed stop's minutes leave the plan the pace is
-  /// measured against. Matches the server's due_step.
+  /// Every step's times as of [now]. Only stops are ticked, in any order
+  /// (rides and breaks ticked by an app from before still count): the stop
+  /// in hand is the first stop after the furthest step marked, and the
+  /// stretch to it starts when that one was marked (or at the start); the
+  /// rides and breaks on the way run their minutes, the stop runs its own, or
+  /// on until now when it runs over, and the rest follow on. Steps before the
+  /// furthest one left unmarked were passed over: a stop is [missed] (still to
+  /// visit, and can be ticked), a ride or break [passed]. A skipped or missed
+  /// stop's minutes leave the plan the pace is measured against. Matches the
+  /// server's due_step.
   CityTourSchedule schedule(List<CityTourStep> steps, DateTime now) {
     final times = <String, CityTourStepTime>{};
-    CityTourStep? current;
     var furthest = -1;
     for (var i = 0; i < steps.length; i++) {
       if (done.containsKey(steps[i].id)) furthest = i;
+    }
+    CityTourStep? current;
+    for (var i = furthest + 1; i < steps.length && current == null; i++) {
+      if (steps[i].isStop) current = steps[i];
     }
     var cursor = startedAt;
     var planned = startedAt;
@@ -84,8 +89,7 @@ class CityTourTrip {
         cursor = doneAt;
       } else if (i < furthest) {
         times[step.id] = CityTourStepTime(start: cursor, end: cursor, missed: missed, passed: !missed);
-      } else if (current == null) {
-        current = step;
+      } else if (step.id == current?.id) {
         final end = cursor.add(length);
         times[step.id] = CityTourStepTime(start: cursor, end: end, isCurrent: true);
         cursor = now.isAfter(end) ? now : end;

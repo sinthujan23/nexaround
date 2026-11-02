@@ -244,21 +244,20 @@ class _CityTourPageState extends State<CityTourPage> {
     return trip.dayId == day.id || (trip.dayId.isEmpty && day.id == tour.days.first.id);
   }
 
-  /// Marks a step done (any step, in any order), or skips it with [skip].
-  /// With [stay] (a stop's "Yet to visit" button or chip, or a step not in
-  /// hand) the page stays where it is rather than scrolling on to the step in
-  /// hand, and with [holdOpen] the stop's open card stays open, now teal.
+  /// Marks a stop visited, any stop in any order (rides and breaks are not
+  /// ticked). With [stay] (its "Yet to visit" button or chip, or a stop not
+  /// in hand) the page stays where it is rather than scrolling on to the stop
+  /// in hand, and with [holdOpen] its open card stays open, now teal.
   Future<void> _markDone(
     CityTourStep step,
     DateTime at, {
-    bool skip = false,
     bool stay = false,
     bool holdOpen = false,
   }) async {
     if (_tripBusy) return;
     setState(() => _tripBusy = true);
     try {
-      final trip = await _service.markDone(widget.card.id, step.id, at, skip: skip);
+      final trip = await _service.markDone(widget.card.id, step.id, at);
       if (!mounted) return;
       setState(() {
         _trip = trip;
@@ -267,21 +266,17 @@ class _CityTourPageState extends State<CityTourPage> {
       });
       if (!stay) _revealCurrent(trip);
       _say(
-        trip.isFinished
-            ? 'Trip finished. Well done!'
-            : (skip
-                ? 'Skipped. Times updated.'
-                : (step.isStop ? 'Visited. Times updated.' : 'Marked done. Times updated.')),
+        trip.isFinished ? 'Trip finished. Well done!' : 'Marked as visited.',
         action: SnackBarAction(label: 'Undo', onPressed: () => _undo(step.id)),
       );
     } catch (e) {
       // Tried again with the same time, so a dropped signal costs nothing.
       if (mounted) {
         _say(
-          userMessageFor(e, action: skip ? 'skip this' : 'mark this done'),
+          userMessageFor(e, action: 'mark this visited'),
           action: SnackBarAction(
             label: 'Try again',
-            onPressed: () => _markDone(step, at, skip: skip, stay: stay, holdOpen: holdOpen),
+            onPressed: () => _markDone(step, at, stay: stay, holdOpen: holdOpen),
           ),
         );
       }
@@ -328,9 +323,9 @@ class _CityTourPageState extends State<CityTourPage> {
     }
   }
 
-  /// Takes back [stepId]'s "Mark done" or skip; the card of [holdOpen] stays
-  /// open. Any "Marked done … Undo" still showing goes, so it can't take back
-  /// something else.
+  /// Takes back [stepId]'s tick; the card of [holdOpen] stays open. Any
+  /// "Visited … Undo" still showing goes, so it can't take back something
+  /// else.
   Future<void> _undo(String stepId, {CityTourStep? holdOpen}) async {
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
     await _tripChange(() async {
@@ -356,8 +351,8 @@ class _CityTourPageState extends State<CityTourPage> {
     if (!_usuallyOpen(step, state)) _flipped.add(step.id);
   }
 
-  /// A tap on a step's circle: marks it done, any step in any order; on one
-  /// marked, offers to take it back.
+  /// A tap on a stop's number: marks it visited, any stop in any order; on
+  /// one visited, offers to take it back.
   Future<void> _tapTick(
     CityTour tour,
     CityTourDay day,
@@ -379,10 +374,6 @@ class _CityTourPageState extends State<CityTourPage> {
     }
     final time = schedule.times[step.id];
     if (time == null) return;
-    if (time.passed) {
-      _say('“${_stepTitle(day, step)}” counts as done: you ticked a stop after it.');
-      return;
-    }
     if (!time.isDone) {
       await _markDone(step, DateTime.now(), stay: !time.isCurrent);
       return;
@@ -390,10 +381,8 @@ class _CityTourPageState extends State<CityTourPage> {
     final undo = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(step.isStop ? 'Not visited yet?' : 'Not done yet?'),
-        content: Text(
-          '“${_stepTitle(day, step)}” goes back to ${step.isStop ? 'yet to visit' : 'not done'}.',
-        ),
+        title: const Text('Not visited yet?'),
+        content: Text('“${_stepTitle(day, step)}” goes back to yet to visit.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -716,7 +705,6 @@ class _CityTourPageState extends State<CityTourPage> {
               child: _PinnedStep(
                 scroll: _scroll,
                 pins: pins,
-                times: schedule?.times ?? cityTourDayPlan(day, DateTime.now()),
                 progress: schedule == null ? null : (stopsDone, stops.length),
                 onTick: (step) => _tapTick(tour, day, step, schedule),
               ),
@@ -862,8 +850,6 @@ class _CityTourPageState extends State<CityTourPage> {
           const SizedBox(height: 14),
         ]);
       }
-      // A day someone is on shows the trip's times; any other its plan.
-      final times = schedule?.times ?? cityTourDayPlan(day, DateTime.now());
       final lastStopId = stops.length > 1 ? stops.last.id : null;
       for (var i = 0; i < day.steps.length; i++) {
         final step = day.steps[i];
@@ -875,7 +861,7 @@ class _CityTourPageState extends State<CityTourPage> {
             ? CityTourStopCard(
                 key: key,
                 step: step,
-                time: times[step.id],
+                time: schedule?.times[step.id],
                 state: state,
                 open: _isOpen(step, state),
                 caption: state != CityTourStepState.plain
@@ -891,14 +877,8 @@ class _CityTourPageState extends State<CityTourPage> {
             : CityTourLegPill(
                 key: key,
                 step: step,
-                time: times[step.id],
-                state: state,
                 open: _isOpen(step, state),
-                canUndo: schedule?.times[step.id]?.isDone ?? false,
-                onTick: tick,
                 onToggle: () => _flip(step.id),
-                onUndo: () => _undo(step.id),
-                onSkip: () => _markDone(step, DateTime.now(), skip: true),
                 onLinkTap: _openLink,
               ));
       }
@@ -926,12 +906,12 @@ class _Pin {
 }
 
 /// The open stop the traveller is scrolling through: its circle, photo, name
-/// and times held under the bar at the top, with the day's progress ring.
+/// and estimated time held under the bar at the top, with the day's progress
+/// ring.
 /// The card's end pushes it away, and the next open stop takes its place.
 class _PinnedStep extends StatefulWidget {
   final ScrollController scroll;
   final List<_Pin> pins;
-  final Map<String, CityTourStepTime> times;
 
   /// The day's stops done, of how many, while a trip is on it.
   final (int, int)? progress;
@@ -940,7 +920,6 @@ class _PinnedStep extends StatefulWidget {
   const _PinnedStep({
     required this.scroll,
     required this.pins,
-    required this.times,
     required this.progress,
     required this.onTick,
   });
@@ -1005,7 +984,7 @@ class _PinnedStepState extends State<_PinnedStep> {
 
   Widget _card(BuildContext context, _Pin pin) {
     final step = pin.step;
-    final span = cityTourStepSpan(context, step, widget.times[step.id]);
+    final span = cityTourStepEst(step);
     final progress = widget.progress;
     return SizedBox(
       height: _height,
