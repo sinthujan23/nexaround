@@ -986,6 +986,7 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
         '4110': 'assets/images/klook_logo.png',
         '1942': 'assets/images/gocity_logo.png',
         '4136': 'assets/images/kiwi_logo.png',
+        '5867': 'assets/images/radicalstorage_logo.png',
       }[uri.queryParameters['p']];
     }
     const byHost = {
@@ -996,6 +997,7 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
       'klook.com': 'assets/images/klook_logo.png',
       'gocity.com': 'assets/images/gocity_logo.png',
       'kiwi.com': 'assets/images/kiwi_logo.png',
+      'radicalstorage.com': 'assets/images/radicalstorage_logo.png',
       'hellosafe.com': 'assets/images/hellosafe_logo.png',
       'atlas.hellosafe.com': 'assets/images/hellosafe_logo.png',
     };
@@ -1252,8 +1254,9 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
   /// means the Airalo eSIM card the backend adds (type "esim").
   /// The official monetized partners we have affiliate partnerships with through
   /// Travelpayouts: Aviasales (Flights), GetTransfer (Airport Car), Airalo (eSIM),
-  /// WeGoTrip (Sight Tickets), Klook (Things to Do), and Go City (City Passes);
-  /// and HelloSafe (Travel Insurance), direct through its Atlas API.
+  /// WeGoTrip (Sight Tickets), Klook (Things to Do), Go City (City Passes) and
+  /// Radical Storage (Luggage Storage); and HelloSafe (Travel Insurance), direct
+  /// through its Atlas API.
   List<OdysseyBookingPartner> get _dynamicPartners {
     final Map<String, OdysseyBookingPartner> partnersByBrand = {};
 
@@ -1279,6 +1282,8 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
         addPartner('klook', bp);
       } else if (nameLower.contains('gocity') || nameLower.contains('go city') || typeLower.contains('pass')) {
         addPartner('gocity', bp);
+      } else if (nameLower.contains('radical') || typeLower == 'luggage') {
+        addPartner('radicalstorage', bp);
       } else if (nameLower.contains('hellosafe') || typeLower.contains('insurance')) {
         addPartner('hellosafe', bp);
       }
@@ -1417,6 +1422,23 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
       }
     }
 
+    // Radical Storage
+    if (!partnersByBrand.containsKey('radicalstorage')) {
+      String storageUrl = '';
+      for (final item in widget.odyssey.bookingPlan) {
+        if (item.url.contains('radicalstorage.com') || (item.url.contains('tp.media') && item.url.contains('p=5867'))) {
+          storageUrl = item.url;
+        }
+      }
+      if (storageUrl.isNotEmpty) {
+        addPartner('radicalstorage', OdysseyBookingPartner(
+          name: 'Radical Storage Luggage',
+          type: 'luggage',
+          url: storageUrl,
+        ));
+      }
+    }
+
     // HelloSafe: plans made before its card existed still carry the Safety button's link.
     if (!partnersByBrand.containsKey('hellosafe')) {
       final url = widget.odyssey.practicalInfo.safetyUrl;
@@ -1430,7 +1452,7 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     }
 
     // Return in consistent, logical order
-    const priorityOrder = ['aviasales', 'gettransfer', 'airalo', 'wegotrip', 'klook', 'gocity', 'hellosafe'];
+    const priorityOrder = ['aviasales', 'gettransfer', 'airalo', 'wegotrip', 'klook', 'gocity', 'radicalstorage', 'hellosafe'];
     final result = <OdysseyBookingPartner>[];
     for (final key in priorityOrder) {
       if (partnersByBrand.containsKey(key)) {
@@ -4974,6 +4996,7 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     if (name.contains('wegotrip')) return 'assets/images/wegotrip_logo.png';
     if (name.contains('klook')) return 'assets/images/klook_logo.png';
     if (name.contains('gocity') || name.contains('go city')) return 'assets/images/gocity_logo.png';
+    if (name.contains('radical')) return 'assets/images/radicalstorage_logo.png';
     if (name.contains('hellosafe')) return 'assets/images/hellosafe_logo.png';
     return null;
   }
@@ -5020,6 +5043,10 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
           icon = Icons.card_membership_rounded;
           color = const Color(0xFF00A389);
           subtitle = 'Sightseeing & attraction passes in $dest via Go City';
+        } else if (nameLower.contains('radical') || type == 'luggage') {
+          icon = Icons.luggage_rounded;
+          color = const Color(0xFF1E88E5);
+          subtitle = 'Luggage storage on check-out day in $dest via Radical Storage';
         } else if (nameLower.contains('hellosafe') || type.contains('insurance')) {
           icon = Icons.health_and_safety_outlined;
           color = const Color(0xFF4F3BF0);

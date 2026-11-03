@@ -135,7 +135,7 @@ def test_airalo_page_names():
 
 
 def test_flight_partners_are_not_offered_in_guides():
-    assert set(ct.AFFILIATES) == {"klook", "wegotrip", "gocity", "gettransfer", "airalo"}
+    assert set(ct.AFFILIATES) == {"klook", "wegotrip", "gocity", "gettransfer", "airalo", "radicalstorage"}
 
 
 def test_unknown_partner_is_refused():

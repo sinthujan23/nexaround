@@ -152,6 +152,7 @@ class SettingsResponse(BaseModel):
     provider_mode_gocity: str = "off"
     provider_mode_kiwi: str = "off"
     provider_mode_atlas: str = "off"
+    provider_mode_radicalstorage: str = "off"
     atlas_key_id: str = ""
     atlas_signing_secret: str = ""
     # True: Experiences are browsed by country. False: nearest first.
@@ -189,6 +190,7 @@ class SettingsUpdateRequest(BaseModel):
     provider_mode_gocity: Optional[ProviderMode] = None
     provider_mode_kiwi: Optional[ProviderMode] = None
     provider_mode_atlas: Optional[ProviderMode] = None
+    provider_mode_radicalstorage: Optional[ProviderMode] = None
     experiences_country_mode: Optional[bool] = None
     exchangerate_api_key: Optional[str] = None
     neva_voice_enabled: Optional[bool] = None

@@ -6,7 +6,8 @@ import { CrossIcon, LinkIcon, PlusIcon, TicketIcon } from './Icons';
 
 // Partner links are never typed. Picking a partner is enough: the server makes
 // the page from the guide (city_tours.partner_page) when it is saved, and only
-// WeGoTrip needs a choice, of a ticket from the city's own catalogue.
+// WeGoTrip needs a choice, of a ticket from the city's own catalogue. Radical
+// Storage's city page comes with the partner options, as WeGoTrip's list does.
 
 // What each partner can open from a guide in a given city and stop, from the
 // server. Kept for the page's life: WeGoTrip's catalogue is a hundred-odd rows.
@@ -65,6 +66,9 @@ function newPartnerLink(partner, where, options) {
     return { ...base, url: pick?.url || '', product_title: pick?.title || '', label: (pick?.title || '').slice(0, 80) };
   }
   if (partner === 'gocity') return { ...base, label: `${city} sightseeing pass`.slice(0, 80) };
+  if (partner === 'radicalstorage') {
+    return { ...base, url: options?.radicalstorage?.url || '', label: `Store your bags in ${city}`.slice(0, 80) };
+  }
   if (partner === 'airalo') return { ...base, label: `${where.country || 'Local'} eSIM for mobile data`.slice(0, 80) };
   return {
     ...base,
@@ -87,6 +91,15 @@ function Opens({ link, where, options }) {
   } else if (link.partner === 'gocity') {
     warn = options?.gocity?.available === false;
     text = warn ? `${options.gocity.reason} Remove this link.` : `Go City's ${city} pass page`;
+  } else if (link.partner === 'radicalstorage') {
+    // The page is the city's when the link was added; a guide moved to
+    // another city keeps it until the link is added again.
+    const found = options?.radicalstorage;
+    warn = found?.available === false || !link.url || (found?.url && found.url !== link.url);
+    if (found?.available === false) text = `${found.reason} Remove this link.`;
+    else if (!link.url) text = 'Remove this link and add it again.';
+    else if (found?.url && found.url !== link.url) text = `Another city's page (${link.url.split('/').pop()}). Remove this link and add it again.`;
+    else text = `Radical Storage's ${city} luggage storage page`;
   } else if (link.partner === 'airalo') {
     warn = !where.country;
     text = warn ? "Add the guide's country first." : `Airalo's ${where.country} eSIM page`;

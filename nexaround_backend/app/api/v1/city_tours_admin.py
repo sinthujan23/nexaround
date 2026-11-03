@@ -30,7 +30,7 @@ from app.schemas.city_tour import (
 from app.services import audit, city_tours, creator_auth, legal_service
 from app.services.experience_service import package_to_card
 from app.services.experience_upload import save_experience_images
-from app.services.providers import gocity, wegotrip
+from app.services.providers import gocity, radicalstorage, wegotrip
 
 router = APIRouter(prefix="/admin/city-tours", tags=["Admin City Tours"])
 
@@ -272,6 +272,19 @@ async def _wegotrip_options(city: str, country: str, place: str) -> dict:
     }
 
 
+async def _radicalstorage_options(city: str, country: str) -> dict:
+    """The city's Radical Storage page, when it has one in the guide's country."""
+    if not city:
+        return {"available": False, "reason": "Add the guide's city first.", "url": ""}
+    try:
+        page = await radicalstorage.find(city, country)
+    except Exception:
+        page = None
+    if not page:
+        return {"available": False, "reason": f"Radical Storage has no luggage storage in {city}.", "url": ""}
+    return {"available": True, "reason": "", "url": page["url"], "name": page["name"]}
+
+
 @router.get("/partner-options")
 async def partner_options(
     city: str = Query("", max_length=80),
@@ -295,6 +308,7 @@ async def partner_options(
         },
         "gettransfer": {"available": True},
         "wegotrip": await _wegotrip_options(city, country, place),
+        "radicalstorage": await _radicalstorage_options(city, country),
     }
 
 

@@ -18,6 +18,7 @@ const PROVIDERS = {
   airalo: { label: 'Airalo', color: '#0097a7' },
   gettransfer: { label: 'GetTransfer', color: '#5e35b1' },
   atlas: { label: 'HelloSafe Atlas', color: '#2e7d32' },
+  radicalstorage: { label: 'Radical Storage', color: '#1e88e5' },
   unsplash: { label: 'Unsplash', color: '#455a64' },
   app_stores: { label: 'App Stores', color: '#6d4c41' },
 };

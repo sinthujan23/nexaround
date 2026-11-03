@@ -381,7 +381,8 @@ async def _upstream(
         return Fetched(error=f"http_{status}")
 
     try:
-        body = resp.json() if parse == "json" else resp.text
+        # "bytes" for a file that is itself compressed (a .xml.gz sitemap).
+        body = resp.json() if parse == "json" else resp.content if parse == "bytes" else resp.text
         data = transform(body) if transform else body
     except Exception as e:
         await _failed(provider, "unreadable response")

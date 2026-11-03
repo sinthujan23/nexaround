@@ -18,6 +18,7 @@ Each provider follows its switch in the admin panel (`config.mode`):
             a ticket line and link to the sights it sells tickets for, and
             Klook a "Things to do in <city>" row for the cities it does not.
             Go City adds a sightseeing-pass row for its big cities,
+            Radical Storage a luggage-storage row for the cities it has,
             Kiwi.com a second flight link beside Aviasales', and HelloSafe
             Atlas a priced travel-insurance row and button on trips to
             another country
@@ -38,7 +39,9 @@ from typing import Optional
 
 from app.services import airports_service
 from app.services.trip_cost_floor import country_for
-from app.services.providers import airalo, atlas, aviasales, config, gettransfer, gocity, kiwi, klook, wegotrip
+from app.services.providers import (
+    airalo, atlas, aviasales, config, gettransfer, gocity, kiwi, klook, radicalstorage, wegotrip,
+)
 from app.services.providers.money import format_amount, format_range, usd_rate
 
 logger = logging.getLogger(__name__)
@@ -112,6 +115,7 @@ async def start(
     try:
         modes = {p: await config.mode(p) for p in (
             "gettransfer", "airalo", "aviasales", "wegotrip", "klook", "gocity", "kiwi", "atlas",
+            "radicalstorage",
         )}
     except Exception as e:
         logger.warning("providers: could not read switches: %s", e)
@@ -132,8 +136,12 @@ async def start(
             _timed(airalo.offer_for(country_name, country_code, days))
         )
     cities = [str(leg.get("city") or "") for leg in legs or [] if isinstance(leg, dict) and leg.get("city")]
-    if cities and any(modes[p] != config.OFF for p in ("wegotrip", "klook", "gocity")):
+    if cities and any(modes[p] != config.OFF for p in ("wegotrip", "klook", "gocity", "radicalstorage")):
         pending.legs, pending.country = list(legs or []), country_name
+    if modes["radicalstorage"] != config.OFF and cities:
+        pending.tasks["radicalstorage"] = asyncio.create_task(
+            _timed(radicalstorage.lookup(list(legs or []), country_code or country_name))
+        )
     if modes["wegotrip"] != config.OFF and cities:
         pending.tasks["wegotrip"] = asyncio.create_task(
             _timed(wegotrip.catalogue_for(cities, country_name))
@@ -303,6 +311,16 @@ async def _finish(pending: Pending, day_items, meta, *, currency: str, travelers
             project_id=await config.setting(config.TRAVELPAYOUTS_PROJECT_ID),
         )
 
+    if pending.modes.get("radicalstorage", config.OFF) != config.OFF and "radicalstorage" in pending.tasks:
+        found, ms = result("radicalstorage")
+        audit["radicalstorage"] = await _apply_radicalstorage(
+            meta, pending, found or {},
+            live=pending.modes["radicalstorage"] == config.LIVE, rate=rate, currency=currency,
+            marker=await config.setting(config.TRAVELPAYOUTS_MARKER),
+            project_id=await config.setting(config.TRAVELPAYOUTS_PROJECT_ID),
+        )
+        audit["radicalstorage"]["ms"] = ms
+
     if pending.modes.get("aviasales", config.OFF) != config.OFF:
         audit["aviasales"] = _apply_flight_links(
             meta,
@@ -312,9 +330,12 @@ async def _finish(pending: Pending, day_items, meta, *, currency: str, travelers
             project_id=await config.setting(config.TRAVELPAYOUTS_PROJECT_ID),
         )
 
-    # Restrict booking_partners to only our 6 monetized partners
+    # Restrict booking_partners to only our monetized partners
     if meta.get("booking_partners"):
-        monetized_brands = ("airalo", "aviasales", "gettransfer", "wegotrip", "klook", "gocity", "go city", "hellosafe")
+        monetized_brands = (
+            "airalo", "aviasales", "gettransfer", "wegotrip", "klook", "gocity", "go city", "hellosafe",
+            "radical storage",
+        )
         meta["booking_partners"] = [
             p for p in meta["booking_partners"]
             if isinstance(p, dict) and any(b in str(p.get("name") or "").lower() for b in monetized_brands)
@@ -558,6 +579,49 @@ def _apply_gocity(meta: dict, pending: Pending, *, live: bool, marker: str, proj
     if slugs:
         first_slug = slugs[0]
         _add_partner(meta, "Go City Pass", "passes", links[first_slug])
+    return entry
+
+
+# ── Luggage storage ──────────────────────────────────────────────────────────
+
+async def _apply_radicalstorage(
+    meta: dict, pending: Pending, found: dict, *,
+    live: bool, rate, currency: str, marker: str, project_id: str,
+) -> dict:
+    """A "Radical Storage in Kochi" row in the Booking Plan for the plan's
+    cities Radical Storage has a page for in their own country: the last city
+    always (its check-out comes before the flight home), then the earliest
+    others, at most three.
+
+    The row gives the city's lowest price per bag per day, in the plan's
+    currency. Rows from an earlier pass are replaced.
+    """
+    cities = radicalstorage.cities_to_link(pending.legs, found)
+    links = {
+        city: radicalstorage.booking_link(found[city]["url"], marker=marker, project_id=project_id)
+        for city in cities
+    }
+    entry: dict = {
+        "mode": config.LIVE if live else config.SHADOW,
+        "cities": {city: found[city]["slug"] for city in cities},
+    }
+    if not live:
+        entry["links"] = links
+        return entry
+    rows = [
+        r for r in (meta.get("booking_plan") or [])
+        if not (isinstance(r, dict) and radicalstorage.is_radicalstorage_link(str(r.get("url") or "")))
+    ]
+    for city in cities:
+        page = found[city]
+        price = ""
+        if page.get("price") and page.get("currency"):
+            price = await _in_plan_currency(page["price"], page["currency"], rate, currency)
+        rows.append(radicalstorage.plan_item(city, links[city], price))
+    meta["booking_plan"] = rows
+    entry["rows"] = len(cities)
+    if cities:
+        _add_partner(meta, radicalstorage.PARTNER_NAME, radicalstorage.PARTNER_TYPE, links[cities[-1]])
     return entry
 
 

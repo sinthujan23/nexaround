@@ -17,6 +17,7 @@ const PROVIDER_FIELDS = {
   provider_mode_gocity: 'off',
   provider_mode_kiwi: 'off',
   provider_mode_atlas: 'off',
+  provider_mode_radicalstorage: 'off',
   atlas_key_id: '',
   atlas_signing_secret: '',
 };
@@ -30,6 +31,7 @@ const PROVIDER_SWITCHES = [
   { key: 'provider_mode_gocity', name: 'Go City', use: 'Sightseeing-pass link for big cities (2+ days)' },
   { key: 'provider_mode_kiwi', name: 'Kiwi.com', use: 'Second flight link beside Aviasales (no prices)' },
   { key: 'provider_mode_atlas', name: 'HelloSafe Atlas', use: 'Travel-insurance comparison & live prices on trips abroad' },
+  { key: 'provider_mode_radicalstorage', name: 'Radical Storage', use: 'Luggage-storage link & from-price for the trip’s cities' },
 ];
 
 export default function Settings() {

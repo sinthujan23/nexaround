@@ -37,12 +37,15 @@ one day, and saving one turns it into `days`.
             "label": "Seine river cruise", "url": "<made here>"}
          | {"id": "…", "kind": "affiliate", "partner": "wegotrip", "product_title": "…",
             "url": "<a product page from WeGoTrip's catalogue>", "label": "…"}
+         | {"id": "…", "kind": "affiliate", "partner": "radicalstorage",
+            "url": "<the city's Radical Storage page, found for the editor>", "label": "…"}
          | {"id": "…", "kind": "experience", "package_id": "…", "label": "…"}
 
 Creators never type a web address: an affiliate link's page is made here from
 the guide (its city and country, the stop's name, the stops either side of a
 ride), or, for WeGoTrip, picked from the city's catalogue in the editor
-(partner_options). Stops are numbered within their day and pinned on that
+(partner_options); Radical Storage's city page is found there too, as it
+needs the city's page to be read. Stops are numbered within their day and pinned on that
 day's map. Step and link ids are unique across the whole guide and stay put
 across edits: trips mark steps done by id, and taps are counted per link
 (city_tour_taps.link_id).
@@ -58,7 +61,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Callable, Optional
 
-from app.services.providers import airalo, gettransfer, gocity, klook, wegotrip
+from app.services.providers import airalo, gettransfer, gocity, klook, radicalstorage, wegotrip
 
 
 class ContentError(ValueError):
@@ -95,6 +98,8 @@ AFFILIATES: dict[str, Affiliate] = {a.key: a for a in (
               "", gettransfer.PROMO_ID),
     Affiliate("airalo", "Airalo", "eSIM data for the trip", ("airalo.com",),
               airalo._CAMPAIGN_ID, airalo._PROMO_ID),
+    Affiliate("radicalstorage", "Radical Storage", "Luggage storage for the day", ("radicalstorage.com",),
+              radicalstorage.CAMPAIGN_ID, radicalstorage.PROMO_ID),
 )}
 
 EXPERIENCE = "experience"
@@ -318,6 +323,9 @@ def partner_page(link: dict, place: LinkPlace) -> str:
             urllib.parse.urlparse(url).path or "",
         )
         return url if ok else ""
+    if partner == "radicalstorage":
+        url = link.get("url") or ""
+        return url if radicalstorage.is_city_page(url) else ""
     return ""
 
 
@@ -346,6 +354,8 @@ def _link(raw, where: str, seen: set[str], place: LinkPlace) -> dict:
         link["words"] = words
     if partner == "wegotrip":
         link["product_title"] = _str(raw.get("product_title"))[:200]
+        link["url"] = _str(raw.get("url"))[:_URL_MAX]
+    if partner == "radicalstorage":
         link["url"] = _str(raw.get("url"))[:_URL_MAX]
     link["url"] = partner_page(link, place)
     return link
@@ -598,6 +608,8 @@ def _no_page(link: dict, content: dict) -> str:
         return "pick the WeGoTrip ticket for its link."
     if partner == "klook":
         return "add the words to search Klook for."
+    if partner == "radicalstorage":
+        return f"Radical Storage has no luggage storage in {content.get('city') or 'this city'}. Remove its link."
     return "remove the link and add it again."
 
 
