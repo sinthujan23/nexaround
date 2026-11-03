@@ -11,8 +11,15 @@ import 'package:video_player/video_player.dart';
 /// Curated Hubs → City Tours: the cities that have guides, under the header
 /// video, which shrinks to a white bar as the page scrolls. A city with one
 /// guide opens it straight away; with more, its list of guides.
+///
+/// [isTab]: shown as a bottom-navbar tab (no back button). [isActive]: whether
+/// that tab is the one on screen; the page loads on its first showing and its
+/// header video only plays while it is showing.
 class CityToursPage extends StatefulWidget {
-  const CityToursPage({super.key});
+  final bool isTab;
+  final bool isActive;
+
+  const CityToursPage({super.key, this.isTab = false, this.isActive = true});
 
   @override
   State<CityToursPage> createState() => _CityToursPageState();
@@ -57,6 +64,26 @@ class _CityToursPageState extends State<CityToursPage> {
       _tours = cached;
       _loading = false;
     }
+    if (widget.isActive) _start();
+  }
+
+  @override
+  void didUpdateWidget(covariant CityToursPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isActive == oldWidget.isActive) return;
+    if (widget.isActive) {
+      if (_videoController == null) {
+        _start();
+      } else if (_videoController!.value.isInitialized) {
+        _videoController!.play();
+      }
+    } else {
+      _videoController?.pause();
+    }
+  }
+
+  // First showing: load the guides and start the header video.
+  void _start() {
     _fetch();
     _initVideo();
   }
@@ -71,7 +98,8 @@ class _CityToursPageState extends State<CityToursPage> {
         if (mounted) {
           _videoController?.setLooping(true);
           _videoController?.setVolume(0.0);
-          _videoController?.play();
+          // The tab may have been left while the video was loading.
+          if (widget.isActive) _videoController?.play();
           setState(() {});
         }
       });
@@ -303,11 +331,15 @@ class _CityToursPageState extends State<CityToursPage> {
               backgroundColor: _isScrolled ? Colors.white : _navy,
               elevation: _isScrolled ? 2 : 0,
               scrolledUnderElevation: 2,
-              leading: _barButton(
-                icon: Icons.arrow_back_ios_new_rounded,
-                size: 16,
-                onTap: () => Navigator.pop(context),
-              ),
+              // As a tab there is nothing to go back to.
+              automaticallyImplyLeading: false,
+              leading: widget.isTab
+                  ? null
+                  : _barButton(
+                      icon: Icons.arrow_back_ios_new_rounded,
+                      size: 16,
+                      onTap: () => Navigator.pop(context),
+                    ),
               actions: [
                 _barButton(
                   icon: _searching ? Icons.close_rounded : Icons.search_rounded,

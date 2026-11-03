@@ -29,6 +29,7 @@ import 'package:nexaround_app/features/living_map/presentation/pages/smart_touri
 import 'package:nexaround_app/features/experiences/presentation/pages/my_experience_requests_page.dart';
 import 'package:nexaround_app/features/vendor_portal/presentation/pages/vendor_portal_page.dart';
 import 'package:nexaround_app/features/city_tours/presentation/pages/city_tour_page.dart';
+import 'package:nexaround_app/features/city_tours/presentation/pages/city_tours_page.dart';
 
 class HomePage extends StatefulWidget {
   static final GlobalKey<HomePageState> homeKey = GlobalKey<HomePageState>();
@@ -387,6 +388,9 @@ class HomePageState extends State<HomePage> with WidgetsBindingObserver {
         requestCount: _plansRequestCount,
       ),
       const ProfilePage(),
+      // City Guides took Discover's place in the navbar; Discover (3) is
+      // still opened from Home and NEVA.
+      CityToursPage(isTab: true, isActive: _selectedIndex == 6),
     ];
 
     return PopScope(
@@ -482,7 +486,7 @@ class HomePageState extends State<HomePage> with WidgetsBindingObserver {
                   _buildNavItem(0, Icons.explore_rounded, 'Home'),
                   _buildNavItem(1, Icons.view_in_ar_rounded, 'AR'),
                   _buildNavItem(2, Icons.auto_awesome_rounded, 'NEVA'),
-                  _buildNavItem(3, Icons.travel_explore_rounded, 'Discover'),
+                  _buildNavItem(6, Icons.location_city_rounded, 'City Guides'),
                   _buildNavItem(4, Icons.auto_mode_rounded, 'Plans'),
                 ],
               ),
@@ -503,12 +507,7 @@ class HomePageState extends State<HomePage> with WidgetsBindingObserver {
           LivingMapPage.homeTabReselected.value++;
           return;
         }
-        if (index == 3) {
-          // Entering Discovery from the nav bar lands on the POI tab.
-          switchToDiscover(initialTab: DiscoverPage.tabs.indexOf('POI'));
-        } else {
-          setState(() => _selectedIndex = index);
-        }
+        setState(() => _selectedIndex = index);
       },
       child: AnimatedContainer(
         duration: AppDurations.normal,
