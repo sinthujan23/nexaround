@@ -501,6 +501,50 @@ class _CityTourPageState extends State<CityTourPage> {
     if (end == true) await _closeTrip();
   }
 
+  /// The last day's "End guide": after asking, ends every day's trip, so
+  /// all the ticks go, and goes back to the first day.
+  Future<void> _endGuide(List<CityTourDay> days) async {
+    final end = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('End this guide?'),
+        content: Text(
+          'Your visited places on all ${days.length} days will be cleared. This can\'t be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Keep it'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.error),
+            child: const Text('End guide'),
+          ),
+        ],
+      ),
+    );
+    if (end != true || !mounted) return;
+    final ended = await _tripChange(() async {
+      // One day at a time: the trip in hand, then each other day's.
+      final dayIds = <String>{
+        if (_trip != null) _trip!.dayId,
+        for (final t in _dayTrips) t.dayId,
+      };
+      for (final id in dayIds) {
+        await _service.endTrip(widget.card.id, dayId: id.isEmpty ? null : id);
+      }
+    }, 'end the guide');
+    if (!mounted) return;
+    // The server's latest answer, also when one day failed part way.
+    setState(() {
+      _trip = _service.cachedTrip(widget.card.id);
+      _dayTrips = _service.cachedDayTrips(widget.card.id);
+      _resetOpen();
+    });
+    if (ended && days.isNotEmpty) _goToDay(days.first);
+  }
+
   /// Ends the trip in hand, or with [dayId] that day's (a finished day's
   /// Close). Another day's finished trip can become the one in hand.
   Future<void> _closeTrip({String? dayId}) async {
@@ -670,6 +714,7 @@ class _CityTourPageState extends State<CityTourPage> {
     final nextDay = tour != null && tour.hasDays && number > 0 && number < days.length
         ? days[number]
         : null;
+    final endsGuide = tour != null && tour.hasDays && days.length > 1 && number == days.length;
 
     // The stops on screen that are open, for the pinned header.
     final pins = <_Pin>[];
@@ -701,7 +746,10 @@ class _CityTourPageState extends State<CityTourPage> {
               nextLabel: nextDay == null ? null : 'Go to Day ${number + 1}',
               onNext: nextDay == null ? null : () => _goToDay(nextDay),
               onStart: () => _startTrip(day),
-              onClose: () => _closeTrip(dayId: day.id),
+              // The last of several days ends the whole guide, every day's
+              // ticks with it; otherwise Close ends this day's trip.
+              closeLabel: endsGuide ? 'End guide' : 'Close',
+              onClose: endsGuide ? () => _endGuide(days) : () => _closeTrip(dayId: day.id),
             ),
       body: Stack(
         children: [

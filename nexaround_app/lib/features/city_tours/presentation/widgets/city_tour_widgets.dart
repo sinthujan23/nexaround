@@ -1632,6 +1632,9 @@ class CityTourTripBar extends StatelessWidget {
   final String? nextLabel;
   final VoidCallback? onNext;
 
+  /// "Close", or "End guide" on the last day of several.
+  final String closeLabel;
+
   const CityTourTripBar({
     super.key,
     required this.trip,
@@ -1641,6 +1644,7 @@ class CityTourTripBar extends StatelessWidget {
     this.doneTitle = 'Trip finished',
     this.nextLabel,
     this.onNext,
+    this.closeLabel = 'Close',
     required this.onStart,
     required this.onClose,
   });
@@ -1736,7 +1740,7 @@ class CityTourTripBar extends StatelessWidget {
         else
           TextButton(
             onPressed: busy ? null : onClose,
-            child: const Text('Close', style: TextStyle(fontWeight: FontWeight.w800)),
+            child: Text(closeLabel, style: const TextStyle(fontWeight: FontWeight.w800)),
           ),
       ],
     );
