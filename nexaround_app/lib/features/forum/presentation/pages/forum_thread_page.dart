@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../../../app/theme/app_colors.dart';
+import '../../../../core/error/user_message.dart';
 import '../../../../core/services/cache_service.dart';
 import '../../data/datasources/forum_service.dart';
 import '../../data/models/forum_topic.dart';
@@ -212,7 +213,7 @@ class _ForumThreadPageState extends State<ForumThreadPage> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _errorMessage = e.toString();
+          _errorMessage = userMessageFor(e, action: 'load this topic');
           _isLoading = false;
         });
       }
@@ -321,7 +322,7 @@ class _ForumThreadPageState extends State<ForumThreadPage> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to post reply: $e')),
+          SnackBar(content: Text(userMessageFor(e, action: 'post your reply'))),
         );
       }
     } finally {

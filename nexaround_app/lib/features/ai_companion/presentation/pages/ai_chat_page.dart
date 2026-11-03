@@ -194,7 +194,20 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
         final loaded = <_ChatMessage>[];
         for (final item in raw) {
           if (item is Map) {
-            loaded.add(_ChatMessage.fromMap(item));
+            final message = _ChatMessage.fromMap(item);
+            // Replies saved by older versions could hold the raw error
+            // (Dio text, Google's billing message); show a plain one instead.
+            final rawError = !message.isUser &&
+                (message.text.contains('Diagnostic Details') ||
+                    message.text.contains('Gemini API key') ||
+                    message.text.contains('central processing'));
+            loaded.add(rawError
+                ? _ChatMessage(
+                    text: nevaTroubleMessage(null),
+                    isUser: false,
+                    timestamp: message.timestamp,
+                  )
+                : message);
           }
         }
         if (loaded.isNotEmpty && mounted) {
@@ -537,8 +550,7 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
           _isTyping = false;
           _messages.add(
             _ChatMessage(
-              text:
-                  "I'm having a bit of trouble connecting to my central processing ($e). Please check if the Gemini API key is active!",
+              text: nevaTroubleMessage(e),
               isUser: false,
               timestamp: DateTime.now(),
             ),

@@ -121,6 +121,13 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         return;
       }
 
+      // The error and the app's signature are the diagnostic; like Apple's,
+      // they stay in debug builds only. A user sees a sentence.
+      if (!kDebugMode) {
+        emit(const AuthError("Google sign-in didn't complete. Please try again."));
+        return;
+      }
+
       String displayError = 'Google Sign-In failed: $e';
       if (e is GoogleSignInException) {
         displayError = e.description != null && e.description!.isNotEmpty

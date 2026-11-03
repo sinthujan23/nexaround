@@ -4,6 +4,34 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:nexaround_app/core/constants/api_constants.dart';
 import 'package:nexaround_app/core/network/api_client.dart';
+import 'package:nexaround_app/core/error/user_message.dart';
+
+/// What Neva says when she can't answer: a plain sentence, never the raw
+/// error. That named the HTTP library, the API and Google's billing text,
+/// which helps no traveller; it goes to the debug console only.
+String nevaTroubleMessage(Object? error, {int? status}) {
+  if (kDebugMode) debugPrint('⚠️ Neva could not answer: $error');
+  status ??= error is DioException ? error.response?.statusCode : null;
+  if (status == 429) {
+    return "I'm getting a lot of questions right now. Please try again in a minute.";
+  }
+  // Never reached the server: say why (no internet, too slow).
+  if (error is DioException && error.response == null) {
+    return "Sorry, I couldn't connect just now. ${userMessageFor(error)}";
+  }
+  return "Sorry, I can't answer right now. Please try again in a little while.";
+}
+
+/// The "couldn't identify" result for a photo, with a plain description.
+String _unidentified(String description) => jsonEncode({
+      'identified': false,
+      'name': 'Unknown',
+      'category': 'Unknown',
+      'confidence': 0,
+      'description': description,
+      'fun_fact': '',
+      'tips': '',
+    });
 
 /// Per-request timeout for Gemini calls. The shared ApiClient uses a 20s
 /// receiveTimeout, which is too short for generative requests (an itinerary can
@@ -97,18 +125,11 @@ class GeminiService {
         return "No response text found.";
       } else {
         print('❌ Gemini Proxy API Error: ${response.statusCode} - ${response.data}');
-        return "I'm having a bit of trouble connecting to my central processing. Status: ${response.statusCode}";
+        return nevaTroubleMessage(null, status: response.statusCode);
       }
     } catch (e, stack) {
       print('❌ Gemini Proxy Exception: $e\n$stack');
-      String details = e.toString();
-      if (e is DioException) {
-        if (e.response?.statusCode == 429) {
-          return "I'm taking a quick breath! 🌸 We've reached the limit of questions we can ask right now. Let's wait a minute and try again, or check if the Gemini API key has active billing! ✨";
-        }
-        details = 'DioException [${e.type}]: ${e.message}\nResponse: ${e.response?.data}';
-      }
-      return "An unexpected error occurred while talking to Neva. Please check if the Gemini API key is active!\n\nDiagnostic Details:\n$details";
+      return nevaTroubleMessage(e);
     }
   }
 
@@ -187,20 +208,19 @@ If you cannot confidently identify the place, set "identified" to false and desc
           print('✅ Gemini Proxy Vision Response: $text');
           return text;
         }
-        return '{"identified": false, "name": "Unknown", "category": "Unknown", "confidence": 0, "description": "Could not process the image.", "fun_fact": "", "tips": ""}';
+        return _unidentified('Could not process the image.');
       } else {
         print('❌ Gemini Proxy Vision Error: ${response.statusCode} - ${response.data}');
-        return '{"identified": false, "name": "Unknown", "category": "Unknown", "confidence": 0, "description": "API error: ${response.statusCode}", "fun_fact": "", "tips": ""}';
+        return _unidentified("Couldn't identify this place right now. Please try again in a little while.");
       }
     } catch (e) {
       print('❌ Gemini Proxy Vision Exception: $e');
-      String errorMsg = "Error: $e";
-      if (e is DioException) {
-        if (e.response?.statusCode == 429) {
-          errorMsg = "Rate limit reached. Please wait a minute or check your Gemini API key's billing status.";
-        }
-      }
-      return '{"identified": false, "name": "Unknown", "category": "Unknown", "confidence": 0, "description": "$errorMsg", "fun_fact": "", "tips": ""}';
+      final status = e is DioException ? e.response?.statusCode : null;
+      return _unidentified(status == 429
+          ? 'Too many photos at once. Please wait a minute and try again.'
+          : e is DioException && e.response == null
+              ? "Couldn't identify this place. ${userMessageFor(e)}"
+              : "Couldn't identify this place right now. Please try again in a little while.");
     }
   }
 }
