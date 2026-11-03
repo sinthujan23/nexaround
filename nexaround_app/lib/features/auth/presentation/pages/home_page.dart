@@ -547,11 +547,13 @@ class HomePageState extends State<HomePage> with WidgetsBindingObserver {
                       ),
                     ),
                   )
-                : Icon(
-                    icon,
-                    size: 20,
-                    color: isActive ? Colors.white : AppColors.textTertiary,
-                  ),
+                : label == 'City Guides'
+                    ? _CityGuidesNavIcon(active: isActive)
+                    : Icon(
+                        icon,
+                        size: 20,
+                        color: isActive ? Colors.white : AppColors.textTertiary,
+                      ),
             AnimatedSize(
               duration: AppDurations.normal,
               curve: AppCurves.standard,
@@ -578,4 +580,92 @@ class HomePageState extends State<HomePage> with WidgetsBindingObserver {
       ),
     );
   }
+}
+
+/// City Guides navbar icon: a two-tone route, teal while the tab is open.
+/// Same 24-grid shape and weight as Icons.route_rounded (dots r3 at 6,6 and
+/// 18,18, 2-wide line), so it sits at the same size as the other tabs.
+class _CityGuidesNavIcon extends StatelessWidget {
+  const _CityGuidesNavIcon({required this.active});
+
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox.square(
+      dimension: 20,
+      child: CustomPaint(painter: _CityGuidesRoutePainter(active)),
+    );
+  }
+}
+
+class _CityGuidesRoutePainter extends CustomPainter {
+  _CityGuidesRoutePainter(this.active);
+
+  final bool active;
+
+  static const _tealLight = Color(0xFF5EEAD4);
+  static const _tealDark = Color(0xFF14B8A6);
+  static const _grid = Rect.fromLTWH(0, 0, 24, 24);
+
+  Paint _paint(double alpha) {
+    final paint = Paint()..isAntiAlias = true;
+    if (active) {
+      paint.shader = LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          _tealLight.withValues(alpha: alpha),
+          _tealDark.withValues(alpha: alpha),
+        ],
+      ).createShader(_grid);
+    } else {
+      paint.color = AppColors.textTertiary.withValues(alpha: alpha);
+    }
+    return paint;
+  }
+
+  Paint _stroke(double alpha, double width) => _paint(alpha)
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = width
+    ..strokeCap = StrokeCap.round
+    ..strokeJoin = StrokeJoin.round;
+
+  // Down from the top-left dot, under and up, over and down to the
+  // bottom-right dot.
+  static Path _route(double startY, double endY) => Path()
+    ..moveTo(6, startY)
+    ..lineTo(6, 17)
+    ..arcToPoint(const Offset(12, 17),
+        radius: const Radius.circular(3), clockwise: false)
+    ..lineTo(12, 7)
+    ..arcToPoint(const Offset(18, 7),
+        radius: const Radius.circular(3), clockwise: true)
+    ..lineTo(18, endY);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.save();
+    canvas.scale(size.width / 24, size.height / 24);
+
+    const start = Offset(6, 6);
+    const end = Offset(18, 18);
+
+    // Soft second tone behind the route and inside the dots.
+    canvas.drawPath(_route(6, 18), _stroke(0.28, 6));
+    final softFill = _paint(0.35);
+    canvas.drawCircle(start, 3, softFill);
+    canvas.drawCircle(end, 3, softFill);
+
+    // Solid rings and line on top.
+    final ring = _stroke(1, 1.8);
+    canvas.drawCircle(start, 2.1, ring);
+    canvas.drawCircle(end, 2.1, ring);
+    canvas.drawPath(_route(9, 15), _stroke(1, 2));
+
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_CityGuidesRoutePainter old) => old.active != active;
 }
