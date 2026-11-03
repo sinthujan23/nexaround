@@ -559,7 +559,8 @@ class AuthService:
         from app.models.notification import Notification
         from app.models.discovery_history import DiscoveryHistory
         from app.models.analytics import PlaceVisit, UserSession
-        from sqlalchemy import delete, select
+        from app.models.experience import ExperienceEnquiry
+        from sqlalchemy import delete, select, update
 
         # 1. Delete travel stories, likes and comments
         await self.db.execute(delete(TravelStoryLike).where(TravelStoryLike.user_id == user_id))
@@ -587,6 +588,14 @@ class AuthService:
         await self.db.execute(delete(DiscoveryHistory).where(DiscoveryHistory.user_id == user_id))
         await self.db.execute(delete(UserSession).where(UserSession.user_id == user_id))
         await self.db.execute(delete(PlaceVisit).where(PlaceVisit.user_id == user_id))
+
+        # Experience enquiries are the vendor's booking record and carry their
+        # own contact snapshot, so they stay; only the link to the account goes.
+        await self.db.execute(
+            update(ExperienceEnquiry)
+            .where(ExperienceEnquiry.user_id == user_id)
+            .values(user_id=None)
+        )
 
         # 5. Delete the user record
         await self.repo.delete(user)

@@ -8,9 +8,11 @@ import {
   FilterIcon,
   ChevronDownIcon,
   ArrowUpDownIcon,
+  TrashIcon,
 } from '../components/Icons';
-import { HeroBanner, HeroCount, SearchBar, Loading, EmptyState, Badge, PageError } from '../components/Kit';
+import { HeroBanner, HeroCount, SearchBar, Loading, EmptyState, Badge, PageError, Toast } from '../components/Kit';
 import ExplorerActivity from '../components/ExplorerActivity';
+import { useToast } from '../hooks';
 
 const DATE_LABELS = {
   today: 'Today',
@@ -29,6 +31,9 @@ export default function Users() {
   const [endDate, setEndDate] = useState('');
   const [sortOrder, setSortOrder] = useState('desc');
   const [filterMenuOpen, setFilterMenuOpen] = useState(false);
+  const [selected, setSelected] = useState(() => new Set());
+  const [deleting, setDeleting] = useState(false);
+  const [toast, notify] = useToast();
   const filterPopoverRef = useRef(null);
 
   // Close filter popover when clicking outside
@@ -67,14 +72,62 @@ export default function Users() {
   if (endDate) queryParams.set('end_to', endDate);
   if (sortOrder !== 'desc') queryParams.set('sort_order', sortOrder);
 
-  const { data, loading, error, refetch } = useApi(`/admin/users?${queryParams.toString()}`);
+  const queryKey = queryParams.toString();
+  const { data, loading, error, refetch } = useApi(`/admin/users?${queryKey}`);
+
+  // A selection only means something for the rows on screen.
+  const [selectionKey, setSelectionKey] = useState(queryKey);
+  if (selectionKey !== queryKey) {
+    setSelectionKey(queryKey);
+    setSelected(new Set());
+  }
 
   const handleToggleStatus = async (userId) => {
     try {
       await apiPost(`/admin/users/${userId}/toggle-active`);
+      setSelected(prev => {
+        const next = new Set(prev);
+        next.delete(userId);
+        return next;
+      });
       refetch();
     } catch (err) {
       alert(`Failed to update status: ${err.message}`);
+    }
+  };
+
+  const toggleSelected = (userId) => {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(userId)) next.delete(userId);
+      else next.add(userId);
+      return next;
+    });
+  };
+
+  const deleteUsers = async (targets) => {
+    const question = targets.length === 1
+      ? `Delete ${targets[0].display_name || targets[0].email} for good? Their account and all their data will be removed. This can't be undone.`
+      : `Delete ${targets.length} suspended explorers for good? Their accounts and all their data will be removed. This can't be undone.`;
+    if (!window.confirm(question)) return;
+    setDeleting(true);
+    try {
+      const res = await apiPost('/admin/users/delete', { user_ids: targets.map(u => u.id) });
+      const done = res?.deleted ?? 0;
+      const skipped = res?.skipped ?? 0;
+      notify(
+        `Deleted ${done} explorer${done === 1 ? '' : 's'}`
+          + (skipped ? ` · ${skipped} skipped (no longer suspended)` : ''),
+        skipped && !done ? 'error' : 'ok',
+      );
+      setSelected(new Set());
+      // Emptied the last page: step back instead of showing "No explorers".
+      if (done >= (data?.users?.length ?? 0) && page > 1) setPage(p => p - 1);
+      else refetch();
+    } catch (err) {
+      notify(`Failed to delete: ${err.message}`, 'error');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -114,6 +167,10 @@ export default function Users() {
   const users = data?.users || [];
   const total = data?.total || 0;
   const totalPages = Math.ceil(total / 10) || 1;
+  const suspendedOnPage = users.filter(u => !u.is_active);
+  const selectedUsers = suspendedOnPage.filter(u => selected.has(u.id));
+  const allSelected = suspendedOnPage.length > 0 && selectedUsers.length === suspendedOnPage.length;
+  const someSelected = selectedUsers.length > 0 && !allSelected;
   const extraFiltersCount =
     (dateFilter !== 'all' ? 1 : 0) +
     (startDate || endDate ? 1 : 0);
@@ -412,7 +469,33 @@ export default function Users() {
           </div>
         )}
 
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '10px' }}>
+        <div className="explorers-bulk-row">
+          {suspendedOnPage.length > 0 ? (
+            <div className="explorers-bulk-left">
+              <label className="explorers-select-all">
+                <input
+                  type="checkbox"
+                  className="explorer-check"
+                  ref={el => { if (el) el.indeterminate = someSelected; }}
+                  checked={allSelected}
+                  disabled={deleting}
+                  onChange={() => setSelected(allSelected ? new Set() : new Set(suspendedOnPage.map(u => u.id)))}
+                />
+                <span>Select all suspended ({suspendedOnPage.length})</span>
+              </label>
+              {selectedUsers.length > 0 && (
+                <button
+                  type="button"
+                  className="action-btn reject"
+                  disabled={deleting}
+                  onClick={() => deleteUsers(selectedUsers)}
+                  style={{ padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                >
+                  <TrashIcon size={12} /> {deleting ? 'Deleting…' : `Delete ${selectedUsers.length} selected`}
+                </button>
+              )}
+            </div>
+          ) : <span />}
           <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>
             Showing <strong>{users.length}</strong> of <strong>{total}</strong> explorers
           </span>
@@ -438,8 +521,22 @@ export default function Users() {
                     : 'Explorer';
 
                   return (
-                    <div key={u.id} className="modern-list-item" style={{ cursor: 'default' }}>
+                    <div key={u.id} className={`modern-list-item ${selected.has(u.id) ? 'selected' : ''}`} style={{ cursor: 'default' }}>
                       <div className="list-item-main" style={{ gap: '16px' }}>
+                        {suspendedOnPage.length > 0 && (
+                          u.is_active ? (
+                            <span className="explorer-check-spacer" />
+                          ) : (
+                            <input
+                              type="checkbox"
+                              className="explorer-check"
+                              checked={selected.has(u.id)}
+                              disabled={deleting}
+                              onChange={() => toggleSelected(u.id)}
+                              aria-label={`Select ${u.display_name || u.email}`}
+                            />
+                          )
+                        )}
                         {u.avatar_url ? (
                           <img src={u.avatar_url} alt={u.display_name} style={{ width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
                         ) : (
@@ -473,6 +570,16 @@ export default function Users() {
                           >
                             {u.is_active ? <><CrossIcon size={12} /> Suspend</> : <><CheckIcon size={12} /> Activate</>}
                           </button>
+                          {!u.is_active && (
+                            <button
+                              className="action-btn reject"
+                              disabled={deleting}
+                              onClick={() => deleteUsers([u])}
+                              style={{ padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                            >
+                              <TrashIcon size={12} /> Delete
+                            </button>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -510,6 +617,7 @@ export default function Users() {
           )}
         </div>
       </div>
+      <Toast toast={toast} />
     </div>
   );
 }

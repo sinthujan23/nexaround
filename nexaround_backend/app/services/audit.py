@@ -75,6 +75,7 @@ _SUMMARIES = {
     ("PUT", "/api/v1/admin/settings"): "Changed platform settings or API keys",
     ("POST", "/api/v1/admin/users/{user_id}/toggle-active"): "Enabled or disabled an explorer account",
     ("POST", "/api/v1/admin/users/{user_id}/verify"): "Verified an explorer account",
+    ("POST", "/api/v1/admin/users/delete"): "Deleted suspended explorer accounts",
     ("POST", "/api/v1/admin/engagement/announcements"): "Sent an announcement to explorers",
     ("DELETE", "/api/v1/admin/experiences/logins/{login_id}"): "Deleted a partner login",
     ("PATCH", "/api/v1/admin/experiences/logins/{login_id}"): "Changed a partner login",

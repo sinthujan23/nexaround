@@ -14,6 +14,7 @@ from app.core.rate_limiter import auth_rate_limiter
 from app.core.security import create_access_token, decode_token
 from app.services import audit, creator_auth, fx_service, neva_voice
 from app.services.user_service import UserService
+from app.services.auth_service import AuthService
 from app.services.settings_service import SettingsService
 from app.services.experience_format import COUNTRY_MODE_KEY, parse_country_mode
 from app.services.official_stories import OFFICIAL_USER_ID
@@ -757,6 +758,41 @@ async def toggle_user_active(
     """Toggle a user's active/suspended status."""
     service = UserService(db)
     return await service.toggle_active_status(user_id)
+
+
+class DeleteUsersRequest(BaseModel):
+    user_ids: List[uuid.UUID] = Field(..., min_length=1, max_length=100)
+
+
+@router.post("/users/delete")
+async def delete_suspended_users(
+    data: DeleteUsersRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    _ = Depends(verify_admin_token)
+):
+    """Permanently delete suspended explorers and all their data.
+
+    Only suspended accounts are deleted; an active one (or the official
+    stories account) in the list is skipped, so a stale page can never remove
+    someone who was re-activated in the meantime.
+    """
+    ids = list(dict.fromkeys(data.user_ids))
+    rows = await db.execute(
+        select(User.id).where(
+            User.id.in_(ids),
+            User.is_active.is_(False),
+            User.id != OFFICIAL_USER_ID,
+        )
+    )
+    deletable = list(rows.scalars().all())
+    service = AuthService(db)
+    deleted = []
+    for user_id in deletable:
+        await service.delete_account(user_id)
+        deleted.append(str(user_id))
+    request.state.audit_detail = {"deleted": len(deleted), "user_ids": deleted}
+    return {"deleted": len(deleted), "skipped": len(ids) - len(deleted)}
 
 
 @router.get("/excluded-keywords", response_model=List[ExcludedKeywordResponse])
