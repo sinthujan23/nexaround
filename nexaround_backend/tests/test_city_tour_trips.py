@@ -229,3 +229,38 @@ def test_a_live_guide_from_before_days_still_plans_its_trip():
     assert [s["id"] for s in trips.trip_steps(stored, None)] == ["s1", "s2", "s3"]
     assert [s["id"] for s in trips.trip_steps(stored, ct.LEGACY_DAY_ID)] == ["s1", "s2", "s3"]
     assert trips.plan_minutes(stored) == {"s1": 60, "s2": 10, "s3": 120}
+
+
+# ── A day done keeps its ticks when the next day starts ─────────────────────
+
+def _trip(day_id, finished=True):
+    from types import SimpleNamespace
+    return SimpleNamespace(day_id=day_id, finished_at=T0 if finished else None)
+
+
+def test_starting_a_day_keeps_other_days_finished():
+    content = _two_days()
+    first, second = (d["id"] for d in content["days"])
+    # Day 1 finished stays when Day 2 starts.
+    assert not trips.ends_on_start(_trip(first), second, content)
+    # A running trip ends, whatever its day.
+    assert trips.ends_on_start(_trip(first, finished=False), second, content)
+    # Starting a day again ends that day's earlier trip.
+    assert trips.ends_on_start(_trip(second), second, content)
+    # A trip from before days is the first day's.
+    assert trips.ends_on_start(_trip(None), first, content)
+    assert not trips.ends_on_start(_trip(None), second, content)
+
+
+def test_other_days_lists_each_finished_day_once():
+    content = _two_days()
+    first, second = (d["id"] for d in content["days"])
+    in_hand = _trip(second, finished=False)
+    day_one = _trip(first)
+    older_day_one = _trip(None)
+    assert trips.other_days([in_hand, day_one, older_day_one], content) == [day_one]
+    # The trip in hand's own day is never listed again.
+    assert trips.other_days([day_one, older_day_one], content) == []
+    # Only finished ones.
+    assert trips.other_days([in_hand, _trip(first, finished=False)], content) == []
+    assert trips.other_days([], content) == []

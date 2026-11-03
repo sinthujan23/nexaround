@@ -70,6 +70,18 @@ class CityToursService {
     return trip is Map ? CityTourTrip.fromJson(trip.cast<String, dynamic>()) : null;
   }
 
+  /// The other days' finished trips still shown, from the latest answer: a
+  /// day done keeps its ticks after the next day starts.
+  List<CityTourTrip> cachedDayTrips(String tourId) {
+    final raw = _read(_tripKey(tourId));
+    final list = raw?['day_trips'];
+    if (list is! List) return const [];
+    return [
+      for (final t in list)
+        if (t is Map) CityTourTrip.fromJson(t.cast<String, dynamic>()),
+    ];
+  }
+
   /// Starts one day of the guide now ([dayId]; the first day when null). A
   /// trip already running on the guide ends.
   Future<CityTourTrip> startTrip(String tourId, {String? dayId}) async {
@@ -107,10 +119,18 @@ class CityToursService {
     return (await _saveTrip(tourId, response.data))!;
   }
 
-  /// Stops a running trip, or closes a finished one.
-  Future<void> endTrip(String tourId) async {
-    await _dio.delete('$_base/$tourId/trip');
+  /// Stops a running trip, or closes a finished one: the trip in hand, or
+  /// with [dayId] that day's. Returns the trip in hand after (another day's
+  /// finished one can take its place).
+  Future<CityTourTrip?> endTrip(String tourId, {String? dayId}) async {
+    final response = await _dio.delete(
+      '$_base/$tourId/trip',
+      queryParameters: dayId == null ? null : {'day_id': dayId},
+    );
+    // A server from before answers with nothing.
+    if (response.data is Map) return _saveTrip(tourId, response.data);
     await CacheService.saveUserData(_tripKey(tourId), json.encode({'trip': null}));
+    return null;
   }
 
   Future<CityTourTrip?> _saveTrip(String tourId, dynamic data) async {

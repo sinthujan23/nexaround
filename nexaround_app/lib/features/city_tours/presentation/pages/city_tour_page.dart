@@ -81,6 +81,8 @@ class _CityTourPageState extends State<CityTourPage> {
   bool _collapsed = false;
 
   CityTourTrip? _trip;
+  // Other days' finished trips, still shown with their ticks (read only).
+  List<CityTourTrip> _dayTrips = const [];
   bool _tripBusy = false;
 
   // The days the traveller picked (null: not yet), and the day on screen.
@@ -109,6 +111,7 @@ class _CityTourPageState extends State<CityTourPage> {
     _fetch();
     if (CacheService.isLoggedIn()) {
       _trip = _service.cachedTrip(widget.card.id);
+      _dayTrips = _service.cachedDayTrips(widget.card.id);
       _loadTrip();
     }
     _tick = Timer.periodic(const Duration(seconds: 30), (_) {
@@ -148,7 +151,12 @@ class _CityTourPageState extends State<CityTourPage> {
   Future<void> _loadTrip() async {
     try {
       final trip = await _service.getTrip(widget.card.id);
-      if (mounted) setState(() => _trip = trip);
+      if (mounted) {
+        setState(() {
+          _trip = trip;
+          _dayTrips = _service.cachedDayTrips(widget.card.id);
+        });
+      }
     } catch (e) {
       // The device's copy stays on screen.
       debugPrint('City tour trip not loaded: $e');
@@ -207,6 +215,7 @@ class _CityTourPageState extends State<CityTourPage> {
       if (mounted) {
         setState(() {
           _trip = trip;
+          _dayTrips = _service.cachedDayTrips(widget.card.id);
           _dayId = day.id;
           _resetOpen();
         });
@@ -248,8 +257,25 @@ class _CityTourPageState extends State<CityTourPage> {
   bool _tripOn(CityTour tour, CityTourDay day) {
     final trip = _trip;
     if (trip == null) return false;
-    return trip.dayId == day.id || (trip.dayId.isEmpty && day.id == tour.days.first.id);
+    return _onDay(tour, trip, day);
   }
+
+  bool _onDay(CityTour tour, CityTourTrip trip, CityTourDay day) =>
+      trip.dayId == day.id || (trip.dayId.isEmpty && day.id == tour.days.first.id);
+
+  /// Another day's finished trip on this day, shown read only, so a day done
+  /// keeps its ticks after the next day starts.
+  CityTourTrip? _pastTrip(CityTour tour, CityTourDay day) {
+    if (_tripOn(tour, day)) return null;
+    for (final t in _dayTrips) {
+      if (t.isFinished && _onDay(tour, t, day)) return t;
+    }
+    return null;
+  }
+
+  /// The trip shown on a day: the one in hand, or that day's finished one.
+  CityTourTrip? _tripFor(CityTour tour, CityTourDay day) =>
+      _tripOn(tour, day) ? _trip : _pastTrip(tour, day);
 
   /// Marks a stop visited, any stop in any order (rides and breaks are not
   /// ticked). The open sight, once ticked, folds to "Visited" and then the
@@ -265,6 +291,7 @@ class _CityTourPageState extends State<CityTourPage> {
       if (!mounted) return;
       setState(() {
         _trip = trip;
+        _dayTrips = _service.cachedDayTrips(widget.card.id);
         // Unless the traveller opened another sight while it saved.
         if (wasOpen && _openStop == step.id) _openStop = null;
       });
@@ -343,7 +370,12 @@ class _CityTourPageState extends State<CityTourPage> {
     _keepOpenAsIs();
     await _tripChange(() async {
       final trip = await _service.undoDone(widget.card.id, stepId);
-      if (mounted) setState(() => _trip = trip);
+      if (mounted) {
+        setState(() {
+          _trip = trip;
+          _dayTrips = _service.cachedDayTrips(widget.card.id);
+        });
+      }
     }, 'undo that');
   }
 
@@ -381,6 +413,12 @@ class _CityTourPageState extends State<CityTourPage> {
     CityTourSchedule? schedule,
   ) async {
     if (_tripBusy) return;
+    if (_pastTrip(tour, day) != null) {
+      // Ticks belong to the trip in hand; a past day's stay as they were.
+      final number = _planDays(tour).indexOf(day) + 1;
+      _say(tour.hasDays && number > 0 ? 'Day $number is done.' : 'This trip is done.');
+      return;
+    }
     if (schedule == null) {
       if (!CacheService.isLoggedIn()) {
         _say('Sign in to start a trip, then tick each stop as you finish it.');
@@ -463,12 +501,15 @@ class _CityTourPageState extends State<CityTourPage> {
     if (end == true) await _closeTrip();
   }
 
-  Future<void> _closeTrip() async {
+  /// Ends the trip in hand, or with [dayId] that day's (a finished day's
+  /// Close). Another day's finished trip can become the one in hand.
+  Future<void> _closeTrip({String? dayId}) async {
     await _tripChange(() async {
-      await _service.endTrip(widget.card.id);
+      final trip = await _service.endTrip(widget.card.id, dayId: dayId);
       if (mounted) {
         setState(() {
-          _trip = null;
+          _trip = trip;
+          _dayTrips = _service.cachedDayTrips(widget.card.id);
           _resetOpen();
         });
       }
@@ -622,7 +663,7 @@ class _CityTourPageState extends State<CityTourPage> {
     final trip = _trip;
     final days = tour == null ? const <CityTourDay>[] : _planDays(tour);
     final day = _shownDay(days);
-    final dayTrip = tour != null && day != null && _tripOn(tour, day) ? trip : null;
+    final dayTrip = tour == null || day == null ? null : _tripFor(tour, day);
     final schedule = day == null ? null : dayTrip?.schedule(day.steps, DateTime.now());
     final number = day == null ? 0 : days.indexOf(day) + 1;
     final running = dayTrip != null && !dayTrip.isFinished;
@@ -660,7 +701,7 @@ class _CityTourPageState extends State<CityTourPage> {
               nextLabel: nextDay == null ? null : 'Go to Day ${number + 1}',
               onNext: nextDay == null ? null : () => _goToDay(nextDay),
               onStart: () => _startTrip(day),
-              onClose: _closeTrip,
+              onClose: () => _closeTrip(dayId: day.id),
             ),
       body: Stack(
         children: [
@@ -916,6 +957,7 @@ class _CityTourPageState extends State<CityTourPage> {
         final state = cityTourStepState(schedule?.times[step.id]);
         final key = _stepKeys.putIfAbsent(step.id, GlobalKey.new);
         void tick() => _tapTick(tour, day, step, schedule);
+        final pastDay = _pastTrip(tour, day) != null;
         if (i > 0 && step.isStop && day.steps[i - 1].isStop) children.add(const SizedBox(height: 12));
         children.add(step.isStop
             ? CityTourStopCard(
@@ -931,7 +973,7 @@ class _CityTourPageState extends State<CityTourPage> {
                         : (step.id == lastStopId ? 'LAST STOP' : null),
                 onTick: tick,
                 onToggle: schedule == null ? null : () => _toggleStop(step.id, schedule),
-                onVisited: schedule == null ? null : () => _toggleVisited(step, schedule),
+                onVisited: schedule == null || pastDay ? null : () => _toggleVisited(step, schedule),
                 onLinkTap: _openLink,
               )
             : CityTourLegPill(

@@ -217,13 +217,43 @@ def reminder_text(steps: list[dict], step: dict) -> tuple[str, str]:
     return title, f"Next: {nxt.get('name') or 'the next stop'}. Mark it visited to update your times."
 
 
+def trip_day_id(trip, content: dict) -> Optional[str]:
+    """The id of the day a trip follows (the first day's, for a trip from
+    before days)."""
+    day = find_day(content, trip.day_id)
+    return (day or {}).get("id") or trip.day_id
+
+
+def ends_on_start(trip, day_id: Optional[str], content: dict) -> bool:
+    """Whether starting the day [day_id] ends this trip, still shown: a
+    running one does (one trip runs at a time), and so does that same day's
+    earlier one. Other days' finished trips stay, so a day done keeps its
+    ticks when the next day starts."""
+    return trip.finished_at is None or trip_day_id(trip, content) == day_id
+
+
+def other_days(shown: list, content: dict) -> list:
+    """The finished trips of the other days, from the trips still shown
+    newest first (the first is the trip in hand): the newest for each day."""
+    if not shown:
+        return []
+    seen = {trip_day_id(shown[0], content)}
+    out = []
+    for trip in shown[1:]:
+        day_id = trip_day_id(trip, content)
+        if trip.finished_at is None or day_id in seen:
+            continue
+        seen.add(day_id)
+        out.append(trip)
+    return out
+
+
 def view(trip, content: dict) -> dict:
     """A trip as the app reads it: the times saved, and every step's minutes."""
-    day = find_day(content, trip.day_id)
     return {
         "id": str(trip.id),
         "tour_id": str(trip.tour_id),
-        "day_id": (day or {}).get("id") or trip.day_id,
+        "day_id": trip_day_id(trip, content),
         "started_at": trip.started_at.isoformat(),
         "finished_at": trip.finished_at.isoformat() if trip.finished_at else None,
         "done": dict(trip.done or {}),

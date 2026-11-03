@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_current_user_optional
@@ -104,10 +104,11 @@ async def record_tap(
     return Response(status_code=204)
 
 
-async def _shown_trip(db: AsyncSession, tour_id: uuid.UUID, user_id) -> CityTourTrip | None:
-    """The traveller's latest trip on a guide, running or finished; one they
+async def _shown_trips(db: AsyncSession, tour_id: uuid.UUID, user_id) -> list[CityTourTrip]:
+    """The traveller's trips on a guide still shown, newest first: the one in
+    hand (running or finished), then other days' finished ones. One they
     stopped or closed is not shown again."""
-    return (await db.execute(
+    return list((await db.execute(
         select(CityTourTrip)
         .where(
             CityTourTrip.tour_id == tour_id,
@@ -115,8 +116,24 @@ async def _shown_trip(db: AsyncSession, tour_id: uuid.UUID, user_id) -> CityTour
             CityTourTrip.ended_at.is_(None),
         )
         .order_by(CityTourTrip.started_at.desc())
-        .limit(1)
-    )).scalar_one_or_none()
+    )).scalars())
+
+
+async def _shown_trip(db: AsyncSession, tour_id: uuid.UUID, user_id) -> CityTourTrip | None:
+    """The trip in hand: the traveller's newest trip on a guide still shown."""
+    shown = await _shown_trips(db, tour_id, user_id)
+    return shown[0] if shown else None
+
+
+async def _trip_answer(db: AsyncSession, tour: CityTour, user_id) -> dict:
+    """The trip in hand, and (`day_trips`) the other days' finished trips, so
+    a day done still shows its ticks after the next day starts."""
+    content = tour.live_content
+    shown = await _shown_trips(db, tour.id, user_id)
+    return {
+        "trip": trips.view(shown[0], content) if shown else None,
+        "day_trips": [trips.view(t, content) for t in trips.other_days(shown, content)],
+    }
 
 
 @router.get("/{tour_id}/trip")
@@ -126,8 +143,7 @@ async def get_trip(
     user=Depends(get_current_user),
 ):
     tour = await live_tour(db, tour_id)
-    trip = await _shown_trip(db, tour.id, user.id)
-    return {"trip": trips.view(trip, tour.live_content) if trip else None}
+    return await _trip_answer(db, tour, user.id)
 
 
 @router.post("/{tour_id}/trip")
@@ -138,25 +154,20 @@ async def start_trip(
     user=Depends(get_current_user),
 ):
     """Start one day of the guide now (the first day when none is named). A
-    trip of theirs on the guide still shown ends."""
+    trip of theirs still running ends, and so does this day's earlier one;
+    other days' finished trips stay shown with their ticks."""
     tour = await live_tour(db, tour_id)
     day = city_tours.find_day(tour.live_content, body.day_id if body else None)
     if day is None:
         raise HTTPException(status_code=404, detail="That day is not in this guide any more.")
     now = datetime.now(timezone.utc)
-    await db.execute(
-        update(CityTourTrip)
-        .where(
-            CityTourTrip.tour_id == tour.id,
-            CityTourTrip.user_id == user.id,
-            CityTourTrip.ended_at.is_(None),
-        )
-        .values(ended_at=now)
-    )
+    for shown in await _shown_trips(db, tour.id, user.id):
+        if trips.ends_on_start(shown, day.get("id"), tour.live_content):
+            shown.ended_at = now
     trip = CityTourTrip(tour_id=tour.id, user_id=user.id, day_id=day.get("id"), started_at=now, done={}, skipped=[])
     db.add(trip)
     await db.commit()
-    return {"trip": trips.view(trip, tour.live_content)}
+    return await _trip_answer(db, tour, user.id)
 
 
 @router.post("/{tour_id}/trip/done")
@@ -186,7 +197,7 @@ async def mark_step_done(
             trip.skipped = [*(trip.skipped or []), body.step_id]
         trip.finished_at = trips.finished_time(steps, marked)
         await db.commit()
-    return {"trip": trips.view(trip, tour.live_content)}
+    return await _trip_answer(db, tour, user.id)
 
 
 @router.post("/{tour_id}/trip/undo")
@@ -210,19 +221,27 @@ async def undo_step_done(
     trip.skipped = trips.still_skipped(trip.skipped, trip.done)
     trip.finished_at = trips.finished_time(steps, trip.done)
     await db.commit()
-    return {"trip": trips.view(trip, tour.live_content)}
+    return await _trip_answer(db, tour, user.id)
 
 
-@router.delete("/{tour_id}/trip", status_code=204)
+@router.delete("/{tour_id}/trip")
 async def end_trip(
     tour_id: uuid.UUID,
+    day_id: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
     user=Depends(get_current_user),
 ):
-    """Stop a running trip, or close a finished one's summary."""
+    """Stop a running trip, or close a finished one's summary: the trip in
+    hand, or with `day_id` that day's. Answers what is still shown."""
     tour = await live_tour(db, tour_id)
-    trip = await _shown_trip(db, tour.id, user.id)
-    if trip is not None:
-        trip.ended_at = datetime.now(timezone.utc)
+    shown = await _shown_trips(db, tour.id, user.id)
+    if day_id:
+        ending = [t for t in shown if trips.trip_day_id(t, tour.live_content) == day_id]
+    else:
+        ending = shown[:1]
+    if ending:
+        now = datetime.now(timezone.utc)
+        for trip in ending:
+            trip.ended_at = now
         await db.commit()
-    return Response(status_code=204)
+    return await _trip_answer(db, tour, user.id)
