@@ -90,9 +90,11 @@ class _CityTourPageState extends State<CityTourPage> {
   Timer? _tick;
   // Each step on screen, for the pinned header to find.
   final Map<String, GlobalKey> _stepKeys = {};
-  // On a trip one sight is open at a time, and only the traveller opens or
-  // folds it (ticking never does). Until they first open, fold or tick one,
-  // the sight in hand is the open one.
+  // The day cards, scrolled to on "Go to Day 2".
+  final GlobalKey _dayCardsKey = GlobalKey();
+  // On a trip one sight is open at a time. The traveller opens or folds it,
+  // and ticking the open one folds it and opens the next one to visit. Until
+  // they first open, fold or tick one, the sight in hand is the open one.
   String? _openStop;
   bool _openChosen = false;
   // Ride and break pills opened to show their details.
@@ -250,18 +252,34 @@ class _CityTourPageState extends State<CityTourPage> {
   }
 
   /// Marks a stop visited, any stop in any order (rides and breaks are not
-  /// ticked). The card turns green where it is: nothing opens, folds or
-  /// scrolls.
+  /// ticked). The open sight, once ticked, folds to "Visited" and then the
+  /// next one to visit opens; a folded one just turns green where it is.
   Future<void> _markDone(CityTourStep step, DateTime at) async {
     if (_tripBusy) return;
     _keepOpenAsIs();
+    final wasOpen = _openStop == step.id;
+    var openNext = false;
     setState(() => _tripBusy = true);
     try {
       final trip = await _service.markDone(widget.card.id, step.id, at);
       if (!mounted) return;
-      setState(() => _trip = trip);
+      setState(() {
+        _trip = trip;
+        // Unless the traveller opened another sight while it saved.
+        if (wasOpen && _openStop == step.id) _openStop = null;
+      });
+      openNext = wasOpen && _openStop == null && !trip.isFinished;
+      // In a guide of several days, it is the day that is done.
+      final tour = _tour;
+      final dayNumber = tour == null || !tour.hasDays
+          ? 0
+          : _planDays(tour).indexWhere((d) => d.id == trip.dayId) + 1;
       _say(
-        trip.isFinished ? 'Trip finished. Well done!' : 'Marked as visited.',
+        !trip.isFinished
+            ? 'Marked as visited.'
+            : dayNumber > 0
+                ? 'Day $dayNumber done. Well done!'
+                : 'Trip finished. Well done!',
         action: SnackBarAction(label: 'Undo', onPressed: () => _undo(step.id)),
       );
     } catch (e) {
@@ -275,6 +293,32 @@ class _CityTourPageState extends State<CityTourPage> {
     } finally {
       if (mounted) setState(() => _tripBusy = false);
     }
+    if (openNext) await _openNextAfter(step.id);
+  }
+
+  /// Once the ticked sight has folded, opens the next one still to visit:
+  /// the first after it in the day, else the first one left.
+  Future<void> _openNextAfter(String stepId) async {
+    await Future.delayed(cityTourMorph);
+    if (!mounted || _openStop != null) return; // they opened one meanwhile
+    final tour = _tour;
+    final trip = _trip;
+    final schedule = _tripSchedule();
+    if (tour == null || trip == null || schedule == null) return;
+    // Taken back (Undo) while it folded.
+    if (!(schedule.times[stepId]?.isDone ?? false)) return;
+    // A trip from before days follows the first day.
+    final day = tour.dayById(trip.dayId) ?? (tour.days.isEmpty ? null : tour.days.first);
+    if (day == null) return;
+    final stops = day.stops;
+    final at = stops.indexWhere((s) => s.id == stepId);
+    final left = [
+      for (var i = 0; i < stops.length; i++)
+        if (!(schedule.times[stops[i].id]?.isDone ?? false)) i,
+    ];
+    if (left.isEmpty) return;
+    final next = left.firstWhere((i) => i > at, orElse: () => left.first);
+    setState(() => _openStop = stops[next].id);
   }
 
   /// A stop's "Yet to visit" / "Visited" button or chip, on any stop in any
@@ -431,6 +475,28 @@ class _CityTourPageState extends State<CityTourPage> {
     }, 'end the trip');
   }
 
+  /// From a finished day to the next: shows that day, ready to start, and
+  /// scrolls up to the day cards so its stops are read from the top. The
+  /// finished day's ticks stay until the next day is started.
+  void _goToDay(CityTourDay day) {
+    setState(() {
+      _dayId = day.id;
+      _resetOpen();
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scroll.hasClients) return;
+      final box = _dayCardsKey.currentContext?.findRenderObject();
+      final viewport = RenderAbstractViewport.maybeOf(box);
+      if (box == null || viewport == null) return;
+      // Just under the pinned title bar.
+      final edge = MediaQuery.of(context).padding.top + kToolbarHeight;
+      final position = _scroll.position;
+      final target = (viewport.getOffsetToReveal(box, 0).offset - edge - 12)
+          .clamp(position.minScrollExtent, position.maxScrollExtent);
+      _scroll.animateTo(target, duration: cityTourMorph, curve: Curves.easeInOutCubic);
+    });
+  }
+
   /// A stop's name, a break's, or the ride and where it goes: "Metro to Louvre".
   String _stepTitle(CityTourDay day, CityTourStep step) {
     if (step.isStop) return step.name;
@@ -560,6 +626,9 @@ class _CityTourPageState extends State<CityTourPage> {
     final schedule = day == null ? null : dayTrip?.schedule(day.steps, DateTime.now());
     final number = day == null ? 0 : days.indexOf(day) + 1;
     final running = dayTrip != null && !dayTrip.isFinished;
+    final nextDay = tour != null && tour.hasDays && number > 0 && number < days.length
+        ? days[number]
+        : null;
 
     // The stops on screen that are open, for the pinned header.
     final pins = <_Pin>[];
@@ -585,6 +654,11 @@ class _CityTourPageState extends State<CityTourPage> {
               schedule: schedule,
               busy: _tripBusy,
               startLabel: tour.hasDays ? 'Start Day $number' : 'Start trip',
+              doneTitle: tour.hasDays ? 'Day $number done' : 'Trip finished',
+              // A finished day leads on to the next day of the plan; the last
+              // one closes as before.
+              nextLabel: nextDay == null ? null : 'Go to Day ${number + 1}',
+              onNext: nextDay == null ? null : () => _goToDay(nextDay),
               onStart: () => _startTrip(day),
               onClose: _closeTrip,
             ),
@@ -797,6 +871,7 @@ class _CityTourPageState extends State<CityTourPage> {
           ),
           const SizedBox(height: 10),
           CityTourDayCards(
+            key: _dayCardsKey,
             days: days,
             selectedId: day.id,
             onSelect: (id) => setState(() {

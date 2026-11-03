@@ -1624,12 +1624,23 @@ class CityTourTripBar extends StatelessWidget {
   /// "Start trip", or "Start Day 2" in a guide of several days.
   final String startLabel;
 
+  /// Once finished: "Trip finished", or "Day 1 done" in a guide of several
+  /// days.
+  final String doneTitle;
+
+  /// A finished day with a day after it: "Go to Day 2" in place of Close.
+  final String? nextLabel;
+  final VoidCallback? onNext;
+
   const CityTourTripBar({
     super.key,
     required this.trip,
     required this.schedule,
     required this.busy,
     this.startLabel = 'Start trip',
+    this.doneTitle = 'Trip finished',
+    this.nextLabel,
+    this.onNext,
     required this.onStart,
     required this.onClose,
   });
@@ -1694,9 +1705,9 @@ class CityTourTripBar extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text(
-                'Trip finished',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+              Text(
+                doneTitle,
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
               ),
               const SizedBox(height: 2),
               Text(
@@ -1706,10 +1717,27 @@ class CityTourTripBar extends StatelessWidget {
             ],
           ),
         ),
-        TextButton(
-          onPressed: busy ? null : onClose,
-          child: const Text('Close', style: TextStyle(fontWeight: FontWeight.w800)),
-        ),
+        if (nextLabel != null && onNext != null)
+          FilledButton(
+            onPressed: busy ? null : onNext,
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.brandGreen,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(nextLabel!, style: const TextStyle(fontWeight: FontWeight.w800)),
+                const SizedBox(width: 4),
+                const Icon(Icons.arrow_forward_rounded, size: 18),
+              ],
+            ),
+          )
+        else
+          TextButton(
+            onPressed: busy ? null : onClose,
+            child: const Text('Close', style: TextStyle(fontWeight: FontWeight.w800)),
+          ),
       ],
     );
   }
