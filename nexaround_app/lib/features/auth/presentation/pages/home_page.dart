@@ -486,7 +486,7 @@ class HomePageState extends State<HomePage> with WidgetsBindingObserver {
                   _buildNavItem(0, Icons.explore_rounded, 'Home'),
                   _buildNavItem(1, Icons.view_in_ar_rounded, 'AR'),
                   _buildNavItem(2, Icons.auto_awesome_rounded, 'NEVA'),
-                  _buildNavItem(6, Icons.menu_book_rounded, 'City Guides'),
+                  _buildNavItem(6, Icons.route_rounded, 'City Guides'),
                   _buildNavItem(4, Icons.auto_mode_rounded, 'Plans'),
                 ],
               ),
