@@ -88,9 +88,9 @@ class _CityTourPageState extends State<CityTourPage> {
   // The days the traveller picked (null: not yet), and the day on screen.
   List<String>? _plan;
   String? _dayId;
-  // The plan as it was when "Change" was tapped. Back from the picker puts it
-  // back, like any app's back out of an edit screen, instead of leaving the
-  // guide.
+  // The plan as it was when "Change" was tapped. The phone's back from the
+  // picker puts it back instead of leaving the guide; the arrow at the top
+  // always leaves for the City Guides home.
   List<String>? _planBeforeChange;
   // Redraws the times while a trip runs: a step running over pushes the rest on.
   Timer? _tick;
@@ -802,15 +802,11 @@ class _CityTourPageState extends State<CityTourPage> {
                     ),
                   ),
                 ),
+                // Always back to the City Guides home, even from the picker
+                // (Navigator.pop is not held back by the PopScope below).
                 leading: _barButton(
                   icon: Icons.arrow_back_rounded,
-                  onTap: () {
-                    if (_changingPlan) {
-                      _cancelChange();
-                    } else {
-                      Navigator.pop(context);
-                    }
-                  },
+                  onTap: () => Navigator.pop(context),
                 ),
                 actions: [
                   if (trip != null && !trip.isFinished)
@@ -890,7 +886,8 @@ class _CityTourPageState extends State<CityTourPage> {
       ),
     );
 
-    // Phone back (button or swipe) from the picker goes back to the plan.
+    // Phone back (button or swipe) from the picker goes back to the plan; the
+    // top arrow pops past this and leaves the guide.
     return PopScope(
       canPop: !_changingPlan,
       onPopInvokedWithResult: (didPop, _) {
