@@ -440,12 +440,23 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
     );
   }
 
+  // City Guides has one home: the navbar tab. The hub card switches to it
+  // (first back to the main screen when these hubs were opened as a page of
+  // their own) rather than opening a second copy of it.
+  void _openCityGuides() {
+    final home = context.findAncestorStateOfType<HomePageState>() ?? HomePage.homeKey.currentState;
+    if (home == null || !home.mounted) {
+      Navigator.push(context, MaterialPageRoute(builder: (_) => const CityToursPage()));
+      return;
+    }
+    final homeRoute = ModalRoute.of(home.context);
+    if (homeRoute != null) Navigator.of(context).popUntil((route) => route == homeRoute);
+    home.switchToCityGuides();
+  }
+
   Widget _buildBentoCityGuidesHero() {
     return GestureDetector(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const CityToursPage()),
-      ),
+      onTap: _openCityGuides,
       child: Container(
         height: 195,
         decoration: BoxDecoration(

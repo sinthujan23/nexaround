@@ -362,6 +362,12 @@ class HomePageState extends State<HomePage> with WidgetsBindingObserver {
     });
   }
 
+  void switchToCityGuides() {
+    setState(() {
+      _selectedIndex = 6; // City Guides tab (in the navbar where Discover was)
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final pages = [
