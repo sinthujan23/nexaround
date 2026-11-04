@@ -1,6 +1,7 @@
 import Dashboard from './pages/Dashboard';
 import Users from './pages/Users';
 import Payments from './pages/Payments';
+import Commission from './pages/Commission';
 import Engagement from './pages/Engagement';
 import Places from './pages/Places';
 import ReviewQueue from './pages/ReviewQueue';
@@ -63,6 +64,7 @@ export const NAV_SECTIONS = [
       { path: '/enquiries', label: 'Enquiries', title: 'Experience Enquiries', icon: InboxIcon, page: ExperienceEnquiries, badge: 'enquiries' },
       { path: '/experiences/applications', label: 'Provider applications', title: 'Experiences · Provider applications', icon: UsersIcon, page: ProviderApplications, badge: 'provider_applications' },
       { path: '/reviews', label: 'Reviews', title: 'Experience Reviews', icon: StarIcon, page: ExperienceReviews },
+      { path: '/commission', label: 'Commission', title: 'Experiences · Commission', icon: CreditCardIcon, page: Commission },
       { path: '/legal', label: 'Legal & Terms', title: 'Legal & Terms', icon: ClipboardCheckIcon, page: Legal },
       { path: '/payments', label: 'Payments & Plans', title: 'Payments & Plans', icon: CreditCardIcon, page: Payments },
     ],
