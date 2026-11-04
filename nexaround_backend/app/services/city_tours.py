@@ -14,7 +14,8 @@ app:
          "starts_at": "09:00", "steps": [
           {"id": "…", "type": "stop", "name": "Eiffel Tower", "lat": 48.8584,
            "lng": 2.2945, "photo_url": "…", "time_here": "2 hr 45 min", "price": "€29",
-           "access_note": "Open daily", "body_md": "…", "links": [link, …]},
+           "website": "https://www.toureiffel.paris", "access_note": "Open daily",
+           "body_md": "…", "links": [link, …]},
           {"id": "…", "type": "move", "mode": "walk", "title": "Across the Champ de Mars",
            "duration": "15 min", "cost": "", "access_note": "", "body_md": "…", "links": […]},
           {"id": "…", "type": "break", "title": "Lunch / Rest", "duration": "45 min",
@@ -190,6 +191,7 @@ _STEP_BODY_MAX = 8000
 _LABEL_MAX = 80
 _URL_MAX = 1000
 _MEDIA_MAX = 500
+_WEBSITE_MAX = 500
 
 
 def _str(value) -> str:
@@ -218,6 +220,30 @@ def _media(value, name: str) -> str:
         return ""
     if len(url) > _MEDIA_MAX or not (url.startswith("/static/uploads/") or url.startswith("https://")):
         raise ContentError(f"{name}: that photo address can't be used. Upload the photo instead.")
+    return url
+
+
+def _website(value, where: str) -> str:
+    """A stop's optional "More info" link (its official page); "" for none.
+
+    Spaces and line breaks are taken out (an address copied from a document
+    table often comes split over lines) and a bare "www.louvre.fr" gets
+    https://. Only http and https addresses are kept.
+    """
+    url = re.sub(r"\s+", "", value) if isinstance(value, str) else ""
+    if url in ("", "—", "–", "-"):
+        return ""
+    if "://" not in url:
+        url = "https://" + url
+    try:
+        parts = urllib.parse.urlsplit(url)
+        host = parts.hostname or ""
+    except ValueError:
+        parts, host = None, ""
+    if parts is None or parts.scheme.lower() not in ("http", "https") or "." not in host or len(url) > _WEBSITE_MAX:
+        raise ContentError(
+            f"{where}: the More info link isn't a web address. Paste the full address, like https://www.louvre.fr."
+        )
     return url
 
 
@@ -381,6 +407,7 @@ def _step(raw, where: str, step_ids: set[str]) -> dict:
         if step["lat"] is None or step["lng"] is None:
             step["lat"] = step["lng"] = None
         step["photo_url"] = _media(raw.get("photo_url"), where)
+        step["website"] = _website(raw.get("website"), where)
     elif kind == MOVE:
         mode = _str(raw.get("mode"))
         step["mode"] = mode if mode in TRANSPORT_MODES else "walk"

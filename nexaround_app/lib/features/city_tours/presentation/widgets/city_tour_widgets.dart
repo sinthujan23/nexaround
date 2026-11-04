@@ -9,6 +9,7 @@ import 'package:nexaround_app/core/constants/api_constants.dart';
 import 'package:nexaround_app/features/city_tours/domain/city_tour.dart';
 import 'package:nexaround_app/features/city_tours/domain/city_tour_trip.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_description.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 // The admin panel draws a copy of these screens as its preview
 // (nexaround_admin/src/components/CityTourPreview.jsx), so a change to sizes,
@@ -1001,6 +1002,7 @@ class CityTourStopCard extends StatelessWidget {
       if (step.accessNote.isNotEmpty) _NoteBox(text: step.accessNote),
       if (step.bodyMd.isNotEmpty) ExperienceDescription(markdown: step.bodyMd),
       if (step.links.isNotEmpty) _Links(links: step.links, onLinkTap: onLinkTap),
+      if (step.website.isNotEmpty) _MoreInfo(url: step.website),
       if (onToggle != null) _ShowLess(onTap: onToggle),
     ];
     return [
@@ -1293,6 +1295,79 @@ class _NoteBox extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// A stop's own page ("More info · acropolisofathens.gr"), opened in the
+/// browser.
+class _MoreInfo extends StatelessWidget {
+  final String url;
+
+  const _MoreInfo({required this.url});
+
+  String get _site {
+    final host = Uri.tryParse(url)?.host ?? '';
+    return host.startsWith('www.') ? host.substring(4) : host;
+  }
+
+  Future<void> _open(BuildContext context) async {
+    final uri = Uri.tryParse(url);
+    var opened = false;
+    if (uri != null) {
+      try {
+        opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } catch (_) {
+        opened = false;
+      }
+    }
+    if (!opened && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open the website.')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final site = _site;
+    return Material(
+      color: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: const BorderSide(color: Color(0xFFE2E8F0)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => _open(context),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Row(
+            children: [
+              const Icon(Icons.language_rounded, size: 17, color: AppColors.brandGreen),
+              const SizedBox(width: 8),
+              const Text(
+                'More info',
+                style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: _navy),
+              ),
+              if (site.isNotEmpty) ...[
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    site,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 12.5, color: _slate),
+                  ),
+                ),
+              ] else
+                const Spacer(),
+              const SizedBox(width: 8),
+              const Icon(Icons.open_in_new_rounded, size: 16, color: _slate),
+            ],
+          ),
+        ),
       ),
     );
   }

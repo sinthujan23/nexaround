@@ -138,6 +138,15 @@ function StopFields({ step, patch, partners, taps, center, onBusy, where }) {
       </div>
       <AccessNote step={step} patch={patch} />
       <div className="form-group">
+        <label className="form-label">More info link (optional)</label>
+        <input
+          className="form-input" type="url" inputMode="url" maxLength={500} value={step.website || ''}
+          placeholder="e.g. https://www.louvre.fr"
+          onChange={(e) => patch({ website: e.target.value })}
+        />
+        <div className="xp-section-hint" style={{ margin: '6px 0 0' }}>The place's own website. The app shows it as a More info button.</div>
+      </div>
+      <div className="form-group">
         <label className="form-label">What to see and do</label>
         <RichTextEditor
           value={step.body_md} minHeight={120}

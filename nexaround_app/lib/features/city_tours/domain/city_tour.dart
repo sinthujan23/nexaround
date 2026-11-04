@@ -166,6 +166,10 @@ class CityTourStep {
   final String timeHere;
   final String price;
 
+  /// The place's own page for more information ("" for none): the app shows
+  /// it as "More info".
+  final String website;
+
   // The way there.
   final String mode;
   final String modeLabel;
@@ -197,6 +201,7 @@ class CityTourStep {
     this.photoUrl = '',
     this.timeHere = '',
     this.price = '',
+    this.website = '',
     this.mode = 'walk',
     this.modeLabel = '',
     this.directions = '',
@@ -230,6 +235,7 @@ class CityTourStep {
       photoUrl: _s(json['photo_url']),
       timeHere: _s(json['time_here']),
       price: _s(json['price']),
+      website: _s(json['website']),
       mode: _s(json['mode']).isEmpty ? 'walk' : _s(json['mode']),
       modeLabel: _s(json['mode_label']),
       directions: kind == 'move' ? _s(json['title']) : '',

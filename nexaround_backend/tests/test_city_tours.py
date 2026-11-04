@@ -66,6 +66,35 @@ def test_photo_must_be_an_upload_or_https():
     assert ct.normalize(_guide(cover_url="https://example.com/a.jpg"))["cover_url"]
 
 
+def test_a_stop_keeps_its_more_info_link():
+    out = ct.normalize(_guide(steps=[
+        _stop(website="  https://www.toureiffel.paris/en  "),
+        _move(website="https://example.com"),
+        _stop("Louvre", website="www.louvre.fr"),
+        _stop("Roman Agora", website="https://www.hh.gr/en/destinations\n/roman-agora-athens/"),
+        _stop("Plaka", website="—"),
+        _stop("Notre-Dame"),
+    ]))
+    steps = ct.all_steps(out)
+    assert steps[0]["website"] == "https://www.toureiffel.paris/en"
+    assert "website" not in steps[1]  # rides and breaks have none
+    assert steps[2]["website"] == "https://www.louvre.fr"
+    assert steps[3]["website"] == "https://www.hh.gr/en/destinations/roman-agora-athens/"
+    assert steps[4]["website"] == "" and steps[5]["website"] == ""
+
+
+@pytest.mark.parametrize("bad", ["javascript:alert(1)", "ftp://example.com/a", "not a link", "https://" + "a" * 500 + ".com"])
+def test_a_more_info_link_must_be_a_web_address(bad):
+    with pytest.raises(ct.ContentError, match="Step 1: the More info link isn't a web address"):
+        ct.normalize(_guide(steps=[_stop(website=bad), _stop("Louvre")]))
+
+
+def test_app_view_shows_the_more_info_link():
+    guide = ct.normalize(_guide(steps=[_stop(website="https://www.louvre.fr"), _stop("Louvre")]))
+    view = ct.app_view(guide, tap_url=lambda link_id: f"/go/{link_id}", package_view=lambda _id: None)
+    assert view["days"][0]["steps"][0]["website"] == "https://www.louvre.fr"
+
+
 def _links(guide):
     return {link["partner"]: link["url"] for step in ct.all_steps(guide) for link in step["links"]}
 

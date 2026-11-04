@@ -265,6 +265,25 @@ const NoteBox = ({ text }) => (
   <div className="ctp-notebox"><Ph name="info" weight="duotone" size={15} color="#D97706" /><span>{text}</span></div>
 );
 
+/** The stop's own page: "More info · site" (the app's _MoreInfo). */
+function MoreInfo({ url }) {
+  const full = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+  let site;
+  try {
+    site = new URL(full).hostname.replace(/^www\./, '');
+  } catch {
+    site = '';
+  }
+  return (
+    <a className="ctp-moreinfo" href={full} target="_blank" rel="noopener noreferrer">
+      <Icon name="language" size={17} color="#007A7C" />
+      <b>More info</b>
+      <span>{site}</span>
+      <Icon name="open_in_new" size={16} color="#64748B" />
+    </a>
+  );
+}
+
 /** CityTourStopCard before a trip: open, the name on the photo; its time is the chip's estimate, no clock. */
 function StopCard({ step, number, caption, partners }) {
   const badge = caption && <span className="ctp-sc-badge">{caption}</span>;
@@ -282,6 +301,7 @@ function StopCard({ step, number, caption, partners }) {
     step.access_note && <NoteBox key="note" text={step.access_note} />,
     step.body_md && <AppMarkdown key="md" text={step.body_md} />,
     step.links?.length > 0 && <Links key="links" links={step.links} partners={partners} />,
+    step.website?.trim() && <MoreInfo key="web" url={step.website.trim()} />,
   ].filter(Boolean);
   return (
     <div className="ctp-sc">

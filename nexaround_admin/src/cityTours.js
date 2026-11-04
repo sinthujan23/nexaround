@@ -61,7 +61,7 @@ export function newId() {
 
 export const newStop = () => ({
   id: newId(), type: 'stop', name: '', lat: null, lng: null, photo_url: '',
-  time_here: '', price: '', access_note: '', body_md: '', links: [],
+  time_here: '', price: '', website: '', access_note: '', body_md: '', links: [],
 });
 
 export const newMove = (mode = 'walk') => ({

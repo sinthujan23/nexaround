@@ -4165,6 +4165,15 @@ a.btn { text-decoration: none; }
   display: flex; align-items: flex-start; gap: 7px; padding: 9px 11px; border-radius: 12px; background: #fff8eb;
   font-size: 12.5px; line-height: 1.4; color: #92400e;
 }
+.ctp-moreinfo {
+  display: flex; align-items: center; gap: 0; padding: 10px 12px; border-radius: 12px; background: #fff;
+  border: 1px solid #e2e8f0; text-decoration: none;
+}
+.ctp-moreinfo b { margin-left: 8px; font-size: 13.5px; font-weight: 800; color: #0f172a; white-space: nowrap; }
+.ctp-moreinfo span {
+  flex: 1; min-width: 0; margin: 0 8px 0 6px; font-size: 12.5px; color: #64748b;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .ctp-dash {
   width: 2px; height: 12px; margin: 0 auto;
   background: repeating-linear-gradient(to bottom, #64748b 0 4px, transparent 4px 8px);
