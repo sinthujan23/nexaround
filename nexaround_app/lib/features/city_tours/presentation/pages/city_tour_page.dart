@@ -88,6 +88,10 @@ class _CityTourPageState extends State<CityTourPage> {
   // The days the traveller picked (null: not yet), and the day on screen.
   List<String>? _plan;
   String? _dayId;
+  // The plan as it was when "Change" was tapped. Back from the picker puts it
+  // back, like any app's back out of an edit screen, instead of leaving the
+  // guide.
+  List<String>? _planBeforeChange;
   // Redraws the times while a trip runs: a step running over pushes the rest on.
   Timer? _tick;
   // Each step on screen, for the pinned header to find.
@@ -226,9 +230,28 @@ class _CityTourPageState extends State<CityTourPage> {
   void _showPlan(List<String> dayIds) {
     setState(() {
       _plan = dayIds;
+      _planBeforeChange = null;
       _dayId = dayIds.first;
     });
     unawaited(_service.savePlan(widget.card.id, dayIds));
+  }
+
+  /// The picker is open over a plan the traveller already had.
+  bool get _changingPlan => _plan == null && _planBeforeChange != null;
+
+  void _startChange() {
+    setState(() {
+      _planBeforeChange = _plan;
+      _plan = null;
+    });
+  }
+
+  /// Back from the picker: the plan as it was.
+  void _cancelChange() {
+    setState(() {
+      _plan = _planBeforeChange;
+      _planBeforeChange = null;
+    });
   }
 
   /// The traveller's days the guide still has, in their order; a guide of one
@@ -731,7 +754,7 @@ class _CityTourPageState extends State<CityTourPage> {
         ? 0
         : stops.where((s) => schedule.times[s.id]?.isDone ?? false).length;
 
-    return Scaffold(
+    final page = Scaffold(
       backgroundColor: _page,
       bottomNavigationBar: tour == null || day == null || day.steps.isEmpty || running
           ? null
@@ -781,7 +804,13 @@ class _CityTourPageState extends State<CityTourPage> {
                 ),
                 leading: _barButton(
                   icon: Icons.arrow_back_rounded,
-                  onTap: () => Navigator.pop(context),
+                  onTap: () {
+                    if (_changingPlan) {
+                      _cancelChange();
+                    } else {
+                      Navigator.pop(context);
+                    }
+                  },
                 ),
                 actions: [
                   if (trip != null && !trip.isFinished)
@@ -860,6 +889,15 @@ class _CityTourPageState extends State<CityTourPage> {
         ],
       ),
     );
+
+    // Phone back (button or swipe) from the picker goes back to the plan.
+    return PopScope(
+      canPop: !_changingPlan,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _cancelChange();
+      },
+      child: page,
+    );
   }
 
   /// A small grey heading over a part of the page, with a teal link.
@@ -937,7 +975,12 @@ class _CityTourPageState extends State<CityTourPage> {
     ];
     if (day == null) {
       if (tour.hasDays) {
-        children.add(CityTourPlanPicker(days: tour.days, initial: _plan ?? const [], onShow: _showPlan));
+        // From "Change" it opens on the plan they had.
+        children.add(CityTourPlanPicker(
+          days: tour.days,
+          initial: _plan ?? _planBeforeChange ?? const [],
+          onShow: _showPlan,
+        ));
       }
     } else {
       final number = days.indexOf(day) + 1;
@@ -956,7 +999,7 @@ class _CityTourPageState extends State<CityTourPage> {
             'YOUR PLAN · ${days.length} DAY${days.length == 1 ? '' : 'S'}',
             link: 'Change',
             icon: Icons.tune_rounded,
-            onTap: () => setState(() => _plan = null),
+            onTap: _startChange,
           ),
           const SizedBox(height: 10),
           CityTourDayCards(
