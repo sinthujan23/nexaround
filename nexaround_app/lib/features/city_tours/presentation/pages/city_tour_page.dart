@@ -987,20 +987,25 @@ class _CityTourPageState extends State<CityTourPage> {
               onTap: () => setState(() {
                 _openSights = allOpen ? <String>{} : {for (final s in stops) s.id};
               }),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
+              // A black pill with white text (client), the navbar's black.
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                decoration: BoxDecoration(
+                  gradient: AppColors.primaryGradient,
+                  borderRadius: BorderRadius.circular(16),
+                ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(
                       allOpen ? Icons.unfold_less_rounded : Icons.unfold_more_rounded,
                       size: 16,
-                      color: AppColors.brandGreen,
+                      color: Colors.white,
                     ),
-                    const SizedBox(width: 3),
+                    const SizedBox(width: 4),
                     Text(
                       allOpen ? 'Collapse all' : 'Expand all',
-                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: AppColors.brandGreen),
+                      style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: Colors.white),
                     ),
                   ],
                 ),
@@ -1062,7 +1067,6 @@ class _CityTourPageState extends State<CityTourPage> {
         ));
       }
     } else {
-      final number = days.indexOf(day) + 1;
       final stops = day.stops;
       final stopsDone = schedule == null
           ? 0
@@ -1093,11 +1097,9 @@ class _CityTourPageState extends State<CityTourPage> {
             stopsDone: stopsDone,
             stopsTotal: stops.length,
           ),
-          const SizedBox(height: 18),
-          _heading(
-            'DAY $number · STOPS',
-            note: schedule == null ? null : '$stopsDone of ${stops.length} done',
-          ),
+          // No "DAY N · STOPS" heading here (client: it adds to the crowd);
+          // the Day pill's ring already shows how many are done.
+          const SizedBox(height: 8),
           ..._dayBar(day, schedule),
         ]);
       } else {

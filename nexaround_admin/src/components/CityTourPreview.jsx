@@ -537,9 +537,8 @@ function GuidePage({ content, partners, activeDayId }) {
                 </span>
               ))}
             </div>
-            <div style={{ height: 18 }} />
-            <Heading text={`DAY ${shownNumber} · STOPS`} />
-            <div style={{ height: 12 }} />
+            {/* No "DAY N · STOPS" heading, as in the app (it added to the crowd). */}
+            <div style={{ height: 14 }} />
             <DayRoute day={shown} partners={partners} />
           </>
         ))}

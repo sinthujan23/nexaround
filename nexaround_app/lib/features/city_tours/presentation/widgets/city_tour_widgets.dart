@@ -799,12 +799,9 @@ class CityTourStopCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: visited ? _visitedFill : _sight,
         borderRadius: BorderRadius.circular(26),
-        border: Border.all(
-          color: current
-              ? AppColors.brandGreen.withValues(alpha: 0.5)
-              : (visited ? _visitedLine : _sightLine),
-          width: current ? 1.5 : 1,
-        ),
+        // A black edge in every state (client: the pale one did not show);
+        // closed and finished cards keep their light edges.
+        border: Border.all(color: Colors.black, width: 1.5),
         boxShadow: [
           BoxShadow(
             color: current

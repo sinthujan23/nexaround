@@ -4131,7 +4131,8 @@ a.btn { text-decoration: none; }
 .ctp-tick.start { background: #007a7c; }
 .ctp-tick.leg { background: #fff; border: 0; box-shadow: none; }
 .ctp-sc {
-  background: #eef5ff; border: 1px solid #d6e6fb; border-radius: 26px; overflow: hidden;
+  /* black edge, as the app's open stop card */
+  background: #eef5ff; border: 1.5px solid #000; border-radius: 26px; overflow: hidden;
   box-shadow: 0 6px 18px rgba(15, 23, 42, 0.06);
 }
 .ctp-sc-photo { position: relative; height: 210px; }
