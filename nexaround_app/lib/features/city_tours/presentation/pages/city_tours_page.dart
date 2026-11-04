@@ -66,118 +66,13 @@ const Duration _unfold = Duration(milliseconds: 350);
 const Duration _autoPlayEvery = Duration(seconds: 5);
 const Duration _autoPlaySlide = Duration(milliseconds: 650);
 
-/// TURN OFF BEFORE A STORE RELEASE. true: six sample cities follow the real
-/// ones, each tagged SAMPLE, so the TL and the client can see the home with
-/// many guides. Their photos are app assets (assets/images/city_sample_*.jpg);
-/// nothing is on the server, and a tap on one only says it is a sample.
-const bool kCityGuidesSampleCities = true;
-
-const String _samplePrefix = 'sample-';
-
-const List<CityTourCard> _sampleTours = [
-  CityTourCard(
-    id: '${_samplePrefix}tokyo',
-    city: 'Tokyo',
-    country: 'Japan',
-    title: 'Tokyo in Bloom: Parks, Temples and Neon Streets',
-    summary: '',
-    coverUrl: 'asset:assets/images/city_sample_tokyo.jpg',
-    duration: '',
-    budget: '',
-    stopCount: 28,
-    dayCount: 4,
-  ),
-  CityTourCard(
-    id: '${_samplePrefix}singapore',
-    city: 'Singapore',
-    country: 'Singapore',
-    title: 'Singapore: Hawker Halls to Garden Domes',
-    summary: '',
-    coverUrl: 'asset:assets/images/city_sample_singapore.jpg',
-    duration: '',
-    budget: '',
-    stopCount: 22,
-    dayCount: 3,
-  ),
-  CityTourCard(
-    id: '${_samplePrefix}cusco',
-    city: 'Cusco',
-    country: 'Peru',
-    title: 'Cusco: Inca Stones and Andean Markets',
-    summary: '',
-    coverUrl: 'asset:assets/images/city_sample_cusco.jpg',
-    duration: '',
-    budget: '',
-    stopCount: 18,
-    dayCount: 3,
-  ),
-  CityTourCard(
-    id: '${_samplePrefix}hongkong',
-    city: 'Hong Kong',
-    country: 'Hong Kong',
-    title: 'Hong Kong: Harbour, Peaks and Night Markets',
-    summary: '',
-    coverUrl: 'asset:assets/images/city_sample_hongkong.jpg',
-    duration: '',
-    budget: '',
-    stopCount: 24,
-    dayCount: 3,
-  ),
-  CityTourCard(
-    id: '${_samplePrefix}oaxaca',
-    city: 'Oaxaca',
-    country: 'Mexico',
-    title: 'Oaxaca: Colour, Mezcal and Old Churches',
-    summary: '',
-    coverUrl: 'asset:assets/images/city_sample_oaxaca.jpg',
-    duration: '',
-    budget: '',
-    stopCount: 16,
-    dayCount: 2,
-  ),
-  CityTourCard(
-    id: '${_samplePrefix}bangkok',
-    city: 'Bangkok',
-    country: 'Thailand',
-    title: 'Bangkok: Temples, Canals and Street Food',
-    summary: '',
-    coverUrl: 'asset:assets/images/city_sample_bangkok.jpg',
-    duration: '',
-    budget: '',
-    stopCount: 26,
-    dayCount: 3,
-  ),
-];
-
-bool _isSampleGuide(CityTourCard guide) => guide.id.startsWith(_samplePrefix);
-
-extension on CityTourCity {
-  bool get isSample => _isSampleGuide(tours.first);
-}
-
-void _showSampleNote(BuildContext context) {
-  ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(const SnackBar(
-      content: Text('A sample city, to show the layout. It has no guide yet.'),
-    ));
-}
-
-/// Opens a guide; a sample only says what it is.
+/// Opens a guide.
 void _openGuidePage(BuildContext context, CityTourCard guide) {
-  if (_isSampleGuide(guide)) {
-    _showSampleNote(context);
-    return;
-  }
   Navigator.push(context, MaterialPageRoute(builder: (_) => CityTourPage(card: guide)));
 }
 
 /// A city with one guide opens it straight away; with more, its list of guides.
 void _openCityPage(BuildContext context, CityTourCity city) {
-  if (city.isSample) {
-    _showSampleNote(context);
-    return;
-  }
   if (city.tours.length == 1) {
     _openGuidePage(context, city.tours.first);
     return;
@@ -357,14 +252,9 @@ class _CityToursPageState extends State<CityToursPage> {
       return CityToursClassicPage(isTab: widget.isTab, isActive: widget.isActive);
     }
     final real = _tours ?? const <CityTourCard>[];
-    // Samples once the real guides are in (not over a spinner or an error).
-    final samples = kCityGuidesSampleCities && !_loading && _error == null
-        ? _sampleTours
-        : const <CityTourCard>[];
-    // Newest first: the server sends guides oldest-published first, and the
-    // samples count as older than any real guide.
-    final newest = [...real.reversed, ...samples];
-    final cities = CityTourCity.group([...real, ...samples]);
+    // Newest first: the server sends guides oldest-published first.
+    final newest = real.reversed.toList();
+    final cities = CityTourCity.group(real);
     return AnnotatedRegion<SystemUiOverlayStyle>(
       // Dark status bar icons on the white page.
       value: const SystemUiOverlayStyle(
@@ -733,10 +623,6 @@ class _Cover extends StatelessWidget {
     if (url.isEmpty) {
       return const DecoratedBox(decoration: BoxDecoration(gradient: AppColors.secondaryGradient));
     }
-    // A sample city's photo ships with the app.
-    if (url.startsWith('asset:')) {
-      return Image.asset(url.substring(6), fit: BoxFit.cover, cacheWidth: cacheWidth);
-    }
     return CachedNetworkImage(
       imageUrl: cityTourMediaUrl(url),
       fit: BoxFit.cover,
@@ -859,13 +745,9 @@ class _FeaturedCard extends StatelessWidget {
                 top: 14,
                 left: 14,
                 right: 66,
-                child: Row(
-                  children: [
-                    Flexible(
-                      child: _GlassChip(icon: Icons.location_on_outlined, label: place, fontSize: 13),
-                    ),
-                    if (_isSampleGuide(guide)) ...[const SizedBox(width: 6), const _SampleTag()],
-                  ],
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: _GlassChip(icon: Icons.location_on_outlined, label: place, fontSize: 13),
                 ),
               ),
             const Positioned(
@@ -1019,7 +901,6 @@ class _SmallCityCard extends StatelessWidget {
                   ),
                 ),
               ),
-              if (city.isSample) const Positioned(top: 8, left: 8, child: _SampleTag()),
               Positioned(
                 left: 10,
                 right: 10,
@@ -1093,18 +974,11 @@ class _CityRow extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      Flexible(
-                        child: Text(
-                          city.city,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: _navy),
-                        ),
-                      ),
-                      if (city.isSample) ...[const SizedBox(width: 6), const _SampleTag()],
-                    ],
+                  Text(
+                    city.city,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: _navy),
                   ),
                   const SizedBox(height: 2),
                   Row(
@@ -1131,31 +1005,6 @@ class _CityRow extends StatelessWidget {
               child: const Icon(Icons.north_east_rounded, size: 18, color: AppColors.brandGreen),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Marks a sample city (kCityGuidesSampleCities).
-class _SampleTag extends StatelessWidget {
-  const _SampleTag();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFBBF24),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: const Text(
-        'SAMPLE',
-        style: TextStyle(
-          fontSize: 10,
-          fontWeight: FontWeight.w900,
-          letterSpacing: 1,
-          color: Color(0xFF422006),
         ),
       ),
     );
