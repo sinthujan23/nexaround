@@ -1762,8 +1762,9 @@ String cityTourDayLine(BuildContext context, CityTourDay day) {
 
 /// "Plan your days", two ways. "Day based" asks how many days the traveller
 /// has and takes the first ones; "Place based" lists each day's set of places
-/// to tick, a day for each set. The way picked greys the other out (a tap on
-/// it switches). [onShow] gets the day ids in guide order.
+/// to tick, a day for each set. The two ways sit on a switch: a white pill
+/// slides to the one picked, and a tap or a swipe on either side switches.
+/// [onShow] gets the day ids in guide order.
 class CityTourPlanPicker extends StatefulWidget {
   final List<CityTourDay> days;
   final List<String> initial;
@@ -1789,6 +1790,8 @@ class _CityTourPlanPickerState extends State<CityTourPlanPicker> {
       : (_firstDays(widget.initial) ? _PlanWay.days : _PlanWay.places);
   late int _count = _way == _PlanWay.days ? widget.initial.length : 0;
   late final Set<String> _picked = _way == _PlanWay.places ? <String>{...widget.initial} : <String>{};
+  // How far a swipe on the switch has gone, to tell which way it went.
+  double _swipe = 0;
 
   /// Whether [ids] are the guide's first days, in order.
   bool _firstDays(List<String> ids) {
@@ -1845,13 +1848,7 @@ class _CityTourPlanPickerState extends State<CityTourPlanPicker> {
             ),
           ),
           const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(child: _wayButton(_PlanWay.days, Icons.calendar_today_rounded, 'Day based')),
-              const SizedBox(width: 10),
-              Expanded(child: _wayButton(_PlanWay.places, Icons.place_rounded, 'Place based')),
-            ],
-          ),
+          _waySwitch(),
           if (_way == _PlanWay.days) ...[
             const SizedBox(height: 18),
             const Text('How many days do you have?', style: _question),
@@ -1965,41 +1962,100 @@ class _CityTourPlanPickerState extends State<CityTourPlanPicker> {
     );
   }
 
-  /// "Day based" or "Place based": green when picked, greyed out when the
-  /// other one is.
-  Widget _wayButton(_PlanWay way, IconData icon, String label) {
-    final on = _way == way;
-    final greyed = _way != null && !on;
+  void _pickWay(_PlanWay way) {
+    if (_way != way) setState(() => _way = way);
+  }
+
+  static const _slide = Duration(milliseconds: 260);
+
+  /// "Day based | Place based" as one switch: a grey track, and a white pill
+  /// that slides under the way picked (none until one is). Both sides stay
+  /// dark enough to read as tappable; a swipe either way switches too.
+  Widget _waySwitch() {
+    final way = _way;
     return GestureDetector(
-      onTap: on ? null : () => setState(() => _way = way),
-      child: Opacity(
-        opacity: greyed ? 0.45 : 1,
-        child: Container(
-          height: 76,
-          decoration: BoxDecoration(
-            color: on ? AppColors.brandGreen : Colors.white,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: on ? AppColors.brandGreen : AppColors.border),
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                icon,
-                size: 22,
-                color: on ? Colors.white : (greyed ? AppColors.textTertiary : AppColors.brandGreen),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
-                  color: on ? Colors.white : (greyed ? AppColors.textTertiary : AppColors.textPrimary),
+      onHorizontalDragStart: (_) => _swipe = 0,
+      onHorizontalDragUpdate: (d) => _swipe += d.delta.dx,
+      onHorizontalDragEnd: (d) {
+        final speed = d.primaryVelocity ?? 0;
+        if (_swipe > 24 || speed > 300) {
+          _pickWay(_PlanWay.places);
+        } else if (_swipe < -24 || speed < -300) {
+          _pickWay(_PlanWay.days);
+        }
+      },
+      child: Container(
+        width: double.infinity,
+        height: 52,
+        padding: const EdgeInsets.all(4),
+        decoration: BoxDecoration(
+          color: const Color(0xFFE7EAEA),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Stack(
+          children: [
+            AnimatedAlign(
+              alignment: way == _PlanWay.places ? Alignment.centerRight : Alignment.centerLeft,
+              duration: _slide,
+              curve: Curves.easeOutCubic,
+              child: FractionallySizedBox(
+                widthFactor: 0.5,
+                heightFactor: 1,
+                child: AnimatedOpacity(
+                  opacity: way == null ? 0 : 1,
+                  duration: _slide,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(11),
+                      boxShadow: const [
+                        BoxShadow(color: Color(0x1A000000), blurRadius: 6, offset: Offset(0, 2)),
+                        BoxShadow(color: Color(0x0F000000), blurRadius: 2, offset: Offset(0, 1)),
+                      ],
+                    ),
+                  ),
                 ),
               ),
-            ],
-          ),
+            ),
+            Row(
+              children: [
+                Expanded(child: _waySide(_PlanWay.days, Icons.calendar_today_rounded, 'Day based')),
+                Expanded(child: _waySide(_PlanWay.places, Icons.place_rounded, 'Place based')),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// One side of the switch: teal icon and black label when picked, dark
+  /// grey when not.
+  Widget _waySide(_PlanWay way, IconData icon, String label) {
+    final on = _way == way;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _pickWay(way),
+      child: SizedBox(
+        height: 44,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 19, color: on ? AppColors.brandGreen : AppColors.textSecondary),
+            const SizedBox(width: 7),
+            Flexible(
+              child: AnimatedDefaultTextStyle(
+                duration: _slide,
+                // On top of the app's text style (its font), like a Text style.
+                style: DefaultTextStyle.of(context).style.merge(TextStyle(
+                  fontSize: 14,
+                  fontWeight: on ? FontWeight.w800 : FontWeight.w700,
+                  color: on ? AppColors.textPrimary : AppColors.textSecondary,
+                )),
+                child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+              ),
+            ),
+          ],
         ),
       ),
     );
