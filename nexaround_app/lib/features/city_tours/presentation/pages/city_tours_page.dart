@@ -1,20 +1,24 @@
+import 'dart:ui' show ImageFilter;
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/error/user_message.dart';
 import 'package:nexaround_app/features/city_tours/data/city_tours_service.dart';
 import 'package:nexaround_app/features/city_tours/domain/city_tour.dart';
 import 'package:nexaround_app/features/city_tours/presentation/pages/city_tour_page.dart';
+import 'package:nexaround_app/features/city_tours/presentation/pages/city_tours_classic_page.dart';
 import 'package:nexaround_app/features/city_tours/presentation/widgets/city_tour_widgets.dart';
-import 'package:video_player/video_player.dart';
 
-/// Curated Hubs → City Tours: the cities that have guides, under the header
-/// video, which shrinks to a white bar as the page scrolls. A city with one
-/// guide opens it straight away; with more, its list of guides.
+/// Curated Hubs → City Guides home: "Where to next?" over big photo cards to
+/// swipe through, one per city (the first five), with dots under them and
+/// the other cities in a row below. A city with one guide opens it straight
+/// away; with more, its list of guides. The search button swaps the heading
+/// for a search box and the cards for a plain list of the matching cities.
 ///
 /// [isTab]: shown as a bottom-navbar tab (no back button). [isActive]: whether
-/// that tab is the one on screen; the page loads on its first showing and its
-/// header video only plays while it is showing.
+/// that tab is the one on screen; the page loads on its first showing.
 class CityToursPage extends StatefulWidget {
   final bool isTab;
   final bool isActive;
@@ -25,39 +29,35 @@ class CityToursPage extends StatefulWidget {
   State<CityToursPage> createState() => _CityToursPageState();
 }
 
-const _navy = Color(0xFF0F172A);
+/// true: show the previous City Guides home instead (header video, country
+/// chips, photo wall; city_tours_classic_page.dart), if this one is dropped.
+const bool kClassicCityGuidesHome = false;
 
-// The header video's height, as before the redesign.
-const double _headerHeight = 200;
+const _navy = Color(0xFF0F172A);
+const _slate = Color(0xFF64748B);
+const _hint = Color(0xFF94A3B8);
+
+// How many cities get a big card; the rest go in the row under them.
+const int _featuredCount = 5;
 
 class _CityToursPageState extends State<CityToursPage> {
   final _service = CityToursService();
-  VideoPlayerController? _videoController;
   final TextEditingController _searchController = TextEditingController();
-  final ScrollController _scrollController = ScrollController();
-  bool _isScrolled = false;
+  final PageController _pages = PageController();
+  bool _started = false;
   bool _searching = false;
+  int _page = 0;
 
   List<CityTourCard>? _tours;
   bool _loading = true;
   String? _error;
   String _search = '';
-  String? _selectedCountry;
 
   @override
   void initState() {
     super.initState();
     _searchController.addListener(() {
       if (mounted) setState(() => _search = _searchController.text);
-    });
-    _scrollController.addListener(() {
-      if (!mounted) return;
-      final collapsedOffset = _headerHeight - kToolbarHeight - 24;
-      final isScrolled = _scrollController.hasClients &&
-          _scrollController.offset > collapsedOffset;
-      if (isScrolled != _isScrolled) {
-        setState(() => _isScrolled = isScrolled);
-      }
     });
     final cached = _service.cachedTours();
     if (cached.isNotEmpty) {
@@ -70,46 +70,20 @@ class _CityToursPageState extends State<CityToursPage> {
   @override
   void didUpdateWidget(covariant CityToursPage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.isActive == oldWidget.isActive) return;
-    if (widget.isActive) {
-      if (_videoController == null) {
-        _start();
-      } else if (_videoController!.value.isInitialized) {
-        _videoController!.play();
-      }
-    } else {
-      _videoController?.pause();
-    }
+    if (widget.isActive && !oldWidget.isActive) _start();
   }
 
-  // First showing: load the guides and start the header video.
+  // First showing: load the guides.
   void _start() {
+    if (_started || kClassicCityGuidesHome) return;
+    _started = true;
     _fetch();
-    _initVideo();
-  }
-
-  // The header's looping, silent video; the photo shows until it is ready.
-  void _initVideo() {
-    _videoController = VideoPlayerController.asset(
-      'assets/animations/city_guides_banner.mp4',
-      videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
-    )..setVolume(0.0)
-     ..initialize().then((_) {
-        if (mounted) {
-          _videoController?.setLooping(true);
-          _videoController?.setVolume(0.0);
-          // The tab may have been left while the video was loading.
-          if (widget.isActive) _videoController?.play();
-          setState(() {});
-        }
-      });
   }
 
   @override
   void dispose() {
     _searchController.dispose();
-    _scrollController.dispose();
-    _videoController?.dispose();
+    _pages.dispose();
     super.dispose();
   }
 
@@ -145,83 +119,149 @@ class _CityToursPageState extends State<CityToursPage> {
     );
   }
 
-  // The search button opens a search box under the header (scrolling back up
-  // to it); its close button clears the search too.
+  // The search button opens the search box in the heading's place; its close
+  // button clears the search and brings the cards back.
   void _toggleSearch() {
     if (_searching) {
       _searchController.clear();
       FocusScope.of(context).unfocus();
-    } else if (_scrollController.hasClients && _scrollController.offset > 0) {
-      _scrollController.animateTo(
-        0,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOutCubic,
-      );
     }
     setState(() => _searching = !_searching);
   }
 
-  List<String> _countries(List<CityTourCity> cities) {
-    final set = cities.map((c) => c.country).where((c) => c.isNotEmpty).toSet();
-    return set.toList()..sort();
+  List<CityTourCity> _matches(List<CityTourCity> cities) {
+    final q = _search.trim().toLowerCase();
+    if (q.isEmpty) return cities;
+    return cities
+        .where((c) =>
+            c.city.toLowerCase().contains(q) ||
+            c.country.toLowerCase().contains(q) ||
+            c.tours.any((t) => t.title.toLowerCase().contains(q)))
+        .toList();
   }
 
-  List<CityTourCity> _filter(List<CityTourCity> cities) {
-    var list = cities;
-    if (_selectedCountry != null) {
-      list = list.where((c) => c.country == _selectedCountry).toList();
+  @override
+  Widget build(BuildContext context) {
+    if (kClassicCityGuidesHome) {
+      return CityToursClassicPage(isTab: widget.isTab, isActive: widget.isActive);
     }
-    if (_search.isNotEmpty) {
-      final q = _search.toLowerCase();
-      list = list
-          .where((c) =>
-              c.city.toLowerCase().contains(q) ||
-              c.country.toLowerCase().contains(q) ||
-              c.tours.any((t) => t.title.toLowerCase().contains(q)))
-          .toList();
-    }
-    return list;
-  }
-
-  /// A round button on the header: dark glass on the video, light grey once
-  /// the header has shrunk to the white bar.
-  Widget _barButton({required IconData icon, required double size, required VoidCallback onTap}) {
-    return Padding(
-      padding: const EdgeInsets.all(8),
-      child: SizedBox(
-        width: 40,
-        height: 40,
-        child: Material(
-          color: _isScrolled
-              ? Colors.black.withValues(alpha: 0.06)
-              : Colors.black.withValues(alpha: 0.4),
-          shape: const CircleBorder(),
-          child: IconButton(
-            padding: EdgeInsets.zero,
-            icon: Icon(icon, size: size, color: _isScrolled ? Colors.black : Colors.white),
-            onPressed: onTap,
+    final cities = CityTourCity.group(_tours ?? const []);
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      // Dark status bar icons on the white page.
+      value: const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.dark,
+        statusBarBrightness: Brightness.light,
+      ),
+      child: Scaffold(
+        backgroundColor: Colors.white,
+        body: SafeArea(
+          bottom: false,
+          child: Column(
+            children: [
+              _header(),
+              Expanded(
+                child: RefreshIndicator(
+                  color: AppColors.brandGreen,
+                  onRefresh: _fetch,
+                  child: _content(cities),
+                ),
+              ),
+            ],
           ),
         ),
       ),
     );
   }
 
+  // ── Header ────────────────────────────────────────────────────────────────
+
+  Widget _header() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
+      child: Row(
+        children: [
+          if (!widget.isTab) ...[
+            _CircleButton(
+              icon: Icons.arrow_back_ios_new_rounded,
+              size: 18,
+              onTap: () => Navigator.pop(context),
+            ),
+            const SizedBox(width: 12),
+          ],
+          Expanded(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 200),
+              layoutBuilder: (current, previous) => Stack(
+                alignment: Alignment.centerLeft,
+                children: [...previous, if (current != null) current],
+              ),
+              child: _searching ? _searchBox() : _heading(),
+            ),
+          ),
+          const SizedBox(width: 12),
+          _CircleButton(
+            icon: _searching ? Icons.close_rounded : Icons.search_rounded,
+            onTap: _toggleSearch,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _heading() {
+    return const Padding(
+      key: ValueKey('heading'),
+      padding: EdgeInsets.only(left: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'CITY GUIDES',
+            style: TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.5,
+              color: AppColors.brandGreen,
+            ),
+          ),
+          SizedBox(height: 2),
+          Text(
+            'Where to next?',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 28,
+              height: 1.15,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.6,
+              color: _navy,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _searchBox() {
     return Container(
+      key: const ValueKey('search'),
+      width: double.infinity,
       height: 48,
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: AppColors.surface,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(24),
       ),
       child: TextField(
         controller: _searchController,
         autofocus: true,
         textInputAction: TextInputAction.search,
-        style: const TextStyle(fontSize: 14),
+        style: const TextStyle(fontSize: 15),
         decoration: const InputDecoration(
-          hintText: 'Search cities, countries…',
-          hintStyle: TextStyle(fontSize: 14, color: AppColors.textTertiary),
+          hintText: 'Search cities or countries',
+          hintStyle: TextStyle(fontSize: 15, color: AppColors.textTertiary),
           prefixIcon: Icon(Icons.search_rounded, color: AppColors.textTertiary),
           filled: false,
           border: InputBorder.none,
@@ -234,243 +274,104 @@ class _CityToursPageState extends State<CityToursPage> {
     );
   }
 
-  Widget _chips(List<String> countries) {
-    return SizedBox(
-      height: 38,
-      child: ListView.separated(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        scrollDirection: Axis.horizontal,
-        itemCount: countries.length + 1,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
-        itemBuilder: (_, i) {
-          // the first chip is "All"; tapping a picked country unpicks it
-          final country = i == 0 ? null : countries[i - 1];
-          final on = _selectedCountry == country;
-          final colour = on ? Colors.white : AppColors.textSecondary;
-          return GestureDetector(
-            onTap: () => setState(
-                () => _selectedCountry = on && country != null ? null : country),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              decoration: BoxDecoration(
-                color: on ? _navy : AppColors.surface,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (country == null) ...[
-                    Icon(Icons.grid_view_rounded, size: 14, color: colour),
-                    const SizedBox(width: 5),
-                  ],
-                  Text(
-                    country ?? 'All',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: on ? FontWeight.w700 : FontWeight.w600,
-                      color: colour,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
+  // ── Content ───────────────────────────────────────────────────────────────
 
-  // The cities as a photo wall: two columns whose tiles take turns at
-  // different heights.
-  Widget _wall(List<CityTourCity> cities) {
-    const leftHeights = [214.0, 158.0, 200.0];
-    const rightHeights = [158.0, 214.0, 190.0];
-    final left = <Widget>[];
-    final right = <Widget>[];
-    for (var i = 0; i < cities.length; i++) {
-      final column = i.isEven ? left : right;
-      final heights = i.isEven ? leftHeights : rightHeights;
-      if (column.isNotEmpty) column.add(const SizedBox(height: 10));
-      final city = cities[i];
-      column.add(_CityTile(
-        city: city,
-        height: heights[(i ~/ 2) % heights.length],
-        onTap: () => _openCity(city),
+  Widget _content(List<CityTourCity> cities) {
+    // Clear of the floating navbar (the home page's body runs under it).
+    final bottom = 24 + MediaQuery.paddingOf(context).bottom;
+    if (_loading) {
+      return _fill(const CircularProgressIndicator(color: AppColors.brandGreen));
+    }
+    if (_error != null) {
+      return _fill(_Message(
+        icon: Icons.wifi_off_rounded,
+        title: _error!,
+        action: TextButton(
+          onPressed: () {
+            setState(() => _loading = true);
+            _fetch();
+          },
+          child: const Text('Try again'),
+        ),
       ));
     }
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    if (cities.isEmpty) {
+      return _fill(const _Message(
+        icon: Icons.route_outlined,
+        title: 'No city guides yet',
+        text: 'New cities are on the way.',
+      ));
+    }
+
+    if (_searching) {
+      final found = _matches(cities);
+      if (found.isEmpty) {
+        return _fill(const _Message(icon: Icons.search_off_rounded, title: 'No cities match'));
+      }
+      return ListView.separated(
+        physics: const AlwaysScrollableScrollPhysics(),
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        padding: EdgeInsets.fromLTRB(16, 4, 16, bottom),
+        itemCount: found.length,
+        separatorBuilder: (_, __) => const Divider(height: 1, color: Color(0xFFF1F5F9)),
+        itemBuilder: (_, i) => _CityRow(city: found[i], onTap: () => _openCity(found[i])),
+      );
+    }
+
+    final featured = cities.take(_featuredCount).toList();
+    final rest = cities.skip(_featuredCount).toList();
+    final cardHeight = (MediaQuery.sizeOf(context).height * 0.56).clamp(360.0, 480.0);
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: EdgeInsets.only(top: 6, bottom: bottom),
       children: [
-        Expanded(child: Column(children: left)),
-        const SizedBox(width: 10),
-        Expanded(child: Column(children: right)),
+        SizedBox(
+          // Room under the card for its shadow.
+          height: cardHeight + 26,
+          child: PageView.builder(
+            controller: _pages,
+            itemCount: featured.length,
+            onPageChanged: (i) => setState(() => _page = i),
+            itemBuilder: (_, i) => Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 22),
+              child: _FeaturedCard(city: featured[i], onTap: () => _openCity(featured[i])),
+            ),
+          ),
+        ),
+        if (featured.length > 1)
+          _Dots(count: featured.length, index: _page.clamp(0, featured.length - 1)),
+        if (cities.length == 1) const _Soon(),
+        if (rest.isNotEmpty) ...[
+          const Padding(
+            padding: EdgeInsets.fromLTRB(20, 22, 20, 10),
+            child: Text(
+              'More cities',
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: _navy),
+            ),
+          ),
+          SizedBox(
+            height: 170,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              itemCount: rest.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 10),
+              itemBuilder: (_, i) => _SmallCityCard(city: rest[i], onTap: () => _openCity(rest[i])),
+            ),
+          ),
+        ],
       ],
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final cities = CityTourCity.group(_tours ?? const []);
-    final countries = _countries(cities);
-    final filtered = _filter(cities);
-    final video = _videoController;
-    const side = EdgeInsets.symmetric(horizontal: 16);
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: RefreshIndicator(
-        color: AppColors.brandGreen,
-        onRefresh: _fetch,
-        child: CustomScrollView(
-          controller: _scrollController,
-          physics: const AlwaysScrollableScrollPhysics(),
-          slivers: [
-            // ── App Bar ────────────────────────────────────────────────────
-            SliverAppBar(
-              pinned: true,
-              expandedHeight: _headerHeight,
-              backgroundColor: _isScrolled ? Colors.white : _navy,
-              elevation: _isScrolled ? 2 : 0,
-              scrolledUnderElevation: 2,
-              // As a tab there is nothing to go back to.
-              automaticallyImplyLeading: false,
-              leading: widget.isTab
-                  ? null
-                  : _barButton(
-                      icon: Icons.arrow_back_ios_new_rounded,
-                      size: 16,
-                      onTap: () => Navigator.pop(context),
-                    ),
-              actions: [
-                _barButton(
-                  icon: _searching ? Icons.close_rounded : Icons.search_rounded,
-                  size: 20,
-                  onTap: _toggleSearch,
-                ),
-              ],
-              flexibleSpace: FlexibleSpaceBar(
-                centerTitle: true,
-                title: Text(
-                  'City Guides',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    color: _isScrolled ? Colors.black : Colors.white,
-                    shadows: _isScrolled
-                        ? null
-                        : const [
-                            Shadow(color: Colors.black, blurRadius: 6),
-                          ],
-                  ),
-                ),
-                background: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    if (video != null && video.value.isInitialized)
-                      FittedBox(
-                        fit: BoxFit.cover,
-                        clipBehavior: Clip.hardEdge,
-                        child: SizedBox(
-                          width: video.value.size.width,
-                          height: video.value.size.height,
-                          child: VideoPlayer(video),
-                        ),
-                      )
-                    else
-                      Image.asset(
-                        'assets/images/city_tours_bg.jpg',
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => const DecoratedBox(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [Color(0xFF1A1A2E), Color(0xFF16213E)],
-                            ),
-                          ),
-                        ),
-                      ),
-                    Container(
-                      decoration: const BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [Colors.black38, Colors.black87],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            // ── Search & country filter ────────────────────────────────────
-            SliverToBoxAdapter(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  if (_searching)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-                      child: _searchBox(),
-                    ),
-                  if (countries.isNotEmpty) ...[
-                    const SizedBox(height: 14),
-                    _chips(countries),
-                  ],
-                  const SizedBox(height: 14),
-                ],
-              ),
-            ),
-
-            // ── Content ────────────────────────────────────────────────────
-            if (_loading)
-              const SliverFillRemaining(
-                hasScrollBody: false,
-                child: Center(
-                  child: CircularProgressIndicator(color: AppColors.brandGreen),
-                ),
-              )
-            else if (_error != null)
-              SliverFillRemaining(
-                hasScrollBody: false,
-                child: _Message(
-                  icon: Icons.wifi_off_rounded,
-                  title: _error!,
-                  action: TextButton(
-                    onPressed: () {
-                      setState(() => _loading = true);
-                      _fetch();
-                    },
-                    child: const Text('Try again'),
-                  ),
-                ),
-              )
-            else if (cities.isEmpty)
-              const SliverFillRemaining(
-                hasScrollBody: false,
-                child: _Message(
-                  icon: Icons.route_rounded,
-                  title: 'No city guides yet',
-                  text: 'New cities are on the way.',
-                ),
-              )
-            else if (filtered.isEmpty)
-              const SliverToBoxAdapter(
-                child: _Message(
-                  icon: Icons.search_rounded,
-                  title: 'No cities match',
-                ),
-              )
-            else
-              SliverToBoxAdapter(
-                child: Padding(padding: side, child: _wall(filtered)),
-              ),
-
-            SliverToBoxAdapter(
-              child: SizedBox(height: 32 + MediaQuery.paddingOf(context).bottom),
-            ),
-          ],
-        ),
+  // A message or spinner in the middle, still pull-to-refresh.
+  Widget _fill(Widget child) {
+    return LayoutBuilder(
+      builder: (context, constraints) => ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: [
+          SizedBox(height: constraints.maxHeight, child: Center(child: child)),
+        ],
       ),
     );
   }
@@ -478,156 +379,440 @@ class _CityToursPageState extends State<CityToursPage> {
 
 // ── Page parts ──────────────────────────────────────────────────────────────
 
-/// A city on the photo wall: its cover, the guide count, an open arrow, and
-/// the name and country at the bottom.
-class _CityTile extends StatelessWidget {
-  final CityTourCity city;
-  final double height;
+/// A white round button with a thin grey edge: back, search, close.
+class _CircleButton extends StatelessWidget {
+  final IconData icon;
+  final double size;
   final VoidCallback onTap;
 
-  const _CityTile({required this.city, required this.height, required this.onTap});
+  const _CircleButton({required this.icon, this.size = 22, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      shape: const CircleBorder(side: BorderSide(color: Color(0xFFE5E7EB))),
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onTap,
+        child: SizedBox(width: 44, height: 44, child: Icon(icon, size: size, color: _navy)),
+      ),
+    );
+  }
+}
+
+/// A city's cover photo, or a soft gradient when it has none.
+class _Cover extends StatelessWidget {
+  final String url;
+  final int cacheWidth;
+
+  const _Cover({required this.url, required this.cacheWidth});
+
+  @override
+  Widget build(BuildContext context) {
+    if (url.isEmpty) {
+      return const DecoratedBox(decoration: BoxDecoration(gradient: AppColors.secondaryGradient));
+    }
+    return CachedNetworkImage(
+      imageUrl: cityTourMediaUrl(url),
+      fit: BoxFit.cover,
+      memCacheWidth: cacheWidth,
+      placeholder: (_, __) => Container(color: AppColors.surface),
+      errorWidget: (_, __, ___) => Container(
+        color: AppColors.surface,
+        child: const Icon(Icons.location_city_outlined, size: 32, color: AppColors.textTertiary),
+      ),
+    );
+  }
+}
+
+/// Frosted dark glass over a photo.
+class _Glass extends StatelessWidget {
+  final Widget child;
+  final double radius;
+  final EdgeInsetsGeometry padding;
+
+  const _Glass({required this.child, this.radius = 12, this.padding = EdgeInsets.zero});
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(radius),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        child: Container(
+          padding: padding,
+          decoration: BoxDecoration(
+            color: _navy.withValues(alpha: 0.35),
+            borderRadius: BorderRadius.circular(radius),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.35)),
+          ),
+          child: child,
+        ),
+      ),
+    );
+  }
+}
+
+/// A glass chip on a photo: a line icon and a short label.
+class _GlassChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final double fontSize;
+
+  const _GlassChip({required this.icon, required this.label, this.fontSize = 12});
+
+  @override
+  Widget build(BuildContext context) {
+    return _Glass(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: fontSize + 3, color: Colors.white),
+          const SizedBox(width: 5),
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: fontSize, fontWeight: FontWeight.w700, color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A city's big card: its photo, the place in a glass chip, an open arrow,
+/// and at the bottom the guide's name, its stops and days, and Open guide.
+/// A city with several guides shows its name, how many, and See N guides.
+class _FeaturedCard extends StatelessWidget {
+  final CityTourCity city;
+  final VoidCallback onTap;
+
+  const _FeaturedCard({required this.city, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     final count = city.tours.length;
+    final single = count == 1 ? city.tours.first : null;
+    final place = [city.city, city.country].where((s) => s.isNotEmpty).join(', ');
+    final title = single != null && single.title.isNotEmpty ? single.title : city.city;
+    final chips = <Widget>[
+      if (single == null)
+        _GlassChip(icon: Icons.auto_stories_outlined, label: '$count guides')
+      else ...[
+        if (single.stopCount > 0)
+          _GlassChip(
+            icon: Icons.route_outlined,
+            label: single.stopCount == 1 ? '1 stop' : '${single.stopCount} stops',
+          ),
+        if (single.dayCount > 0)
+          _GlassChip(
+            icon: Icons.calendar_today_outlined,
+            label: single.dayCount == 1 ? '1 day' : '${single.dayCount} days',
+          )
+        else if (single.duration.isNotEmpty)
+          _GlassChip(icon: Icons.schedule_outlined, label: single.duration),
+      ],
+    ];
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        height: height,
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(30),
           boxShadow: [
             BoxShadow(
-              color: _navy.withValues(alpha: 0.14),
-              blurRadius: 16,
-              offset: const Offset(0, 6),
+              color: _navy.withValues(alpha: 0.18),
+              blurRadius: 24,
+              offset: const Offset(0, 10),
             ),
           ],
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(30),
           child: Stack(
             fit: StackFit.expand,
             children: [
-              if (city.coverUrl.isEmpty)
-                Container(
-                  decoration: const BoxDecoration(
-                    gradient: AppColors.secondaryGradient,
-                  ),
-                )
-              else
-                CachedNetworkImage(
-                  imageUrl: cityTourMediaUrl(city.coverUrl),
-                  fit: BoxFit.cover,
-                  memCacheWidth: 600, // half-width tile at 3x DPR
-                  placeholder: (_, __) => Container(color: AppColors.surface),
-                  errorWidget: (_, __, ___) => Container(
-                    color: AppColors.surface,
-                    child: const Icon(
-                      Icons.location_city_rounded,
-                      size: 32,
-                      color: AppColors.textTertiary,
-                    ),
-                  ),
-                ),
+              _Cover(url: city.coverUrl, cacheWidth: 1000),
               const DecoratedBox(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.bottomCenter,
                     end: Alignment.topCenter,
-                    colors: [Color(0xBF000000), Color(0x00000000)],
-                    stops: [0.0, 0.55],
+                    colors: [Color(0xC7000000), Color(0x00000000)],
+                    stops: [0.0, 0.6],
+                  ),
+                ),
+              ),
+              if (place.isNotEmpty)
+                Positioned(
+                  top: 14,
+                  left: 14,
+                  right: 66,
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: _GlassChip(icon: Icons.location_on_outlined, label: place, fontSize: 13),
+                  ),
+                ),
+              const Positioned(
+                top: 14,
+                right: 14,
+                child: _Glass(
+                  radius: 19,
+                  child: SizedBox(
+                    width: 38,
+                    height: 38,
+                    child: Icon(Icons.north_east_rounded, size: 19, color: Colors.white),
                   ),
                 ),
               ),
               Positioned(
-                top: 9,
-                left: 9,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: _navy.withValues(alpha: 0.45),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.alt_route_rounded, size: 12, color: Colors.white),
-                      const SizedBox(width: 4),
-                      Text(
-                        count == 1 ? '1 guide' : '$count guides',
-                        style: const TextStyle(
-                          fontSize: 10.5,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white,
-                        ),
+                left: 18,
+                right: 18,
+                bottom: 18,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 23,
+                        height: 1.2,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.3,
                       ),
+                    ),
+                    if (chips.isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      Wrap(spacing: 8, runSpacing: 8, children: chips),
                     ],
+                    const SizedBox(height: 14),
+                    Container(
+                      width: double.infinity,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(24),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            single != null ? 'Open guide' : 'See $count guides',
+                            style: const TextStyle(
+                              fontSize: 15.5,
+                              fontWeight: FontWeight.w800,
+                              color: _navy,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          const Icon(Icons.arrow_forward_rounded, size: 19, color: _navy),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Which big card is on screen: the picked dot stretches into a teal bar.
+class _Dots extends StatelessWidget {
+  final int count;
+  final int index;
+
+  const _Dots({required this.count, required this.index});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        for (var i = 0; i < count; i++)
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeOutCubic,
+            margin: const EdgeInsets.symmetric(horizontal: 3),
+            width: i == index ? 20 : 7,
+            height: 7,
+            decoration: BoxDecoration(
+              color: i == index ? AppColors.brandGreen : const Color(0xFFCBD5E1),
+              borderRadius: BorderRadius.circular(4),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// Under a lone city's card.
+class _Soon extends StatelessWidget {
+  const _Soon();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.only(top: 2),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.add_location_alt_outlined, size: 18, color: _hint),
+          SizedBox(width: 7),
+          Text(
+            'More cities are on the way',
+            style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: _hint),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A city in the "More cities" row: a small photo card with its name.
+class _SmallCityCard extends StatelessWidget {
+  final CityTourCity city;
+  final VoidCallback onTap;
+
+  const _SmallCityCard({required this.city, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: SizedBox(
+          width: 132,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              _Cover(url: city.coverUrl, cacheWidth: 400),
+              const DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.topCenter,
+                    colors: [Color(0xB3000000), Color(0x00000000)],
+                    stops: [0.0, 0.6],
                   ),
                 ),
               ),
               Positioned(
-                top: 8,
-                right: 8,
-                child: Container(
-                  width: 30,
-                  height: 30,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.2),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white.withValues(alpha: 0.35)),
-                  ),
-                  child: const Icon(Icons.north_east_rounded,
-                      size: 15, color: Colors.white),
-                ),
-              ),
-              Positioned(
-                left: 12,
-                right: 12,
-                bottom: 11,
+                left: 10,
+                right: 10,
+                bottom: 9,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
                       city.city,
-                      maxLines: 2,
+                      maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 17,
-                        height: 1.15,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.white,
-                      ),
+                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Colors.white),
                     ),
-                    if (city.country.isNotEmpty) ...[
-                      const SizedBox(height: 2),
+                    if (city.country.isNotEmpty)
                       Row(
                         children: [
-                          const Icon(Icons.location_on_rounded,
-                              size: 12, color: Color(0xE6FFFFFF)),
-                          const SizedBox(width: 3),
+                          const Icon(Icons.location_on_outlined, size: 12, color: Color(0xE6FFFFFF)),
+                          const SizedBox(width: 2),
                           Expanded(
                             child: Text(
                               city.country,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 11.5,
-                                color: Color(0xE6FFFFFF),
-                              ),
+                              style: const TextStyle(fontSize: 11, color: Color(0xE6FFFFFF)),
                             ),
                           ),
                         ],
                       ),
-                    ],
                   ],
                 ),
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A city in the search results: thumbnail, name, country and what it has.
+class _CityRow extends StatelessWidget {
+  final CityTourCity city;
+  final VoidCallback onTap;
+
+  const _CityRow({required this.city, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final count = city.tours.length;
+    final days = count == 1 ? city.tours.first.dayCount : 0;
+    final what = count > 1
+        ? '$count guides'
+        : days > 0
+            ? (days == 1 ? '1 day' : '$days days')
+            : '1 guide';
+    final line = [if (city.country.isNotEmpty) city.country, what].join(' · ');
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+        child: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: SizedBox(width: 56, height: 56, child: _Cover(url: city.coverUrl, cacheWidth: 200)),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    city.city,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: _navy),
+                  ),
+                  const SizedBox(height: 2),
+                  Row(
+                    children: [
+                      const Icon(Icons.location_on_outlined, size: 14, color: _slate),
+                      const SizedBox(width: 2),
+                      Flexible(
+                        child: Text(
+                          line,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 12.5, color: _slate),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              width: 34,
+              height: 34,
+              decoration: const BoxDecoration(color: Color(0xFFF0FDFA), shape: BoxShape.circle),
+              child: const Icon(Icons.north_east_rounded, size: 18, color: AppColors.brandGreen),
+            ),
+          ],
         ),
       ),
     );
