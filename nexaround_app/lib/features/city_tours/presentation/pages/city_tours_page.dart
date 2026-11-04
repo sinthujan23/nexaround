@@ -37,8 +37,23 @@ const _navy = Color(0xFF0F172A);
 const _slate = Color(0xFF64748B);
 const _hint = Color(0xFF94A3B8);
 
-// How many cities get a big card; the rest go in the row under them.
+// How many cities get a big card. The row under the cards has every city
+// but the one on screen; See all lists them all.
 const int _featuredCount = 5;
+
+bool _sameCity(CityTourCity a, CityTourCity b) => a.city == b.city && a.country == b.country;
+
+/// A city with one guide opens it straight away; with more, its list of guides.
+void _openCityPage(BuildContext context, CityTourCity city) {
+  Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (_) => city.tours.length == 1
+          ? CityTourPage(card: city.tours.first)
+          : CityTourListPage(city: city),
+    ),
+  );
+}
 
 class _CityToursPageState extends State<CityToursPage> {
   final _service = CityToursService();
@@ -108,14 +123,12 @@ class _CityToursPageState extends State<CityToursPage> {
     }
   }
 
-  void _openCity(CityTourCity city) {
+  void _openCity(CityTourCity city) => _openCityPage(context, city);
+
+  void _seeAll(List<CityTourCity> cities) {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => city.tours.length == 1
-            ? CityTourPage(card: city.tours.first)
-            : CityTourListPage(city: city),
-      ),
+      MaterialPageRoute(builder: (_) => _AllCitiesPage(cities: cities)),
     );
   }
 
@@ -319,8 +332,12 @@ class _CityToursPageState extends State<CityToursPage> {
     }
 
     final featured = cities.take(_featuredCount).toList();
-    final rest = cities.skip(_featuredCount).toList();
-    final cardHeight = (MediaQuery.sizeOf(context).height * 0.56).clamp(360.0, 480.0);
+    final shown = featured[_page.clamp(0, featured.length - 1)];
+    // Every city but the one on the card, so the row changes as cards swipe.
+    final others = cities.where((c) => !_sameCity(c, shown)).toList();
+    // A little shorter with the row under it, so more of the row shows.
+    final cardHeight =
+        (MediaQuery.sizeOf(context).height * (others.isEmpty ? 0.56 : 0.5)).clamp(340.0, 480.0);
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
       padding: EdgeInsets.only(top: 6, bottom: bottom),
@@ -340,13 +357,34 @@ class _CityToursPageState extends State<CityToursPage> {
         ),
         if (featured.length > 1)
           _Dots(count: featured.length, index: _page.clamp(0, featured.length - 1)),
-        if (cities.length == 1) const _Soon(),
-        if (rest.isNotEmpty) ...[
-          const Padding(
-            padding: EdgeInsets.fromLTRB(20, 22, 20, 10),
-            child: Text(
-              'More cities',
-              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: _navy),
+        if (others.isEmpty) const _Soon(),
+        if (others.isNotEmpty) ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 18, 12, 6),
+            child: Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'More cities',
+                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: _navy),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => _seeAll(cities),
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppColors.brandGreen,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    minimumSize: const Size(0, 36),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('See all', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
+                      Icon(Icons.chevron_right_rounded, size: 19),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
           SizedBox(
@@ -354,9 +392,9 @@ class _CityToursPageState extends State<CityToursPage> {
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              itemCount: rest.length,
+              itemCount: others.length,
               separatorBuilder: (_, __) => const SizedBox(width: 10),
-              itemBuilder: (_, i) => _SmallCityCard(city: rest[i], onTap: () => _openCity(rest[i])),
+              itemBuilder: (_, i) => _SmallCityCard(city: others[i], onTap: () => _openCity(others[i])),
             ),
           ),
         ],
@@ -814,6 +852,36 @@ class _CityRow extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// "See all": every city as a plain list.
+class _AllCitiesPage extends StatelessWidget {
+  final List<CityTourCity> cities;
+
+  const _AllCitiesPage({required this.cities});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
+        foregroundColor: AppColors.textPrimary,
+        titleSpacing: 0,
+        title: const Text(
+          'All cities',
+          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+        ),
+      ),
+      body: ListView.separated(
+        padding: EdgeInsets.fromLTRB(16, 4, 16, 24 + MediaQuery.paddingOf(context).bottom),
+        itemCount: cities.length,
+        separatorBuilder: (_, __) => const Divider(height: 1, color: Color(0xFFF1F5F9)),
+        itemBuilder: (_, i) => _CityRow(city: cities[i], onTap: () => _openCityPage(context, cities[i])),
       ),
     );
   }
