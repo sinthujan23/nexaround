@@ -12,9 +12,9 @@ import 'package:nexaround_app/features/city_tours/presentation/pages/city_tour_p
 import 'package:nexaround_app/features/city_tours/presentation/pages/city_tours_classic_page.dart';
 import 'package:nexaround_app/features/city_tours/presentation/widgets/city_tour_widgets.dart';
 
-/// Curated Hubs → City Guides home: "Where to next?", then NEW GUIDES: big
-/// photo cards of the five newest guides that play by themselves (until the
-/// traveller swipes them), dots under them, and "More cities": the other
+/// Curated Hubs → City Guides home: "Where to next?", then big photo cards
+/// of the five newest guides that play by themselves (until the traveller
+/// swipes them), dots under them, and "More cities": the other
 /// cities, A to Z, with See all for every city. A guide card opens its guide;
 /// a city with one guide opens it straight away, with more its list of
 /// guides. The search button swaps the heading for a search box and the cards
@@ -47,7 +47,6 @@ const int _featuredCount = 5;
 
 // The home's fixed heights, which size the big card so the page fits the
 // screen: the card gets whatever these leave.
-const double _labelHeight = 22; // "NEW GUIDES" over the cards
 const double _cardRoom = 26; // 4 above the card, 22 under it for its shadow
 const double _dotsHeight = 7;
 const double _soonHeight = 22; // "More cities are on the way"
@@ -527,7 +526,6 @@ class _CityToursPageState extends State<CityToursPage> {
     // Everything but the card: the room around it, the dots, the More cities
     // title and row (or the "on the way" line), and the gap above the navbar.
     final double around = 6.0 +
-        _labelHeight +
         _cardRoom +
         (featured.length > 1 ? _dotsHeight : 0.0) +
         (others.isEmpty ? _soonHeight : _rowTitleHeight + _rowHeight) +
@@ -556,28 +554,6 @@ class _CityToursPageState extends State<CityToursPage> {
       physics: const AlwaysScrollableScrollPhysics(),
       padding: EdgeInsets.only(top: 6, bottom: _endGap + bottomInset),
       children: [
-        // Why these cards lead: they are the newest guides.
-        const Padding(
-          padding: EdgeInsets.fromLTRB(20, 2, 20, 4),
-          child: SizedBox(
-            height: _labelHeight - 6,
-            child: Row(
-              children: [
-                Icon(Icons.new_releases_outlined, size: 15, color: AppColors.brandGreen),
-                SizedBox(width: 6),
-                Text(
-                  'NEW GUIDES',
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 1.3,
-                    color: _slate,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
         SizedBox(
           // Room above and under the card for its shadow.
           height: cardHeight + _cardRoom,
