@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui' show ImageFilter;
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -50,6 +51,14 @@ const double _rowTitleHeight = 56; // 14 above, the 36 title row, 6 under
 const double _rowHeight = 140;
 const double _endGap = 12; // above the navbar
 
+// The cards loop: their PageView has no end and page n shows city n % count.
+// It starts far in, so a first swipe back works too; 6000 is a multiple of
+// every count up to _featuredCount (5), so it opens on the first city.
+const int _loopStart = 6000;
+// Like the big apps' carousels: the next card slides in every few seconds.
+const Duration _autoPlayEvery = Duration(seconds: 5);
+const Duration _autoPlaySlide = Duration(milliseconds: 650);
+
 bool _sameCity(CityTourCity a, CityTourCity b) => a.city == b.city && a.country == b.country;
 
 /// A city with one guide opens it straight away; with more, its list of guides.
@@ -67,7 +76,8 @@ void _openCityPage(BuildContext context, CityTourCity city) {
 class _CityToursPageState extends State<CityToursPage> {
   final _service = CityToursService();
   final TextEditingController _searchController = TextEditingController();
-  final PageController _pages = PageController();
+  final PageController _pages = PageController(initialPage: _loopStart);
+  Timer? _autoPlay;
   bool _started = false;
   bool _searching = false;
   int _page = 0;
@@ -89,6 +99,7 @@ class _CityToursPageState extends State<CityToursPage> {
       _loading = false;
     }
     if (widget.isActive) _start();
+    _restartAutoPlay();
   }
 
   @override
@@ -106,6 +117,7 @@ class _CityToursPageState extends State<CityToursPage> {
 
   @override
   void dispose() {
+    _autoPlay?.cancel();
     _searchController.dispose();
     _pages.dispose();
     super.dispose();
@@ -133,6 +145,37 @@ class _CityToursPageState extends State<CityToursPage> {
   }
 
   void _openCity(CityTourCity city) => _openCityPage(context, city);
+
+  // Every few seconds the next card slides in, round from the last to the
+  // first. A finger on the cards holds it; it starts again a full wait after
+  // the finger lifts.
+  void _restartAutoPlay() {
+    _autoPlay?.cancel();
+    _autoPlay = Timer.periodic(_autoPlayEvery, (_) => _advance());
+  }
+
+  void _holdAutoPlay() => _autoPlay?.cancel();
+
+  void _advance() {
+    if (!mounted || !widget.isActive || _searching || !_pages.hasClients) return;
+    // Not with the app in the background, under a guide opened over this
+    // page, or when the phone asks for less motion.
+    final life = WidgetsBinding.instance.lifecycleState;
+    if (life != null && life != AppLifecycleState.resumed) return;
+    if (!(ModalRoute.of(context)?.isCurrent ?? true)) return;
+    if (MediaQuery.disableAnimationsOf(context)) return;
+    // Mid-swipe or mid-slide: wait for the next turn.
+    final page = _pages.page;
+    if (page == null || (page - page.roundToDouble()).abs() > 0.01) return;
+    _pages.nextPage(duration: _autoPlaySlide, curve: Curves.easeInOutCubic);
+  }
+
+  // The card on screen: from the loop's page while the cards are showing.
+  int _shownIndex(int count) {
+    if (count <= 1) return 0;
+    final page = _pages.hasClients ? _pages.page : null;
+    return page == null ? _page.clamp(0, count - 1) : page.round() % count;
+  }
 
   void _seeAll(List<CityTourCity> cities) {
     Navigator.push(
@@ -341,7 +384,8 @@ class _CityToursPageState extends State<CityToursPage> {
     }
 
     final featured = cities.take(_featuredCount).toList();
-    final shown = featured[_page.clamp(0, featured.length - 1)];
+    final shownIndex = _shownIndex(featured.length);
+    final shown = featured[shownIndex];
     // Every city but the one on the card, so the row changes as cards swipe.
     final others = cities.where((c) => !_sameCity(c, shown)).toList();
     final bottomInset = MediaQuery.paddingOf(context).bottom;
@@ -359,13 +403,14 @@ class _CityToursPageState extends State<CityToursPage> {
         // The card takes what is left, so the whole page fits the screen with
         // no scrolling (only a very small screen still scrolls a little).
         final cardHeight = (constraints.maxHeight - around).clamp(300.0, 480.0);
-        return _home(featured, others, cities, cardHeight, bottomInset);
+        return _home(featured, shownIndex, others, cities, cardHeight, bottomInset);
       },
     );
   }
 
   Widget _home(
     List<CityTourCity> featured,
+    int shownIndex,
     List<CityTourCity> others,
     List<CityTourCity> cities,
     double cardHeight,
@@ -378,18 +423,32 @@ class _CityToursPageState extends State<CityToursPage> {
         SizedBox(
           // Room above and under the card for its shadow.
           height: cardHeight + _cardRoom,
-          child: PageView.builder(
-            controller: _pages,
-            itemCount: featured.length,
-            onPageChanged: (i) => setState(() => _page = i),
-            itemBuilder: (_, i) => Padding(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 22),
-              child: _FeaturedCard(city: featured[i], onTap: () => _openCity(featured[i])),
-            ),
-          ),
+          child: featured.length == 1
+              // One city: a still card, nothing to swipe or play.
+              ? Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 22),
+                  child: _FeaturedCard(city: featured.first, onTap: () => _openCity(featured.first)),
+                )
+              : Listener(
+                  // A finger on the cards holds the auto-play.
+                  onPointerDown: (_) => _holdAutoPlay(),
+                  onPointerUp: (_) => _restartAutoPlay(),
+                  onPointerCancel: (_) => _restartAutoPlay(),
+                  child: PageView.builder(
+                    controller: _pages,
+                    // No itemCount: the cards loop.
+                    onPageChanged: (i) => setState(() => _page = i % featured.length),
+                    itemBuilder: (_, i) {
+                      final city = featured[i % featured.length];
+                      return Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 22),
+                        child: _FeaturedCard(city: city, onTap: () => _openCity(city)),
+                      );
+                    },
+                  ),
+                ),
         ),
-        if (featured.length > 1)
-          _Dots(count: featured.length, index: _page.clamp(0, featured.length - 1)),
+        if (featured.length > 1) _Dots(count: featured.length, index: shownIndex),
         if (others.isEmpty) const _Soon(),
         if (others.isNotEmpty) ...[
           Padding(
