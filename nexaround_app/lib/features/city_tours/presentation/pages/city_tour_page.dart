@@ -88,9 +88,9 @@ class _CityTourPageState extends State<CityTourPage> {
   // The days the traveller picked (null: not yet), and the day on screen.
   List<String>? _plan;
   String? _dayId;
-  // The plan as it was when "Change" was tapped. The phone's back from the
-  // picker puts it back instead of leaving the guide; the arrow at the top
-  // always leaves for the City Guides home.
+  // The plan as it was when "Change" was tapped. Back from the picker (the
+  // top arrow, the phone's back button or swipe) puts it back instead of
+  // leaving the guide.
   List<String>? _planBeforeChange;
   // Redraws the times while a trip runs: a step running over pushes the rest on.
   Timer? _tick;
@@ -802,11 +802,17 @@ class _CityTourPageState extends State<CityTourPage> {
                     ),
                   ),
                 ),
-                // Always back to the City Guides home, even from the picker
-                // (Navigator.pop is not held back by the PopScope below).
+                // Like the phone's back: from the Change picker back to the
+                // plan, otherwise back to the City Guides home.
                 leading: _barButton(
                   icon: Icons.arrow_back_rounded,
-                  onTap: () => Navigator.pop(context),
+                  onTap: () {
+                    if (_changingPlan) {
+                      _cancelChange();
+                    } else {
+                      Navigator.pop(context);
+                    }
+                  },
                 ),
                 actions: [
                   if (trip != null && !trip.isFinished)
@@ -886,8 +892,7 @@ class _CityTourPageState extends State<CityTourPage> {
       ),
     );
 
-    // Phone back (button or swipe) from the picker goes back to the plan; the
-    // top arrow pops past this and leaves the guide.
+    // Phone back (button or swipe) from the picker goes back to the plan.
     return PopScope(
       canPop: !_changingPlan,
       onPopInvokedWithResult: (didPop, _) {
@@ -1073,14 +1078,27 @@ class _CityTourPageState extends State<CityTourPage> {
               ));
       }
     }
+    final inset = MediaQuery.of(context).padding.bottom;
     return [
       SliverPadding(
-        padding: EdgeInsets.fromLTRB(16, 18, 16, 32 + MediaQuery.of(context).padding.bottom),
+        padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
         // Built all at once, not as they scroll in, so the pinned header can
         // find every open sight.
         sliver: SliverToBoxAdapter(
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children),
         ),
+      ),
+      // The space after the last card: 32 past the phone's bottom bar. When
+      // only that space would push the page past the screen (a short page,
+      // like the plan picker), it takes just the room left, still clear of
+      // the bar, so the page does not scroll a little onto empty space.
+      SliverLayoutBuilder(
+        builder: (context, constraints) {
+          final full = 32 + inset;
+          final room = constraints.viewportMainAxisExtent - constraints.precedingScrollExtent;
+          final gap = room >= inset + 8 && room < full ? room - 0.5 : full;
+          return SliverToBoxAdapter(child: SizedBox(height: gap));
+        },
       ),
     ];
   }
