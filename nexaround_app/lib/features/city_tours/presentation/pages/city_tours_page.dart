@@ -15,7 +15,8 @@ import 'package:nexaround_app/features/city_tours/presentation/widgets/city_tour
 /// Curated Hubs → City Guides home: "Where to next?", then big photo cards
 /// of the five newest guides that play by themselves (until the traveller
 /// swipes them), dots under them, and "More cities": the other
-/// cities, A to Z, with See all for every city. A guide card opens its guide;
+/// cities, A to Z, with See all, which opens every city right under it as
+/// the same photo cards (Show less folds them back). A guide card opens its guide;
 /// a city with one guide opens it straight away, with more its list of
 /// guides. The search button swaps the heading for a search box and the cards
 /// for a plain list of the matching cities.
@@ -47,7 +48,7 @@ const int _featuredCount = 5;
 
 // The home's fixed heights, which size the big card so the page fits the
 // screen: the card gets whatever these leave.
-const double _cardRoom = 26; // 4 above the card, 22 under it for its shadow
+const double _cardRoom = 26; // 4 above the card, 22 under it
 const double _dotsHeight = 7;
 const double _soonHeight = 22; // "More cities are on the way"
 const double _rowTitleHeight = 56; // 14 above, the 36 title row, 6 under
@@ -58,6 +59,9 @@ const double _endGap = 12; // above the navbar
 // It starts far in, so a first swipe back works too; 6000 is a multiple of
 // every count up to _featuredCount (5), so it opens on the first city.
 const int _loopStart = 6000;
+
+// How long See all / Show less takes to scroll the page.
+const Duration _unfold = Duration(milliseconds: 350);
 // Like the big apps' carousels: the next card slides in every few seconds.
 const Duration _autoPlayEvery = Duration(seconds: 5);
 const Duration _autoPlaySlide = Duration(milliseconds: 650);
@@ -191,6 +195,10 @@ class _CityToursPageState extends State<CityToursPage> {
   // The traveller swiped the cards: no more auto-play this visit.
   bool _userSwiped = false;
   int _page = 0;
+  // See all: every city shows under "More cities" in place of the row.
+  bool _showAll = false;
+  final ScrollController _homeScroll = ScrollController();
+  final GlobalKey _moreKey = GlobalKey();
 
   List<CityTourCard>? _tours;
   bool _loading = true;
@@ -235,6 +243,7 @@ class _CityToursPageState extends State<CityToursPage> {
     _autoPlay?.cancel();
     _searchController.dispose();
     _pages.dispose();
+    _homeScroll.dispose();
     super.dispose();
   }
 
@@ -302,11 +311,23 @@ class _CityToursPageState extends State<CityToursPage> {
     return page == null ? _page.clamp(0, count - 1) : page.round() % count;
   }
 
-  void _seeAll(List<CityTourCity> cities) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => _AllCitiesPage(cities: cities)),
-    );
+  // See all opens every city right under "More cities" and scrolls the
+  // page up to them; Show less scrolls back to the top, then folds them
+  // back into the row.
+  Future<void> _toggleAll() async {
+    if (!_showAll) {
+      setState(() => _showAll = true);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final title = _moreKey.currentContext;
+        if (!mounted || title == null) return;
+        Scrollable.ensureVisible(title, duration: _unfold, curve: Curves.easeOutCubic);
+      });
+      return;
+    }
+    if (_homeScroll.hasClients && _homeScroll.offset > 0) {
+      await _homeScroll.animateTo(0, duration: _unfold, curve: Curves.easeOutCubic);
+    }
+    if (mounted) setState(() => _showAll = false);
   }
 
   // The search button opens the search box in the heading's place; its close
@@ -551,11 +572,12 @@ class _CityToursPageState extends State<CityToursPage> {
     double bottomInset,
   ) {
     return ListView(
+      controller: _homeScroll,
       physics: const AlwaysScrollableScrollPhysics(),
       padding: EdgeInsets.only(top: 6, bottom: _endGap + bottomInset),
       children: [
         SizedBox(
-          // Room above and under the card for its shadow.
+          // Room above and under the card.
           height: cardHeight + _cardRoom,
           child: featured.length == 1
               // One guide: a still card, nothing to swipe or play.
@@ -594,6 +616,7 @@ class _CityToursPageState extends State<CityToursPage> {
         if (others.isEmpty) const _Soon(),
         if (others.isNotEmpty) ...[
           Padding(
+            key: _moreKey,
             padding: const EdgeInsets.fromLTRB(20, 14, 12, 6),
             child: Row(
               children: [
@@ -604,7 +627,7 @@ class _CityToursPageState extends State<CityToursPage> {
                   ),
                 ),
                 TextButton(
-                  onPressed: () => _seeAll(cities),
+                  onPressed: _toggleAll,
                   style: TextButton.styleFrom(
                     foregroundColor: AppColors.brandGreen,
                     padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -612,27 +635,50 @@ class _CityToursPageState extends State<CityToursPage> {
                     // Exactly 36 high, as _rowTitleHeight counts it.
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
-                  child: const Row(
+                  child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text('See all', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
-                      Icon(Icons.chevron_right_rounded, size: 19),
+                      Text(
+                        _showAll ? 'Show less' : 'See all',
+                        style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
+                      ),
+                      Icon(
+                        _showAll ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
+                        size: 19,
+                      ),
                     ],
                   ),
                 ),
               ],
             ),
           ),
-          SizedBox(
-            height: _rowHeight,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
+          if (_showAll)
+            // Every city, A to Z (those on the cards too), as the row's
+            // photo cards in rows of three (more on a wide screen).
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              itemCount: others.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 10),
-              itemBuilder: (_, i) => _SmallCityCard(city: others[i], onTap: () => _openCity(others[i])),
+              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                maxCrossAxisExtent: 140,
+                mainAxisExtent: _rowHeight,
+                mainAxisSpacing: 10,
+                crossAxisSpacing: 10,
+              ),
+              itemCount: cities.length,
+              itemBuilder: (_, i) => _SmallCityCard(city: cities[i], onTap: () => _openCity(cities[i])),
+            )
+          else
+            SizedBox(
+              height: _rowHeight,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                itemCount: others.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 10),
+                itemBuilder: (_, i) => _SmallCityCard(city: others[i], onTap: () => _openCity(others[i])),
+              ),
             ),
-          ),
         ],
       ],
     );
@@ -792,112 +838,100 @@ class _FeaturedCard extends StatelessWidget {
     ];
     return GestureDetector(
       onTap: onTap,
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(30),
-          boxShadow: [
-            BoxShadow(
-              color: _navy.withValues(alpha: 0.18),
-              blurRadius: 24,
-              offset: const Offset(0, 10),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(30),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            _Cover(url: guide.coverUrl, cacheWidth: 1000),
+            const DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.bottomCenter,
+                  end: Alignment.topCenter,
+                  colors: [Color(0xC7000000), Color(0x00000000)],
+                  stops: [0.0, 0.6],
+                ),
+              ),
             ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(30),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              _Cover(url: guide.coverUrl, cacheWidth: 1000),
-              const DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.bottomCenter,
-                    end: Alignment.topCenter,
-                    colors: [Color(0xC7000000), Color(0x00000000)],
-                    stops: [0.0, 0.6],
-                  ),
-                ),
-              ),
-              if (place.isNotEmpty)
-                Positioned(
-                  top: 14,
-                  left: 14,
-                  right: 66,
-                  child: Row(
-                    children: [
-                      Flexible(
-                        child: _GlassChip(icon: Icons.location_on_outlined, label: place, fontSize: 13),
-                      ),
-                      if (_isSampleGuide(guide)) ...[const SizedBox(width: 6), const _SampleTag()],
-                    ],
-                  ),
-                ),
-              const Positioned(
-                top: 14,
-                right: 14,
-                child: _Glass(
-                  radius: 19,
-                  child: SizedBox(
-                    width: 38,
-                    height: 38,
-                    child: Icon(Icons.north_east_rounded, size: 19, color: Colors.white),
-                  ),
-                ),
-              ),
+            if (place.isNotEmpty)
               Positioned(
-                left: 18,
-                right: 18,
-                bottom: 18,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
+                top: 14,
+                left: 14,
+                right: 66,
+                child: Row(
                   children: [
-                    Text(
-                      title,
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 23,
-                        height: 1.2,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -0.3,
-                      ),
+                    Flexible(
+                      child: _GlassChip(icon: Icons.location_on_outlined, label: place, fontSize: 13),
                     ),
-                    if (chips.isNotEmpty) ...[
-                      const SizedBox(height: 10),
-                      Wrap(spacing: 8, runSpacing: 8, children: chips),
-                    ],
-                    const SizedBox(height: 14),
-                    Container(
-                      width: double.infinity,
-                      height: 48,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(24),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            'Open guide',
-                            style: const TextStyle(
-                              fontSize: 15.5,
-                              fontWeight: FontWeight.w800,
-                              color: _navy,
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          const Icon(Icons.arrow_forward_rounded, size: 19, color: _navy),
-                        ],
-                      ),
-                    ),
+                    if (_isSampleGuide(guide)) ...[const SizedBox(width: 6), const _SampleTag()],
                   ],
                 ),
               ),
-            ],
-          ),
+            const Positioned(
+              top: 14,
+              right: 14,
+              child: _Glass(
+                radius: 19,
+                child: SizedBox(
+                  width: 38,
+                  height: 38,
+                  child: Icon(Icons.north_east_rounded, size: 19, color: Colors.white),
+                ),
+              ),
+            ),
+            Positioned(
+              left: 18,
+              right: 18,
+              bottom: 18,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    title,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 23,
+                      height: 1.2,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.3,
+                    ),
+                  ),
+                  if (chips.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    Wrap(spacing: 8, runSpacing: 8, children: chips),
+                  ],
+                  const SizedBox(height: 14),
+                  Container(
+                    width: double.infinity,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(24),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          'Open guide',
+                          style: const TextStyle(
+                            fontSize: 15.5,
+                            fontWeight: FontWeight.w800,
+                            color: _navy,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        const Icon(Icons.arrow_forward_rounded, size: 19, color: _navy),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -1123,36 +1157,6 @@ class _SampleTag extends StatelessWidget {
           letterSpacing: 1,
           color: Color(0xFF422006),
         ),
-      ),
-    );
-  }
-}
-
-/// "See all": every city as a plain list.
-class _AllCitiesPage extends StatelessWidget {
-  final List<CityTourCity> cities;
-
-  const _AllCitiesPage({required this.cities});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.white,
-        foregroundColor: AppColors.textPrimary,
-        titleSpacing: 0,
-        title: const Text(
-          'All cities',
-          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
-        ),
-      ),
-      body: ListView.separated(
-        padding: EdgeInsets.fromLTRB(16, 4, 16, 24 + MediaQuery.paddingOf(context).bottom),
-        itemCount: cities.length,
-        separatorBuilder: (_, __) => const Divider(height: 1, color: Color(0xFFF1F5F9)),
-        itemBuilder: (_, i) => _CityRow(city: cities[i], onTap: () => _openCityPage(context, cities[i])),
       ),
     );
   }
