@@ -1,6 +1,7 @@
 ---
 title: "Hanami: when and where to see Japan's cherry blossoms"
 description: "Picnics under the blossom in Ueno, boats on the Chidorigafuchi moat and the Philosopher's Path in Kyoto. When the cherry trees usually bloom, where to go, and the etiquette."
+seoDescription: "Picnics under the blossom in Ueno, boats on the Chidorigafuchi moat and Kyoto's Philosopher's Path. When the trees bloom, where to go, the etiquette."
 pillar: festivals
 country: Japan
 region: Tokyo, Kyoto, Osaka and the north
@@ -52,6 +53,7 @@ sources:
   - { title: "Japan National Tourism Organization: Shinjuku Gyoen", url: "https://www.japan.travel/en/spot/1660/" }
   - { title: "Watabi: hanami rules and etiquette", url: "https://watabi.org/en/articles/japan-hanami-rules-guide" }
 event:
+  markup: false
   when: "Late March to early April in Tokyo, Kyoto and Osaka; later further north. The exact dates change every year with the weather."
   months: [3, 4, 5]
   dates:
@@ -61,6 +63,23 @@ affiliates: []
 related: [chinese-new-year, songkran-thailand]
 draft: false
 published: 2026-10-19
+quick:
+  - { q: "When do the trees bloom?", a: "On average, first blossom around 24 March in Tokyo, 26 March in Kyoto and 27 March in Osaka, with full bloom about ten days later. Sapporo blooms in early May." }
+  - { q: "How long does peak blossom last?", a: "Roughly a week in any one place. Wind and rain can end it sooner." }
+  - { q: "How do I plan around it?", a: "Follow the forecasts published from early in the year, and keep a flexible day or two. Any year can run a week early or late." }
+  - { q: "Where should I go in Tokyo?", a: "Ueno Park for picnics under lanterns, Chidorigafuchi for blossom over the moat, and Shinjuku Gyoen's many varieties." }
+  - { q: "What are the rules?", a: "Don't touch, shake or pick the branches, and take your rubbish home. Each park has its own rules on alcohol, music and barbecues." }
+  - { q: "When is it quietest?", a: "Early on a weekday morning. Weekends and evenings are packed." }
+checklist:
+  - "Blossom forecasts followed from early in the year"
+  - "Hotels booked early, perhaps a little outside the centres"
+  - "A flexible day or two in the plan"
+  - "A picnic sheet and a bag for your rubbish"
+  - "Shinjuku Gyoen's peak-season booking rules checked"
+costs:
+  checked: 2026-11-02
+  items:
+    - { label: "Shinjuku Gyoen", amount: "¥500 (about US$3)", note: "Adult entry", source: "https://www.env.go.jp/en/press/press_02866.html" }
 ---
 
 ## When the trees bloom

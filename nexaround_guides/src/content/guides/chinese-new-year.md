@@ -1,6 +1,7 @@
 ---
 title: "Chinese New Year: when it is and where to see it"
 description: "Fireworks over Victoria Harbour, lantern-lit Chinatowns and the biggest yearly migration on Earth. The dates for 2027 to 2029, what happens over the 15 days, and where to be."
+seoDescription: "Fireworks over Victoria Harbour, lantern-lit Chinatowns and the world's biggest yearly migration. Dates for 2027 to 2029, the 15 days, and where to be."
 pillar: festivals
 country: China, Hong Kong, Singapore and Malaysia
 region: East and Southeast Asia
@@ -50,6 +51,7 @@ sources:
   - { title: "Henan government / Ministry of Transport: record 9.41 billion trips in the 2026 travel rush", url: "https://english.henan.gov.cn/2026/03-16/3334538.html" }
   - { title: "South China Morning Post: Hong Kong's Lunar New Year parade, fireworks and fairs", url: "https://www.scmp.com/news/hong-kong/society/article/3251480/lunar-new-year-hong-kong-fireworks-parades-and-festive-fairs-return-year-dragon" }
 event:
+  markup: false
   when: "The new moon between 21 January and 20 February. Celebrations run 15 days, to the Lantern Festival."
   months: [1, 2]
   dates:
@@ -60,6 +62,18 @@ affiliates: []
 related: [songkran-thailand, hanami-japan]
 draft: false
 published: 2026-10-19
+quick:
+  - { q: "When is it?", a: "On the new moon between 21 January and 20 February: 6 February 2027 (Goat), 26 January 2028 (Monkey), 13 February 2029 (Rooster). Celebrations run 15 days." }
+  - { q: "Where's best to see it?", a: "Hong Kong's night parade and harbour fireworks, Singapore's Chinatown, Kek Lok Si temple in Penang, and Beijing's temple fairs." }
+  - { q: "Is it a good time to travel in China?", a: "The best and the hardest. It's the biggest yearly migration on Earth: book trains and flights as soon as they go on sale, or travel after the first week." }
+  - { q: "Will things be closed?", a: "Many shops, restaurants and offices close for the first days, especially in mainland China. Temples and tourist sites are busy." }
+  - { q: "When are the Hong Kong fireworks?", a: "Over Victoria Harbour on the second day of the New Year, usually at 8 pm." }
+  - { q: "What should I avoid?", a: "Giving white flowers or anything in sets of four. Red is lucky." }
+checklist:
+  - "Trains and flights booked as soon as tickets go on sale"
+  - "Hotels booked well ahead"
+  - "Plans for the first days, when many shops and restaurants close"
+  - "A small gift such as fruit, if you're visiting a family"
 ---
 
 ## What happens

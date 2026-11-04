@@ -1,6 +1,7 @@
 ---
 title: "Meemure: one of Sri Lanka's most remote villages"
 description: "About 400 people, one rough road over the Knuckles Range, and a peak from the Ramayana. How to reach Meemure from Kandy, where to stay, and how to visit without spoiling it."
+seoDescription: "About 400 people, one rough road over the Knuckles Range and a peak from the Ramayana. Reaching Meemure from Kandy, where to stay, and visiting with care."
 pillar: remote-villages
 country: Sri Lanka
 region: Knuckles Range, Central Province
@@ -58,6 +59,21 @@ affiliates:
 related: []
 draft: false
 published: 2026-10-12
+quick:
+  - { q: "How do I get there?", a: "78 km from Kandy, about 3 hours: the A26 to Hunnasgiriya junction, then the mountain road over Corbett's Gap and 12 km down. Use a high-clearance vehicle or a 4x4." }
+  - { q: "Is there public transport?", a: "A village van is reported to run once a day from Hunnasgiriya junction, around late morning. Confirm it locally the day before." }
+  - { q: "Can I pay by card?", a: "Bring cash from Kandy. Don't count on an ATM, card payments or phone signal past Hunnasgiriya." }
+  - { q: "Where do you stay?", a: "In family homestays and village campsites, usually booked by phone or through a contact in Kandy." }
+  - { q: "Can I climb Lakegala?", a: "With a local guide and an early start. It's steep and exposed near the top; turn back if the weather closes in." }
+  - { q: "When should I go?", a: "Avoid heavy rain, when the road down from Corbett's Gap gets slippery and streams rise. Allow an extra day." }
+checklist:
+  - "Cash from Kandy"
+  - "Homestay booked by phone"
+  - "High-clearance vehicle or 4x4, or a jeep with a driver"
+  - "Village van confirmed locally the day before, if you're using it"
+  - "Local guide for Lakegala"
+  - "Weather checked, with an extra day in hand"
+  - "Bags to carry all your rubbish back out"
 ---
 
 ## Getting there

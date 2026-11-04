@@ -1,6 +1,7 @@
 ---
 title: "The Karakoram Highway: Islamabad to the Khunjerab Pass"
 description: "783 km from Islamabad to the China border at 4,714 m, past Nanga Parbat, Rakaposhi, Hunza and a lake made by a landslide. The route, the current safety advice, and the border season."
+seoDescription: "783 km from Islamabad to the China border at 4,714 m, past Nanga Parbat, Rakaposhi and Hunza. The route, the current safety advice, and the border season."
 pillar: road-trips
 country: Pakistan
 region: Khyber Pakhtunkhwa and Gilgit-Baltistan
@@ -71,6 +72,26 @@ affiliates:
 related: [pamir-highway]
 draft: false
 published: 2026-10-12
+quick:
+  - { q: "Is it safe to travel?", a: "The UK advises against all travel on the KKH between Mansehra and Chilas. In summer you can go round it via Naran and the Babusar Pass. Check your own government's advice and your insurance." }
+  - { q: "When should I go?", a: "Late spring to early autumn. Babusar and Khunjerab are only reliably open in summer, and July to September has the most landslides." }
+  - { q: "How long is the route?", a: "783 km from Islamabad to the Khunjerab Pass via the Babusar Pass." }
+  - { q: "Can I cross into China?", a: "Only with a Chinese visa arranged in advance, and only while the border is open, from spring to late autumn. Driving up to the pass and back needs no Chinese visa." }
+  - { q: "How high is the Khunjerab Pass?", a: "About 4,714 m. Coming up from Hunza, go slowly, drink plenty, and don't stay long if you feel unwell." }
+  - { q: "How do most visitors get around?", a: "In a hired car with a local driver from Islamabad or Gilgit. Flights to Gilgit save two days but are often cancelled." }
+checklist:
+  - "Government travel advice and insurance checked for your exact route"
+  - "Route planned via Naran and the Babusar Pass (summer only)"
+  - "Chinese visa arranged, if you're crossing into China"
+  - "Spare days in the plan for landslides"
+  - "Car and local driver booked, or a backup if the Gilgit flight is cancelled"
+  - "Cash in Pakistani rupees for the Khunjerab park fee"
+costs:
+  checked: 2026-11-02
+  items:
+    - { label: "Petrol in Pakistan", amount: "about US$1.37 a litre", note: "National average, October 2026", source: "https://www.globalpetrolprices.com/Pakistan/gasoline_prices/" }
+    - { label: "Fuel, Islamabad to Khunjerab", amount: "about US$110", note: "783 km at 10 L/100 km, at the national average price", source: "https://www.globalpetrolprices.com/Pakistan/gasoline_prices/" }
+    - { label: "Khunjerab National Park entry", amount: "US$8", note: "For foreigners, paid at the toll gate before the final climb", source: "https://visitsilkroad.org/?p=16626" }
 ---
 
 ## Read this first: safety advice

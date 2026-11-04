@@ -1,6 +1,7 @@
 ---
 title: "Tusheti: over the Abano Pass to Georgia's highest villages"
 description: "Stone towers and summer-only villages beyond one of the most dramatic roads in the Caucasus: 68 km over the 2,826 m Abano Pass to Omalo. When the road is open, how to get there, what to see."
+seoDescription: "Stone towers and summer-only villages, 68 km over the 2,826 m Abano Pass, one of the Caucasus's most dramatic roads. When it's open and how to get there."
 pillar: remote-villages
 country: Georgia
 region: Tusheti, Kakheti
@@ -70,6 +71,24 @@ affiliates:
 related: [ushguli-georgia]
 draft: false
 published: 2026-10-14
+quick:
+  - { q: "How do I get there?", a: "Over the 2,826 m Abano Pass: 68 km of 4x4-only road from Pshaveli to Omalo, narrow and often muddy." }
+  - { q: "When is the road open?", a: "Usually from about mid-June to mid-October. July and August are the most reliable." }
+  - { q: "How do most people go?", a: "By shared 4x4 from Kvemo Alvani, about 5 hours, or a private 4x4 with a driver arranged by an Omalo guesthouse." }
+  - { q: "Can I drive myself?", a: "Only in a proper 4x4 with good tyres, in dry weather, if you've driven mountain tracks before and your rental contract allows it." }
+  - { q: "Are there road works?", a: "Yes. About 49 km of the road is being upgraded in phases through 2026 and 2027. Expect delays." }
+  - { q: "Do I need a permit to hike?", a: "Some routes are in the border zone. Ask at the Tusheti Protected Areas visitor centre in Omalo before you set out." }
+checklist:
+  - "Pass and road status checked before you set out"
+  - "Shared or private 4x4 arranged"
+  - "Rental contract checked, if you're driving yourself"
+  - "Guesthouse booked in Omalo"
+  - "Border-zone permit checked for your hikes"
+  - "Bags to take all your rubbish back over the pass"
+costs:
+  checked: 2026-11-02
+  items:
+    - { label: "Shared 4x4 to Omalo", amount: "about 100 GEL (about US$39)", note: "Per person, from Kvemo Alvani, in 2026", source: "https://www.redfedoradiary.com/?p=29832" }
 ---
 
 ## Why it's special

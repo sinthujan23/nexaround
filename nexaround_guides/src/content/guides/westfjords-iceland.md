@@ -1,6 +1,7 @@
 ---
 title: "The Westfjords: Iceland's empty corner, by road"
 description: "A 734 km loop of fjords, mountain passes and gravel, with Dynjandi falls, the bird cliffs of Látrabjarg and a red-sand beach. The route, the season, and which roads close."
+seoDescription: "A 734 km loop of fjords, passes and gravel, with Dynjandi, the Látrabjarg bird cliffs and a red-sand beach. The route, the season, and which roads close."
 pillar: road-trips
 country: Iceland
 region: Westfjords (Vestfirðir)
@@ -76,6 +77,26 @@ affiliates:
 related: [adelaide-to-perth-nullarbor]
 draft: false
 published: 2026-10-12
+quick:
+  - { q: "How long does the loop take?", a: "Our measured loop is 734 km, but fjord roads are slow. Allow at least five days, ideally a week." }
+  - { q: "Is it paved?", a: "Mostly. About a quarter of the official Westfjords Way is gravel; slow down where the asphalt ends." }
+  - { q: "When should I go?", a: "June to early September. Outside summer, snow and ice close some mountain roads for months." }
+  - { q: "Where can I see puffins?", a: "At Látrabjarg in summer, 60 km from Patreksfjörður. Stay well back from the crumbling cliff edge." }
+  - { q: "Is there a shortcut in or out?", a: "The Baldur car ferry between Stykkishólmur and Brjánslækur. Book ahead for a car in summer." }
+  - { q: "Can I drive off-road?", a: "No. Off-road driving is illegal in Iceland and heavily fined." }
+checklist:
+  - "Road conditions checked on umferdin.is every morning"
+  - "Baldur ferry booked with your car, if you're using it"
+  - "At least five days in the plan"
+  - "Plan to fill up whenever you can, especially on the south coast"
+  - "Boat and proper hiking gear booked, if you're going to Hornstrandir"
+  - "A way to pay the Dynjandi parking fee"
+costs:
+  checked: 2026-11-02
+  items:
+    - { label: "Petrol in Iceland", amount: "about US$2.25 a litre", note: "National average, October 2026", source: "https://www.globalpetrolprices.com/Iceland/gasoline_prices/" }
+    - { label: "Fuel for the loop", amount: "about US$165", note: "734 km at 10 L/100 km, at the national average price", source: "https://www.globalpetrolprices.com/Iceland/gasoline_prices/" }
+    - { label: "Parking at Dynjandi", amount: "ISK 750 (about US$6)", note: "Per car", source: "https://adventures.is/iceland/attractions/dynjandi-waterfall/" }
 ---
 
 ## The loop

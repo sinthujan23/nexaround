@@ -1,6 +1,8 @@
 ---
 title: "Holi in Mathura and Vrindavan: the festival of colours where it began"
 description: "A week of colour in Krishna's homeland: women chasing men with sticks in Barsana, flower petals in Vrindavan's temples and coloured powder everywhere. Holi dates for 2027 to 2029, and staying safe."
+seoTitle: "Holi in Mathura and Vrindavan: the festival of colours"
+seoDescription: "A week of colour in Krishna's homeland: sticks in Barsana, petals in Vrindavan's temples, powder everywhere. Holi dates for 2027 to 2029, and staying safe."
 pillar: festivals
 country: India
 region: Braj, Uttar Pradesh
@@ -61,6 +63,19 @@ affiliates: []
 related: [mawsynram-cherrapunji-monsoon, turtuk-ladakh]
 draft: false
 published: 2026-10-19
+quick:
+  - { q: "When is Holi?", a: "The main day of colour is 22 March 2027, after the Holika Dahan bonfires the night before. In Braj the celebrations last about a week." }
+  - { q: "What happens where?", a: "Lathmar Holi in Barsana about a week before, then in Nandgaon the next day; flower Holi at Vrindavan's Banke Bihari temple; colour everywhere on the main day." }
+  - { q: "Is it safe for women?", a: "Go in a group or with a guide, and stay in busier, family-friendly areas. Harassment at Holi is a real problem." }
+  - { q: "How do I protect myself from the colour?", a: "Oil your skin and hair beforehand, wear old clothes you can throw away, protect your eyes, and keep your phone in a waterproof pouch." }
+  - { q: "Should I try bhang?", a: "Avoid it unless you know exactly what you're getting, and never accept drinks from strangers." }
+  - { q: "How do I get there?", a: "By train from Delhi to Mathura, about two to three hours. Vrindavan is 12 km from Mathura, and Barsana about 49 km." }
+checklist:
+  - "Room in Mathura or Vrindavan booked well ahead"
+  - "This year's dates checked close to your trip"
+  - "A group or a guide to go with"
+  - "Old clothes, oil for skin and hair, and eye protection"
+  - "Waterproof pouch for your phone"
 ---
 
 ## Why Braj

@@ -1,6 +1,8 @@
 ---
 title: "The Dempster Highway: 736 km of gravel across the Arctic Circle"
 description: "From Dawson City to Inuvik and Tuktoyaktuk on the Arctic Ocean. Ferry crossings, sharp shale tire risks, the Arctic Circle marker, and the 370 km fuel gap to Eagle Plains."
+seoTitle: "Dempster Highway: 736 km of gravel across the Arctic Circle"
+seoDescription: "Dawson City to Inuvik and Tuktoyaktuk on the Arctic Ocean. Ferry crossings, tyre-cutting shale, the Arctic Circle and the 370 km fuel gap to Eagle Plains."
 pillar: road-trips
 country: Canada
 region: Yukon and Northwest Territories
@@ -45,6 +47,24 @@ sources:
   - { title: "Northwest Territories Infrastructure - Ferry schedules & Ice roads", url: "https://www.inf.gov.nt.ca" }
 related: [dalton-highway, trans-labrador-highway, road-trip-no-phone-signal]
 draft: false
+quick:
+  - { q: "How long is it?", a: "736 km from the Klondike Highway junction, 40 km east of Dawson City, to Inuvik, then 140 km more to Tuktoyaktuk on the Arctic Ocean." }
+  - { q: "Will normal tyres cope?", a: "No. The sharp shale shreds car tyres. Use light-truck (LT) all-terrain tyres with reinforced sidewalls and carry two mounted full-size spares." }
+  - { q: "Where is the fuel?", a: "There's nothing for 370 km between the Klondike Highway corner and Eagle Plains. Check your range before leaving the pavement." }
+  - { q: "How do you cross the rivers?", a: "On cable ferries over the Peel (km 539) and the Mackenzie (km 608), from June to late October." }
+  - { q: "When can you drive all the way?", a: "When the ferries run. They stop at spring break-up in May and freeze-up in November, until the ice roads freeze solid." }
+  - { q: "Where do you cross the Arctic Circle?", a: "At km 405, at 66°33′ N." }
+checklist:
+  - "LT all-terrain tyres with reinforced sidewalls"
+  - "Two mounted full-size spare tyres"
+  - "Fuel range checked for the 370 km to Eagle Plains"
+  - "Travel dates inside the ferry season (June to late October)"
+  - "Road conditions checked on 511yukon.ca before you set off"
+costs:
+  checked: 2026-11-02
+  items:
+    - { label: "Petrol in Canada", amount: "about US$1.42 a litre", note: "National average, October 2026. Remote stations charge more", source: "https://www.globalpetrolprices.com/Canada/gasoline_prices/" }
+    - { label: "Fuel to Inuvik", amount: "about US$105", note: "736 km at 10 L/100 km, at the national average price", source: "https://www.globalpetrolprices.com/Canada/gasoline_prices/" }
 ---
 
 ## The rules of the road

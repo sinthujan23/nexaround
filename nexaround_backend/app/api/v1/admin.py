@@ -12,7 +12,7 @@ from app.core.database import get_db
 from app.core.config import settings
 from app.core.rate_limiter import auth_rate_limiter
 from app.core.security import create_access_token, decode_token
-from app.services import audit, creator_auth, fx_service, neva_voice
+from app.services import audit, creator_auth, fx_service, ip_country, neva_voice
 from app.services.user_service import UserService
 from app.services.auth_service import AuthService
 from app.services.settings_service import SettingsService
@@ -99,6 +99,7 @@ class FrequentExplorer(BaseModel):
     display_name: str
     email: str
     avatar_url: Optional[str] = None
+    country_code: Optional[str] = None  # where their latest request came from
     active_periods: int  # days, weeks or months active in the view's window
     sessions: int
     app_seconds: int
@@ -613,6 +614,7 @@ def _activity_view(starts: List[date], bucket_of, days: dict, people: dict) -> A
                 display_name=people[uid]["display_name"],
                 email=people[uid]["email"],
                 avatar_url=people[uid]["avatar_url"],
+                country_code=people[uid].get("country"),
                 active_periods=len(periods),
                 sessions=sessions,
                 app_seconds=seconds,
@@ -675,6 +677,8 @@ async def get_explorer_activity(
         })
         p["last"] = max(p["last"], r["last_at"])
         days.setdefault(r["day"], {})[r["user_id"]] = (int(r["sessions"]), int(r["seconds"] or 0))
+    for uid, code in (await ip_country.countries_for(db, people)).items():
+        people[uid]["country"] = code
 
     def active_between(first: date, last: date) -> set:
         users = set()
@@ -732,12 +736,44 @@ async def list_users(
         end_to=end_to,
         sort_order=sort_order
     )
+    countries = await ip_country.countries_for(db, [u.id for u in users])
     return {
-        "users": [UserResponse.model_validate(u) for u in users],
+        "users": [
+            {**UserResponse.model_validate(u).model_dump(), "country_code": countries.get(u.id)}
+            for u in users
+        ],
         "total": total,
         "page": page,
         "page_size": page_size
     }
+
+
+class CountryCount(BaseModel):
+    country_code: str
+    explorers: int
+
+
+class ExplorerCountries(BaseModel):
+    total: int         # every explorer account
+    located: int       # of those, how many have a known country
+    countries: List[CountryCount]
+    edition: Optional[str] = None  # DB-IP list month in use, "YYYY-MM"
+
+
+@router.get("/users/countries", response_model=ExplorerCountries)
+async def get_explorer_countries(
+    db: AsyncSession = Depends(get_db),
+    _ = Depends(verify_admin_token)
+):
+    """Explorers per country they use the app from (their latest request's IP)."""
+    total = await db.scalar(select(func.count(User.id)).where(User.id != OFFICIAL_USER_ID))
+    counts = await ip_country.country_counts(db, OFFICIAL_USER_ID)
+    return ExplorerCountries(
+        total=total or 0,
+        located=sum(n for _, n in counts),
+        countries=[CountryCount(country_code=c, explorers=n) for c, n in counts],
+        edition=await ip_country.loaded_edition(db),
+    )
 
 
 @router.post("/users/{user_id}/verify", response_model=UserResponse)

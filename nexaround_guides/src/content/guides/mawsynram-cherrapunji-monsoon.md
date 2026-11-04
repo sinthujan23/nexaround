@@ -1,6 +1,8 @@
 ---
 title: "Mawsynram and Cherrapunji: the wettest places on Earth, in the monsoon"
 description: "Nearly 12 metres of rain a year, a waterfall that drops 340 m, and bridges grown from living tree roots. How to visit Meghalaya's rain capitals, and when to go."
+seoTitle: "Mawsynram and Cherrapunji: the wettest places on Earth"
+seoDescription: "Nearly 12 metres of rain a year, a 340 m waterfall and living root bridges. How to visit Meghalaya's rain capitals, and when to go."
 pillar: extreme-places
 country: India
 region: East Khasi Hills, Meghalaya
@@ -68,6 +70,25 @@ affiliates:
 related: []
 draft: false
 published: 2026-10-12
+quick:
+  - { q: "Which is wetter?", a: "Mawsynram, on average: about 11,872 mm a year. Sohra (Cherrapunji) holds the records for the wettest month (9,300 mm, July 1861) and the wettest year." }
+  - { q: "How do I get there?", a: "Fly to Guwahati, then 118 km to Shillong. Sohra is 52 km and Mawsynram 58 km from Shillong, but 81 km apart by road." }
+  - { q: "How hard is the root-bridge trek?", a: "About 3,500 stone steps (3 km) down from Tyrna to Nongriat. The climb back up is the hard part: start early, or stay the night in a homestay." }
+  - { q: "Do I need a guide?", a: "Some recent reports say a registered local guide is now required for the trek. Check the current rule before you set off." }
+  - { q: "When should I go?", a: "June to September for the full monsoon and the waterfalls at their peak, with cloud, slippery steps and landslides. October and November are the best compromise." }
+  - { q: "Why does Sohra run short of water?", a: "From November to February it barely rains, and the thin soils hold little, so people walk long distances for drinking water." }
+checklist:
+  - "Rain jacket and an umbrella"
+  - "Quick-dry clothes and a dry bag for your phone"
+  - "Shoes or sandals with real grip on wet stone"
+  - "Small notes for entry fees, guides and homestays"
+  - "A taxi for the day booked from Shillong for Mawsynram and Tyrna"
+  - "Guide rule checked for the Nongriat trek"
+  - "Spare days in the plan, in the monsoon"
+costs:
+  checked: 2026-11-02
+  items:
+    - { label: "Double-decker root bridge", amount: "about ₹20 (under US$1)", note: "Entry at the bridge, per person", source: "https://www.lonelyplanet.com/points-of-interest/nongriat-root-bridges/1558979" }
 ---
 
 ## Which is wetter?

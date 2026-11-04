@@ -1,6 +1,8 @@
 ---
 title: "The Fiesta de la Candelaria in Puno: Peru's festival of 40,000 dancers"
 description: "Devils, Morenada kings and Andean bands fill a city at 3,830 m above Lake Titicaca every February. When Puno's Candelaria happens, what you'll see, and how to cope with the altitude."
+seoTitle: "Fiesta de la Candelaria, Puno: 40,000 dancers in Peru"
+seoDescription: "Devils, Morenada kings and Andean bands fill Puno, at 3,830 m by Lake Titicaca, every February. When it happens, what you'll see, and coping with altitude."
 pillar: festivals
 country: Peru
 region: Puno, Lake Titicaca
@@ -56,6 +58,20 @@ affiliates: []
 related: [la-rinconada, puerto-williams]
 draft: false
 published: 2026-10-19
+quick:
+  - { q: "When is it?", a: "The feast day is 2 February, and the festival fills roughly the first half of February. Exact dates are set each year by Puno's folklore federation." }
+  - { q: "How big is it?", a: "About 40,000 dancers and 5,000 musicians, in more than 150 groups." }
+  - { q: "Do I need a ticket?", a: "For the dance contests in the Enrique Torres Belón stadium, yes. The parade of veneration fills the streets for everyone." }
+  - { q: "How do I cope with the altitude?", a: "Puno is at 3,830 m. Take the first two days slowly, drink plenty, and if you can, acclimatise on the way in Arequipa or Cusco." }
+  - { q: "How do I get there?", a: "Fly into Juliaca, 48 km away (about 70 minutes by road), or take a bus from Cusco or Arequipa." }
+  - { q: "What's the weather like?", a: "February is the rainy season on the altiplano, and nights are cold." }
+checklist:
+  - "Hotel booked early"
+  - "This year's programme checked with the folklore federation or the municipality"
+  - "Stadium tickets for the dance contests"
+  - "An acclimatisation stop in Arequipa or Cusco"
+  - "Rain jacket and warm layers"
+  - "News checked for protests or road blockades"
 ---
 
 ## What it is

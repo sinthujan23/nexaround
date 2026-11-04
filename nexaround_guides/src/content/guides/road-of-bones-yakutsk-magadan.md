@@ -1,6 +1,7 @@
 ---
 title: "The Road of Bones: Yakutsk to Magadan on the Kolyma Highway"
 description: "1,993 km of mostly gravel road across Siberia's Far East, built by Gulag prisoners. The route, the river crossings, the seasons, and the abandoned road your navigation app may send you down."
+seoDescription: "1,993 km of mostly gravel across Siberia's Far East, built by Gulag prisoners. The route, river crossings, and the abandoned road apps send you down."
 pillar: road-trips
 country: Russia
 region: Yakutia and Magadan Oblast
@@ -71,6 +72,27 @@ sources:
 related: [oymyakon-coldest-village]
 draft: false
 published: 2026-10-12
+quick:
+  - { q: "How long is it?", a: "About 2,031 km from Nizhny Bestyakh, across the Lena from Yakutsk, to Magadan. We measured 1,993 km from Yakutsk itself." }
+  - { q: "When should I go?", a: "July and August. Late May and June bring mud, bears and ticks; in winter it's −40 °C and below, a far more dangerous trip." }
+  - { q: "How do you cross the Lena?", a: "There's no bridge at Yakutsk: a ferry in summer, an ice road in winter, and no crossing at all for weeks while the ice forms or breaks up." }
+  - { q: "Is it paved?", a: "Only at each end. In between it's a maintained all-weather gravel road, much better than its reputation." }
+  - { q: "Can I visit Oymyakon on the way?", a: "Yes, about 190 km each way from Kyubeme. But never continue east from Tomtor: that Old Summer Road is abandoned." }
+  - { q: "Can I pay by card?", a: "No. Cards issued outside Russia don't work there, so bring all the cash you'll need." }
+checklist:
+  - "Your government's travel advice and your insurance checked"
+  - "Russian visa or e-visa"
+  - "All the cash you'll need: foreign cards don't work"
+  - "Lena crossing checked for your dates"
+  - "Spare fuel, one or two spare tyres, a puncture kit and spare parts"
+  - "Navigation set to avoid the Old Summer Road east of Tomtor"
+  - "Days planned so you reach a town each evening"
+  - "Flight out of Magadan booked, or the drive back planned"
+costs:
+  checked: 2026-11-02
+  items:
+    - { label: "Petrol in Russia", amount: "about US$0.93 a litre", note: "National average, October 2026. Remote stations charge more", source: "https://www.globalpetrolprices.com/Russia/gasoline_prices/" }
+    - { label: "Fuel, Yakutsk to Magadan", amount: "about US$185", note: "1,993 km at 10 L/100 km, at the national average price", source: "https://www.globalpetrolprices.com/Russia/gasoline_prices/" }
 ---
 
 ## Why it's called the Road of Bones

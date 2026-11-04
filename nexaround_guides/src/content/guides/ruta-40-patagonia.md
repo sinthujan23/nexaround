@@ -1,6 +1,7 @@
 ---
 title: "Ruta 40 across Patagonia: wind, gravel, and glaciers"
 description: "Driving the desolate southern stretch from Bariloche past Fitz Roy and Perito Moreno to Río Gallegos. Fuel gaps, ferocious crosswinds, ripia gravel, and spare tires."
+seoDescription: "The desolate southern stretch from Bariloche past Fitz Roy and Perito Moreno to Río Gallegos. Fuel gaps, fierce crosswinds, ripia gravel and spare tires."
 pillar: road-trips
 country: Argentina
 region: Santa Cruz and Chubut, Patagonia
@@ -44,6 +45,22 @@ sources:
   - { title: "Parques Nacionales de Argentina - Los Glaciares", url: "https://www.argentina.gob.ar/parquesnacionales" }
 related: [carretera-austral, sani-pass-lesotho, adelaide-to-perth-nullarbor]
 draft: false
+quick:
+  - { q: "When can you drive it?", a: "November to March, the southern summer." }
+  - { q: "How bad is the wind?", a: "Gusts reach 100 km/h on the open steppe. Hold the door with both hands when you get out, or it can be ripped back on its hinges." }
+  - { q: "Is it paved?", a: "Much of it is, but stretches of southern Santa Cruz are still ripio gravel. Slow to 60–70 km/h and brake gently before curves." }
+  - { q: "How do I avoid running out of fuel?", a: "Fill up at every working pump. Deliveries to steppe towns like Bajo Caracoles and Tres Lagos can be delayed." }
+  - { q: "How long is Ruta 40?", a: "Over 5,000 km from the Bolivian border to the southern tip of the mainland. This guide covers the Patagonian stretch." }
+checklist:
+  - "Spare tyres checked before you leave the pavement"
+  - "Road status checked with Vialidad Nacional"
+  - "Plan to fill up at every working fuel station"
+  - "Los Glaciares National Park entry for Fitz Roy and Perito Moreno"
+costs:
+  checked: 2026-11-02
+  items:
+    - { label: "Petrol in Argentina", amount: "about US$1.44 a litre", note: "National average, October 2026", source: "https://www.globalpetrolprices.com/Argentina/gasoline_prices/" }
+    - { label: "Los Glaciares National Park", amount: "ARS 50,000 (about US$33)", note: "One day, foreign visitors. A 3-day pass is ARS 100,000", source: "https://www.argentina.gob.ar/parquesnacionales/tarifas" }
 ---
 
 ## Driving tips for Patagonia

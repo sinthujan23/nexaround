@@ -1,6 +1,7 @@
 ---
 title: "The Carretera Austral: Chile's road to the end of Patagonia"
 description: "1,206 km from Puerto Montt to Villa O'Higgins, with three ferries, hanging glaciers, marble caves and a village built on boardwalks. The route, the ferries and the season."
+seoDescription: "1,206 km from Puerto Montt to Villa O'Higgins, with three ferries, hanging glaciers and marble caves. The route, the ferries and the season."
 pillar: road-trips
 country: Chile
 region: Los Lagos and Aysén, Patagonia
@@ -77,6 +78,26 @@ affiliates:
 related: [pamir-highway]
 draft: false
 published: 2026-10-12
+quick:
+  - { q: "How long is the road?", a: "About 1,206 km from Puerto Montt to Villa O'Higgins, with three ferry crossings on the way." }
+  - { q: "Is it paved?", a: "The north and centre mostly are; much of the south is still gravel. A normal car can manage in summer, but carry a full-size spare." }
+  - { q: "Do I need to book the ferries?", a: "Book the five-hour Hornopirén–Caleta Gonzalo ferry ahead, especially with a vehicle in summer. Caleta La Arena–Puelche runs round the clock." }
+  - { q: "When should I go?", a: "November to March. January and February are the busiest. Expect rain in the north and strong wind in the south." }
+  - { q: "Can I skip the northern ferries?", a: "Yes. Take a ferry or flight to Chaitén, or fly into Balmaceda near Coyhaique, and start from there." }
+  - { q: "Can I cross to Argentina at the end?", a: "From November to April you can go from Villa O'Higgins to El Chaltén by boat, on foot or on horseback. It takes one to three days." }
+checklist:
+  - "Hornopirén–Caleta Gonzalo ferry booked, with your vehicle"
+  - "Full-size spare tyre"
+  - "Cash: cards and ATMs are unreliable in the small villages"
+  - "Plan to fill up in every town, especially Coyhaique and Cochrane"
+  - "Rain gear and windproof layers"
+  - "Beds booked ahead at popular stops in January and February"
+  - "Marble Caves boat planned for an early, calm morning"
+costs:
+  checked: 2026-11-02
+  items:
+    - { label: "Petrol in Chile", amount: "about US$1.55 a litre", note: "National average, October 2026", source: "https://www.globalpetrolprices.com/Chile/gasoline_prices/" }
+    - { label: "Fuel for the whole road", amount: "about US$190", note: "1,206 km at 10 L/100 km, at the national average price", source: "https://www.globalpetrolprices.com/Chile/gasoline_prices/" }
 ---
 
 ## The route at a glance

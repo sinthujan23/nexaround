@@ -132,7 +132,7 @@ function PackageForm({ packageId }) {
 
       <Section
         tone="amber" icon={DollarIcon} title="Price & capacity"
-        hint="The main price shows on the card; travellers choose between all of them when they ask to book. Remove every price to show “On request”. A blank Min people is 1, a blank Max people is Max participants."
+        hint="Type the amount you receive for each price. The main price shows on the card; travellers choose between all of them when they ask to book. Remove every price to show “On request”. A blank Min people is 1, a blank Max people is Max participants."
       >
         <FieldGrid cols={2}>
           <SelectField

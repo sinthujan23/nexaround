@@ -39,6 +39,23 @@ sources:
   - { title: "UNESCO Intangible Cultural Heritage: Andean Solstice traditions", url: "https://ich.unesco.org" }
 related: [candelaria-puno, la-rinconada]
 draft: false
+quick:
+  - { q: "When is it?", a: "On 24 June every year, the Andean winter solstice." }
+  - { q: "Where and when are the three acts?", a: "Qorikancha at 09:00, the Plaza de Armas at 11:00, and the main ritual at Sacsayhuamán from 13:45." }
+  - { q: "Do I need a ticket?", a: "Only for grandstand seats at Sacsayhuamán, which go on sale in early April and sell out. The hills of Suchuna and Cruz Moqo are free: be there by 08:00." }
+  - { q: "How do I cope with the altitude?", a: "Cusco is at 3,400 m and Sacsayhuamán 3,700 m. Arrive at least two full days before the festival." }
+  - { q: "What should I wear?", a: "Layers: mornings around 2 °C, midday up to 22 °C with fierce sun, and near freezing again after sunset." }
+  - { q: "Is a real llama sacrificed?", a: "No. The sacrifice of a black llama is symbolic; no animal is harmed." }
+checklist:
+  - "Grandstand tickets bought when sales open in early April, if you want a seat"
+  - "Arrival in Cusco at least two full days before 24 June"
+  - "An early start: crowds gather at Qorikancha from 06:30"
+  - "Sunscreen, water and warm layers"
+costs:
+  checked: 2026-11-02
+  items:
+    - { label: "Grandstand seat at Sacsayhuamán", amount: "about US$120–220", note: "Sold by EMUFEC from early April", source: "https://www.emufec.gob.pe" }
+    - { label: "Watching from the hills", amount: "Free", note: "Suchuna and Cruz Moqo, above the fortress", source: "https://www.emufec.gob.pe" }
 ---
 
 ## The three acts of Inti Raymi

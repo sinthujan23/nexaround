@@ -1,6 +1,7 @@
 ---
 title: "The Skeleton Coast and Kaokoland: Namibia's wild north-west"
 description: "Shipwrecks in the surf, a colony of Cape fur seals, fog-bound gravel roads, desert elephants and Epupa Falls on the Angolan border. A 907 km route from Swakopmund, and the park rules."
+seoDescription: "Shipwrecks, Cape fur seals, fog-bound gravel, desert elephants and Epupa Falls on the Angolan border. A 907 km route from Swakopmund, and the park rules."
 pillar: road-trips
 country: Namibia
 region: Erongo and Kunene
@@ -74,6 +75,27 @@ affiliates:
 related: [gibb-river-road, road-trip-no-phone-signal]
 draft: false
 published: 2026-10-12
+quick:
+  - { q: "How long is the route?", a: "907 km from Swakopmund up the coast and inland to Epupa Falls, almost all on gravel and salt roads." }
+  - { q: "Do I need a permit?", a: "Transit between the Ugab and Springbokwasser gates needs a permit, issued at the gates. Staying at Torra Bay or Terrace Bay needs a booking." }
+  - { q: "What are the gate rules?", a: "Transit traffic must enter and leave the same day, and gates stop letting people in by mid-afternoon. Check current hours and arrive early." }
+  - { q: "When should I go?", a: "In the dry winter, May to October. Summer rains can flood the riverbeds and cut the inland roads." }
+  - { q: "Is there phone signal?", a: "Not on most of the route. Carry a satellite messenger or beacon." }
+  - { q: "How do I visit the Himba?", a: "With a local guide from the community, so the money goes to the village. Ask before any photo, and accept a no." }
+checklist:
+  - "Current gate hours checked, with an early start for the Ugab Gate"
+  - "Terrace Bay or Torra Bay booked, if you're staying in the park"
+  - "Plan to fill up in Swakopmund and at every chance after"
+  - "Spare fuel, water and two spare tyres"
+  - "Satellite messenger or personal locator beacon"
+  - "Lodges and campsites booked ahead"
+  - "Community guide arranged for any Himba visit"
+costs:
+  checked: 2026-11-02
+  items:
+    - { label: "Petrol in Namibia", amount: "about US$1.60 a litre", note: "National average, October 2026", source: "https://www.globalpetrolprices.com/Namibia/gasoline_prices/" }
+    - { label: "Fuel, Swakopmund to Epupa", amount: "about US$145", note: "907 km at 10 L/100 km, at the national average price", source: "https://www.globalpetrolprices.com/Namibia/gasoline_prices/" }
+    - { label: "Skeleton Coast park fee", amount: "N$280 (about US$17)", note: "Per foreign adult per day, entrance plus conservation fee, since April 2026", source: "https://safarifind.com/blog/namibia-national-park-fees-availability-2026" }
 ---
 
 ## The route

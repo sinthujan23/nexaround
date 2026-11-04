@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { useApi } from '../api';
 import { TrendingUpIcon, RefreshIcon } from './Icons';
 import { Badge, Loading, EmptyState } from './Kit';
+import { countryFlag, countryName } from '../constants/countries';
 
 // The three views of /admin/users/activity. `unit` names one bucket, `range`
 // the stretch the frequent-explorers ranking covers, `labelEvery` how many
@@ -214,6 +215,11 @@ function FrequentList({ view, top, periods, range }) {
               <div className="activity-frequent-who">
                 <span className="activity-frequent-name" title={u.email}>{u.display_name || 'Explorer'}</span>
                 <span className="activity-frequent-meta">
+                  {u.country_code && (
+                    <span title={`Using the app from ${countryName(u.country_code)}`}>
+                      {countryFlag(u.country_code)} {countryName(u.country_code)} ·{' '}
+                    </span>
+                  )}
                   {plural(u.sessions, 'session', 'sessions')} · {formatDuration(u.app_seconds)} · {timeAgo(u.last_active_at)}
                 </span>
               </div>

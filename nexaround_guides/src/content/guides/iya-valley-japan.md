@@ -1,6 +1,7 @@
 ---
 title: "The Iya Valley: vine bridges, gorges, and mist in Shikoku"
 description: "Living vine bridges hanging over rushing rivers, thatch-roof hamlets clinging to steep forested slopes, and the legend of the Heike clan. Roads, buses, and staying in a kominka."
+seoDescription: "Living vine bridges over rushing rivers, thatched hamlets on steep forested slopes and the Heike legend. Roads, buses, and staying in a kominka."
 pillar: remote-villages
 country: Japan
 region: Tokushima Prefecture, Shikoku
@@ -32,6 +33,23 @@ sources:
   - { title: "Shikoku Railway Company (JR Shikoku)", url: "https://www.jr-shikoku.co.jp" }
 related: [ushguli-georgia, meemure-sri-lanka, gasadalur-faroe-islands]
 draft: false
+quick:
+  - { q: "How do I get around?", a: "By rental car from Takamatsu Airport or Oboke Station. The roads are single-lane with passing bays; buses from Oboke run only in peak spring and autumn." }
+  - { q: "West or east Iya?", a: "Nishi-Iya has the main vine bridge, onsen hotels and easier roads. Oku-Iya, up Route 439, is wilder, with the double vine bridges and Nagoro." }
+  - { q: "Is the vine bridge safe?", a: "Steel cables are woven into its core, but the slats are about 15 cm apart and the river is 14 m below, so it feels anything but." }
+  - { q: "How often are the bridges rebuilt?", a: "The vine cables are rewoven every three years." }
+  - { q: "What is Nagoro?", a: "The \"Village of Dolls\" in Oku-Iya, where life-sized scarecrows outnumber the people." }
+  - { q: "Why were the bridges made of vines?", a: "Heike clan refugees built them in the 12th century so they could cut them with a sword if enemies came." }
+checklist:
+  - "Rental car booked at Takamatsu Airport or Oboke Station"
+  - "Bus times checked, if you're relying on the Oboke–Kazurabashi bus"
+  - "Ready for narrow single-lane mountain roads with passing bays"
+  - "Onsen hotel or kominka booked"
+costs:
+  checked: 2026-11-02
+  items:
+    - { label: "Iya Kazurabashi", amount: "¥550 (about US$3.50)", note: "To cross, per adult", source: "https://miyoshi-tourism.jp/en/spot/iyanokazurabashi/" }
+    - { label: "Parking at the bridge", amount: "¥500 (about US$3)", note: "Per car", source: "https://miyoshi-tourism.jp/en/spot/iyanokazurabashi/" }
 ---
 
 ## Exploring the valley

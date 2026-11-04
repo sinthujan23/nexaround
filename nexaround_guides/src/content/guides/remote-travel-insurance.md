@@ -1,6 +1,8 @@
 ---
 title: "Travel insurance for remote trips: medevac, SAR, and satellite SOS"
 description: "Why standard credit card insurance fails off the paved road. Helicopter search-and-rescue limits, repatriation costs, satellite devices, and pre-authorization traps."
+seoTitle: "Remote travel insurance: medevac, rescue and satellite SOS"
+seoDescription: "Why standard credit card insurance fails off the paved road: rescue limits, repatriation costs, satellite devices and pre-authorization traps."
 pillar: know-how
 country: Worldwide
 region: Global
@@ -28,6 +30,21 @@ sources:
   - { title: "Garmin inReach SOS and SAR Insurance Coordination", url: "https://www.garmin.com/inreach" }
 related: [road-trip-no-phone-signal, pamir-highway, dalton-highway]
 draft: false
+quick:
+  - { q: "Does normal travel insurance cover remote trips?", a: "Often not. The fine print can exclude unpaved roads, mountaineering above 2,500 m or off-grid adventure activities." }
+  - { q: "What is field rescue?", a: "Standard policies only move you from one hospital to another. Field rescue memberships get you out from wherever you are." }
+  - { q: "What about altitude?", a: "Many policies void medical cover above 2,500 or 3,000 m. For Cusco, the Pamirs or Ladakh, add an extreme altitude or adventure endorsement." }
+  - { q: "Is my rental car covered on gravel?", a: "Often not: damage waivers and basic policies can be void on unpaved roads. Check roads like the Dalton, Dempster or Gibb by name." }
+  - { q: "How much can a rescue cost?", a: "A medical helicopter evacuation can run to US$50,000–100,000 out of pocket." }
+  - { q: "Is my phone enough to call for help?", a: "No. Carry a two-way satellite communicator, ideally paired with a search-and-rescue insurance plan." }
+checklist:
+  - "Policy covers field rescue, not just hospital-to-hospital transfer"
+  - "Altitude limit checked against the highest point of your trip"
+  - "Unpaved-road exclusions checked, for both the insurance and the rental car"
+  - "Pre-authorisation rules for evacuations understood"
+  - "Satellite communicator, with its subscription active"
+  - "Search-and-rescue insurance, if your device offers it"
+  - "Policy number and emergency line saved offline"
 ---
 
 ## The three critical clauses to check

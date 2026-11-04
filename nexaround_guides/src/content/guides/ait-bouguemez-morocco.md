@@ -1,6 +1,7 @@
 ---
 title: "Aït Bouguemez: the 'Happy Valley' of Morocco's High Atlas"
 description: "A green valley of Amazigh villages at 1,800–2,400 m, under the 4,071 m M'Goun, with a paved road in only since about 2000. Getting there from Marrakesh, walking the valley, and dinosaur tracks."
+seoDescription: "Amazigh villages at 1,800–2,400 m under the 4,071 m M'Goun, with a paved road only since about 2000. From Marrakesh, the walks, and dinosaur tracks."
 pillar: remote-villages
 country: Morocco
 region: Azilal province, Central High Atlas
@@ -64,6 +65,24 @@ affiliates:
 related: [ushguli-georgia]
 draft: false
 published: 2026-10-14
+quick:
+  - { q: "How do I get there?", a: "Marrakesh to Azilal (167 km), then 73 km up to Tabant: about four and a half hours. Drive the mountain road beyond Azilal in daylight." }
+  - { q: "Can I get there without a car?", a: "Take a bus or shared taxi to Azilal and arrange the last stretch with your guesthouse, or come with a trekking operator from Marrakesh." }
+  - { q: "When should I go?", a: "Spring (April to June) is greenest; autumn brings the harvest and settled weather. Summer suits high treks; winter brings snow on the passes." }
+  - { q: "Where do you stay?", a: "In small family guesthouses (gîtes) in many of the villages, most serving dinner and breakfast. Book ahead in spring." }
+  - { q: "Where are the dinosaur footprints?", a: "Ask in the valley or at the M'Goun Geopark House in Azilal, and go with a local guide." }
+  - { q: "What should I wear?", a: "Dress modestly: it's a conservative rural community. Ask before photographing people, especially women." }
+checklist:
+  - "Gîtes booked ahead, especially for spring weekends"
+  - "A daylight drive planned for the mountain road beyond Azilal"
+  - "Licensed mountain guide and mules, if you're trekking towards the M'Goun"
+  - "Modest clothing"
+  - "Road conditions checked, if you're going in winter"
+costs:
+  checked: 2026-11-02
+  items:
+    - { label: "Petrol in Morocco", amount: "about US$1.58 a litre", note: "National average, October 2026", source: "https://www.globalpetrolprices.com/Morocco/gasoline_prices/" }
+    - { label: "Fuel, Marrakesh to Tabant", amount: "about US$40", note: "240 km at 10 L/100 km, at the national average price", source: "https://www.globalpetrolprices.com/Morocco/gasoline_prices/" }
 ---
 
 ## Why it's special

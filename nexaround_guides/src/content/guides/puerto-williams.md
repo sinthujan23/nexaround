@@ -1,6 +1,7 @@
 ---
 title: "Puerto Williams: the southernmost town in the world"
 description: "A navy town of about 1,900 people on Navarino Island, across the Beagle Channel from Ushuaia. How to get there by plane, ferry or boat, the Dientes de Navarino trek, and the Yagán story."
+seoDescription: "A navy town of about 1,900 on Navarino Island, across the Beagle Channel from Ushuaia. Getting there, the Dientes de Navarino trek, and the Yagán story."
 pillar: extreme-places
 country: Chile
 region: Navarino Island, Magallanes
@@ -65,6 +66,20 @@ affiliates:
 related: [carretera-austral]
 draft: false
 published: 2026-10-14
+quick:
+  - { q: "How do I get there?", a: "By small plane from Punta Arenas (about 1 h 15), on the weekly 32-hour ferry from Punta Arenas, or in summer by boat from Ushuaia to Puerto Navarino and 54 km by road." }
+  - { q: "Is it really further south than Ushuaia?", a: "Yes, at 54°56′ S. Since 2019 Chile has counted it as the southernmost city in the world." }
+  - { q: "How long is the Dientes de Navarino circuit?", a: "About 50 km, taking most people 4 to 6 days. There are no huts or services, and snow is possible on the passes even in summer." }
+  - { q: "When should I go?", a: "November to March, when the days are longest, the Dientes trail is open and boats from Ushuaia are most likely to run." }
+  - { q: "Is there an easy walk?", a: "Cerro Bandera, the hill with the flag above town: the classic view over the Beagle Channel." }
+  - { q: "Can I visit the Yagán community?", a: "It lives at Villa Ukika, on the edge of town. Visit as you would any neighbourhood, and ask before taking photographs." }
+checklist:
+  - "Flight or ferry booked early, with a spare day at each end"
+  - "Flexible dates, if crossing by boat from Ushuaia"
+  - "Waterproofs, even for walks around town"
+  - "Accommodation booked ahead for the summer"
+  - "Transport from the airstrip arranged with your host"
+  - "Full camping kit and food, if you're walking the Dientes circuit"
 ---
 
 ## Why it's special

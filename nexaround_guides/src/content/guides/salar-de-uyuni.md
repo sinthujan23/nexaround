@@ -1,6 +1,7 @@
 ---
 title: "Salar de Uyuni: crossing the world's largest salt mirror"
 description: "Over 10,000 square kilometres of blinding white salt at 3,656 m elevation. The dry hexagon crust versus the flooded rainy season mirror, 4x4 routes, and altitude sickness."
+seoDescription: "Over 10,000 km² of white salt at 3,656 m. The dry hexagon crust versus the rainy-season mirror, 4x4 routes, and altitude sickness."
 pillar: extreme-places
 country: Bolivia
 region: Potosí and Oruro Departments, Altiplano
@@ -32,6 +33,18 @@ sources:
   - { title: "SERNAP - National Service of Protected Areas (Eduardo Avaroa Reserve)", url: "https://sernap.gob.bo" }
 related: [la-rinconada, puerto-williams, carretera-austral]
 draft: false
+quick:
+  - { q: "When is the mirror effect?", a: "In the wet season, December to April, when a thin sheet of water covers the salt. Driving is then limited to the edges." }
+  - { q: "When can you drive right across?", a: "In the dry season, May to November, when the crust is solid and 4x4s can reach Isla Incahuasi." }
+  - { q: "How high is it?", a: "Uyuni is at 3,670 m, and routes towards Laguna Colorada approach 5,000 m. Acclimatise in Sucre or La Paz first." }
+  - { q: "How cold does it get?", a: "Days can reach 20 °C, and nights drop as low as −15 °C." }
+  - { q: "Do I need sunglasses?", a: "Yes: polarised, UV400. The glare off the salt is blinding and can cause snow-blindness quickly." }
+  - { q: "How big is it?", a: "More than 10,500 km², the largest salt flat in the world." }
+checklist:
+  - "A few days in Sucre or La Paz to acclimatise"
+  - "Polarised UV400 sunglasses"
+  - "Warm layers for nights well below freezing"
+  - "Plenty of water to stay hydrated at altitude"
 ---
 
 ## Dry season vs wet season

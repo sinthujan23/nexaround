@@ -1,6 +1,7 @@
 ---
 title: "Vodun Days in Ouidah: Benin's festival of the Vodun religion"
 description: "Masked Egungun spirits, whirling Zangbeto guardians and drums on the beach at the Door of No Return. When Benin's Vodun festival happens, what you'll see, and how to be a respectful guest."
+seoDescription: "Masked Egungun, whirling Zangbeto and drums on the beach at the Door of No Return. When Benin's Vodun festival happens, and how to be a good guest."
 pillar: festivals
 country: Benin
 region: Ouidah, Atlantique
@@ -58,6 +59,19 @@ affiliates: []
 related: [ganvie-benin, timkat-addis-ababa]
 draft: false
 published: 2026-10-19
+quick:
+  - { q: "When is it?", a: "2 to 9 January 2027 in Ouidah, with the big ceremonies on the final weekend. 7 and 8 January are public holidays." }
+  - { q: "What will I see?", a: "Spinning Zangbeto, masked Egungun, drums and processions, concerts on the beach, and ceremonies at the Door of No Return." }
+  - { q: "Can I touch the masked figures?", a: "No. By tradition the Egungun must not be touched: give them room when they pass." }
+  - { q: "Can I take photos?", a: "Ask first and accept a no. Some ceremonies allow no photos at all, and some ask a fee for a camera." }
+  - { q: "Do I need a guide?", a: "A local guide from Ouidah helps a lot: which ceremony is which, where you may stand, and who to ask." }
+  - { q: "How do I get there?", a: "Fly into Cotonou. Ouidah is 42 km away, about an hour by road, with shared taxis and motorbike taxis between the two." }
+checklist:
+  - "Room in Ouidah booked early, or a base in Cotonou"
+  - "Local guide arranged in Ouidah"
+  - "Modest clothing"
+  - "Cash for small entry and camera fees"
+  - "Plenty of water: January is hot and dry on the coast"
 ---
 
 ## What Vodun is

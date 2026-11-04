@@ -1,6 +1,7 @@
 ---
 title: "Free stops on the Nullarbor: 12 places that cost nothing"
 description: "Pink salt lakes, a giant kangaroo, a jetty to nowhere, cliffs over the Bight and Australia's longest straight road. Every free stop between Ceduna and Norseman, in driving order."
+seoDescription: "Pink salt lakes, a giant kangaroo, cliffs over the Bight and Australia's longest straight road. Every free stop from Ceduna to Norseman, in driving order."
 pillar: free-stops
 country: Australia
 region: Ceduna to Norseman
@@ -65,6 +66,21 @@ sources:
 related: [adelaide-to-perth-nullarbor]
 draft: false
 published: 2026-10-12
+quick:
+  - { q: "Are all these stops free?", a: "All but two: Head of Bight, for the whales, and the Eyre Bird Observatory both charge an entry fee." }
+  - { q: "Can I sleep for free?", a: "At WA rest areas signed as 24-hour, for up to 24 hours. Arrive late, leave early. There's no camping along the Bunda Cliffs." }
+  - { q: "When can I see whales?", a: "From May to October at Head of Bight, about 20 km east of the Nullarbor Roadhouse. August is usually best." }
+  - { q: "Which stops make the best photos?", a: "Rooey II at Border Village, the signs at each end of the 90 Mile Straight, and the old jetty at Eucla." }
+  - { q: "Driving east?", a: "The stops are listed westbound, from Ceduna to Norseman, so read the list from the bottom." }
+checklist:
+  - "Fresh fruit, vegetables and honey eaten before the WA border"
+  - "Eyre Bird Observatory visit booked (the last stretch is 4WD only)"
+  - "Koonalda Homestead booked, if camping in the Wilderness Protection Area"
+  - "Bags to take all your rubbish away from the rest areas"
+costs:
+  checked: 2026-11-02
+  items:
+    - { label: "Petrol in Australia", amount: "about US$1.64 a litre", note: "National average, October 2026. Roadhouses charge more", source: "https://www.globalpetrolprices.com/Australia/gasoline_prices/" }
 ---
 
 ## Penong: windmills and a pink lake

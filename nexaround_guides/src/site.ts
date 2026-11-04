@@ -2,7 +2,7 @@ export const SITE = {
   name: 'nexARound Guides',
   tagline: 'Remote and unusual places',
   description:
-    'Travel guides to remote and unusual places: long road trips, extreme places and villages at the end of the road, with checked distances, fuel gaps, permits, costs and free stops.',
+    'Guides to remote and unusual places: road trips, extreme places and end-of-the-road villages, with checked distances, fuel gaps, permits and free stops.',
   publisher: 'NEXAROUND TECHNOLOGIES LLC',
   email: 'support@nexaround.com',
   appSite: 'https://app.nexaround.com',

@@ -17,6 +17,10 @@ const guides = defineCollection({
       title: z.string(),
       // Meta description, and the line under the title.
       description: z.string().max(200),
+      // Search results only (Google shows about 60 / 155 characters). Leave
+      // out when the title or description is already short enough.
+      seoTitle: z.string().max(60).optional(),
+      seoDescription: z.string().max(155).optional(),
       pillar: z.enum(PILLAR_KEYS as [string, ...string[]]),
       country: z.string(),
       region: z.string().optional(),
@@ -66,6 +70,23 @@ const guides = defineCollection({
           dates: z
             .array(z.object({ start: z.coerce.date(), end: z.coerce.date().optional(), note: z.string().optional() }))
             .default([]),
+          // false = no Event markup for search engines: for something that isn't one
+          // event in one place (Chinese New Year) or whose dates are only a forecast (hanami).
+          markup: z.boolean().default(true),
+        })
+        .optional(),
+      // Short answers near the top for readers who skim (4 to 6).
+      quick: z.array(z.object({ q: z.string(), a: z.string().max(240) })).max(6).default([]),
+      // "Before you go" tick list; ticks are kept on the reader's device.
+      checklist: z.array(z.string()).default([]),
+      // Rough costs, each from a source. `amount` is written as the source gives
+      // it ("NOK 150", "US$20 a person"); the box shows when it was checked.
+      costs: z
+        .object({
+          checked: z.coerce.date(),
+          items: z
+            .array(z.object({ label: z.string(), amount: z.string(), note: z.string().optional(), source: z.string().url() }))
+            .min(1),
         })
         .optional(),
       affiliates: z

@@ -1,6 +1,8 @@
 ---
 title: "Turtuk, Ladakh: the Balti village that was in Pakistan until 1971"
 description: "Apricot orchards on the Shyok River, under Pakistani control until 1971 and open to tourists since 2010. The 211 km road from Leh over Khardung La, permits, and when to go."
+seoTitle: "Turtuk, Ladakh: the Balti village in Pakistan until 1971"
+seoDescription: "Apricot orchards on the Shyok River, Pakistani until 1971 and open to tourists since 2010. The 211 km road from Leh over Khardung La, permits, when to go."
 pillar: remote-villages
 country: India
 region: Nubra Valley, Ladakh
@@ -71,6 +73,21 @@ affiliates: []
 related: [karakoram-highway, pamir-highway]
 draft: false
 published: 2026-10-14
+quick:
+  - { q: "How far is it from Leh?", a: "211 km over Khardung La, about 5½ hours of driving. Most people stop a night in Diskit or Hunder on the way." }
+  - { q: "Do I need a permit?", a: "Foreigners need a Protected Area Permit, through a registered Leh agent or the official portal. Indian nationals pay an environment fee online. Rules change, so check." }
+  - { q: "How high is Khardung La?", a: "Signposted at 5,602 m; surveys put it at 5,359 m. Don't linger at the top, and come down if you get a headache, dizziness or nausea." }
+  - { q: "When should I go?", a: "May to September, when the pass is most reliable. Spring brings apricot blossom, late summer the harvest." }
+  - { q: "What makes Turtuk different?", a: "It's a Balti village that was under Pakistani control until 1971, and it has been open to visitors only since 2010." }
+  - { q: "How should I dress?", a: "Modestly, with shoulders and knees covered: it's a conservative Muslim village. Ask before photographing anyone, above all women." }
+checklist:
+  - "A few days in Leh to acclimatise"
+  - "Protected Area Permit (foreigners) or environment fee receipt (Indian nationals)"
+  - "Passport or ID and your permit, for the army checkpoints"
+  - "A night in Diskit or Hunder planned"
+  - "Car and driver, or a shared taxi, arranged from Leh"
+  - "Modest clothing"
+  - "Homestay booked"
 ---
 
 ## Why it's special

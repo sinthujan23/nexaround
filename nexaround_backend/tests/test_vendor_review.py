@@ -30,8 +30,9 @@ def _live_package(**overrides):
         id=uuid.uuid4(), vendor_id=uuid.uuid4(), title="Dolphin Watching", summary="Sunrise trip",
         description="Boat from Nilaveli", category="boat", tags=[], photo_urls=["/a.jpg"],
         price_currency="LKR", price_amount=30000, price_usd=90, price_basis="per_group",
-        price_options=[{"id": "aa11", "amount": 30000, "usd": 90, "basis": "per_group",
-                        "min_people": None, "max_people": 7}],
+        price_options=[{"id": "aa11", "vendor_amount": 30000, "amount": 30000, "usd": 90,
+                        "basis": "per_group", "min_people": None, "max_people": 7}],
+        commission_percent=0,
         duration_minutes=180, max_participants=7, inclusions=["Life jackets"], languages=["English"],
         unavailable_ranges=[], booking_window_days=None, is_active=True,
         uses_vendor_location=True, meeting_point_address=None, location=None,
@@ -135,6 +136,25 @@ def test_approving_makes_the_prices_live_and_keeps_the_dollars():
     assert package.price_options[1]["usd"] is None
     assert package.review_status == vr.APPROVED and package.pending_changes is None
     assert package.reviewed_at == LATER and package.approved_at == NOW
+
+
+def test_a_vendor_sees_and_types_only_their_own_amount():
+    package = _live_package(
+        commission_percent=25, price_amount=30000,
+        price_options=[{"id": "aa11", "vendor_amount": 24000, "amount": 30000, "usd": 90,
+                        "basis": "per_group", "min_people": None, "max_people": 7}],
+    )
+    shown = _package_out(package)
+    assert shown.price_amount == 24000
+    assert [o.amount for o in shown.price_options] == [24000]
+    options = [{"id": "aa11", "amount": 26000, "basis": "per_group", "max_people": 7}]
+    vr.submit_package(package, vr.package_proposal(_form(package, price_options=options), package), NOW)
+    assert package.price_options[0]["amount"] == 30000  # still live
+    package.commission_percent = 20  # changed by an admin while it waited
+    vr.approve_package(package, LATER)
+    assert package.price_options[0]["vendor_amount"] == 26000
+    assert package.price_options[0]["amount"] == 31200 and package.price_amount == 31200
+    assert package.price_options[0]["usd"] == 90
 
 
 def test_approving_a_new_package_publishes_it():

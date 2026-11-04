@@ -1,6 +1,7 @@
 ---
 title: "How to visit Tristan da Cunha, the world's most remote inhabited island"
 description: "222 people, no airport, and six days at sea from Cape Town. How to get permission, find one of a handful of berths, and what to do once you land."
+seoTitle: "Tristan da Cunha: visiting the most remote inhabited island"
 pillar: remote-villages
 country: Tristan da Cunha (UK)
 region: South Atlantic Ocean
@@ -53,6 +54,21 @@ sources:
 related: []
 draft: false
 published: 2026-10-12
+quick:
+  - { q: "How do I get there?", a: "Only by sea from Cape Town, about six days: on fishing vessels (12 passenger berths), the yearly SA Agulhas II voyage, or an occasional expedition cruise." }
+  - { q: "Do I need permission?", a: "Yes. The island government must approve your visit first. Email the Tourism Coordinator, and book a berth only once you're approved." }
+  - { q: "How long does a trip take?", a: "With six days at sea each way, your stay and weather delays, plan on three to four weeks away from home, or more." }
+  - { q: "Where do you stay?", a: "With island families in guesthouses and homestays, arranged by the tourism office. There are no hotels or restaurants; Café da Cunha serves visitors." }
+  - { q: "Can I always land?", a: "No. Ships anchor offshore, and people go ashore by small boat only when the swell allows, which can mean waiting days." }
+  - { q: "What money do I need?", a: "Pounds sterling. Bring cash, and check in advance what, if anything, can be paid by card." }
+checklist:
+  - "The official Visits Planning Guide read"
+  - "Approval from the island government (tourism@tdc-gov.com)"
+  - "Berth from Cape Town booked, after approval"
+  - "Insurance that covers medical evacuation from a place with no airport"
+  - "Pounds sterling in cash"
+  - "Spare days at both ends for the weather"
+  - "Current health rules checked"
 ---
 
 ## How remote is it?

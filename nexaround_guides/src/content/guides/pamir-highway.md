@@ -1,6 +1,8 @@
 ---
 title: "The Pamir Highway: Osh to Dushanbe over the Roof of the World"
 description: "About 1,270 km through Kyrgyzstan and Tajikistan, over a 4,655 m pass and along the Afghan border. The route, the GBAO permit, the altitude, and where to sleep."
+seoTitle: "Pamir Highway: Osh to Dushanbe over the Roof of the World"
+seoDescription: "About 1,270 km through Kyrgyzstan and Tajikistan, over a 4,655 m pass and along the Afghan border. The route, the GBAO permit, altitude, where to sleep."
 pillar: road-trips
 country: Kyrgyzstan and Tajikistan
 region: Pamir Mountains
@@ -68,6 +70,27 @@ affiliates:
 related: []
 draft: false
 published: 2026-10-12
+quick:
+  - { q: "When can you drive it?", a: "June to September. Before June the passes can be snowbound, and after September snow can close them. Snow is possible at Ak-Baital even in midsummer." }
+  - { q: "Do I need a permit?", a: "Yes. On top of your Tajik visa you need a GBAO permit for the Pamirs. Tick it on the official e-visa form, or get it at OVIR in Dushanbe." }
+  - { q: "How high does it go?", a: "The Kyzyl-Art border is at 4,250 m and Ak-Baital Pass at 4,655 m. Sleep a night in Sary-Tash, and in Karakul or Murghab, before going higher." }
+  - { q: "Is the road paved?", a: "On paper, mostly. In practice, outside the Kyrgyz section and the approach to Dushanbe, expect gravel, washouts and road works." }
+  - { q: "Can I do it without my own car?", a: "Yes. Shared 4x4 taxis run between the main towns and leave when full, or you can hire a driver for the whole route in Osh or Khorog." }
+  - { q: "Where do you sleep?", a: "In homestays outside Osh, Khorog and Dushanbe: rooms in family homes with dinner and breakfast. Carry cash." }
+checklist:
+  - "Tajik e-visa applied for, with the GBAO permit ticked"
+  - "Ten printed copies of the GBAO permit for the checkpoints"
+  - "Acclimatisation nights planned in Sary-Tash and in Karakul or Murghab"
+  - "Cash: US dollars to exchange, plus Kyrgyz som and Tajik somoni"
+  - "Offline maps downloaded before leaving Osh"
+  - "Driving: spare tyres and fuel cans packed; plan to fill up in every main town"
+  - "Warm layers for nights on the plateau, even in summer"
+costs:
+  checked: 2026-11-02
+  items:
+    - { label: "Tajikistan e-visa", amount: "US$30", note: "Single entry; US$50 for multiple entry", source: "https://tajemb-my.org/consular-section/visa-information/" }
+    - { label: "GBAO permit", amount: "US$20", note: "Added to the e-visa application", source: "https://tajemb-my.org/consular-section/visa-information/" }
+    - { label: "Petrol in Kyrgyzstan", amount: "about US$1.27 a litre", note: "National average, October 2026. No current figure for Tajikistan", source: "https://www.globalpetrolprices.com/Kyrgyzstan/gasoline_prices/" }
 ---
 
 ## The route

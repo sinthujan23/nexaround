@@ -1,6 +1,7 @@
 ---
 title: "Ganvié: Africa's largest village on stilts, on Lake Nokoué"
 description: "About 20,000 people living on stilts in a lake, ever since their ancestors fled slave raiders centuries ago. How to get there from Cotonou, what a visit is like, and how to visit respectfully."
+seoDescription: "About 20,000 people living on stilts in Lake Nokoué, since their ancestors fled slave raiders. Getting there from Cotonou and visiting respectfully."
 pillar: remote-villages
 country: Benin
 region: Lake Nokoué, near Cotonou
@@ -56,6 +57,24 @@ affiliates: []
 related: [tristan-da-cunha]
 draft: false
 published: 2026-10-14
+quick:
+  - { q: "How do I get there?", a: "18 km by road from Cotonou to the pier at Abomey-Calavi (30 to 45 minutes), then about 35 minutes by boat." }
+  - { q: "What does the boat cost?", a: "Reports from 2026: about 3,000 CFA francs on a shared boat, 5,000 to 15,000 a person on a guided tour. Agree the price, length and what's included before you get in." }
+  - { q: "Do I need a guide?", a: "It's worth it: the waterways are a maze, many residents don't speak English, and a guide helps you visit respectfully." }
+  - { q: "How long is a visit?", a: "Most last 3 to 4 hours. Morning and late afternoon have the best light and the coolest air." }
+  - { q: "Can I take photos?", a: "Always ask first and accept a no. Never photograph children without their parents' permission." }
+  - { q: "When should I go?", a: "In the dry season, about November to March. It's hot and humid all year." }
+checklist:
+  - "Cash in CFA francs for the boat and the market"
+  - "Boat price, tour length and what's included agreed before boarding"
+  - "Dry bag for your phone and camera"
+  - "An early-morning or late-afternoon visit planned"
+costs:
+  checked: 2026-11-02
+  items:
+    - { label: "Shared boat", amount: "about 3,000 CFA (about US$5)", note: "Per person, reported at the pier in 2026", source: "https://wemarriedadventure.com/2026/07/16/ganvie-benins-floating-african-village/" }
+    - { label: "Guided boat tour", amount: "5,000–15,000 CFA (about US$9–26)", note: "Per person. Negotiable", source: "https://wemarriedadventure.com/2026/07/16/ganvie-benins-floating-african-village/" }
+    - { label: "Private group boat", amount: "about 20,000 CFA (about US$34)", note: "For the whole boat", source: "https://wemarriedadventure.com/2026/07/16/ganvie-benins-floating-african-village/" }
 ---
 
 ## Why it's special

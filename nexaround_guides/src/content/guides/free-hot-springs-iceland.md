@@ -1,6 +1,7 @@
 ---
 title: "Free hot springs in Iceland: bathing in geothermal rivers for nothing"
 description: "Reykjadalur thermal river, Hrunalaug, Hellulaug, and Landbrotalaug. Natural temperatures, access hikes, changing etiquette, and leave-no-trace rules."
+seoTitle: "Free hot springs in Iceland: bathe in geothermal rivers"
 pillar: free-stops
 country: Iceland
 region: South and West Iceland
@@ -32,6 +33,23 @@ sources:
   - { title: "SafeTravel Iceland - Thermal pool conditions and warnings", url: "https://safetravel.is" }
 related: [westfjords-iceland, free-stops-westfjords]
 draft: false
+quick:
+  - { q: "Are these springs really free?", a: "Yes, the natural rivers and roadside pools cost nothing to bathe in. Commercial lagoons charge US$80 to US$120 a person." }
+  - { q: "How far is the Reykjadalur hike?", a: "3.5 km uphill each way, about 45 to 60 minutes, from near Hveragerði, 45 minutes' drive from Reykjavík." }
+  - { q: "How hot is the water?", a: "Around 38 to 40 °C is ideal. At Reykjadalur the river gets warmer the further upstream you go. Always test with your hand first." }
+  - { q: "Are there changing rooms?", a: "No lockers, and at best open-air wooden screens. Bring a warm robe or poncho and a waterproof bag." }
+  - { q: "What are the rules?", a: "Leave no trace: carry out all rubbish and keep off the volcanic moss, which takes decades to recover." }
+checklist:
+  - "Swimsuit, towel and a warm robe or poncho"
+  - "Waterproof bag for clothes and phone"
+  - "A bag to carry out all rubbish"
+  - "Conditions and warnings checked on safetravel.is"
+  - "A parking app ready for the Reykjadalur car park"
+costs:
+  checked: 2026-11-02
+  items:
+    - { label: "Bathing", amount: "Free", note: "Natural rivers and roadside pools", source: "https://safetravel.is" }
+    - { label: "Parking at Reykjadalur", amount: "about ISK 1,000 (about US$8)", note: "For five hours, paid by app", source: "https://www.icelandtours.is/travel-guide/parking-in-iceland/" }
 ---
 
 ## The best natural hot springs

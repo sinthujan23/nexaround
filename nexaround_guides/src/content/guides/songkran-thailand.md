@@ -1,6 +1,7 @@
 ---
 title: "Songkran: Thailand's New Year water festival"
 description: "Three days of water fights in Chiang Mai and on Bangkok's Silom Road, and the quieter custom of pouring scented water over elders' hands. Songkran dates, where to go, and how to stay safe."
+seoDescription: "Water fights in Chiang Mai and on Bangkok's Silom Road, and scented water poured over elders' hands. Songkran dates, where to go, and how to stay safe."
 pillar: festivals
 country: Thailand
 region: Chiang Mai, Bangkok and nationwide
@@ -55,6 +56,19 @@ affiliates: []
 related: [chinese-new-year, hanami-japan]
 draft: false
 published: 2026-10-19
+quick:
+  - { q: "When is it?", a: "13 to 15 April every year. Some places start earlier or carry on later." }
+  - { q: "Where is the biggest water fight?", a: "Around the old-city moat in Chiang Mai, especially at Tha Phae Gate. In Bangkok, Silom Road and Khao San Road." }
+  - { q: "What does the water mean?", a: "It's the Thai New Year. Scented water poured over elders' hands and Buddha images washes away the old year and asks for blessings." }
+  - { q: "Should I ride a motorbike?", a: "No. Road accidents are common and worse in the holiday traffic. Never throw water at riders or drivers." }
+  - { q: "Who shouldn't I splash?", a: "Monks, the elderly, babies, and anyone who clearly isn't joining in." }
+  - { q: "When is it calmest?", a: "In the mornings. The streets get rowdy late in the day." }
+checklist:
+  - "Flights, trains or buses booked early"
+  - "Hotel in Chiang Mai booked early"
+  - "Waterproof phone pouch, and a dry bag for cash and passport"
+  - "Quick-dry clothes and shoes with grip"
+  - "No motorbike rental planned for the holiday"
 ---
 
 ## The meaning behind the water

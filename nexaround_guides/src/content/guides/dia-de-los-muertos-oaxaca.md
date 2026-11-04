@@ -1,6 +1,8 @@
 ---
 title: "Día de los Muertos in Oaxaca: altars, comparsas, and pan de muerto"
 description: "Candlelit vigils in Xoxocotlán, brass band comparsas winding through cobblestone barrios, and sand tapestries in Oaxaca City. When to arrive and how to visit respectfully."
+seoTitle: "Día de los Muertos in Oaxaca: altars, vigils and comparsas"
+seoDescription: "Candlelit vigils in Xoxocotlán, brass-band comparsas through the barrios and sand tapestries in Oaxaca City. When to arrive and how to visit respectfully."
 pillar: festivals
 country: Mexico
 region: Oaxaca and the Central Valleys
@@ -38,6 +40,16 @@ sources:
   - { title: "UNESCO: Indigenous festivity dedicated to the dead", url: "https://ich.unesco.org/en/RL/indigenous-festivity-dedicated-to-the-dead-00054" }
 related: [candelaria-puno, carnaval-de-quebec]
 draft: false
+quick:
+  - { q: "When is it?", a: "31 October to 2 November, every year." }
+  - { q: "What happens on each day?", a: "On 31 October the children's spirits arrive and the Xoxocotlán vigil begins; 1 November honours adults with home altars; 2 November brings cemetery picnics and comparsas." }
+  - { q: "Where are the candlelit vigils?", a: "At the Panteón Viejo de Xoxocotlán on the night of 31 October, and at Oaxaca City's Panteón General." }
+  - { q: "Where can I see the comparsas?", a: "The brass-band street parades wind through neighbourhoods like Jalatlaco and San Agustín Etla, especially on 2 November." }
+  - { q: "How do I visit a cemetery respectfully?", a: "Ask before photographing anyone, never step on graves, and buy your marigolds from the local vendors at the gates." }
+checklist:
+  - "The evening of 31 October kept free for Xoxocotlán"
+  - "Small change for marigolds from the vendors at the cemetery gates"
+  - "Comparsa neighbourhoods noted: Jalatlaco and San Agustín Etla"
 ---
 
 ## The rhythm of the days

@@ -1,0 +1,78 @@
+---
+// "Before you go" tick list. Ticks stay in this browser (localStorage
+// `nxg-check-<guide>`), keyed by each item's text so edits don't shift them.
+// Print shows only the list.
+import Icon from './Icon.astro';
+
+interface Props { items: string[]; slug: string; title: string }
+const { items, slug, title } = Astro.props;
+const key = (s: string) => {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0;
+  return h.toString(36);
+};
+---
+<div class="checklist" data-checklist={slug}>
+  <p class="cl-print-title">{title}: before you go</p>
+  <div class="cl-top">
+    <div class="cl-progress">
+      <span><strong data-cl-count>0</strong> of {items.length} done</span>
+      <div class="cl-bar" aria-hidden="true"><i data-cl-bar></i></div>
+    </div>
+    <div class="cl-actions">
+      <button type="button" class="cl-btn" data-cl-print><Icon name="book-open" /> Print</button>
+      <button type="button" class="cl-btn" data-cl-clear hidden>Clear ticks</button>
+    </div>
+  </div>
+  <ul class="cl-list">
+    {items.map((it) => (
+      <li>
+        <label>
+          <input type="checkbox" data-cl-item={key(it)} />
+          <span class="cl-box" aria-hidden="true"><Icon name="check" /></span>
+          <span class="cl-text">{it}</span>
+        </label>
+      </li>
+    ))}
+  </ul>
+</div>
+
+<script>
+  document.querySelectorAll<HTMLElement>('[data-checklist]').forEach((root) => {
+    const store = `nxg-check-${root.dataset.checklist}`;
+    const boxes = [...root.querySelectorAll<HTMLInputElement>('input[data-cl-item]')];
+    const count = root.querySelector<HTMLElement>('[data-cl-count]')!;
+    const bar = root.querySelector<HTMLElement>('[data-cl-bar]')!;
+    const clear = root.querySelector<HTMLButtonElement>('[data-cl-clear]')!;
+    let saved: string[] = [];
+    try { saved = JSON.parse(localStorage.getItem(store) ?? '[]'); } catch { saved = []; }
+    boxes.forEach((b) => (b.checked = saved.includes(b.dataset.clItem!)));
+
+    const paint = () => {
+      const done = boxes.filter((b) => b.checked).length;
+      count.textContent = String(done);
+      bar.style.width = `${(done / boxes.length) * 100}%`;
+      root.classList.toggle('cl-all', done === boxes.length);
+      clear.hidden = done === 0;
+    };
+    const save = () => {
+      const ids = boxes.filter((b) => b.checked).map((b) => b.dataset.clItem!);
+      try { ids.length ? localStorage.setItem(store, JSON.stringify(ids)) : localStorage.removeItem(store); } catch { /* private mode */ }
+      paint();
+    };
+    boxes.forEach((b) => b.addEventListener('change', save));
+    clear.addEventListener('click', () => { boxes.forEach((b) => (b.checked = false)); save(); });
+    // Print a copy on its own sheet; the rest of the page is hidden while printing.
+    root.querySelector('[data-cl-print]')!.addEventListener('click', () => {
+      const sheet = document.createElement('div');
+      sheet.className = 'cl-sheet';
+      sheet.appendChild(root.cloneNode(true));
+      document.body.appendChild(sheet);
+      document.body.classList.add('print-checklist');
+      const done = () => { sheet.remove(); document.body.classList.remove('print-checklist'); };
+      window.addEventListener('afterprint', done, { once: true });
+      window.print();
+    });
+    paint();
+  });
+</script>

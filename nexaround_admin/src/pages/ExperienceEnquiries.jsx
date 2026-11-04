@@ -35,6 +35,16 @@ const DECLINE_REASONS = {
 
 const TZ = 'Asia/Colombo';
 
+/** "LKR 12,000 · LKR 3,000 (25%)": what the vendor gets and NexAround's
+ * commission, as the request copied them. A request from before commissions
+ * has no split: all of it was the vendor's. */
+const priceSplit = (option) => {
+  const money = (v) => `${option.currency || ''} ${Number(v).toLocaleString()}`.trim();
+  const vendor = option.vendor_amount ?? option.amount;
+  const commission = option.commission_amount ?? 0;
+  return `${money(vendor)} · ${money(commission)} (${Number(option.commission_percent) || 0}%)`;
+};
+
 const formatDateTime = (value) =>
   value
     ? new Date(value).toLocaleString('en-GB', {
@@ -331,6 +341,12 @@ export default function ExperienceEnquiries() {
                         {selected.price_option?.label || 'Price on request'}
                       </dd>
                     </div>
+                    {selected.price_option?.amount != null && (
+                      <div>
+                        <dt>Vendor gets · commission</dt>
+                        <dd>{priceSplit(selected.price_option)}</dd>
+                      </div>
+                    )}
                     <div>
                       <dt>Preferred date</dt>
                       <dd className={selected.preferred_date ? '' : 'muted'}>

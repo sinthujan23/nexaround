@@ -1,6 +1,7 @@
 ---
 title: "The Harbin Ice and Snow Festival: walking through frozen cities"
 description: "Full-scale illuminated castles carved from Songhua River ice at -30°C. Opening dates, surviving the brutal cold, and getting there from Beijing."
+seoTitle: "Harbin Ice and Snow Festival: walking through frozen cities"
 pillar: festivals
 country: China
 region: Heilongjiang Province
@@ -38,6 +39,22 @@ sources:
   - { title: "China Railway Official High-Speed Train Ticketing (12306)", url: "https://www.12306.cn" }
 related: [oymyakon-coldest-village, longyearbyen-svalbard, trans-labrador-highway]
 draft: false
+quick:
+  - { q: "When is it?", a: "The official opening is on 5 January, and the festival runs to late February, with a soft opening in late December." }
+  - { q: "How cold is it?", a: "Evenings in January average −25 to −35 °C." }
+  - { q: "What should I wear?", a: "Merino base layers, a fleece and a down mid-layer, a windproof down parka with a hood, thick wool socks and boots rated to −40 °C." }
+  - { q: "How do I keep my phone working?", a: "Keep it in an inner chest pocket, next to your body, and carry hand warmers with your power bank." }
+  - { q: "How do I get there?", a: "High-speed trains run from Beijing to Harbin West in just under five hours, or fly to Harbin Taiping airport." }
+checklist:
+  - "Thermal merino base layers, top and bottom"
+  - "Down parka with an insulated hood"
+  - "Boots rated to −40 °C and thick wool socks"
+  - "Hand warmers and a power bank"
+  - "Train or flight to Harbin booked"
+costs:
+  checked: 2026-11-02
+  items:
+    - { label: "Harbin Ice and Snow World", amount: "¥328 (about US$49)", note: "Standard adult ticket in the 2025–26 season. The 2026–27 price isn't out yet", source: "https://www.chinadailyhk.com/hk/article/625425" }
 ---
 
 ## Surviving the cold

@@ -1,6 +1,7 @@
 ---
 title: "Carnaval de Québec: the winter carnival of Quebec City"
 description: "An ice palace, night parades, a snow bath in swimsuits and Bonhomme, the snowman with the red cap. When Quebec City's winter carnival happens, what to see, and how to survive February there."
+seoDescription: "An ice palace, night parades, a snow bath and Bonhomme the snowman. When Quebec City's winter carnival happens, what to see, and how to survive February."
 pillar: festivals
 country: Canada
 region: Quebec City, Quebec
@@ -52,6 +53,24 @@ affiliates: []
 related: [trans-labrador-highway, up-helly-aa-shetland]
 draft: false
 published: 2026-10-19
+quick:
+  - { q: "When is it?", a: "5 to 14 February 2027, the 73rd edition. It runs for ten days every February." }
+  - { q: "What's free?", a: "Some events, including parts of the programme outside the main site. Most events on the main site need the Bonhomme effigy pass." }
+  - { q: "How cold is it?", a: "Often well below −10 °C with wind chill, and the parades are at night." }
+  - { q: "What is the snow bath?", a: "A crowd in swimsuits and hats rolling in the snow on the Plains of Abraham. Watching is the sane option." }
+  - { q: "Where should I stay?", a: "Inside the walls if you book early. Otherwise Saint-Roch, or Lévis across the river with the ferry." }
+  - { q: "How do I get there?", a: "Jean Lesage airport is about 25 minutes from the old city by taxi, and VIA Rail trains run from Montreal." }
+checklist:
+  - "Hotel booked as soon as the dates are out"
+  - "Bonhomme effigy bought"
+  - "This year's programme checked on the official site"
+  - "Down coat, a hat that covers your ears, and mittens"
+  - "Warm, waterproof boots with good grip for icy streets"
+  - "Hand warmers and a thermos"
+costs:
+  checked: 2026-11-02
+  items:
+    - { label: "Bonhomme effigy", amount: "C$29–39 plus tax (about US$21–28)", note: "2026 edition: C$29 early, C$39 later. The 2027 price isn't out yet", source: "https://www.quebec-cite.com/fr/quoi-faire-quebec/raisons-carnaval-quebec" }
 ---
 
 ## Bonhomme and the carnival

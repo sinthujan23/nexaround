@@ -66,7 +66,7 @@ const emptyVendor = {
 const emptyPackage = {
   title: '', summary: '', description: '', category: 'boat', tags: [],
   photo_urls: [], video_urls: [], unavailable_ranges: [], price_amount: '', price_currency: 'LKR',
-  price_usd: '', price_basis: 'per_person', price_rows: optionsToRows([]),
+  price_usd: '', price_basis: 'per_person', price_rows: optionsToRows([]), commission_percent: '',
   duration_minutes: '', max_participants: '',
   booking_window_days: '',
   inclusions: [], languages: [], uses_vendor_location: true,
@@ -444,6 +444,7 @@ export default function Experiences() {
       price_usd: pkg.price_usd ?? '',
       // A package with no price shows no rows ("On request") rather than a blank one.
       price_rows: pkg.price_options?.length ? optionsToRows(pkg.price_options) : [],
+      commission_percent: pkg.commission_percent ?? '',
       duration_minutes: pkg.duration_minutes ?? '',
       max_participants: pkg.max_participants ?? '',
       booking_window_days: pkg.booking_window_days ?? '',
@@ -474,6 +475,7 @@ export default function Experiences() {
       price_options: rowsToOptions(priceRows, true),
       price_amount: packageForm.price_amount === '' ? null : Number(packageForm.price_amount),
       price_usd: packageForm.price_usd === '' ? null : Number(packageForm.price_usd),
+      commission_percent: packageForm.commission_percent === '' ? 0 : Number(packageForm.commission_percent),
       duration_minutes: packageForm.duration_minutes === '' ? null : Number(packageForm.duration_minutes),
       max_participants: packageForm.max_participants === '' ? null : Number(packageForm.max_participants),
       booking_window_days: packageForm.booking_window_days === '' ? null : Number(packageForm.booking_window_days),
@@ -1410,10 +1412,11 @@ export default function Experiences() {
           <div className="xp-section">
             <div className="xp-section-title">Price & capacity</div>
             <div className="xp-section-hint">
-              The main price shows on the card; travellers choose between all of them when they ask to book.
-              Both prices are shown as typed, never converted: “QAR 499 ($137) / group”. Leave Price in USD
-              empty to show no dollars, and remove every price to show “On request”. A blank Min people is 1,
-              a blank Max people is Max participants.
+              Type what the vendor gets for each price and NexAround’s commission: travellers pay the vendor’s
+              amount plus the commission, and the vendor sees only their own amount. The main price shows on the
+              card; travellers choose between all of them when they ask to book. The dollar price is shown as
+              typed, never converted: “QAR 499 ($137) / group”. Leave it empty to show no dollars, and remove
+              every price to show “On request”. A blank Min people is 1, a blank Max people is Max participants.
             </div>
             <div className="form-grid-2">
               <div className="form-group">
@@ -1429,9 +1432,17 @@ export default function Experiences() {
                   {CURRENCY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </div>
+              <div className="form-group">
+                <label className="form-label">Commission (%)</label>
+                <input
+                  type="number" step="0.01" min="0" max="100" className="form-input" placeholder="0"
+                  value={packageForm.commission_percent}
+                  onChange={(e) => patchPackage({ commission_percent: e.target.value })}
+                />
+              </div>
             </div>
             <PriceOptionsEditor
-              rows={packageForm.price_rows} withUsd
+              rows={packageForm.price_rows} withUsd commission={packageForm.commission_percent}
               currency={packageForm.price_currency || 'LKR'}
               packageMax={packageForm.max_participants === '' ? null : Number(packageForm.max_participants)}
               onChange={(rows) => patchPackage({ price_rows: rows })}

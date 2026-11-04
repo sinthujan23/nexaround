@@ -1,6 +1,8 @@
 ---
 title: "Waitangi Day at the Treaty Grounds: New Zealand's national day"
 description: "A dawn service in the carved meeting house, a giant war canoe on the water and a free festival where New Zealand's founding treaty was signed in 1840. When it is and how to visit."
+seoTitle: "Waitangi Day at the Treaty Grounds, New Zealand"
+seoDescription: "A dawn service, a giant war canoe and a free festival where New Zealand's founding treaty was signed in 1840. When Waitangi Day is and how to visit."
 pillar: festivals
 country: New Zealand
 region: Waitangi, Bay of Islands
@@ -59,6 +61,22 @@ affiliates: []
 related: [gibb-river-road, coober-pedy]
 draft: false
 published: 2026-10-19
+quick:
+  - { q: "When is it?", a: "On 6 February every year, the anniversary of the Treaty's signing in 1840." }
+  - { q: "What happens on the day?", a: "A dawn service from 5 am in Te Whare Rūnanga, war canoes paddled out from the beach, a free festival with more than 150 stalls, and speeches and debate." }
+  - { q: "Is it free on the day?", a: "Yes, the festival is free, but the museums and buildings close. Come on another day to see them." }
+  - { q: "How do I get there?", a: "The Treaty Grounds are just over the bridge from Paihia, about 3½ hours north of Auckland. Bay of Islands airport, in Kerikeri, is 23 km away." }
+  - { q: "Where should I stay?", a: "In Paihia, so you can walk over: traffic jams on the day are common. Book months ahead." }
+  - { q: "How should I behave?", a: "Follow the hosts' lead: stand when others stand, stay quiet during speeches and prayers, and put your phone away during the dawn service." }
+checklist:
+  - "Room in Paihia booked months ahead"
+  - "An early start for the 5 am dawn service"
+  - "Another day planned for the museums, which close on Waitangi Day"
+costs:
+  checked: 2026-11-02
+  items:
+    - { label: "Waitangi Day festival", amount: "Free", source: "https://www.mch.govt.nz/node/519" }
+    - { label: "Treaty Grounds on other days", amount: "NZ$78 (about US$44)", note: "International adult, two consecutive days, museums included", source: "https://www.waitangi.org.nz/book/waitangi-admissions" }
 ---
 
 ## The day at the Treaty Grounds

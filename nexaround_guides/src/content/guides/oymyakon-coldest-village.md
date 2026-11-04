@@ -1,6 +1,7 @@
 ---
 title: "Oymyakon: a winter in the coldest village on Earth"
 description: "−67.7 °C on record, −46 °C on an average January day, 922 km of winter road from Yakutsk. How to reach Oymyakon, what the cold does, and what to know about Russia in 2026."
+seoDescription: "−67.7 °C on record, −46 °C on an average January day, 922 km of winter road from Yakutsk. Reaching Oymyakon, what the cold does, and Russia in 2026."
 pillar: extreme-places
 country: Russia
 region: Sakha Republic (Yakutia)
@@ -58,6 +59,21 @@ sources:
 related: [road-of-bones-yakutsk-magadan]
 draft: false
 published: 2026-10-12
+quick:
+  - { q: "How cold does it get?", a: "The average January temperature is −45.7 °C, with nights near −49 °C. The official record is −67.7 °C, from 1933." }
+  - { q: "How do I get there?", a: "Fly to Yakutsk, then 922 km by road: usually two days each way on a winter tour, crossing the Lena on the ice." }
+  - { q: "When should I go?", a: "December to March, for the cold. January is the coldest month." }
+  - { q: "Can I use my bank card?", a: "No. Cards issued outside Russia don't work in Russian shops or ATMs, so bring all the cash you'll need." }
+  - { q: "Will my eSIM work?", a: "Generally not in Russia. Plan on a local SIM, bought with cash in Yakutsk." }
+  - { q: "Where do you stay?", a: "In guesthouses and family homestays in Tomtor and Oymyakon, nearly always arranged through a tour operator in Yakutsk." }
+checklist:
+  - "Your government's travel advice and your insurance checked"
+  - "Russian visa or e-visa"
+  - "All the cash you'll need"
+  - "Winter tour from Yakutsk booked, or a properly winterised vehicle"
+  - "Down parka rated for −50 °C, extreme-cold boots, mittens, a fur or down hat and a face covering"
+  - "Spare batteries, to keep inside your jacket"
+  - "Navigation set to avoid the Old Summer Road east of Tomtor"
 ---
 
 ## Is it really the coldest village on Earth?

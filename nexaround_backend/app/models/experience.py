@@ -29,6 +29,7 @@ from geoalchemy2 import Geometry
 
 from app.core.database import Base
 from app.services import enquiry_lifecycle
+from app.services.experience_format import vendor_view_options
 
 
 def _utcnow() -> datetime:
@@ -153,20 +154,29 @@ class ExperiencePackage(Base):
     # per_person | per_group | per_hour | from
     price_basis: Mapped[str] = mapped_column(String(20), default="per_person")
     # Every price the package is sold at, first one first, in `price_currency`:
-    # [{"id": "3f9a1c2e", "amount": 30000, "usd": 90, "basis": "per_group",
-    #   "min_people": null, "max_people": 7}]. A blank min is 1 and a blank
-    # max is `max_participants`. The first option is mirrored into the three
-    # fields above, which older apps, share text and emails read. Empty means
-    # "Price on request". See experience_format.apply_price_options.
+    # [{"id": "3f9a1c2e", "vendor_amount": 24000, "amount": 30000, "usd": 90,
+    #   "basis": "per_group", "min_people": null, "max_people": 7}]. A blank
+    # min is 1 and a blank max is `max_participants`. `vendor_amount` is what
+    # the vendor gets; `amount`, what the traveller pays, is always worked out
+    # from it and `commission_percent`. The first option is mirrored into the
+    # three fields above, which older apps, share text and emails read. Empty
+    # means "Price on request". See experience_format.apply_price_options.
     price_options: Mapped[list] = mapped_column(
         JSONB, default=list, server_default="[]"
+    )
+    # NexAround's commission on top of the vendor's amounts, set by an admin
+    # (25 = 25%). Admin panel only: vendors see their own amounts and never
+    # this, nor the traveller's price.
+    commission_percent: Mapped[float] = mapped_column(
+        Numeric(5, 2), nullable=False, default=0, server_default="0"
     )
 
     @property
     def vendor_price_options(self) -> list:
-        """The options as a vendor sees them: no dollar price. For deciding
-        whether a save changed something the vendor's feed should mention."""
-        return [{k: v for k, v in o.items() if k != "usd"} for o in self.price_options or []]
+        """The options as a vendor sees them: their own amount, no traveller
+        price, dollars or commission. For deciding whether a save changed
+        something the vendor's feed should mention."""
+        return vendor_view_options(self.price_options)
 
     duration_minutes: Mapped[int] = mapped_column(Integer, nullable=True)
     max_participants: Mapped[int] = mapped_column(Integer, nullable=True)

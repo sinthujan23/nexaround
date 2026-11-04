@@ -1,6 +1,8 @@
 ---
 title: "Supai: the village in the Grand Canyon where the mail comes by mule"
 description: "The Havasupai Tribe's village, 8 miles down a canyon trail from the nearest road. How permits work in 2026, the hike in, Havasu Falls, and why the US mail still arrives by mule."
+seoTitle: "Supai: the Grand Canyon village where the mail comes by mule"
+seoDescription: "The Havasupai Tribe's village, 8 miles down a canyon trail from the road. How permits work in 2026, the hike, Havasu Falls, and mail by mule."
 pillar: remote-villages
 country: United States
 region: Havasupai Reservation, Arizona
@@ -68,6 +70,26 @@ affiliates:
 related: [dalton-highway]
 draft: false
 published: 2026-10-14
+quick:
+  - { q: "Can I visit without a permit?", a: "No. Every visit needs a reservation from the Havasupai Tribe, bought only at havasupaireservations.com, and day hiking isn't allowed." }
+  - { q: "How long is a stay?", a: "Three nights, at the campground or the lodge." }
+  - { q: "How far is the hike?", a: "8 miles (13 km) from Hualapai Hilltop to Supai, and 10 miles to the campground, dropping about 2,000 ft." }
+  - { q: "When do permits go on sale?", a: "Early in the year. In 2026, early access ran from 21 to 31 January and the regular sale opened on 1 February." }
+  - { q: "Is there medical help?", a: "There are no public medical facilities in Supai. Flash floods and heat are the real dangers." }
+  - { q: "Why does the mail come by mule?", a: "No road reaches the village, so mules have carried the mail down the canyon since 1896." }
+checklist:
+  - "Permit bought from havasupaireservations.com, and nowhere else"
+  - "A full tank: there's no fuel or shop at Hualapai Hilltop"
+  - "A first-light start planned for the hike"
+  - "Plenty of water"
+  - "Trail and waterfall closures checked"
+  - "Know the flash-flood rule: get to high ground and follow the Tribe's instructions"
+costs:
+  checked: 2026-11-02
+  items:
+    - { label: "Campground permit", amount: "US$455", note: "Per person, three nights", source: "https://www.islands.com/2083128/everything-know-about-havasu-falls-arizona-new-permitting-system-2026/" }
+    - { label: "Lodge", amount: "US$2,277", note: "Up to four people, three nights", source: "https://www.islands.com/2083128/everything-know-about-havasu-falls-arizona-new-permitting-system-2026/" }
+    - { label: "Petrol in the United States", amount: "about US$1.22 a litre (US$4.60 a gallon)", note: "National average, October 2026", source: "https://www.globalpetrolprices.com/USA/gasoline_prices/" }
 ---
 
 ## Why it's special

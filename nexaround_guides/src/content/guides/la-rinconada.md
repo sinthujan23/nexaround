@@ -1,6 +1,8 @@
 ---
 title: "La Rinconada, Peru: the highest town on Earth, and the hard truth about going"
 description: "A gold-mining town at about 5,000 m under a glacier, with no sewers, mercury in the water and a lawless reputation. What La Rinconada is, and why most travellers shouldn't go."
+seoTitle: "La Rinconada: the highest town on Earth, and the hard truth"
+seoDescription: "A gold-mining town at about 5,000 m under a glacier, with no sewers and mercury in the water. What La Rinconada is, and why most travellers shouldn't go."
 pillar: extreme-places
 country: Peru
 region: Puno, Andes
@@ -54,6 +56,13 @@ sources:
 related: [oymyakon-coldest-village]
 draft: false
 published: 2026-10-12
+quick:
+  - { q: "Can tourists visit?", a: "There's no tourist industry, and the town isn't built for visitors. For most travellers the honest advice is: learn about it, but don't go." }
+  - { q: "How high is it?", a: "Between about 4,900 and 5,100 m, on Mount Ananea: the highest large permanent settlement in the world." }
+  - { q: "Why is it dangerous?", a: "No plumbing or sewage, mercury in the water, serious crime and trafficking, and altitude sickness that can kill." }
+  - { q: "How cold does it get?", a: "The yearly average is 1.3 °C. Nights are below freezing all year, down to about −12 °C in June." }
+  - { q: "How do people get there?", a: "164 km by road from Juliaca, about 3½ hours. Only ever with an experienced local guide, by day, after acclimatising, and never overnight." }
+  - { q: "Where else can I see the high Andes?", a: "Around Puno and Lake Titicaca, at about 3,800 m, where villages and landscapes welcome visitors safely." }
 ---
 
 ## What makes it unique

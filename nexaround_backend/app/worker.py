@@ -48,6 +48,7 @@ async def main() -> None:
         city_tour_trips,
         fx_service,
         google_places_client,
+        ip_country,
         odyssey_jobs,
         telemetry,
         telemetry_alerts,
@@ -81,6 +82,9 @@ async def main() -> None:
             asyncio.create_task(fx_service.refresh_loop()),
             # City Guides trips: "Done at …?" once a step runs past its time.
             asyncio.create_task(city_tour_trips.reminder_loop()),
+            # DB-IP's country list behind the admin Explorers page's
+            # countries, re-downloaded once a month.
+            asyncio.create_task(ip_country.refresh_loop()),
         ])
         logger.info("telemetry singleton loops started")
     else:

@@ -1,6 +1,8 @@
 ---
 title: "The Trans-Labrador Highway: Quebec to the Strait of Belle Isle"
 description: "1,749 km from Baie-Comeau through Labrador's boreal forest to Blanc-Sablon: gravel in Quebec, paved in Labrador since 2022, gaps of 400 km, and free satellite phones on loan."
+seoTitle: "Trans-Labrador Highway: Quebec to the Strait of Belle Isle"
+seoDescription: "1,749 km from Baie-Comeau to Blanc-Sablon: gravel in Quebec, paved in Labrador since 2022, gaps of 400 km, and free satellite phones on loan."
 pillar: road-trips
 country: Canada
 region: Quebec and Labrador
@@ -71,6 +73,26 @@ affiliates:
 related: [dalton-highway, road-trip-no-phone-signal]
 draft: false
 published: 2026-10-12
+quick:
+  - { q: "How long is it?", a: "About 1,749 km from Baie-Comeau to Blanc-Sablon: Route 389 in Quebec, then Routes 500 and 510 across Labrador." }
+  - { q: "Is it paved?", a: "The Labrador section has been since July 2022. Parts of Route 389 in Quebec are still gravel or under reconstruction." }
+  - { q: "How far apart are services?", a: "The longest gaps are 287 km from Churchill Falls to Goose Bay, and about 400 km from Goose Bay to Port Hope Simpson." }
+  - { q: "Is there phone signal?", a: "Only in the towns. The province lends satellite phones for Routes 500 and 510: pick one up in one town and drop it in another." }
+  - { q: "When should I go?", a: "June to September. Bring repellent and a head net for the black flies and mosquitoes." }
+  - { q: "Do I have to drive back?", a: "No. A ferry crosses the Strait of Belle Isle from Blanc-Sablon to St. Barbe in Newfoundland." }
+checklist:
+  - "Satellite phone pick-up and drop-off points checked"
+  - "Full-size spare tyre, especially for the gravel on Route 389"
+  - "Spare fuel, food, water and warm clothes"
+  - "Plan to fill up in every town"
+  - "Insect repellent and a head net"
+  - "Strait of Belle Isle ferry times checked, if you're making a loop"
+  - "Driving days planned to avoid dawn and dusk, when moose are about"
+costs:
+  checked: 2026-11-02
+  items:
+    - { label: "Petrol in Canada", amount: "about US$1.42 a litre", note: "National average, October 2026. Remote stations charge more", source: "https://www.globalpetrolprices.com/Canada/gasoline_prices/" }
+    - { label: "Fuel, Baie-Comeau to Blanc-Sablon", amount: "about US$250", note: "1,749 km at 10 L/100 km, at the national average price", source: "https://www.globalpetrolprices.com/Canada/gasoline_prices/" }
 ---
 
 ## The route

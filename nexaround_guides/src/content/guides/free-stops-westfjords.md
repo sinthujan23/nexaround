@@ -1,6 +1,8 @@
 ---
 title: "Free stops in the Westfjords: hot pools, a shipwreck and the bird cliffs"
 description: "Four hot pools that cost nothing but a coin in the box, a beached 1912 whaler, Iceland's westernmost cliffs and a red-gold beach. Every free stop around the Westfjords loop, in driving order."
+seoTitle: "Westfjords free stops: hot pools, a shipwreck, bird cliffs"
+seoDescription: "Four hot pools for a coin in the box, a beached 1912 whaler, Iceland's westernmost cliffs and a red-gold beach: every free stop on the Westfjords loop."
 pillar: free-stops
 country: Iceland
 region: The Westfjords
@@ -69,6 +71,25 @@ affiliates: []
 related: [westfjords-iceland, free-stops-nullarbor]
 draft: false
 published: 2026-10-19
+quick:
+  - { q: "Are the hot pools really free?", a: "There's no ticket, but leave something in the donation box: it pays for cleaning and repairs." }
+  - { q: "What should I bring?", a: "A swimsuit and towel. Bathing naked isn't the custom when others are there, and soap and shampoo don't belong in natural pools." }
+  - { q: "Is Dynjandi still free?", a: "To look at, yes, but since summer 2024 the car park charges a fee." }
+  - { q: "How hot is the water?", a: "Hellulaug is about 38 °C and Pollurinn 36 to 40 °C, but the hot pot above Reykjafjarðarlaug has been measured at around 45 °C. Feel it first." }
+  - { q: "Can I camp at the pools?", a: "No. Never camp or sleep in the changing huts: it's the quickest way to get a free pool closed." }
+  - { q: "Are the roads open all year?", a: "The pools are, but the gravel roads to Rauðasandur and Látrabjarg can close with snow. Check umferdin.is each day." }
+checklist:
+  - "Swimsuit and towel"
+  - "Coins or cash for the donation boxes"
+  - "A bag to take your rubbish away"
+  - "Road conditions checked on umferdin.is before each day's drive"
+  - "A way to pay the Dynjandi parking fee online or by QR code"
+costs:
+  checked: 2026-11-02
+  items:
+    - { label: "Hot pools", amount: "Donation", note: "Drangsnes, Reykjafjarðarlaug, Pollurinn and Hellulaug all have a box", source: "https://www.westfjords.is/en/experiences/things-to-do/hot-pools" }
+    - { label: "Parking at Dynjandi", amount: "ISK 750 (about US$6)", note: "Per car", source: "https://adventures.is/iceland/attractions/dynjandi-waterfall/" }
+    - { label: "Petrol in Iceland", amount: "about US$2.25 a litre", note: "National average, October 2026", source: "https://www.globalpetrolprices.com/Iceland/gasoline_prices/" }
 ---
 
 ## Before you get in

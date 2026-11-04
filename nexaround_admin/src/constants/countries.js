@@ -84,3 +84,22 @@ export function getCountryByCode(code) {
   const norm = normalizeCountryCode(code);
   return COUNTRIES.find((c) => c.code === norm) || { code: norm, name: norm, flag: '🌐' };
 }
+
+const REGION_NAMES = typeof Intl !== 'undefined' && Intl.DisplayNames
+  ? new Intl.DisplayNames(['en'], { type: 'region' })
+  : null;
+
+/** English name of any ISO 3166-1 alpha-2 code, not only the ones listed above. */
+export function countryName(code) {
+  try {
+    return REGION_NAMES?.of(code) || code;
+  } catch {
+    return code;
+  }
+}
+
+/** Flag emoji for an ISO 3166-1 alpha-2 code ('' if it is not one). */
+export function countryFlag(code) {
+  if (!/^[A-Za-z]{2}$/.test(code || '')) return '';
+  return String.fromCodePoint(...code.toUpperCase().split('').map((c) => 0x1f1e6 + c.charCodeAt(0) - 65));
+}

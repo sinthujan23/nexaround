@@ -10,6 +10,7 @@ than inline in a router.
 import re
 import uuid
 from datetime import date, timedelta
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Optional
 
 # How far ahead a traveller may ask for a date on a package that sets no window
@@ -179,6 +180,95 @@ def _num(value) -> Optional[float]:
     return None if value is None else float(value)
 
 
+# --- Commission ----------------------------------------------------------------
+#
+# An admin types what the vendor gets for each price and the package's
+# commission; what the traveller pays is worked out from the two, exact to the
+# cent, every time the prices are saved. Vendors see only their own amounts.
+
+def _cents(value: Decimal) -> float:
+    return float(value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+
+
+def _rate(percent) -> Decimal:
+    return 1 + Decimal(str(percent or 0)) / 100
+
+
+def with_commission(vendor_amount, percent) -> Optional[float]:
+    """What the traveller pays: the vendor's amount with NexAround's
+    commission on top. 12,000 at 25% -> 15,000."""
+    if vendor_amount is None:
+        return None
+    return _cents(Decimal(str(vendor_amount)) * _rate(percent))
+
+
+def without_commission(amount, percent) -> Optional[float]:
+    """The vendor's amount inside a traveller's price, for an admin form from
+    before commissions, which sends only the latter."""
+    if amount is None:
+        return None
+    return _cents(Decimal(str(amount)) / _rate(percent))
+
+
+def vendor_amount_of(option: Optional[dict]) -> Optional[float]:
+    """What the vendor gets for an option, or a request's copy of one. Rows
+    from before commissions have no `vendor_amount`: all of it was theirs."""
+    if not option:
+        return None
+    value = option.get("vendor_amount")
+    return _num(value if value is not None else option.get("amount"))
+
+
+def commission_of(option: Optional[dict]) -> Optional[float]:
+    """NexAround's share of an option's price (of a request's copy of one)."""
+    amount, vendor = _num((option or {}).get("amount")), vendor_amount_of(option)
+    if amount is None or vendor is None:
+        return None
+    return _cents(Decimal(str(amount)) - Decimal(str(vendor)))
+
+
+def vendor_view_options(options: Optional[list[dict]]) -> list[dict]:
+    """The options as the vendor reads them, their own amount as `amount`:
+    no traveller price, dollars or commission."""
+    return [
+        {
+            "id": o.get("id"),
+            "amount": vendor_amount_of(o),
+            "basis": o.get("basis") or "per_person",
+            "min_people": o.get("min_people"),
+            "max_people": o.get("max_people"),
+        }
+        for o in options or []
+    ]
+
+
+def commission_totals(rows: list[dict]) -> list[dict]:
+    """The commission report's rows summed per vendor and currency, largest
+    commission first. Each row has vendor_id, vendor_name, currency and the
+    three amounts; a row with no price (on request) counts as a booking only."""
+    totals: dict = {}
+    for row in rows:
+        key = (row.get("vendor_id"), row.get("currency"))
+        total = totals.setdefault(key, {
+            "vendor_id": row.get("vendor_id"),
+            "vendor_name": row.get("vendor_name"),
+            "currency": row.get("currency"),
+            "bookings": 0,
+            "traveller_amount": Decimal(0),
+            "vendor_amount": Decimal(0),
+            "commission_amount": Decimal(0),
+        })
+        total["bookings"] += 1
+        for field in ("traveller_amount", "vendor_amount", "commission_amount"):
+            if row.get(field) is not None:
+                total[field] += Decimal(str(row[field]))
+    out = [
+        {**t, **{f: _cents(t[f]) for f in ("traveller_amount", "vendor_amount", "commission_amount")}}
+        for t in totals.values()
+    ]
+    return sorted(out, key=lambda t: (-t["commission_amount"], t["vendor_name"] or ""))
+
+
 def option_bounds(option: dict, package_max: Optional[int]) -> tuple[int, Optional[int]]:
     """Guests an option allows: a blank min is 1, a blank max the package's."""
     return int(option.get("min_people") or 1), option.get("max_people") or package_max
@@ -203,11 +293,15 @@ def option_label(option: dict, currency: str, package_max: Optional[int]) -> str
 
 def vendor_option_label(snapshot: Optional[dict]) -> Optional[str]:
     """A request's chosen price as the vendor reads it: their own amount,
-    never NexAround's dollar price (it carries the commission).
-    "LKR 8,000 / person (min 3)"; None for a price-on-request package."""
-    if not snapshot or snapshot.get("amount") is None:
+    never the traveller's price or NexAround's dollar price (both carry the
+    commission). "LKR 8,000 / person (min 3)"; None for a price-on-request
+    package."""
+    amount = vendor_amount_of(snapshot)
+    if amount is None:
         return None
-    return option_label({**snapshot, "usd": None}, snapshot.get("currency") or "USD", None)
+    return option_label(
+        {**snapshot, "amount": amount, "usd": None}, snapshot.get("currency") or "USD", None,
+    )
 
 
 def convert_price(
@@ -257,14 +351,27 @@ def display_label(
     return label.replace(f"{code} ", f"≈ {code} ", 1) if approximate else label
 
 
+def _sent_vendor_amount(raw: dict, percent, vendor: bool) -> Optional[float]:
+    """The vendor's amount in a saved option. A vendor's `amount` is their own;
+    an admin's form sends `vendor_amount`, and one from before commissions
+    only the traveller's `amount`, which the commission comes back out of."""
+    if vendor:
+        return _num(raw.get("amount"))
+    if raw.get("vendor_amount") is not None:
+        return _num(raw["vendor_amount"])
+    return without_commission(raw.get("amount"), percent)
+
+
 def normalize_price_options(
-    incoming: list[dict], existing: Optional[list[dict]], *, keep_usd: bool = False,
+    incoming: list[dict], existing: Optional[list[dict]], *,
+    vendor: bool = False, percent=0,
 ) -> list[dict]:
     """Clean options from a form, keeping ids the package already has.
 
     An unknown or missing id gets a new one, so a request can name the option
-    it was made for. With `keep_usd` (a vendor's save, who may not set dollars)
-    each option keeps the dollar price it had, by id; a new one has none.
+    it was made for. A `vendor` may not set dollars: each option keeps the
+    dollar price it had, by id; a new one has none. The traveller's price is
+    worked out from the vendor's amount and `percent`.
     """
     old = {o.get("id"): o for o in existing or [] if o.get("id")}
     out, seen = [], set()
@@ -273,10 +380,12 @@ def normalize_price_options(
         if option_id not in old or option_id in seen:
             option_id = _new_option_id()
         seen.add(option_id)
-        usd = old.get(option_id, {}).get("usd") if keep_usd else raw.get("usd")
+        usd = old.get(option_id, {}).get("usd") if vendor else raw.get("usd")
+        vendor_amount = _sent_vendor_amount(raw, percent, vendor)
         out.append({
             "id": option_id,
-            "amount": _num(raw.get("amount")),
+            "vendor_amount": vendor_amount,
+            "amount": with_commission(vendor_amount, percent),
             "usd": _num(usd),
             "basis": raw.get("basis") or "per_person",
             "min_people": raw.get("min_people") or None,
@@ -286,7 +395,8 @@ def normalize_price_options(
 
 
 def legacy_price_options(
-    existing: Optional[list[dict]], amount, usd, basis,
+    existing: Optional[list[dict]], amount, usd, basis, *,
+    vendor: bool = False, percent=0,
 ) -> list[dict]:
     """Options for a save that sent only the single price fields (an older
     form): the first option becomes that price and the others stay."""
@@ -294,25 +404,45 @@ def legacy_price_options(
         return []
     rest = list(existing or [])
     first = dict(rest.pop(0)) if rest else {"id": _new_option_id(), "min_people": None, "max_people": None}
-    first.update(amount=_num(amount), usd=_num(usd), basis=basis or "per_person")
+    vendor_amount = _sent_vendor_amount({"amount": amount}, percent, vendor)
+    first.update(
+        vendor_amount=vendor_amount, amount=with_commission(vendor_amount, percent),
+        usd=_num(usd), basis=basis or "per_person",
+    )
     return [first, *rest]
 
 
-def price_options_for_save(data, existing: Optional[list[dict]], *, vendor: bool = False) -> list[dict]:
-    """The options a package save stores. `data` is the validated payload.
+def price_options_for_save(
+    data, existing: Optional[list[dict]], *, vendor: bool = False, percent=0,
+) -> list[dict]:
+    """The options a package save stores. `data` is the validated payload and
+    `percent` the package's commission.
 
     A vendor never sets dollars: their options keep the ones the admin typed.
     """
     if data.price_options is None:
         usd = (existing or [{}])[0].get("usd") if vendor else getattr(data, "price_usd", None)
-        return legacy_price_options(existing, data.price_amount, usd, data.price_basis)
+        return legacy_price_options(
+            existing, data.price_amount, usd, data.price_basis, vendor=vendor, percent=percent,
+        )
     return normalize_price_options(
-        [o.model_dump() for o in data.price_options], existing, keep_usd=vendor,
+        [o.model_dump() for o in data.price_options], existing, vendor=vendor, percent=percent,
     )
 
 
 def apply_price_options(package, options: list[dict]) -> None:
-    """Store the options and mirror the first into the single price fields."""
+    """Store the options and mirror the first into the single price fields.
+
+    The traveller's prices are worked out again from the vendor's amounts and
+    the package's commission as it is now, so a commission changed since the
+    options were made (a vendor's edit waiting for review) still applies.
+    """
+    percent = getattr(package, "commission_percent", None) or 0
+    options = [
+        {**o, "vendor_amount": vendor_amount_of(o),
+         "amount": with_commission(vendor_amount_of(o), percent)}
+        for o in options
+    ]
     package.price_options = options
     if options:
         first = options[0]
@@ -326,12 +456,14 @@ def apply_price_options(package, options: list[dict]) -> None:
 
 def pick_price_option(
     options: Optional[list[dict]], option_id: Optional[str], party_size: Optional[int],
-    currency: str, package_max: Optional[int],
+    currency: str, package_max: Optional[int], percent=0,
 ) -> tuple[Optional[dict], Optional[str]]:
     """The option a request is for, as a snapshot, or the reason it can't be.
 
     No id means the first option: an app from before price options showed
-    only that one. A price-on-request package has no option to pick.
+    only that one. A price-on-request package has no option to pick. The
+    snapshot keeps the split as it was (vendor's amount, commission and its
+    `percent`): the package's prices may change later.
     """
     if not options:
         return None, None
@@ -351,6 +483,9 @@ def pick_price_option(
         return None, f"This price is for up to {most} guests."
     snapshot = {
         **option,
+        "vendor_amount": vendor_amount_of(option),
+        "commission_amount": commission_of(option),
+        "commission_percent": _num(percent) or 0.0,
         "currency": currency,
         "label": option_label(option, currency, package_max),
     }

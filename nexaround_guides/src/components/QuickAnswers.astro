@@ -1,0 +1,20 @@
+---
+// Short answers under the headline numbers, for readers who skim.
+import Icon from './Icon.astro';
+
+interface Props { items: { q: string; a: string }[] }
+const { items } = Astro.props;
+---
+<section class="container qa-block" id="quick" aria-labelledby="quick-title">
+  <div class="quick-card">
+    <h2 id="quick-title" class="quick-title"><Icon name="sparkle" /> Quick answers</h2>
+    <dl class="quick-grid" data-n={items.length}>
+      {items.map((x) => (
+        <div class="qa">
+          <dt>{x.q}</dt>
+          <dd>{x.a}</dd>
+        </div>
+      ))}
+    </dl>
+  </div>
+</section>

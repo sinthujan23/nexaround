@@ -37,6 +37,21 @@ sources:
   - { title: "Sri Lanka Tourism Development Authority - Cultural Calendar", url: "https://www.srilanka.travel" }
 related: [meemure-sri-lanka, timkat-addis-ababa]
 draft: false
+quick:
+  - { q: "When is it?", a: "In July or August, ending on the Nikini full moon. In 2027 it runs from about 8 to 18 August." }
+  - { q: "Which nights are best?", a: "The five Randoli nights at the end are the grandest. On the last, the Maligawa Tusker carries the relic casket." }
+  - { q: "Where do I watch from?", a: "From paid seats along Dalada Veediya and D.S. Senanayake Street, or from the pavement, claimed by about 14:00." }
+  - { q: "What should I wear?", a: "Cover your shoulders and knees. White is traditional and appreciated." }
+  - { q: "How do I get to Kandy?", a: "By train from Colombo. Seats sell out weeks ahead, so book as soon as tickets open, 30 days before." }
+  - { q: "What happens after the last night?", a: "The next morning, priests perform the water-cutting ceremony in the Mahaweli River at Getambe." }
+checklist:
+  - "Train from Colombo booked when tickets open, 30 days ahead"
+  - "A seat booked, or a plan to claim a pavement spot by 14:00"
+  - "Clothes that cover shoulders and knees, white if you have them"
+costs:
+  checked: 2026-11-02
+  items:
+    - { label: "Reserved seat for a procession", amount: "from about US$70", note: "Per seat. Randoli nights cost more", source: "https://www.lakpura.com/products/kandy-esala-perahera" }
 ---
 
 ## Structure of the Perahera

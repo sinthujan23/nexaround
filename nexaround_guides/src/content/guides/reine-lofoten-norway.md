@@ -1,6 +1,7 @@
 ---
 title: "Reine, Lofoten: red rorbuer beneath the granite wall"
 description: "Historic red cod-fishermen cabins over turquoise arctic fjords under the sheer ridge of Reinebringen. Getting there along the E10, winter light, and summer ferries."
+seoDescription: "Red cod-fishermen's cabins over turquoise Arctic fjords under Reinebringen. Getting there along the E10, winter light, and summer ferries."
 pillar: remote-villages
 country: Norway
 region: Nordland, Lofoten Islands
@@ -32,6 +33,23 @@ sources:
   - { title: "Statens vegvesen - Norwegian Scenic Route Lofoten", url: "https://www.nasjonaleturistveger.no" }
 related: [westfjords-iceland, longyearbyen-svalbard, gasadalur-faroe-islands]
 draft: false
+quick:
+  - { q: "How do I get there?", a: "Fly from Bodø to Leknes or Svolvær and drive south on the E10, or take the car ferry from Bodø to Moskenes, 5 km from Reine." }
+  - { q: "How hard is Reinebringen?", a: "1,560 stone steps built by Nepalese Sherpas: 1 to 1½ hours up and about 45 minutes down." }
+  - { q: "Can I climb it in winter?", a: "Not in icy conditions without microspikes or crampons. In summer, stay on the steps so you don't knock rocks onto people below." }
+  - { q: "Where do you stay?", a: "In a rorbu, a converted fishermen's cabin. Book well ahead for July and August." }
+  - { q: "Northern lights or midnight sun?", a: "Northern lights and cod drying on the racks in winter; the midnight sun in summer." }
+checklist:
+  - "Rorbu booked well ahead for July and August"
+  - "Ferry slot reserved, if you're taking a car in summer"
+  - "Microspikes or crampons, for Reinebringen in winter"
+  - "Good shoes for the steps"
+costs:
+  checked: 2026-11-02
+  items:
+    - { label: "Bodø–Moskenes ferry, on foot", amount: "Free", note: "Passengers travel free", source: "https://www.fergeruter.info/prices/bodo-moskenes" }
+    - { label: "Bodø–Moskenes ferry, with a car", amount: "NOK 605 (about US$66)", note: "One way, petrol or diesel car under 6 m. Reserving a slot costs NOK 250 more", source: "https://www.fergeruter.info/prices/bodo-moskenes" }
+    - { label: "Petrol in Norway", amount: "about US$3.08 a litre", note: "National average, October 2026", source: "https://www.globalpetrolprices.com/Norway/gasoline_prices/" }
 ---
 
 ## Climbing Reinebringen

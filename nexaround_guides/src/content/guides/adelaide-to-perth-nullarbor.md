@@ -1,6 +1,8 @@
 ---
 title: "Adelaide to Perth across the Nullarbor: the complete road trip"
 description: "2,702 km on the Eyre Highway, or 3,607 km along the coast. Every leg measured, the fuel gaps, the clock changes, the WA quarantine check and the stops that cost nothing."
+seoTitle: "Adelaide to Perth across the Nullarbor: the full road trip"
+seoDescription: "2,702 km on the Eyre Highway or 3,607 km along the coast: every leg measured, the fuel gaps, the WA quarantine check and the stops that cost nothing."
 pillar: road-trips
 country: Australia
 region: South Australia to Western Australia
@@ -108,6 +110,27 @@ intro: |
   The drive from Adelaide to Perth is one of the great road trips on Earth, and one of the emptiest. For most of the way across the Nullarbor Plain there are no towns, only roadhouses, each one a fuel pump, a motel and a café, some of them nearly 200 km apart. Between them: saltbush flats to the horizon, the longest straight road in Australia, and cliffs dropping straight into the Southern Ocean.
 
   This guide covers both ways to do it, with every leg measured, every fuel gap marked, and the stops along the way that cost nothing.
+quick:
+  - { q: "How long does the drive take?", a: "The direct route is 2,702 km and about 28 h 45 min at the wheel: four to five days at six to seven hours a day. The coastal route is 3,607 km; give it at least ten days." }
+  - { q: "How far apart is the fuel?", a: "Up to 191 km, between Balladonia and Norseman, with gaps of 184 km and 181 km too. Fill up at every roadhouse and carry enough for two legs." }
+  - { q: "Can I take fresh food into Western Australia?", a: "No. Fresh fruit, vegetables and honey are taken at the border checkpoint. Eat or cook them first; most nuts are fine." }
+  - { q: "Is there phone signal?", a: "Only around the roadhouses. Download offline maps and tell someone your plan and when you expect to arrive." }
+  - { q: "When is the best time to go?", a: "June to August: cooler days, and whale season at Head of Bight, where August is usually best. Summer heat on the plain is serious." }
+  - { q: "Where do you sleep?", a: "Roadhouse motels and campsites, or free rest areas where the signs allow overnight stays. No camping along the Bunda Cliffs." }
+checklist:
+  - "Car serviced, with a good spare tyre"
+  - "Offline maps downloaded, and someone told your plan and arrival time"
+  - "Water and food for the crossing"
+  - "Fresh fruit, vegetables and honey eaten before the WA border"
+  - "Roadhouse rooms booked ahead if you cross in winter"
+  - "Koonalda Homestead booked online, if camping in the Wilderness Protection Area"
+  - "Driving days planned to avoid dawn, dusk and night"
+  - "Plan to fill up at every roadhouse, with enough fuel for two legs"
+costs:
+  checked: 2026-11-02
+  items:
+    - { label: "Petrol in Australia", amount: "about US$1.64 a litre", note: "National average, October 2026. Roadhouses charge more", source: "https://www.globalpetrolprices.com/Australia/gasoline_prices/" }
+    - { label: "Fuel for the whole trip", amount: "about US$440 direct, US$590 coastal", note: "270 or 360 litres at 10 L/100 km, at the national average price", source: "https://www.globalpetrolprices.com/Australia/gasoline_prices/" }
 ---
 
 ## Direct or coastal?

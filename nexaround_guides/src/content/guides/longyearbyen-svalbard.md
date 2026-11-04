@@ -1,6 +1,7 @@
 ---
 title: "Longyearbyen, Svalbard: life at 78° North"
 description: "A town of about 2,800 people where the sun disappears for 111 days, polar bears roam outside town, and burials have been banned since 1950. How to get there and what to do in each season."
+seoDescription: "A town of about 2,800 people where the sun vanishes for 111 days and polar bears roam outside town. How to get there and what to do in each season."
 pillar: extreme-places
 country: Svalbard (Norway)
 region: Spitsbergen
@@ -55,6 +56,23 @@ affiliates:
 related: [oymyakon-coldest-village, tristan-da-cunha]
 draft: false
 published: 2026-10-12
+quick:
+  - { q: "How do I get there?", a: "Scandinavian Airlines flies daily from Oslo and Tromsø to Svalbard Airport, about 5 km from town." }
+  - { q: "Do I need a visa?", a: "Not for Svalbard itself. But you fly through mainland Norway, which is in Schengen, so you need what that transit requires for your nationality." }
+  - { q: "Can I walk outside town?", a: "Only with an armed, trained guide, or with approved protection under the Governor's rules. Polar bears live throughout Svalbard." }
+  - { q: "When is the polar night, and the midnight sun?", a: "The sun stays down from 27 October to 15 February, and never sets from 18 April to 24 August." }
+  - { q: "Can I visit the Seed Vault?", a: "You can see its entrance near the airport, but the vault itself isn't open to visitors." }
+  - { q: "Is it really illegal to die there?", a: "Not quite. Burials have been banned since 1950, because bodies don't decompose in the permafrost." }
+checklist:
+  - "Documents for your transit through mainland Norway"
+  - "Tours and accommodation booked ahead, especially in spring and summer"
+  - "Guided trips booked for anything outside town"
+  - "Proper winter clothing, and wind-proof layers even in summer"
+  - "Pyramiden boat trip booked, if you're going in summer"
+costs:
+  checked: 2026-11-02
+  items:
+    - { label: "Svalbard environmental fee", amount: "NOK 150 (about US$16)", note: "Per visitor, charged when you leave Svalbard", source: "https://en.visitsvalbard.com/dbimgs/GovernorofSvalbard2026.pdf" }
 ---
 
 ## Getting there

@@ -1,6 +1,8 @@
 ---
 title: "Free stops on the Carretera Austral: 7 places that cost nothing"
 description: "Volcano and forest trails in Pumalín, the Cuesta del Diablo, two rivers colliding, a village of boardwalks and a free ferry towards the end of the road. The free stops from Chaitén to Villa O'Higgins."
+seoTitle: "Carretera Austral free stops: 7 places that cost nothing"
+seoDescription: "Pumalín's volcano and forest trails, the Cuesta del Diablo, two rivers colliding, a boardwalk village and a free ferry: Chaitén to Villa O'Higgins."
 pillar: free-stops
 country: Chile
 region: Los Lagos and Aysén, Patagonia
@@ -62,6 +64,24 @@ affiliates: []
 related: [carretera-austral, puerto-williams]
 draft: false
 published: 2026-10-19
+quick:
+  - { q: "Is Pumalín Park free?", a: "Entry and the trails are. You pay only to camp: about CLP 6,000 a person a night in 2026." }
+  - { q: "Which stops cost money?", a: "The hanging glacier at Queulat (a park fee) and the boat or kayak trip to the Marble Caves." }
+  - { q: "Is the Puerto Yungay ferry really free?", a: "Yes: about 50 minutes to Río Bravo, first come, first served. Check the timetable; missing the last boat can mean waiting until the next day." }
+  - { q: "How hard is the Chaitén volcano hike?", a: "4.4 km return, about 2½ hours, on a steep path to the crater rim. Start early, carry water, and turn back if cloud comes down." }
+  - { q: "What's the best free view at the end of the road?", a: "Mirador La Bandera in Villa O'Higgins: about 1.8 km and 500 m up from the Plaza de Armas." }
+checklist:
+  - "Puerto Yungay ferry timetable checked for the season"
+  - "An early arrival at Puerto Yungay planned, in summer"
+  - "Water and an early start for Volcán Chaitén"
+  - "Pumalín trail closures checked at the park"
+  - "A night in Caleta Tortel planned"
+costs:
+  checked: 2026-11-02
+  items:
+    - { label: "Pumalín Park camping", amount: "CLP 6,000 (about US$6)", note: "Per person per night. Entry and trails are free", source: "https://stingynomads.com/pumalin-park-hiking/" }
+    - { label: "Puerto Yungay–Río Bravo ferry", amount: "Free", note: "Public service, first come, first served", source: "https://carretera-austral.cl/guia-de-barcazas-y-ferries/" }
+    - { label: "Petrol in Chile", amount: "about US$1.55 a litre", note: "National average, October 2026", source: "https://www.globalpetrolprices.com/Chile/gasoline_prices/" }
 ---
 
 ## Pumalín Park: free trails

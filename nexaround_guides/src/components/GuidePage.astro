@@ -2,7 +2,7 @@
 // One guide page, in English or in one of its translations. A translation
 // replaces the words; photos, coordinates and distances come from the
 // English guide.
-import { Image } from 'astro:assets';
+import { Image, getImage } from 'astro:assets';
 import { render } from 'astro:content';
 import Base from '../layouts/Base.astro';
 import Icon from './Icon.astro';
@@ -18,6 +18,9 @@ import Gallery from './Gallery.astro';
 import Affiliate from './Affiliate.astro';
 import AppCta from './AppCta.astro';
 import GuideAppBand from './GuideAppBand.astro';
+import QuickAnswers from './QuickAnswers.astro';
+import CostBox from './CostBox.astro';
+import Checklist from './Checklist.astro';
 import StoreButtons from './StoreButtons.astro';
 import { PILLARS, type PillarKey } from '../data/pillars';
 import { readMinutes, type Guide, type Translation } from '../lib/guides';
@@ -63,14 +66,23 @@ const legKm = d.legs.reduce((s: number, l: { km: number }) => s + l.km, 0);
 const event = base.event;
 const eventNext = event ? nextDate(event.dates) : undefined;
 const eventColor = continentColor(continentOf(guide.id));
+// Festival photos are of the festival, not of a route.
+const photosTitle = event ? 'At the festival' : t.alongTheWay;
+// Quick answers, costs and the checklist are written in English only.
+const quick = lang === 'en' ? base.quick : [];
+const costs = lang === 'en' ? base.costs : undefined;
+const checklist = lang === 'en' ? base.checklist : [];
 const toc = [
+  ...(quick.length ? [{ slug: 'quick', text: 'Quick answers' }] : []),
   ...(hasRoute ? [{ slug: 'route', text: event ? 'On the map' : d.legs.length ? t.tocLegs : t.tocRoute }] : []),
   ...(event ? [{ slug: 'when', text: 'When it happens' }] : []),
   ...headings.filter((h: { depth: number }) => h.depth === 2),
   ...(d.fuelGaps.length ? [{ slug: 'fuel-planner', text: t.fuelPlanner }] : []),
+  ...(costs ? [{ slug: 'costs', text: 'Rough costs' }] : []),
+  ...(checklist.length ? [{ slug: 'checklist', text: 'Checklist' }] : []),
   ...(d.stops.length ? [{ slug: 'stops', text: t.stopsAlong }] : []),
   ...(d.legs.length ? [{ slug: 'every-leg', text: t.everyLeg }] : []),
-  ...(d.photos.length ? [{ slug: 'photos', text: t.alongTheWay }] : []),
+  ...(d.photos.length ? [{ slug: 'photos', text: photosTitle }] : []),
   ...(d.sources.length ? [{ slug: 'sources', text: t.sources }] : []),
 ];
 // The app band: "Planning {place}?" No band on guides that advise against going.
@@ -95,12 +107,49 @@ const relatedIn = (g: Guide) => {
 };
 
 const url = new URL(hrefIn(lang, guide), Astro.site).href;
+// Search-result versions; translations have their own title and description.
+const metaTitle = lang === 'en' ? base.seoTitle : undefined;
+const metaDescription = (lang === 'en' ? base.seoDescription : undefined) ?? d.description;
+// The cover in the three shapes Google asks for (1:1, 4:3, 16:9).
+const schemaImages = await Promise.all(
+  [[1200, 1200], [1200, 900], [1200, 675]].map(async ([width, height]) =>
+    new URL((await getImage({ src: base.cover, width, height, fit: 'cover', format: 'jpeg' })).src, Astro.site).href),
+);
+// Festivals: one Event per date still to come, so search can show the dates.
+const day = (dt: Date) => dt.toISOString().slice(0, 10);
+const today = day(new Date());
+const eventName = base.title.split(':')[0].replace(/^The /, '');
+// The first festival site on the map (stops of kind 'town' are often the airport).
+const venue = base.stops.find((st: { kind: string }) => st.kind !== 'town');
+const eventLd = event && event.markup
+  ? event.dates
+      .filter((e: { start: Date; end?: Date }) => day(e.end ?? e.start) >= today)
+      .map((e: { start: Date; end?: Date }) => ({
+        '@context': 'https://schema.org',
+        '@type': 'Event',
+        name: `${eventName} ${e.start.getUTCFullYear()}`,
+        description: metaDescription,
+        url,
+        image: schemaImages,
+        startDate: day(e.start),
+        endDate: day(e.end ?? e.start),
+        eventStatus: 'https://schema.org/EventScheduled',
+        eventAttendanceMode: 'https://schema.org/OfflineEventAttendanceMode',
+        location: {
+          '@type': 'Place',
+          name: base.region ?? base.country,
+          address: { '@type': 'PostalAddress', ...(base.region ? { addressLocality: base.region } : {}), addressCountry: base.country },
+          ...(venue ? { geo: { '@type': 'GeoCoordinates', latitude: venue.lat, longitude: venue.lng } } : {}),
+        },
+      }))
+  : [];
 const jsonLd = [
   {
     '@context': 'https://schema.org',
     '@type': 'Article',
     headline: d.title,
-    description: d.description,
+    description: metaDescription,
+    image: schemaImages,
     inLanguage: lang,
     mainEntityOfPage: url,
     datePublished: (base.published ?? base.lastChecked).toISOString(),
@@ -117,13 +166,14 @@ const jsonLd = [
       { '@type': 'ListItem', position: 3, name: d.title, item: url },
     ],
   },
+  ...eventLd,
 ];
 const [checkedPre, checkedPost] = t.checked.split('{date}');
 ---
-<Base title={d.title} description={d.description} image={base.cover} type="article" jsonLd={jsonLd} article={d.title} appCampaign={guide.id} lang={lang} alternates={alternates}>
+<Base title={d.title} metaTitle={metaTitle} description={metaDescription} image={base.cover} type="article" jsonLd={jsonLd} article={d.title} appCampaign={guide.id} lang={lang} alternates={alternates}>
   <section class:list={['hero hero-guide', { 'hero-festival': event }]}>
     <div class="hero-bg hero-zoom">
-      <Image src={base.cover} alt="" widths={[960, 1600, 2000]} sizes="100vw" loading="eager" fetchpriority="high" />
+      <Image src={base.cover} alt={d.coverAlt} widths={[960, 1600, 2000]} sizes="100vw" loading="eager" fetchpriority="high" />
     </div>
     {event && <Confetti seed={guide.id.length * 31} count={22} />}
     <div class:list={['container hero-inner', { 'hero-split': event }]}>
@@ -198,6 +248,8 @@ const [checkedPre, checkedPost] = t.checked.split('{date}');
   )}
   <div class="container"><p class="credit-below">{t.cover}: {d.coverAlt}. {t.photo}: {base.coverCredit.author}, <a href={base.coverCredit.source}>{base.coverCredit.license}</a></p></div>
 
+  {quick.length > 0 && <QuickAnswers items={quick} />}
+
   {hasRoute && (
     <RouteExplorer route={base.route} lines={d.routeLines} stops={d.stops} legs={d.legs} legsNote={d.legsNote} label={routeLabel} lang={lang} heading={event ? ['Where to see it', 'Where it', 'happens'] : undefined} />
   )}
@@ -234,6 +286,22 @@ const [checkedPre, checkedPost] = t.checked.split('{date}');
           </div>
         )}
 
+        {costs && (
+          <div class="block" id="costs">
+            <h2 class="block-title">Rough costs</h2>
+            <p class="block-sub">The main costs we could find a published figure for. Your own total depends on where you start and how you travel.</p>
+            <CostBox items={costs.items} checked={costs.checked} />
+          </div>
+        )}
+
+        {checklist.length > 0 && (
+          <div class="block" id="checklist">
+            <h2 class="block-title">Before-you-go checklist</h2>
+            <p class="block-sub">Tick things off as you sort them. Your ticks stay on this device.</p>
+            <Checklist items={checklist} slug={guide.id} title={d.title} />
+          </div>
+        )}
+
         {d.stops.length > 0 && (
           <div class="block" id="stops">
             <h2 class="block-title">{t.stopsAlong}</h2>
@@ -252,7 +320,7 @@ const [checkedPre, checkedPost] = t.checked.split('{date}');
 
         {d.photos.length > 0 && (
           <div class="block" id="photos">
-            <h2 class="block-title">{t.alongTheWay}</h2>
+            <h2 class="block-title">{photosTitle}</h2>
             <p class="block-sub">{t.photosSub}</p>
             <Gallery photos={d.photos} lang={lang} />
           </div>

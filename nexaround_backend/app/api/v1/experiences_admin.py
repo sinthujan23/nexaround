@@ -7,7 +7,7 @@ Kept out of `admin.py`, which is already long, following the precedent of
 import io
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import List, Optional
 
 from fastapi import (
@@ -41,6 +41,9 @@ from app.services.experience_upload import save_experience_images, save_experien
 from app.services.partner_auth import store_link_token
 from app.repositories.experience_repository import ExperienceRepository
 from app.schemas.experience import (
+    CommissionReport,
+    CommissionRow,
+    CommissionTotal,
     ExperienceReviewAdminResponse,
     ExperienceReviewListResponse,
     ExperienceReviewUpdate,
@@ -68,7 +71,8 @@ from app.services.experience_service import (
 )
 from app.services.settings_service import SettingsService
 from app.services.experience_format import (
-    apply_price_options, package_field_value, price_options_for_save, vendor_place_problem,
+    apply_price_options, commission_of, commission_totals, package_field_value,
+    price_options_for_save, vendor_amount_of, vendor_place_problem,
 )
 from app.utils.geo_utils import get_lat_lng, point_or_none
 
@@ -158,6 +162,7 @@ def _package_response(
         price_usd=float(package.price_usd) if package.price_usd is not None else None,
         price_basis=package.price_basis or "per_person",
         price_options=package.price_options or [],
+        commission_percent=float(package.commission_percent or 0),
         duration_minutes=package.duration_minutes,
         max_participants=package.max_participants,
         booking_window_days=package.booking_window_days,
@@ -343,8 +348,11 @@ async def create_package(
         # An admin's own package needs no review.
         approved_at=datetime.now(timezone.utc),
         **{key: package_field_value(data, key) for key in _PACKAGE_SCALARS},
+        commission_percent=data.commission_percent or 0,
     )
-    apply_price_options(package, price_options_for_save(data, None))
+    apply_price_options(
+        package, price_options_for_save(data, None, percent=package.commission_percent),
+    )
     apply_package_derived_fields(package, vendor, data.latitude, data.longitude)
     db.add(package)
     await db.flush()  # the feed line links to the package's id
@@ -376,7 +384,12 @@ async def update_package(
     )
     for key in _PACKAGE_SCALARS:
         setattr(package, key, package_field_value(data, key))
-    apply_price_options(package, price_options_for_save(data, package.price_options))
+    if data.commission_percent is not None:
+        package.commission_percent = data.commission_percent
+    apply_price_options(
+        package,
+        price_options_for_save(data, package.price_options, percent=package.commission_percent),
+    )
     apply_package_derived_fields(package, vendor, data.latitude, data.longitude)
     activity = partner_activity.package_updated(
         db, package, before, actor=partner_activity.ADMIN,
@@ -619,6 +632,61 @@ async def list_enquiries(
         total=total,
         page=page,
         page_size=page_size,
+    )
+
+
+# The requests NexAround earns on: bookings the provider confirmed (closed
+# once done). Open and cancelled requests earn nothing.
+_EARNING_STATUSES = (enquiry_lifecycle.CONFIRMED, enquiry_lifecycle.CLOSED)
+
+
+@router.get("/commission", response_model=CommissionReport)
+async def commission_report(
+    month: Optional[str] = Query(None, pattern=r"^\d{4}-\d{2}$"),
+    db: AsyncSession = Depends(get_db),
+    _=Depends(verify_admin_token),
+):
+    """Confirmed bookings with what the traveller pays, what the vendor gets
+    and NexAround's commission, for the month of the booked day ("2026-11";
+    none: every month), and the same summed per vendor. The amounts are the
+    request's own copy, so a later price change does not move them."""
+    from app.models.experience import ExperienceEnquiry
+
+    enquiries = (await db.execute(
+        select(ExperienceEnquiry).where(ExperienceEnquiry.status.in_(_EARNING_STATUSES))
+    )).scalars().all()
+
+    def booked(e) -> Optional[date]:
+        return e.confirmed_date or e.preferred_date
+
+    months = sorted({f"{booked(e):%Y-%m}" for e in enquiries if booked(e)}, reverse=True)
+    rows = []
+    for e in enquiries:
+        day = booked(e)
+        if month and (day is None or f"{day:%Y-%m}" != month):
+            continue
+        price = e.price_option or {}
+        rows.append(CommissionRow(
+            id=e.id,
+            reference=e.reference,
+            status=e.status,
+            booked_date=day,
+            vendor_id=e.vendor_id,
+            vendor_name=e.vendor_name_snapshot,
+            package_title=e.package_title_snapshot,
+            party_size=e.party_size,
+            currency=price.get("currency"),
+            basis=price.get("basis"),
+            commission_percent=price.get("commission_percent"),
+            traveller_amount=price.get("amount"),
+            vendor_amount=vendor_amount_of(price),
+            commission_amount=commission_of(price),
+        ))
+    rows.sort(key=lambda r: (r.booked_date or date.min, r.reference), reverse=True)
+    totals = commission_totals([r.model_dump() for r in rows])
+    return CommissionReport(
+        months=months, month=month, rows=rows,
+        totals=[CommissionTotal(**t) for t in totals],
     )
 
 

@@ -1,6 +1,7 @@
 ---
 title: "The Gibb River Road: 660 km of gravel through the Kimberley"
 description: "Derby to Kununurra on an old cattle road: gorges with swimming holes, river crossings, station stays and fuel stops hundreds of kilometres apart. Open only in the dry season."
+seoDescription: "Derby to Kununurra on an old cattle road: gorges with swimming holes, river crossings, station stays and long fuel gaps. Open only in the dry season."
 pillar: road-trips
 country: Australia
 region: The Kimberley, Western Australia
@@ -69,6 +70,27 @@ affiliates:
 related: [adelaide-to-perth-nullarbor, road-trip-no-phone-signal]
 draft: false
 published: 2026-10-12
+quick:
+  - { q: "How long is it?", a: "About 660 km of gravel from Derby to the Great Northern Highway. We measured Derby to Kununurra at 720 km." }
+  - { q: "Do I need a 4WD?", a: "It's strongly recommended. River crossings and heavy corrugations break ordinary cars and their tyres." }
+  - { q: "When is it open?", a: "Only in the dry season, roughly May to October, once it has been graded and declared open. Floods close it from about November to March." }
+  - { q: "How far apart is the fuel?", a: "The longest gap, Mount Barnett to El Questro, is about 330 km, more with side trips. Not every stop sells petrol." }
+  - { q: "Can I swim?", a: "In gorge pools such as Bell and Manning. Never wade or swim in big rivers like the Pentecost: saltwater crocodiles live there." }
+  - { q: "Where do you sleep?", a: "On cattle stations, with camping, cabins and meals, or at bush camps by the national park gorges. Book ahead in peak season." }
+checklist:
+  - "4WD with two full-size spare tyres, a puncture kit and a compressor"
+  - "Recovery gear, plus water and food for extra days"
+  - "Satellite messenger or personal locator beacon"
+  - "Road status checked with Main Roads WA before each section"
+  - "Extra fuel for the 330 km from Mount Barnett to El Questro"
+  - "Station campsites booked if you go in peak season"
+  - "El Questro permit, if you're visiting its gorges"
+costs:
+  checked: 2026-11-02
+  items:
+    - { label: "Petrol in Australia", amount: "about US$1.64 a litre", note: "National average, October 2026. Remote stations charge more", source: "https://www.globalpetrolprices.com/Australia/gasoline_prices/" }
+    - { label: "Fuel, Derby to Kununurra", amount: "about US$120", note: "720 km at 10 L/100 km, at the national average price. A loaded 4WD uses more", source: "https://www.globalpetrolprices.com/Australia/gasoline_prices/" }
+    - { label: "El Questro Wilderness Park permit", amount: "A$26 (about US$18)", note: "Per adult, valid 7 days. A day pass is A$12", source: "https://www.elquestro.com.au/about-us/permit" }
 ---
 
 ## The route

@@ -1,6 +1,7 @@
 ---
 title: "Up Helly Aa: Shetland's Viking fire festival in Lerwick"
 description: "Up to a thousand torch-bearing guizers march through Lerwick and burn a Viking longship on the last Tuesday of January. When it is, where to stand, and how to get to Shetland in winter."
+seoDescription: "Up to a thousand torch-bearing guizers march through Lerwick and burn a Viking longship each January. When it is, where to stand, and getting to Shetland."
 pillar: festivals
 country: United Kingdom
 region: Lerwick, Shetland
@@ -56,6 +57,19 @@ affiliates: []
 related: [gasadalur-faroe-islands, longyearbyen-svalbard]
 draft: false
 published: 2026-10-19
+quick:
+  - { q: "When is it?", a: "The last Tuesday of January: 26 January 2027." }
+  - { q: "When is the torch procession?", a: "Torches are lit at 19:30 at the Hillhead below the Town Hall. The procession ends with the galley burning at the King George V Playing Field." }
+  - { q: "Where's the best view?", a: "For the procession, the streets around the Town Hall, St Olaf Street and King Harald Street, early. For the burning, the streets overlooking the playing field." }
+  - { q: "Can I get into the hall parties?", a: "They're private, by ticket or invitation. The Up Helly Aa website sells tickets for the Town Hall." }
+  - { q: "How do I get to Shetland?", a: "On NorthLink's overnight ferry from Aberdeen, or fly to Sumburgh, 41 km south of Lerwick." }
+  - { q: "Can women take part?", a: "Yes. Since 2023, women and girls can join the Lerwick squads." }
+checklist:
+  - "Bed in Lerwick booked months ahead"
+  - "Ferry or flight to Shetland booked"
+  - "Warm, waterproof, windproof clothes for a long wait outside"
+  - "Town Hall party tickets, if you want them"
+  - "A spot on the route claimed well before 19:30"
 ---
 
 ## A Viking festival from the 1880s

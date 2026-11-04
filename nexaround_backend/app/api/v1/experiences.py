@@ -382,6 +382,7 @@ async def create_experience_enquiry(
     price_option, option_error = pick_price_option(
         package.price_options, data.price_option_id, data.party_size,
         package.price_currency or "USD", package.max_participants,
+        package.commission_percent,
     )
     if option_error:
         errors.append(option_error)

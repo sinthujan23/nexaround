@@ -1,6 +1,8 @@
 ---
 title: "Free stops on the Karakoram Highway: 7 viewpoints that cost nothing"
 description: "Nanga Parbat from the roadside, the point where three mountain ranges meet, Silk Road carvings, Rakaposhi's zero point and the Passu Cones. The free stops from the Babusar Pass to Passu."
+seoTitle: "Karakoram Highway free stops: 7 viewpoints that cost nothing"
+seoDescription: "Nanga Parbat from the roadside, where three mountain ranges meet, Silk Road carvings and the Passu Cones. The free stops from the Babusar Pass to Passu."
 pillar: free-stops
 country: Pakistan
 region: Gilgit-Baltistan
@@ -61,6 +63,22 @@ affiliates: []
 related: [karakoram-highway, turtuk-ladakh]
 draft: false
 published: 2026-10-19
+quick:
+  - { q: "Is this route safe?", a: "It goes round the Mansehra–Chilas stretch the UK advises against, over the Babusar Pass, which is open only in summer. Check your own government's advice too." }
+  - { q: "Which stop costs money?", a: "Walking the Hussaini Suspension Bridge, with a small toll reported as about Rs 200. You can see it from the roadside for nothing." }
+  - { q: "Where's the best view of Nanga Parbat?", a: "The roadside viewpoint at Thalichi, past the Raikot Bridge. On a clear day you see the whole massif." }
+  - { q: "Where do the three mountain ranges meet?", a: "Near Jaglot, where a roadside monument marks the meeting of the Himalaya, the Karakoram and the Hindu Kush." }
+  - { q: "Can I touch the Sacred Rock carvings?", a: "No. It's a protected heritage site: look and photograph, but don't touch, chalk or climb on them." }
+checklist:
+  - "Government travel advice checked before you go, and again just before"
+  - "Babusar Pass open on your dates (roughly June to September)"
+  - "Supplies stocked up in Gilgit"
+  - "Small rupee notes for the bridge toll and tea stalls"
+costs:
+  checked: 2026-11-02
+  items:
+    - { label: "Hussaini Suspension Bridge", amount: "about Rs 200 (under US$1)", note: "Reported toll to walk the bridge. The roadside view is free", source: "https://en.wikipedia.org/wiki/Hussaini_Suspension_Bridge" }
+    - { label: "Petrol in Pakistan", amount: "about US$1.37 a litre", note: "National average, October 2026", source: "https://www.globalpetrolprices.com/Pakistan/gasoline_prices/" }
 ---
 
 ## Read this first

@@ -1,6 +1,8 @@
 ---
 title: "Shirakawa-gō: steep thatched farmhouses deep in the snow country"
 description: "Steep-pitched gasshō-zukuri roofs built to withstand meters of winter snow in the Shogawa river valley. Bus access from Takayama, staying overnight, and winter light-ups."
+seoTitle: "Shirakawa-gō: thatched farmhouses deep in the snow country"
+seoDescription: "Steep gasshō-zukuri roofs built for metres of winter snow in the Shogawa valley. Buses from Takayama, staying overnight, and winter light-ups."
 pillar: remote-villages
 country: Japan
 region: Gifu Prefecture, Chubu
@@ -33,6 +35,21 @@ sources:
   - { title: "UNESCO World Heritage Centre: Historic Villages of Shirakawa-go and Gokayama", url: "https://whc.unesco.org/en/list/734/" }
 related: [iya-valley-japan, ushguli-georgia, gasadalur-faroe-islands]
 draft: false
+quick:
+  - { q: "How do I get there?", a: "On Nohi express buses from Takayama (about 50 minutes) or Kanazawa (about 75 minutes). In peak seasons, reserve seats a month ahead." }
+  - { q: "Can I stay overnight?", a: "Yes, in a minshuku: a family-run guesthouse in a thatched farmhouse, with tatami rooms and dinner around the irori hearth." }
+  - { q: "How do I see the winter light-up?", a: "It's on selected Sunday nights in January and February, and entry is by lottery ticket only." }
+  - { q: "Why are the roofs so steep?", a: "The 60° thatch sheds the 2 to 4 m of snow that builds up each winter." }
+  - { q: "How many thatched houses are there?", a: "114 preserved structures in Ogimachi, a UNESCO World Heritage Site since 1995." }
+checklist:
+  - "Bus seats reserved, a month ahead in peak season"
+  - "Minshuku booked, if you're staying the night"
+  - "Lottery entered, for the winter light-up"
+costs:
+  checked: 2026-11-02
+  items:
+    - { label: "Bus from Takayama", amount: "¥2,800 (about US$18)", note: "One way. ¥2,900 from 1 December 2026", source: "https://todolist-japan.com/en/takayama-to-shirakawago/" }
+    - { label: "Bus from Kanazawa", amount: "¥2,800 (about US$18)", note: "One way, reserved seat. ¥2,900 from 1 December 2026", source: "https://todolist-japan.com/en/takayama-to-shirakawago/" }
 ---
 
 ## Visiting Shirakawa-gō

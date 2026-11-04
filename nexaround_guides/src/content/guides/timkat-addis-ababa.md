@@ -1,6 +1,8 @@
 ---
 title: "Timkat in Addis Ababa: Ethiopia's Epiphany, in white and gold"
 description: "Priests in robes carrying the sacred tabots under gold umbrellas, all-night prayers and the blessing of the water at dawn. When Ethiopia's Timkat happens, where to see it in Addis, and what to know."
+seoTitle: "Timkat in Addis Ababa: Ethiopia's Epiphany in white and gold"
+seoDescription: "Priests carrying tabots under gold umbrellas, all-night prayers and the blessing of the water at dawn. When Timkat happens and where to see it in Addis."
 pillar: festivals
 country: Ethiopia
 region: Addis Ababa
@@ -52,6 +54,20 @@ affiliates: []
 related: [vodun-days-ouidah, lake-natron-tanzania]
 draft: false
 published: 2026-10-19
+quick:
+  - { q: "When is it?", a: "19 January (20 January in leap years), with the eve, Ketera, the day before. In 2027: 18 and 19 January." }
+  - { q: "Where can I see it safely?", a: "At Jan Meda in Addis Ababa. The UK advises against all travel to Amhara, where Gondar and Lalibela are." }
+  - { q: "What happens?", a: "On the eve, tabots are carried in procession to the water; the faithful keep vigil through the night; at dawn the water is blessed; then the tabots return to their churches." }
+  - { q: "What should I wear?", a: "White, or modest light clothing. Many Ethiopians wear the white netela shawl." }
+  - { q: "Can I take photos?", a: "Ask first, especially with priests and women at prayer, and keep the flash off during the night vigil." }
+  - { q: "Will things be open?", a: "It's a public holiday: schools and most businesses close, and roads near the processions are blocked. Plan to walk." }
+checklist:
+  - "Your government's travel advice and your insurance checked"
+  - "Room in central Addis booked early"
+  - "White or modest clothing"
+  - "A warm layer for the night vigil"
+  - "Waterproof phone pouch"
+  - "Little to carry, kept close"
 ---
 
 ## Read this first: where to go

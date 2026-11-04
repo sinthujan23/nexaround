@@ -57,7 +57,7 @@ def test_an_invented_or_repeated_id_is_replaced():
 def test_a_vendor_save_keeps_the_admins_dollars():
     out = normalize_price_options(
         [{"id": "aaaa1111", "amount": 31000, "usd": 1}, {"amount": 5000, "usd": 99}],
-        [TRIP], keep_usd=True,
+        [TRIP], vendor=True,
     )
     assert out[0]["usd"] == 90.0
     assert out[1]["usd"] is None

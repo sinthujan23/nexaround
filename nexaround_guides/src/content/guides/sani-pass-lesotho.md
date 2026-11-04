@@ -1,6 +1,7 @@
 ---
 title: "The Sani Pass: the 4x4 road up the Drakensberg to Lesotho"
 description: "The road from KwaZulu-Natal into Lesotho's highlands climbs 1,332 m in about 9 km to the border at 2,876 m. The 4x4 rule, border hours, the drive on to Mokhotlong, and when to go."
+seoDescription: "From KwaZulu-Natal into Lesotho, climbing 1,332 m in about 9 km to the 2,876 m border. The 4x4 rule, border hours, the drive to Mokhotlong, when to go."
 pillar: road-trips
 country: Lesotho and South Africa
 region: KwaZulu-Natal to Mokhotlong
@@ -63,6 +64,25 @@ affiliates:
 related: [adelaide-to-perth-nullarbor]
 draft: false
 published: 2026-10-14
+quick:
+  - { q: "Do I need a 4x4?", a: "Yes. South Africa allows only 4x4s on the pass. Without one, or without steep-track experience, book a 4x4 day tour from Underberg or Himeville." }
+  - { q: "When is the border open?", a: "From 6:00 to 18:00. Be through both posts well before closing: there's nowhere to wait in between." }
+  - { q: "How steep is it?", a: "It climbs 1,332 m in about 9 km, with gradients up to 1:3, to the border at 2,876 m." }
+  - { q: "Do I need my passport?", a: "Yes. You leave South Africa at the bottom and enter Lesotho at the top. Check visas for Lesotho and for re-entering South Africa." }
+  - { q: "When should I go?", a: "Spring and autumn are the most settled. Summer brings afternoon storms, so go early; winter brings snow and the most closures." }
+  - { q: "What's at the top?", a: "A lodge with a pub on the escarpment edge, walks across the plateau, guided village visits, and Thabana Ntlenyana (3,482 m) as a long day hike." }
+checklist:
+  - "A 4x4, or a 4x4 day tour booked"
+  - "Passport, with visas checked for Lesotho and for re-entering South Africa"
+  - "Pass checked for weather closures on the day"
+  - "Timing planned to clear both border posts well before 18:00"
+  - "Warm clothes and water, even in summer"
+  - "Driving in Lesotho planned for daylight"
+costs:
+  checked: 2026-11-02
+  items:
+    - { label: "Petrol in South Africa", amount: "about US$1.79 a litre", note: "National average, October 2026", source: "https://www.globalpetrolprices.com/South-Africa/gasoline_prices/" }
+    - { label: "Petrol in Lesotho", amount: "about US$1.72 a litre", note: "National average, October 2026", source: "https://www.globalpetrolprices.com/Lesotho/gasoline_prices/" }
 ---
 
 ## Why it's special

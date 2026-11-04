@@ -48,9 +48,20 @@ class PriceOptionBase(BaseModel):
 
 
 class PriceOption(PriceOptionBase):
-    """The admin's view: the dollar price is typed here, never converted."""
+    """The admin's view: what the vendor gets, and the dollar price, typed
+    here and never converted. `amount`, what the traveller pays, is worked out
+    from `vendor_amount` and the package's commission; a form from before
+    commissions sends only `amount`."""
 
+    amount: Optional[float] = Field(None, ge=0)
+    vendor_amount: Optional[float] = Field(None, ge=0)
     usd: Optional[float] = Field(None, ge=0)
+
+    @model_validator(mode="after")
+    def _has_a_price(self):
+        if self.amount is None and self.vendor_amount is None:
+            raise ValueError("Each price needs the vendor's amount.")
+        return self
 
 
 class PriceOptionOut(BaseModel):
@@ -290,6 +301,10 @@ class ExperiencePackageBase(BaseModel):
     # Every price, first one first. None (a form from before price options)
     # makes the single price fields above the first option and keeps the rest.
     price_options: Optional[list[PriceOption]] = Field(None, max_length=MAX_PRICE_OPTIONS)
+    # NexAround's commission on the vendor's amounts (25 = 25%). None keeps
+    # what the package has (0 for a new one): a form from before commissions
+    # must not reset it.
+    commission_percent: Optional[float] = Field(None, ge=0, le=100)
     duration_minutes: Optional[int] = Field(None, ge=0)
     max_participants: Optional[int] = Field(None, ge=1)
     # None: the platform default (DEFAULT_BOOKING_WINDOW_DAYS).
@@ -389,6 +404,45 @@ class ExperienceEnquiryListResponse(BaseModel):
     total: int
     page: int = 1
     page_size: int = 50
+
+
+class CommissionRow(BaseModel):
+    """A confirmed booking in the commission report: what the traveller pays,
+    what the vendor gets and NexAround's commission, as the request copied
+    them. No amounts for a price-on-request package."""
+
+    id: uuid.UUID
+    reference: str
+    status: str
+    booked_date: Optional[date] = None
+    vendor_id: Optional[uuid.UUID] = None
+    vendor_name: Optional[str] = None
+    package_title: Optional[str] = None
+    party_size: Optional[int] = None
+    currency: Optional[str] = None
+    basis: Optional[str] = None
+    commission_percent: Optional[float] = None
+    traveller_amount: Optional[float] = None
+    vendor_amount: Optional[float] = None
+    commission_amount: Optional[float] = None
+
+
+class CommissionTotal(BaseModel):
+    vendor_id: Optional[uuid.UUID] = None
+    vendor_name: Optional[str] = None
+    currency: Optional[str] = None
+    bookings: int = 0
+    traveller_amount: float = 0
+    vendor_amount: float = 0
+    commission_amount: float = 0
+
+
+class CommissionReport(BaseModel):
+    # "2026-11", newest first: every month with a confirmed booking.
+    months: list[str] = []
+    month: Optional[str] = None
+    rows: list[CommissionRow] = []
+    totals: list[CommissionTotal] = []
 
 
 class ExperienceEnquiryUpdate(BaseModel):

@@ -1,0 +1,26 @@
+---
+// Rough costs, each linked to where the figure comes from.
+import Icon from './Icon.astro';
+
+interface Item { label: string; amount: string; note?: string; source: string }
+interface Props { items: Item[]; checked: Date }
+const { items, checked } = Astro.props;
+const when = checked.toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+---
+<div class="costs">
+  <ul class="cost-list">
+    {items.map((i) => (
+      <li>
+        <div class="cost-what">
+          <strong>{i.label}</strong>
+          {i.note && <span>{i.note}</span>}
+        </div>
+        <div class="cost-amt">
+          <b>{i.amount}</b>
+          <a href={i.source} rel="noopener" target="_blank">Source <Icon name="arrow-up-right" /></a>
+        </div>
+      </li>
+    ))}
+  </ul>
+  <p class="cost-foot"><Icon name="info" /> Prices checked in {when}. They change often, so check the source before you book.</p>
+</div>

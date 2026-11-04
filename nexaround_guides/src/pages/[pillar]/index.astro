@@ -29,7 +29,7 @@ const jsonLd = [
   },
 ];
 ---
-<Base title={pillar.name} description={pillar.intro} jsonLd={jsonLd}>
+<Base title={pillar.name} description={pillar.intro} image={guides[0]?.data.cover} jsonLd={jsonLd}>
   {key === 'festivals' ? (
     <FestivalsHero guides={guides} name={pillar.name} short={pillar.short} intro={pillar.intro} />
   ) : (

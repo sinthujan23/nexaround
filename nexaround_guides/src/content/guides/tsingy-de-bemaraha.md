@@ -1,6 +1,8 @@
 ---
 title: "Tsingy de Bemaraha: Madagascar's stone forest, and the hard road to it"
 description: "Razor-edged limestone pinnacles in western Madagascar, a UNESCO site since 1990, reached by a long 4x4 day and two river ferries from Morondava. When it's open, how to go, and the safety advice."
+seoTitle: "Tsingy de Bemaraha: Madagascar's stone forest"
+seoDescription: "Razor-edged limestone pinnacles in western Madagascar, a long 4x4 day and two river ferries from Morondava. When it's open, how to go, the safety advice."
 pillar: extreme-places
 country: Madagascar
 region: Melaky, western Madagascar
@@ -56,6 +58,24 @@ affiliates: []
 related: [skeleton-coast-kaokoland]
 draft: false
 published: 2026-10-14
+quick:
+  - { q: "How do I get there?", a: "Fly to Morondava, then about 200 km of dirt road north to Bekopaka, with two river ferries: 8 to 10 hours by 4x4." }
+  - { q: "When can I go?", a: "June to November. The road is usually passable from about May, and the rains from December to April cut the park off." }
+  - { q: "Is it safe?", a: "The UK advises a recognised tour operator in this region because of highway robberies, especially at night, and armed robberies on Tsiribihina boats. Never drive at night." }
+  - { q: "How hard is the Great Tsingy?", a: "The circuits climb through the pinnacles on ladders, cables and suspension bridges. You need a head for heights, closed shoes and gloves." }
+  - { q: "Is there an easier option?", a: "The Little Tsingy near Bekopaka is a good half-day, or take a pirogue through the Manambolo gorge." }
+  - { q: "What does tsingy mean?", a: "It's often translated as \"where one cannot walk barefoot\"." }
+checklist:
+  - "Trip booked with a reputable operator and driver"
+  - "Dates inside the dry season, June to November"
+  - "A night at Kirindy Forest planned to break the drive"
+  - "Closed shoes, gloves, water and sun protection for the Great Tsingy"
+  - "Your government's travel advice checked"
+  - "On a Tsiribihina river trip: your operator asked how they manage the robbery risk"
+costs:
+  checked: 2026-11-02
+  items:
+    - { label: "Park entry", amount: "55,000 Ar (about US$12)", note: "Per foreign adult per day. The park guide is extra", source: "https://safarifind.com/blog/madagascar-national-park-fees-availability-2026" }
 ---
 
 ## Why it's special

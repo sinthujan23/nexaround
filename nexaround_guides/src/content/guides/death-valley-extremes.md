@@ -1,6 +1,8 @@
 ---
 title: "Death Valley: Badwater Basin, Furnace Creek, and 50°C summers"
 description: "The lowest, driest, and hottest point in North America at 86 m below sea level. Water rules, heat management, winter visits, and navigating without cell reception."
+seoTitle: "Death Valley: Badwater Basin, Furnace Creek and 50°C summers"
+seoDescription: "The lowest, driest and hottest point in North America, 86 m below sea level. Water rules, heat, winter visits and driving without cell reception."
 pillar: extreme-places
 country: United States
 region: California and Nevada
@@ -32,6 +34,24 @@ sources:
   - { title: "NOAA National Weather Service - Furnace Creek Climate Data", url: "https://www.weather.gov" }
 related: [coober-pedy, lake-natron-tanzania, road-trip-no-phone-signal]
 draft: false
+quick:
+  - { q: "When should I go?", a: "In winter, the hiking window. From May to October the heat is life-threatening, above 45 °C most days." }
+  - { q: "How much water do I need?", a: "At least 4 litres a person a day, plus another 20 litres in the car for emergencies." }
+  - { q: "Can I hike in summer?", a: "Not on the valley floor after 10:00: heatstroke can set in within half an hour. High viewpoints like Dante's View (1,669 m) are cooler." }
+  - { q: "What if my car breaks down?", a: "Stay with it. A car gives shade and is far easier to spot from the air than a person walking." }
+  - { q: "Is there phone signal?", a: "Not across about 90% of the park. Download offline maps and consider a satellite messenger." }
+  - { q: "How low is Badwater Basin?", a: "86 m below sea level, the lowest point in North America." }
+checklist:
+  - "4 litres of water a person a day, plus 20 litres spare in the car"
+  - "Offline maps downloaded"
+  - "Satellite messenger, if you can"
+  - "Summer walks planned to finish by 10:00"
+  - "Entrance pass bought by card (the park takes no cash)"
+costs:
+  checked: 2026-11-02
+  items:
+    - { label: "Park entrance", amount: "US$30", note: "Per private vehicle, covering everyone in it, non-US residents included. Card only", source: "https://www.nps.gov/deva/planyourvisit/fees.htm" }
+    - { label: "Petrol in the United States", amount: "about US$1.22 a litre (US$4.60 a gallon)", note: "National average, October 2026. Expect more inside the park", source: "https://www.globalpetrolprices.com/USA/gasoline_prices/" }
 ---
 
 ## Extreme heat safety

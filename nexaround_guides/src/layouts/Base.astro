@@ -8,9 +8,13 @@ import SiteUi from '../components/SiteUi.astro';
 import { SITE, ANALYTICS } from '../site';
 import { isPreview } from '../lib/mode';
 import type { Lang } from '../lib/i18n';
+import defaultImage from '../assets/guides/adelaide-to-perth-nullarbor/bunda-cliffs-2017-02.jpg';
 
 interface Props {
   title: string;
+  // Shorter versions for search results only (<title>, meta description);
+  // the page itself and share cards keep `title`.
+  metaTitle?: string;
   description?: string;
   image?: ImageMetadata;
   type?: 'website' | 'article';
@@ -24,10 +28,15 @@ interface Props {
   // Other language versions of this page, for hreflang.
   alternates?: { lang: Lang; href: string }[];
 }
-const { title, description = SITE.description, image, type = 'website', jsonLd = [], noindex = false, article, appCampaign, lang = 'en', alternates = [] } = Astro.props;
+const { title, metaTitle, description = SITE.description, image = defaultImage, type = 'website', jsonLd = [], noindex = false, article, appCampaign, lang = 'en', alternates = [] } = Astro.props;
 
 const canonical = new URL(Astro.url.pathname, Astro.site).href;
-const fullTitle = title === SITE.name ? `${SITE.name}: ${SITE.tagline}` : `${title} | ${SITE.name}`;
+// Google shows about 60 characters of a title; the site name only goes on when it fits.
+const TITLE_MAX = 60;
+const searchTitle = metaTitle ?? title;
+const fullTitle = title === SITE.name
+  ? `${SITE.name}: ${SITE.tagline}`
+  : `${searchTitle} | ${SITE.name}`.length <= TITLE_MAX ? `${searchTitle} | ${SITE.name}` : searchTitle;
 const og = image ? await getImage({ src: image, width: 1200, height: 630, fit: 'cover', format: 'jpeg' }) : null;
 const ogUrl = og ? new URL(og.src, Astro.site).href : null;
 const robots = isPreview || noindex ? 'noindex, nofollow' : 'index, follow, max-image-preview:large';

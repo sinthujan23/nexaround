@@ -1,6 +1,8 @@
 ---
 title: "Free stops on the Dalton Highway: 10 places that cost nothing"
 description: "A granite tor, the Arctic Circle sign, a free visitor centre, the last free campground and the pass over the Brooks Range. Every free stop from the Yukon River to the North Slope, by milepost."
+seoTitle: "Dalton Highway free stops: 10 places that cost nothing"
+seoDescription: "A granite tor, the Arctic Circle sign, a free visitor centre, the last free campground and the Brooks Range pass. Every free stop, by milepost."
 pillar: free-stops
 country: United States
 region: Alaska
@@ -64,6 +66,25 @@ affiliates: []
 related: [dalton-highway, free-stops-nullarbor]
 draft: false
 published: 2026-10-19
+quick:
+  - { q: "Where can I camp for free?", a: "At Five Mile Campground (MP 60), the last free BLM campground, or anywhere on BLM land outside campgrounds for up to 14 days at one spot." }
+  - { q: "What do the other campgrounds cost?", a: "$12 a night at Arctic Circle, Marion Creek and Galbraith Lake. All are first come, first served, roughly May to September." }
+  - { q: "Where can I get drinking water?", a: "From the artesian well at Five Mile, the only reliable tap for a long way." }
+  - { q: "Is the Coldfoot visitor centre free?", a: "Yes: exhibits, films, trails and rangers, in summer only, roughly late May to mid-September." }
+  - { q: "How do I find the stops?", a: "By milepost from the start of the Dalton near Livengood. Driving south? Read the list from the bottom." }
+checklist:
+  - "Visitor centre hours checked for this year"
+  - "Water containers to fill at Five Mile"
+  - "Plan to fill up at the Yukon River, Coldfoot and Deadhorse"
+  - "Bags to carry all your rubbish out"
+  - "Road conditions checked on 511.alaska.gov"
+costs:
+  checked: 2026-11-02
+  items:
+    - { label: "Five Mile Campground", amount: "Free", note: "The last free BLM campground on the Dalton", source: "https://www.blm.gov/learn/interpretive-centers/arctic-interagency-visitor-center/dalton-highway-recreation" }
+    - { label: "Other BLM campgrounds", amount: "US$12 a night", note: "Arctic Circle, Marion Creek and Galbraith Lake", source: "https://www.blm.gov/sites/default/files/docs/2023-04/AK_BLM_DaltonHighwayCampgrounds.pdf" }
+    - { label: "RV dump station, Five Mile", amount: "US$5", source: "https://www.blm.gov/sites/default/files/docs/2023-04/AK_BLM_DaltonHighwayCampgrounds.pdf" }
+    - { label: "Arctic Interagency Visitor Center", amount: "Free", source: "https://www.blm.gov/visit/arctic-interagency-visitor-center" }
 ---
 
 ## Free camping: the rules

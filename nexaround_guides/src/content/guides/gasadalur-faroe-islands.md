@@ -1,6 +1,7 @@
 ---
 title: "Gásadalur: the Faroese village that had no road until 2004"
 description: "A handful of houses above the Múlafossur waterfall on Vágar, reached only over the mountain until a tunnel opened in 2004. Getting there, the old postman's path, and visiting with care."
+seoDescription: "Houses above the Múlafossur waterfall on Vágar, reached only over the mountain until a 2004 tunnel. The way in, the postman's path, visiting with care."
 pillar: remote-villages
 country: Faroe Islands (Denmark)
 region: Vágar
@@ -64,6 +65,19 @@ affiliates: []
 related: [westfjords-iceland]
 draft: false
 published: 2026-10-14
+quick:
+  - { q: "How do I get there?", a: "It's 11 km (about 18 minutes) from Vágar Airport via Sørvágur, Bøur and the tunnel. From Tórshavn, the Vágatunnilin subsea tunnel has a toll." }
+  - { q: "How far is the waterfall viewpoint?", a: "A few minutes' easy walk from the village. Stay on the marked path and outside the fences: the cliff edges are unstable." }
+  - { q: "Can I walk the old path over the mountain?", a: "Yes, about 5 km each way from Bøur, climbing to around 400 m. Allow half a day, and don't go in cloud or bad weather." }
+  - { q: "When should I go?", a: "May to September, for long days and the best chance of a clear view to Mykines. Fog and rain can arrive any time." }
+  - { q: "How many people live there?", a: "Sixteen, in 2025." }
+  - { q: "How do I visit with care?", a: "Park only where it's marked, stay out of gardens and fields, keep away from the sheep, and keep your voice down." }
+checklist:
+  - "Transport arranged: car, taxi or tour"
+  - "A way to pay the Vágatunnilin toll, if you're driving from Tórshavn"
+  - "Route and access information for the old path checked with Visit Faroe Islands"
+  - "Weather and visibility checked on the day of any hike"
+  - "Waterproofs"
 ---
 
 ## Why it's special

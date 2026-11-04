@@ -1,6 +1,8 @@
 ---
 title: "The Dalton Highway: Fairbanks to Deadhorse, the road to the Arctic Ocean"
 description: "414 miles of mostly gravel haul road beside the Trans-Alaska Pipeline, across the Arctic Circle and over the Brooks Range. Fuel stops, the 240-mile gap, and how to reach the Arctic Ocean."
+seoTitle: "Dalton Highway: Fairbanks to Deadhorse and the Arctic Ocean"
+seoDescription: "414 miles of mostly gravel haul road beside the Trans-Alaska Pipeline, over the Arctic Circle and the Brooks Range. Fuel stops and the 240-mile gap."
 pillar: road-trips
 country: United States
 region: Alaska
@@ -65,6 +67,25 @@ affiliates:
 related: [road-trip-no-phone-signal]
 draft: false
 published: 2026-10-12
+quick:
+  - { q: "How long is it?", a: "414 miles (666 km) of mostly gravel from the Elliott Highway junction, or about 796 km from Fairbanks to Deadhorse." }
+  - { q: "Where can I get fuel?", a: "Only at the Yukon River crossing, Coldfoot and Deadhorse. From Coldfoot to Deadhorse it's about 240 miles with nothing at all." }
+  - { q: "Can I drive a rental car on it?", a: "Most standard rental contracts forbid the Dalton. A few Fairbanks companies rent vehicles set up for it; book early for summer." }
+  - { q: "Can I reach the Arctic Ocean?", a: "Only on an authorised tour from Deadhorse, booked in advance. The shore is inside the oilfield." }
+  - { q: "When should I go?", a: "June to August, with autumn colour in late August. Snow can fall at Atigun Pass in any month." }
+  - { q: "Is there phone signal?", a: "Almost none, and there's no hospital for about 500 miles. Carry a satellite messenger or beacon." }
+checklist:
+  - "Vehicle allowed on the Dalton (check the rental contract)"
+  - "Two full-size spare tyres and tools"
+  - "Spare fuel for the 240-mile gap from Coldfoot to Deadhorse"
+  - "Satellite messenger or personal locator beacon"
+  - "Arctic Ocean tour booked before you drive up"
+  - "Food, water and warm clothes, even in summer"
+  - "A way to keep food sealed in the vehicle at night"
+costs:
+  checked: 2026-11-02
+  items:
+    - { label: "Petrol in the United States", amount: "about US$1.22 a litre (US$4.60 a gallon)", note: "National average, October 2026. Expect much more at Coldfoot and Deadhorse", source: "https://www.globalpetrolprices.com/USA/gasoline_prices/" }
 ---
 
 ## The road

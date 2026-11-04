@@ -37,6 +37,21 @@ sources:
   - { title: "UNESCO Intangible Cultural Heritage: Naadam", url: "https://ich.unesco.org/en/RL/naadam-mongolian-traditional-festival-00395" }
 related: [pamir-highway, oymyakon-coldest-village]
 draft: false
+quick:
+  - { q: "When is it?", a: "11 to 13 July every year." }
+  - { q: "Where are the events?", a: "Wrestling and archery at the National Sports Stadium in Ulaanbaatar; the horse races at Hui Doloon Khudag, 35 km outside the capital." }
+  - { q: "Can I get opening ceremony tickets?", a: "They're tightly controlled and often sell out through travel agencies months in advance." }
+  - { q: "Are the horse races free?", a: "Yes. Shuttle buses run from Sükhbaatar Square and the Dragon Bus Terminal to the race plain." }
+  - { q: "How long are the races?", a: "15 to 30 km across open grassland, ridden by jockeys aged 7 to 12." }
+  - { q: "What should I eat?", a: "Khuushuur, deep-fried mutton pancakes: the festival food." }
+checklist:
+  - "Opening ceremony tickets booked through an agency, months ahead"
+  - "Shuttle to Hui Doloon Khudag planned"
+  - "Cash for the food stalls"
+costs:
+  checked: 2026-11-02
+  items:
+    - { label: "Horse races at Hui Doloon Khudag", amount: "Free", source: "https://www.mongolia.travel" }
 ---
 
 ## The three sports

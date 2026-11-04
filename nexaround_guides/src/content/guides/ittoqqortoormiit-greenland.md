@@ -1,6 +1,8 @@
 ---
 title: "Ittoqqortoormiit: living at the edge of the world's largest fjord"
 description: "350 people, nine months of sea ice, and Scoresby Sound. Reaching Greenland's most remote settlement by helicopter from Constable Point, dog sledding, and sea permits."
+seoTitle: "Ittoqqortoormiit: at the edge of the world's largest fjord"
+seoDescription: "350 people, nine months of sea ice and Scoresby Sound. Reaching Greenland's most remote settlement by helicopter, dog sledding, and sea permits."
 pillar: remote-villages
 country: Greenland
 region: Sermersooq, East Greenland
@@ -32,6 +34,17 @@ sources:
   - { title: "Government of Greenland - Arctic Expedition Permits", url: "https://exp.gl" }
 related: [longyearbyen-svalbard, oymyakon-coldest-village, tristan-da-cunha]
 draft: false
+quick:
+  - { q: "How do I get there?", a: "Fly from Reykjavík or Akureyri to Nerlerit Inaat (Constable Point), then take the 15-minute Air Greenland helicopter across Hurry Inlet." }
+  - { q: "How often is there a way in?", a: "The helicopter flies twice a week, the only year-round link to the outside world." }
+  - { q: "When can ships get there?", a: "Only in summer, around August and September. The sea is frozen for nine months of the year." }
+  - { q: "Can I walk outside the village?", a: "Only carrying a rifle and flare gun and knowing polar bear defence, which in practice means going with a local guide." }
+  - { q: "How many people live there?", a: "About 350, and the sled dogs outnumber them." }
+checklist:
+  - "Flight to Constable Point and the helicopter connection booked together"
+  - "Local guide arranged for anything beyond the town edge"
+  - "Expedition permit checked, if you're heading out onto the ice or into the national park"
+  - "Proper Arctic clothing"
 ---
 
 ## The journey to the end of the line

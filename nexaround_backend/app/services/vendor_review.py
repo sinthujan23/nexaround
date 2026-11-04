@@ -118,11 +118,16 @@ def package_proposal(data, package=None) -> dict:
     """The reviewed fields as a vendor's save (`data`) would store them.
 
     Dollar prices are kept by option id from what the vendor last asked for,
-    which kept them from live: a vendor never sets them.
+    which kept them from live: a vendor never sets them. The vendor sends
+    their own amounts; the traveller's prices are worked out with the
+    package's commission (and again on approval, should it change meanwhile).
     """
     out = {key: _jsonable(package_field_value(data, key)) for key in PACKAGE_REVIEWED_SCALARS}
     existing = vendor_package_content(package)["price_options"] if package is not None else None
-    out["price_options"] = _jsonable(price_options_for_save(data, existing, vendor=True))
+    percent = (package.commission_percent or 0) if package is not None else 0
+    out["price_options"] = _jsonable(
+        price_options_for_save(data, existing, vendor=True, percent=percent)
+    )
     return out
 
 

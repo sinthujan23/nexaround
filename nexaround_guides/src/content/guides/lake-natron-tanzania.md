@@ -1,6 +1,7 @@
 ---
 title: "Lake Natron: the red soda lake where flamingos are born"
 description: "A shallow soda lake in Tanzania's Rift Valley, with water above pH 12 and up to 60 °C, where most of the world's lesser flamingos hatch. Getting there, Ol Doinyo Lengai, and when to go."
+seoDescription: "A soda lake in Tanzania's Rift Valley, above pH 12 and up to 60 °C, where most lesser flamingos hatch. Getting there, Ol Doinyo Lengai, and when to go."
 pillar: extreme-places
 country: Tanzania
 region: Arusha Region, Great Rift Valley
@@ -59,6 +60,26 @@ affiliates:
 related: [mawsynram-cherrapunji-monsoon]
 draft: false
 published: 2026-10-14
+quick:
+  - { q: "How do I get there?", a: "From Arusha: paved road to Mto wa Mbu (about 113 km), then about 120 km of rough road to Engaresero, which takes 2.5 to 7 hours. Go by 4x4, in daylight." }
+  - { q: "How long should I stay?", a: "At least two nights. It takes most of a day to get there and another to get back." }
+  - { q: "How do I see the flamingos?", a: "Walk out across the mudflats near Engaresero with a local Maasai guide, keeping your distance and staying off the nesting areas." }
+  - { q: "Can I climb Ol Doinyo Lengai?", a: "Yes, with an experienced local guide. Climbs start around midnight and take about six hours up steep, loose ash. Check its current activity first." }
+  - { q: "Can I go in the water?", a: "No. Never walk on the salt crust or into the lake: it can burn skin and eyes." }
+  - { q: "Are there fees?", a: "Yes, collected at barriers on the roads into the area. Carry cash and keep the receipts." }
+checklist:
+  - "4x4, driver and guide booked, or an operator in Arusha"
+  - "Offline map that includes the local tracks"
+  - "Cash for the area fees"
+  - "Water, food and spare fuel for the drive in"
+  - "Head torch, good boots and plenty of water, if you're climbing Ol Doinyo Lengai"
+  - "Volcano activity and your government's travel advice checked"
+  - "Sun protection"
+costs:
+  checked: 2026-11-02
+  items:
+    - { label: "Lake Natron area fees", amount: "about US$35", note: "Per person, as listed in 2026 operator rates. Camping and vehicle fees are extra", source: "https://africanspicesafaris.com/tour/natron-river-camp-tanzania" }
+    - { label: "Petrol in Tanzania", amount: "about US$1.53 a litre", note: "National average, October 2026", source: "https://www.globalpetrolprices.com/Tanzania/gasoline_prices/" }
 ---
 
 ## Why it's special

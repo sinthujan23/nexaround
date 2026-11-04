@@ -1,6 +1,7 @@
 ---
 title: "Coober Pedy: the outback town that lives underground"
 description: "An opal-mining town 846 km north of Adelaide where people live in dugouts to escape 48 °C heat. Underground churches, a spaceship from a film set, the Breakaways, and the Stuart Highway fuel gap."
+seoDescription: "An opal-mining town 846 km north of Adelaide where people live underground to escape 48 °C heat. Underground churches, the Breakaways and the fuel gap."
 pillar: extreme-places
 country: Australia
 region: Outback South Australia
@@ -64,6 +65,24 @@ affiliates:
 related: [adelaide-to-perth-nullarbor, free-stops-nullarbor]
 draft: false
 published: 2026-10-12
+quick:
+  - { q: "How far is it?", a: "846 km north of Adelaide (850 km by our route), sealed all the way on the Stuart Highway." }
+  - { q: "Where's the fuel gap?", a: "Fill up at Glendambo: it's about 254 km to Coober Pedy with no fuel. Phone first; if Glendambo is closed, the last fuel is at Pimba, 368 km away." }
+  - { q: "Why do people live underground?", a: "The average January maximum is 36.7 °C and the record 48.3 °C. Dugouts stay at a steady, comfortable temperature all year." }
+  - { q: "Can I look for opal?", a: "Only in the designated public noodling area. Never walk the opal fields alone: there are thousands of unmarked open shafts." }
+  - { q: "Do I need a permit for the Breakaways?", a: "Yes, sold in town at the visitor centre. The mesas are 32 km north and best at sunrise and sunset." }
+  - { q: "When should I go?", a: "April to October. In summer, 40 °C days are common." }
+checklist:
+  - "Glendambo Roadhouse phoned to check it's open"
+  - "Plenty of water in the car"
+  - "Breakaways permit bought in town"
+  - "A night in an underground room booked"
+  - "Opal basics read up on (solid, doublet, triplet) before you buy"
+costs:
+  checked: 2026-11-02
+  items:
+    - { label: "Old Timers Mine", amount: "A$15 (about US$10.50)", note: "Adult entry, self-guided", source: "https://flindersandoutback.com.au/listings/attraction/old-timers-mine/" }
+    - { label: "Petrol in Australia", amount: "about US$1.64 a litre", note: "National average, October 2026. Outback roadhouses charge more", source: "https://www.globalpetrolprices.com/Australia/gasoline_prices/" }
 ---
 
 ## Why underground?

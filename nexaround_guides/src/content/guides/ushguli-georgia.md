@@ -1,6 +1,8 @@
 ---
 title: "Ushguli: one of Europe's highest villages, under Georgia's tallest peak"
 description: "Medieval stone towers at 2,100 m, snowed in for half the year, beneath the 5,193 m wall of Shkhara. How to get there from Mestia, what to see, and when the road is open."
+seoTitle: "Ushguli: one of Europe's highest villages, under Shkhara"
+seoDescription: "Medieval stone towers at 2,100 m, snowed in half the year, under the 5,193 m wall of Shkhara. From Mestia, what to see, and when the road is open."
 pillar: remote-villages
 country: Georgia
 region: Upper Svaneti
@@ -65,6 +67,23 @@ affiliates:
 related: []
 draft: false
 published: 2026-10-12
+quick:
+  - { q: "How do I get there?", a: "It's 43 km from Mestia (about 1 h 10): by shared minibus in season, by jeep with a driver for the day, or on foot over several days." }
+  - { q: "When should I go?", a: "June to September. Late September and October bring autumn colour and fewer people; in winter the road is often closed." }
+  - { q: "Should I stay overnight?", a: "If you can. Family guesthouses serve dinner, and you see the towers in the evening light after the day-trippers leave." }
+  - { q: "How long is the walk to the Shkhara glacier?", a: "About 6 km each way along the Enguri, moderate. Allow most of a day." }
+  - { q: "Which village has the most towers?", a: "Chazhashi, the one in most photographs, out of Ushguli's five villages." }
+  - { q: "How high is it?", a: "About 2,100 m, one of the highest continuously inhabited places in Europe." }
+checklist:
+  - "Transport from Mestia arranged: shared minibus or jeep"
+  - "Fare agreed with the driver before you set off"
+  - "Guesthouse booked, if you're staying the night"
+  - "In winter: a local driver, flexible dates and a plan for being snowed in"
+costs:
+  checked: 2026-11-02
+  items:
+    - { label: "Shared minibus from Mestia", amount: "about 40 GEL (about US$15)", note: "Per person, one way", source: "https://caucasus-trekking.com/treks/trek-mestia-to-ushguli" }
+    - { label: "Jeep day tour from Mestia", amount: "from 650 GEL (about US$250)", note: "Per jeep, up to six people", source: "https://sakhva-travel.com/en/ekskursiya/ushguli-shkhara-lednik/" }
 ---
 
 ## What makes Ushguli special

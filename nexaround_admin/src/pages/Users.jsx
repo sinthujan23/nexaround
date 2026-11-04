@@ -12,6 +12,8 @@ import {
 } from '../components/Icons';
 import { HeroBanner, HeroCount, SearchBar, Loading, EmptyState, Badge, PageError, Toast } from '../components/Kit';
 import ExplorerActivity from '../components/ExplorerActivity';
+import ExplorerCountries from '../components/ExplorerCountries';
+import { countryFlag, countryName } from '../constants/countries';
 import { useToast } from '../hooks';
 
 const DATE_LABELS = {
@@ -191,6 +193,8 @@ export default function Users() {
       </HeroBanner>
 
       <ExplorerActivity />
+
+      <ExplorerCountries />
 
       <div className="card modern-card" style={{ border: 'none', padding: '0', background: 'transparent', boxShadow: 'none' }}>
         <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: 'none', paddingBottom: 0 }}>
@@ -519,6 +523,9 @@ export default function Users() {
                   const travelStyle = u.preferences?.travel_style
                     ? u.preferences.travel_style.charAt(0).toUpperCase() + u.preferences.travel_style.slice(1)
                     : 'Explorer';
+                  const nationality = typeof u.preferences?.nationality === 'string'
+                    ? u.preferences.nationality.trim()
+                    : '';
 
                   return (
                     <div key={u.id} className={`modern-list-item ${selected.has(u.id) ? 'selected' : ''}`} style={{ cursor: 'default' }}>
@@ -545,6 +552,14 @@ export default function Users() {
                         <div className="list-item-content">
                           <div className="list-item-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             {u.display_name || 'Explorer'}
+                            {u.country_code && (
+                              <span
+                                className="explorer-country"
+                                title={`Using the app from ${countryName(u.country_code)} (their latest connection)`}
+                              >
+                                {countryFlag(u.country_code)} {countryName(u.country_code)}
+                              </span>
+                            )}
                             {!u.is_active && <Badge tone="red" style={{ fontSize: '9px', padding: '2px 6px' }}>Suspended</Badge>}
                           </div>
                           <div className="list-item-meta">
@@ -558,6 +573,14 @@ export default function Users() {
                             >
                               Joined {joinedDateTime}
                             </span>
+                            {nationality && (
+                              <>
+                                <span style={{ fontSize: '10px', color: 'var(--border-hover)', opacity: 0.5 }}>•</span>
+                                <span className="list-item-loc" title="Nationality they set in the app">
+                                  Nationality: {nationality}
+                                </span>
+                              </>
+                            )}
                           </div>
                         </div>
                       </div>

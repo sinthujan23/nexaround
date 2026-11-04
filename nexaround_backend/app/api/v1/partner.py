@@ -54,7 +54,9 @@ from app.services import (
 )
 from app.services.email_service import send_vendor_invite_email
 from app.services import experience_reviews, image_preview
-from app.services.experience_format import package_field_value, vendor_option_label
+from app.services.experience_format import (
+    package_field_value, vendor_option_label, vendor_view_options,
+)
 from app.services.experience_upload import save_experience_images
 from app.services.settings_service import SettingsService
 from app.utils.geo_utils import get_lat_lng
@@ -664,7 +666,8 @@ def _package_out(package) -> PartnerPackageResponse:
     # What the vendor last asked for, so their form shows it while it waits;
     # `is_published` still says whether travellers see the live version.
     asked = vendor_review.vendor_package_content(package)
-    options = asked["price_options"] or []
+    # Their own amounts only: never the traveller's price or the commission.
+    options = vendor_view_options(asked["price_options"])
     first = options[0] if options else None
     return PartnerPackageResponse(
         id=package.id,
@@ -679,7 +682,6 @@ def _package_out(package) -> PartnerPackageResponse:
         price_amount=first["amount"] if first else None,
         price_currency=asked["price_currency"],
         price_basis=first["basis"] if first else package.price_basis,
-        # No dollar price: PriceOptionBase has none, so it is dropped here.
         price_options=options,
         duration_minutes=asked["duration_minutes"],
         max_participants=asked["max_participants"],

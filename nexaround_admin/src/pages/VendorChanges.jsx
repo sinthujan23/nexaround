@@ -49,14 +49,20 @@ const formatDuration = (minutes) => {
   return m ? `${h} h ${m} min` : `${h} h`;
 };
 
-/** "LKR 30,000 / group · max 7" */
+/** "LKR 24,000 / group · max 7 · travellers pay LKR 30,000 ($90)": the
+ * vendor's amount first (what they typed), then the traveller's price when the
+ * commission makes it different. */
 const optionLine = (o, currency) => {
-  const amount = `${currency || ''} ${Number(o.amount).toLocaleString()}`.trim();
-  const price = o.basis === 'from' ? `From ${amount}` : `${amount} ${BASES[o.basis] || ''}`.trim();
+  const money = (v) => `${currency || ''} ${Number(v).toLocaleString()}`.trim();
+  const vendor = o.vendor_amount ?? o.amount;
+  const price = o.basis === 'from' ? `From ${money(vendor)}` : `${money(vendor)} ${BASES[o.basis] || ''}`.trim();
   const people = [o.min_people && `min ${o.min_people}`, o.max_people && `max ${o.max_people}`]
     .filter(Boolean).join(', ');
   const usd = o.usd != null ? ` ($${Number(o.usd).toLocaleString()})` : '';
-  return `${price}${usd}${people ? ` · ${people}` : ''}`;
+  const traveller = o.amount != null && Number(o.amount) !== Number(vendor)
+    ? ` · travellers pay ${money(o.amount)}${usd}`
+    : usd;
+  return `${price}${people ? ` · ${people}` : ''}${traveller}`;
 };
 
 /** One value of a change, shown the way it reads in the app. */

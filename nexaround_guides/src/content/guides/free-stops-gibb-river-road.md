@@ -1,6 +1,8 @@
 ---
 title: "Free stops on the Gibb River Road: 8 places that cost nothing"
 description: "A 1,500-year-old boab, Australia's biggest tides, Aboriginal art, a gorge with a swimming hole, and lookouts over five rivers and the Ord. The free stops from Derby to Kununurra, in driving order."
+seoTitle: "Gibb River Road free stops: 8 places that cost nothing"
+seoDescription: "A 1,500-year-old boab, Australia's biggest tides, Aboriginal art and a gorge swimming hole. The free stops from Derby to Kununurra, in driving order."
 pillar: free-stops
 country: Australia
 region: The Kimberley, Western Australia
@@ -69,6 +71,23 @@ affiliates: []
 related: [gibb-river-road, free-stops-nullarbor]
 draft: false
 published: 2026-10-19
+quick:
+  - { q: "Which stops are free?", a: "Derby Jetty, the Boab Prison Tree, the Mowanjum gallery, Galvans Gorge, the Pentecost crossing, the Five Rivers Lookout, the Big Crocodile and Kelly's Knob." }
+  - { q: "Which ones cost money?", a: "Windjana, Tunnel Creek and Bell gorges need a WA park pass, with camping extra. Manning Gorge charges a fee at the Mount Barnett Roadhouse." }
+  - { q: "Can I swim at Galvans Gorge?", a: "Yes. It's a short walk from the car park, and a day stop only: there's no camping." }
+  - { q: "When should I visit Derby Jetty?", a: "At a big spring tide. The range at Derby can reach 11.8 m, so check a tide table and come back a few hours later." }
+  - { q: "Can I get close to the Pentecost River?", a: "Look from the crossing, but never wade in to check the depth: saltwater crocodiles live there." }
+checklist:
+  - "Tide table checked for Derby Jetty"
+  - "Mowanjum opening hours checked (shorter in the wet season)"
+  - "WA park pass, if you're visiting the paid gorges"
+  - "Road conditions checked with Main Roads WA before each section"
+  - "An early arrival at Kelly's Knob for sunset"
+costs:
+  checked: 2026-11-02
+  items:
+    - { label: "Mowanjum Art and Culture Centre", amount: "Gallery free; museum A$5 (about US$3.50)", note: "A gold-coin donation is welcome in the gallery", source: "https://visitbroome.com.au/members/mowanjum-art-culture-centre" }
+    - { label: "Petrol in Australia", amount: "about US$1.64 a litre", note: "National average, October 2026. Remote stations charge more", source: "https://www.globalpetrolprices.com/Australia/gasoline_prices/" }
 ---
 
 ## Derby Jetty

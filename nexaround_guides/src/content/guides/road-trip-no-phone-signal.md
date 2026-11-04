@@ -1,6 +1,7 @@
 ---
 title: "How to plan a road trip with no phone signal"
 description: "Offline maps, fuel range, water, and three ways to call for help when your phone shows no bars. Lessons from the remote roads we cover, including when navigation apps get it badly wrong."
+seoDescription: "Offline maps, fuel range, water, and three ways to call for help with no bars. Lessons from remote roads, and when navigation apps get it wrong."
 pillar: know-how
 country: Worldwide
 cover: ../../assets/guides/pamir-highway/pamir-highway-bei-murghob.jpg
@@ -29,6 +30,25 @@ sources:
 related: [adelaide-to-perth-nullarbor, pamir-highway, road-of-bones-yakutsk-magadan]
 draft: false
 published: 2026-10-12
+quick:
+  - { q: "Which maps work offline?", a: "Downloaded Google Maps areas (not available everywhere) or OpenStreetMap apps like Organic Maps and OsmAnd. Carry a paper map too." }
+  - { q: "Can I trust the navigation app?", a: "Not out here. Plan the route yourself with exact waypoints, check it against a map, and ask locals before each leg." }
+  - { q: "How much fuel range do I need?", a: "Find the longest gap without fuel, work out your real range, then knock off a third. Fill up at every stop and carry enough for two legs." }
+  - { q: "How much water should I carry?", a: "At least 4 litres per person per day, plus a 20-litre emergency reserve. More in real heat." }
+  - { q: "How do I call for help with no signal?", a: "Satellite SOS on a recent phone where supported, a satellite messenger, or a registered 406 MHz personal locator beacon." }
+  - { q: "What if the car stops?", a: "Stay with it: it's far easier to spot from the air. Keep to the shade, and use your beacon or SOS if anyone's life or health is at risk." }
+checklist:
+  - "Whole route downloaded offline, with a wide margin"
+  - "Fuel stops, beds, clinics and police posts saved as pins"
+  - "Bookings, permits and directions screenshotted or printed"
+  - "Paper map"
+  - "Real range worked out against the longest fuel gap"
+  - "4 litres of water per person per day, plus a 20-litre reserve"
+  - "Food that needs no cooking, for two extra days"
+  - "Satellite SOS, a messenger or a registered beacon"
+  - "Someone told your route and when to expect you"
+  - "Car serviced, with a good spare tyre, a puncture kit and a pump"
+  - "Power bank and car charger"
 ---
 
 ## 1. Maps that work offline
