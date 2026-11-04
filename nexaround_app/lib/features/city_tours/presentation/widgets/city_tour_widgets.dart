@@ -594,7 +594,9 @@ class CityTourStopCard extends StatelessWidget {
     if (!open && _finished) {
       shape = 'done';
       card = _doneCard(context);
-    } else if (!open && state == CityTourStepState.upcoming) {
+    } else if (!open) {
+      // Still to visit, the one in hand, or a guide read with no trip
+      // ("Collapse all").
       shape = 'closed';
       card = _closedCard(context);
     } else {

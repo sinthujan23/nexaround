@@ -102,6 +102,10 @@ class _CityTourPageState extends State<CityTourPage> {
   // and ticking the open one folds it and opens the next one to visit. Until
   // they first open, fold or tick one, the sight in hand is the open one.
   String? _openStop;
+  // After "Expand all" / "Collapse all": exactly these sights are open, each
+  // tap opens or folds one, and ticking leaves them as they are. Null: the
+  // usual one open sight.
+  Set<String>? _openSights;
   bool _openChosen = false;
   // Ride and break pills opened to show their details.
   final Set<String> _openLegs = {};
@@ -306,7 +310,8 @@ class _CityTourPageState extends State<CityTourPage> {
   Future<void> _markDone(CityTourStep step, DateTime at) async {
     if (_tripBusy) return;
     _keepOpenAsIs();
-    final wasOpen = _openStop == step.id;
+    // Only the usual one open sight folds on a tick, not a chosen set.
+    final wasOpen = _openSights == null && _openStop == step.id;
     var openNext = false;
     setState(() => _tripBusy = true);
     try {
@@ -350,7 +355,8 @@ class _CityTourPageState extends State<CityTourPage> {
   /// the first after it in the day, else the first one left.
   Future<void> _openNextAfter(String stepId) async {
     await Future.delayed(cityTourMorph);
-    if (!mounted || _openStop != null) return; // they opened one meanwhile
+    // They opened one meanwhile, or chose all open or shut.
+    if (!mounted || _openStop != null || _openSights != null) return;
     final tour = _tour;
     final trip = _trip;
     final schedule = _tripSchedule();
@@ -425,6 +431,7 @@ class _CityTourPageState extends State<CityTourPage> {
     _openStop = null;
     _openChosen = false;
     _openLegs.clear();
+    _openSights = null;
   }
 
   /// A tap on a stop's number: marks it visited, any stop in any order; on
@@ -620,12 +627,20 @@ class _CityTourPageState extends State<CityTourPage> {
   /// one in hand). Rides and breaks open on their own taps.
   bool _isOpen(CityTourStep step, CityTourSchedule? schedule) {
     if (!step.isStop) return _openLegs.contains(step.id);
+    final chosen = _openSights;
+    if (chosen != null) return chosen.contains(step.id);
     if (schedule == null) return true;
     return step.id == (_openChosen ? _openStop : schedule.current?.id);
   }
 
   /// Opens a sight (folding the one open) or folds it.
-  void _toggleStop(String stepId, CityTourSchedule schedule) {
+  void _toggleStop(String stepId, CityTourSchedule? schedule) {
+    final chosen = _openSights;
+    if (chosen != null) {
+      setState(() => chosen.contains(stepId) ? chosen.remove(stepId) : chosen.add(stepId));
+      return;
+    }
+    if (schedule == null) return;
     final open = _openChosen ? _openStop : schedule.current?.id;
     setState(() {
       _openChosen = true;
@@ -935,6 +950,68 @@ class _CityTourPageState extends State<CityTourPage> {
     );
   }
 
+  /// Under the day's heading: its planned time range ("9:00 AM – 5:00 PM",
+  /// from the day's start time and each step's estimate) and a button that
+  /// opens or folds every sight card at once.
+  List<Widget> _dayBar(CityTourDay day, CityTourSchedule? schedule) {
+    final stops = day.stops;
+    final plan = cityTourDayPlan(day, DateTime.now());
+    final first = day.steps.isEmpty ? null : plan[day.steps.first.id];
+    final last = day.steps.isEmpty ? null : plan[day.steps.last.id];
+    final range = first == null || last == null
+        ? null
+        : '${cityTourClock(context, first.start)} – ${cityTourClock(context, last.end)}';
+    if (range == null && stops.isEmpty) return const [SizedBox(height: 12)];
+    final allOpen = stops.isNotEmpty && stops.every((s) => _isOpen(s, schedule));
+    return [
+      const SizedBox(height: 6),
+      Row(
+        children: [
+          if (range != null) ...[
+            const Icon(Icons.schedule_rounded, size: 15, color: _slate),
+            const SizedBox(width: 5),
+          ],
+          Expanded(
+            child: range == null
+                ? const SizedBox.shrink()
+                : Text(
+                    range,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                  ),
+          ),
+          if (stops.isNotEmpty)
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => setState(() {
+                _openSights = allOpen ? <String>{} : {for (final s in stops) s.id};
+              }),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      allOpen ? Icons.unfold_less_rounded : Icons.unfold_more_rounded,
+                      size: 16,
+                      color: AppColors.brandGreen,
+                    ),
+                    const SizedBox(width: 3),
+                    Text(
+                      allOpen ? 'Collapse all' : 'Expand all',
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: AppColors.brandGreen),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+      const SizedBox(height: 12),
+    ];
+  }
+
   List<Widget> _body(List<CityTourDay> days, CityTourDay? day, CityTourSchedule? schedule) {
     final tour = _tour;
     if (tour == null) {
@@ -1021,7 +1098,7 @@ class _CityTourPageState extends State<CityTourPage> {
             'DAY $number · STOPS',
             note: schedule == null ? null : '$stopsDone of ${stops.length} done',
           ),
-          const SizedBox(height: 12),
+          ..._dayBar(day, schedule),
         ]);
       } else {
         children.addAll([
@@ -1031,7 +1108,7 @@ class _CityTourPageState extends State<CityTourPage> {
                 ? null
                 : ['$stopsDone of ${stops.length} done', if (pace.isNotEmpty) pace].join(' · '),
           ),
-          const SizedBox(height: 12),
+          ..._dayBar(day, schedule),
         ]);
       }
       if (stops.any((s) => s.hasPin)) {
@@ -1065,7 +1142,7 @@ class _CityTourPageState extends State<CityTourPage> {
                         ? 'START HERE'
                         : (step.id == lastStopId ? 'LAST STOP' : null),
                 onTick: tick,
-                onToggle: schedule == null ? null : () => _toggleStop(step.id, schedule),
+                onToggle: schedule == null && _openSights == null ? null : () => _toggleStop(step.id, schedule),
                 onVisited: schedule == null || pastDay ? null : () => _toggleVisited(step, schedule),
                 onLinkTap: _openLink,
               )
