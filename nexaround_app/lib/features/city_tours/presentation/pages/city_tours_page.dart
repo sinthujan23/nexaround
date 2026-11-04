@@ -41,6 +41,15 @@ const _hint = Color(0xFF94A3B8);
 // but the one on screen; See all lists them all.
 const int _featuredCount = 5;
 
+// The home's fixed heights, which size the big card so the page fits the
+// screen: the card gets whatever these leave.
+const double _cardRoom = 26; // 4 above the card, 22 under it for its shadow
+const double _dotsHeight = 7;
+const double _soonHeight = 22; // "More cities are on the way"
+const double _rowTitleHeight = 56; // 14 above, the 36 title row, 6 under
+const double _rowHeight = 140;
+const double _endGap = 12; // above the navbar
+
 bool _sameCity(CityTourCity a, CityTourCity b) => a.city == b.city && a.country == b.country;
 
 /// A city with one guide opens it straight away; with more, its list of guides.
@@ -335,16 +344,40 @@ class _CityToursPageState extends State<CityToursPage> {
     final shown = featured[_page.clamp(0, featured.length - 1)];
     // Every city but the one on the card, so the row changes as cards swipe.
     final others = cities.where((c) => !_sameCity(c, shown)).toList();
-    // A little shorter with the row under it, so more of the row shows.
-    final cardHeight =
-        (MediaQuery.sizeOf(context).height * (others.isEmpty ? 0.56 : 0.5)).clamp(340.0, 480.0);
+    final bottomInset = MediaQuery.paddingOf(context).bottom;
+    // Everything but the card: the room around it, the dots, the More cities
+    // title and row (or the "on the way" line), and the gap above the navbar.
+    final double around = 6.0 +
+        _cardRoom +
+        (featured.length > 1 ? _dotsHeight : 0.0) +
+        (others.isEmpty ? _soonHeight : _rowTitleHeight + _rowHeight) +
+        _endGap +
+        bottomInset +
+        2.0;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // The card takes what is left, so the whole page fits the screen with
+        // no scrolling (only a very small screen still scrolls a little).
+        final cardHeight = (constraints.maxHeight - around).clamp(300.0, 480.0);
+        return _home(featured, others, cities, cardHeight, bottomInset);
+      },
+    );
+  }
+
+  Widget _home(
+    List<CityTourCity> featured,
+    List<CityTourCity> others,
+    List<CityTourCity> cities,
+    double cardHeight,
+    double bottomInset,
+  ) {
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: EdgeInsets.only(top: 6, bottom: bottom),
+      padding: EdgeInsets.only(top: 6, bottom: _endGap + bottomInset),
       children: [
         SizedBox(
-          // Room under the card for its shadow.
-          height: cardHeight + 26,
+          // Room above and under the card for its shadow.
+          height: cardHeight + _cardRoom,
           child: PageView.builder(
             controller: _pages,
             itemCount: featured.length,
@@ -360,7 +393,7 @@ class _CityToursPageState extends State<CityToursPage> {
         if (others.isEmpty) const _Soon(),
         if (others.isNotEmpty) ...[
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 18, 12, 6),
+            padding: const EdgeInsets.fromLTRB(20, 14, 12, 6),
             child: Row(
               children: [
                 const Expanded(
@@ -375,6 +408,8 @@ class _CityToursPageState extends State<CityToursPage> {
                     foregroundColor: AppColors.brandGreen,
                     padding: const EdgeInsets.symmetric(horizontal: 8),
                     minimumSize: const Size(0, 36),
+                    // Exactly 36 high, as _rowTitleHeight counts it.
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
                   child: const Row(
                     mainAxisSize: MainAxisSize.min,
@@ -388,7 +423,7 @@ class _CityToursPageState extends State<CityToursPage> {
             ),
           ),
           SizedBox(
-            height: 170,
+            height: _rowHeight,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 16),
