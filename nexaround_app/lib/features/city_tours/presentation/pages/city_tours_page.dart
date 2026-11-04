@@ -12,11 +12,13 @@ import 'package:nexaround_app/features/city_tours/presentation/pages/city_tour_p
 import 'package:nexaround_app/features/city_tours/presentation/pages/city_tours_classic_page.dart';
 import 'package:nexaround_app/features/city_tours/presentation/widgets/city_tour_widgets.dart';
 
-/// Curated Hubs → City Guides home: "Where to next?" over big photo cards to
-/// swipe through, one per city (the first five), with dots under them and
-/// the other cities in a row below. A city with one guide opens it straight
-/// away; with more, its list of guides. The search button swaps the heading
-/// for a search box and the cards for a plain list of the matching cities.
+/// Curated Hubs → City Guides home: "Where to next?", then NEW GUIDES: big
+/// photo cards of the five newest guides that play by themselves (until the
+/// traveller swipes them), dots under them, and "More cities": the other
+/// cities, A to Z, with See all for every city. A guide card opens its guide;
+/// a city with one guide opens it straight away, with more its list of
+/// guides. The search button swaps the heading for a search box and the cards
+/// for a plain list of the matching cities.
 ///
 /// [isTab]: shown as a bottom-navbar tab (no back button). [isActive]: whether
 /// that tab is the one on screen; the page loads on its first showing.
@@ -38,13 +40,14 @@ const _navy = Color(0xFF0F172A);
 const _slate = Color(0xFF64748B);
 const _hint = Color(0xFF94A3B8);
 
-// How many cities get a big card. The row under the cards, which stays put
-// while they play, has the cities after them (all of them when they all fit
-// on cards); See all lists every city.
+// How many of the newest guides get a big card. The row under the cards has
+// only the cities not on a card (none repeat), A to Z; See all lists every
+// city, those on the cards too.
 const int _featuredCount = 5;
 
 // The home's fixed heights, which size the big card so the page fits the
 // screen: the card gets whatever these leave.
+const double _labelHeight = 22; // "NEW GUIDES" over the cards
 const double _cardRoom = 26; // 4 above the card, 22 under it for its shadow
 const double _dotsHeight = 7;
 const double _soonHeight = 22; // "More cities are on the way"
@@ -52,7 +55,7 @@ const double _rowTitleHeight = 56; // 14 above, the 36 title row, 6 under
 const double _rowHeight = 140;
 const double _endGap = 12; // above the navbar
 
-// The cards loop: their PageView has no end and page n shows city n % count.
+// The cards loop: their PageView has no end and page n shows guide n % count.
 // It starts far in, so a first swipe back works too; 6000 is a multiple of
 // every count up to _featuredCount (5), so it opens on the first city.
 const int _loopStart = 6000;
@@ -143,29 +146,40 @@ const List<CityTourCard> _sampleTours = [
   ),
 ];
 
+bool _isSampleGuide(CityTourCard guide) => guide.id.startsWith(_samplePrefix);
+
 extension on CityTourCity {
-  bool get isSample => tours.first.id.startsWith(_samplePrefix);
+  bool get isSample => _isSampleGuide(tours.first);
+}
+
+void _showSampleNote(BuildContext context) {
+  ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(const SnackBar(
+      content: Text('A sample city, to show the layout. It has no guide yet.'),
+    ));
+}
+
+/// Opens a guide; a sample only says what it is.
+void _openGuidePage(BuildContext context, CityTourCard guide) {
+  if (_isSampleGuide(guide)) {
+    _showSampleNote(context);
+    return;
+  }
+  Navigator.push(context, MaterialPageRoute(builder: (_) => CityTourPage(card: guide)));
 }
 
 /// A city with one guide opens it straight away; with more, its list of guides.
-/// A sample city only says what it is.
 void _openCityPage(BuildContext context, CityTourCity city) {
   if (city.isSample) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(const SnackBar(
-        content: Text('A sample city, to show the layout. It has no guide yet.'),
-      ));
+    _showSampleNote(context);
     return;
   }
-  Navigator.push(
-    context,
-    MaterialPageRoute(
-      builder: (_) => city.tours.length == 1
-          ? CityTourPage(card: city.tours.first)
-          : CityTourListPage(city: city),
-    ),
-  );
+  if (city.tours.length == 1) {
+    _openGuidePage(context, city.tours.first);
+    return;
+  }
+  Navigator.push(context, MaterialPageRoute(builder: (_) => CityTourListPage(city: city)));
 }
 
 class _CityToursPageState extends State<CityToursPage> {
@@ -175,6 +189,8 @@ class _CityToursPageState extends State<CityToursPage> {
   Timer? _autoPlay;
   bool _started = false;
   bool _searching = false;
+  // The traveller swiped the cards: no more auto-play this visit.
+  bool _userSwiped = false;
   int _page = 0;
 
   List<CityTourCard>? _tours;
@@ -200,7 +216,12 @@ class _CityToursPageState extends State<CityToursPage> {
   @override
   void didUpdateWidget(covariant CityToursPage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.isActive && !oldWidget.isActive) _start();
+    if (widget.isActive && !oldWidget.isActive) {
+      _start();
+      // A new visit to the tab: the cards play again.
+      _userSwiped = false;
+      _restartAutoPlay();
+    }
   }
 
   // First showing: load the guides.
@@ -241,18 +262,28 @@ class _CityToursPageState extends State<CityToursPage> {
 
   void _openCity(CityTourCity city) => _openCityPage(context, city);
 
+  void _openGuide(CityTourCard guide) => _openGuidePage(context, guide);
+
   // Every few seconds the next card slides in, round from the last to the
-  // first. A finger on the cards holds it; it starts again a full wait after
-  // the finger lifts.
+  // first. A finger on the cards holds it, and it starts again a full wait
+  // after the finger lifts. Once the traveller swipes the cards themselves it
+  // stops for this visit (a carousel they drive stays where they put it, and
+  // moving content can be stopped, as accessibility rules ask).
   void _restartAutoPlay() {
     _autoPlay?.cancel();
+    if (_userSwiped) return;
     _autoPlay = Timer.periodic(_autoPlayEvery, (_) => _advance());
   }
 
   void _holdAutoPlay() => _autoPlay?.cancel();
 
+  void _stopAutoPlay() {
+    _userSwiped = true;
+    _autoPlay?.cancel();
+  }
+
   void _advance() {
-    if (!mounted || !widget.isActive || _searching || !_pages.hasClients) return;
+    if (!mounted || _userSwiped || !widget.isActive || _searching || !_pages.hasClients) return;
     // Not with the app in the background, under a guide opened over this
     // page, or when the phone asks for less motion.
     final life = WidgetsBinding.instance.lifecycleState;
@@ -305,12 +336,15 @@ class _CityToursPageState extends State<CityToursPage> {
     if (kClassicCityGuidesHome) {
       return CityToursClassicPage(isTab: widget.isTab, isActive: widget.isActive);
     }
-    final cities = [
-      ...CityTourCity.group(_tours ?? const []),
-      // Samples once the real guides are in (not over a spinner or an error).
-      if (kCityGuidesSampleCities && !_loading && _error == null)
-        ...CityTourCity.group(_sampleTours),
-    ];
+    final real = _tours ?? const <CityTourCard>[];
+    // Samples once the real guides are in (not over a spinner or an error).
+    final samples = kCityGuidesSampleCities && !_loading && _error == null
+        ? _sampleTours
+        : const <CityTourCard>[];
+    // Newest first: the server sends guides oldest-published first, and the
+    // samples count as older than any real guide.
+    final newest = [...real.reversed, ...samples];
+    final cities = CityTourCity.group([...real, ...samples]);
     return AnnotatedRegion<SystemUiOverlayStyle>(
       // Dark status bar icons on the white page.
       value: const SystemUiOverlayStyle(
@@ -329,7 +363,7 @@ class _CityToursPageState extends State<CityToursPage> {
                 child: RefreshIndicator(
                   color: AppColors.brandGreen,
                   onRefresh: _fetch,
-                  child: _content(cities),
+                  child: _content(cities, newest),
                 ),
               ),
             ],
@@ -441,7 +475,7 @@ class _CityToursPageState extends State<CityToursPage> {
 
   // ── Content ───────────────────────────────────────────────────────────────
 
-  Widget _content(List<CityTourCity> cities) {
+  Widget _content(List<CityTourCity> cities, List<CityTourCard> newest) {
     // Clear of the floating navbar (the home page's body runs under it).
     final bottom = 24 + MediaQuery.paddingOf(context).bottom;
     if (_loading) {
@@ -483,19 +517,17 @@ class _CityToursPageState extends State<CityToursPage> {
       );
     }
 
-    final featured = cities.take(_featuredCount).toList();
+    final featured = newest.take(_featuredCount).toList();
     final shownIndex = _shownIndex(featured.length);
-    // The row under the cards stays put while they play: the cities after
-    // the cards, or every city when they all fit on the cards.
-    final others = cities.length > _featuredCount
-        ? cities.skip(_featuredCount).toList()
-        : cities.length > 1
-            ? cities
-            : const <CityTourCity>[];
+    // The row: the cities with no guide on a card, A to Z. It stays put while
+    // the cards play, and repeats none of them.
+    final onCards = {for (final g in featured) g.cityKey};
+    final others = cities.where((c) => !onCards.contains(c.tours.first.cityKey)).toList();
     final bottomInset = MediaQuery.paddingOf(context).bottom;
     // Everything but the card: the room around it, the dots, the More cities
     // title and row (or the "on the way" line), and the gap above the navbar.
     final double around = 6.0 +
+        _labelHeight +
         _cardRoom +
         (featured.length > 1 ? _dotsHeight : 0.0) +
         (others.isEmpty ? _soonHeight : _rowTitleHeight + _rowHeight) +
@@ -513,7 +545,7 @@ class _CityToursPageState extends State<CityToursPage> {
   }
 
   Widget _home(
-    List<CityTourCity> featured,
+    List<CityTourCard> featured,
     int shownIndex,
     List<CityTourCity> others,
     List<CityTourCity> cities,
@@ -524,31 +556,61 @@ class _CityToursPageState extends State<CityToursPage> {
       physics: const AlwaysScrollableScrollPhysics(),
       padding: EdgeInsets.only(top: 6, bottom: _endGap + bottomInset),
       children: [
+        // Why these cards lead: they are the newest guides.
+        const Padding(
+          padding: EdgeInsets.fromLTRB(20, 2, 20, 4),
+          child: SizedBox(
+            height: _labelHeight - 6,
+            child: Row(
+              children: [
+                Icon(Icons.new_releases_outlined, size: 15, color: AppColors.brandGreen),
+                SizedBox(width: 6),
+                Text(
+                  'NEW GUIDES',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.3,
+                    color: _slate,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
         SizedBox(
           // Room above and under the card for its shadow.
           height: cardHeight + _cardRoom,
           child: featured.length == 1
-              // One city: a still card, nothing to swipe or play.
+              // One guide: a still card, nothing to swipe or play.
               ? Padding(
                   padding: const EdgeInsets.fromLTRB(16, 4, 16, 22),
-                  child: _FeaturedCard(city: featured.first, onTap: () => _openCity(featured.first)),
+                  child: _FeaturedCard(guide: featured.first, onTap: () => _openGuide(featured.first)),
                 )
               : Listener(
                   // A finger on the cards holds the auto-play.
                   onPointerDown: (_) => _holdAutoPlay(),
                   onPointerUp: (_) => _restartAutoPlay(),
                   onPointerCancel: (_) => _restartAutoPlay(),
-                  child: PageView.builder(
-                    controller: _pages,
-                    // No itemCount: the cards loop.
-                    onPageChanged: (i) => setState(() => _page = i % featured.length),
-                    itemBuilder: (_, i) {
-                      final city = featured[i % featured.length];
-                      return Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 22),
-                        child: _FeaturedCard(city: city, onTap: () => _openCity(city)),
-                      );
+                  child: NotificationListener<ScrollStartNotification>(
+                    // A drag by the traveller (not the auto-play's slide) stops
+                    // the auto-play for this visit.
+                    onNotification: (n) {
+                      if (n.dragDetails != null) _stopAutoPlay();
+                      return false;
                     },
+                    child: PageView.builder(
+                      controller: _pages,
+                      // No itemCount: the cards loop.
+                      onPageChanged: (i) => setState(() => _page = i % featured.length),
+                      itemBuilder: (_, i) {
+                        final guide = featured[i % featured.length];
+                        return Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 4, 16, 22),
+                          child: _FeaturedCard(guide: guide, onTap: () => _openGuide(guide)),
+                        );
+                      },
+                    ),
                   ),
                 ),
         ),
@@ -725,38 +787,32 @@ class _GlassChip extends StatelessWidget {
   }
 }
 
-/// A city's big card: its photo, the place in a glass chip, an open arrow,
-/// and at the bottom the guide's name, its stops and days, and Open guide.
-/// A city with several guides shows its name, how many, and See N guides.
+/// A new guide's big card: its photo, the place in a glass chip, an open
+/// arrow, and at the bottom the guide's name, its stops and days, and Open
+/// guide.
 class _FeaturedCard extends StatelessWidget {
-  final CityTourCity city;
+  final CityTourCard guide;
   final VoidCallback onTap;
 
-  const _FeaturedCard({required this.city, required this.onTap});
+  const _FeaturedCard({required this.guide, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    final count = city.tours.length;
-    final single = count == 1 ? city.tours.first : null;
-    final place = [city.city, city.country].where((s) => s.isNotEmpty).join(', ');
-    final title = single != null && single.title.isNotEmpty ? single.title : city.city;
+    final place = [guide.city, guide.country].where((s) => s.isNotEmpty).join(', ');
+    final title = guide.title.isNotEmpty ? guide.title : guide.city;
     final chips = <Widget>[
-      if (single == null)
-        _GlassChip(icon: Icons.auto_stories_outlined, label: '$count guides')
-      else ...[
-        if (single.stopCount > 0)
-          _GlassChip(
-            icon: Icons.route_outlined,
-            label: single.stopCount == 1 ? '1 stop' : '${single.stopCount} stops',
-          ),
-        if (single.dayCount > 0)
-          _GlassChip(
-            icon: Icons.calendar_today_outlined,
-            label: single.dayCount == 1 ? '1 day' : '${single.dayCount} days',
-          )
-        else if (single.duration.isNotEmpty)
-          _GlassChip(icon: Icons.schedule_outlined, label: single.duration),
-      ],
+      if (guide.stopCount > 0)
+        _GlassChip(
+          icon: Icons.route_outlined,
+          label: guide.stopCount == 1 ? '1 stop' : '${guide.stopCount} stops',
+        ),
+      if (guide.dayCount > 0)
+        _GlassChip(
+          icon: Icons.calendar_today_outlined,
+          label: guide.dayCount == 1 ? '1 day' : '${guide.dayCount} days',
+        )
+      else if (guide.duration.isNotEmpty)
+        _GlassChip(icon: Icons.schedule_outlined, label: guide.duration),
     ];
     return GestureDetector(
       onTap: onTap,
@@ -776,7 +832,7 @@ class _FeaturedCard extends StatelessWidget {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              _Cover(url: city.coverUrl, cacheWidth: 1000),
+              _Cover(url: guide.coverUrl, cacheWidth: 1000),
               const DecoratedBox(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
@@ -797,7 +853,7 @@ class _FeaturedCard extends StatelessWidget {
                       Flexible(
                         child: _GlassChip(icon: Icons.location_on_outlined, label: place, fontSize: 13),
                       ),
-                      if (city.isSample) ...[const SizedBox(width: 6), const _SampleTag()],
+                      if (_isSampleGuide(guide)) ...[const SizedBox(width: 6), const _SampleTag()],
                     ],
                   ),
                 ),
@@ -849,7 +905,7 @@ class _FeaturedCard extends StatelessWidget {
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Text(
-                            single != null ? 'Open guide' : 'See $count guides',
+                            'Open guide',
                             style: const TextStyle(
                               fontSize: 15.5,
                               fontWeight: FontWeight.w800,
