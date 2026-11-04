@@ -38,8 +38,9 @@ const _navy = Color(0xFF0F172A);
 const _slate = Color(0xFF64748B);
 const _hint = Color(0xFF94A3B8);
 
-// How many cities get a big card. The row under the cards has every city
-// but the one on screen; See all lists them all.
+// How many cities get a big card. The row under the cards, which stays put
+// while they play, has the cities after them (all of them when they all fit
+// on cards); See all lists every city.
 const int _featuredCount = 5;
 
 // The home's fixed heights, which size the big card so the page fits the
@@ -59,10 +60,104 @@ const int _loopStart = 6000;
 const Duration _autoPlayEvery = Duration(seconds: 5);
 const Duration _autoPlaySlide = Duration(milliseconds: 650);
 
-bool _sameCity(CityTourCity a, CityTourCity b) => a.city == b.city && a.country == b.country;
+/// TURN OFF BEFORE A STORE RELEASE. true: six sample cities follow the real
+/// ones, each tagged SAMPLE, so the TL and the client can see the home with
+/// many guides. Their photos are app assets (assets/images/city_sample_*.jpg);
+/// nothing is on the server, and a tap on one only says it is a sample.
+const bool kCityGuidesSampleCities = true;
+
+const String _samplePrefix = 'sample-';
+
+const List<CityTourCard> _sampleTours = [
+  CityTourCard(
+    id: '${_samplePrefix}tokyo',
+    city: 'Tokyo',
+    country: 'Japan',
+    title: 'Tokyo in Bloom: Parks, Temples and Neon Streets',
+    summary: '',
+    coverUrl: 'asset:assets/images/city_sample_tokyo.jpg',
+    duration: '',
+    budget: '',
+    stopCount: 28,
+    dayCount: 4,
+  ),
+  CityTourCard(
+    id: '${_samplePrefix}singapore',
+    city: 'Singapore',
+    country: 'Singapore',
+    title: 'Singapore: Hawker Halls to Garden Domes',
+    summary: '',
+    coverUrl: 'asset:assets/images/city_sample_singapore.jpg',
+    duration: '',
+    budget: '',
+    stopCount: 22,
+    dayCount: 3,
+  ),
+  CityTourCard(
+    id: '${_samplePrefix}cusco',
+    city: 'Cusco',
+    country: 'Peru',
+    title: 'Cusco: Inca Stones and Andean Markets',
+    summary: '',
+    coverUrl: 'asset:assets/images/city_sample_cusco.jpg',
+    duration: '',
+    budget: '',
+    stopCount: 18,
+    dayCount: 3,
+  ),
+  CityTourCard(
+    id: '${_samplePrefix}hongkong',
+    city: 'Hong Kong',
+    country: 'Hong Kong',
+    title: 'Hong Kong: Harbour, Peaks and Night Markets',
+    summary: '',
+    coverUrl: 'asset:assets/images/city_sample_hongkong.jpg',
+    duration: '',
+    budget: '',
+    stopCount: 24,
+    dayCount: 3,
+  ),
+  CityTourCard(
+    id: '${_samplePrefix}oaxaca',
+    city: 'Oaxaca',
+    country: 'Mexico',
+    title: 'Oaxaca: Colour, Mezcal and Old Churches',
+    summary: '',
+    coverUrl: 'asset:assets/images/city_sample_oaxaca.jpg',
+    duration: '',
+    budget: '',
+    stopCount: 16,
+    dayCount: 2,
+  ),
+  CityTourCard(
+    id: '${_samplePrefix}bangkok',
+    city: 'Bangkok',
+    country: 'Thailand',
+    title: 'Bangkok: Temples, Canals and Street Food',
+    summary: '',
+    coverUrl: 'asset:assets/images/city_sample_bangkok.jpg',
+    duration: '',
+    budget: '',
+    stopCount: 26,
+    dayCount: 3,
+  ),
+];
+
+extension on CityTourCity {
+  bool get isSample => tours.first.id.startsWith(_samplePrefix);
+}
 
 /// A city with one guide opens it straight away; with more, its list of guides.
+/// A sample city only says what it is.
 void _openCityPage(BuildContext context, CityTourCity city) {
+  if (city.isSample) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(const SnackBar(
+        content: Text('A sample city, to show the layout. It has no guide yet.'),
+      ));
+    return;
+  }
   Navigator.push(
     context,
     MaterialPageRoute(
@@ -210,7 +305,12 @@ class _CityToursPageState extends State<CityToursPage> {
     if (kClassicCityGuidesHome) {
       return CityToursClassicPage(isTab: widget.isTab, isActive: widget.isActive);
     }
-    final cities = CityTourCity.group(_tours ?? const []);
+    final cities = [
+      ...CityTourCity.group(_tours ?? const []),
+      // Samples once the real guides are in (not over a spinner or an error).
+      if (kCityGuidesSampleCities && !_loading && _error == null)
+        ...CityTourCity.group(_sampleTours),
+    ];
     return AnnotatedRegion<SystemUiOverlayStyle>(
       // Dark status bar icons on the white page.
       value: const SystemUiOverlayStyle(
@@ -385,9 +485,13 @@ class _CityToursPageState extends State<CityToursPage> {
 
     final featured = cities.take(_featuredCount).toList();
     final shownIndex = _shownIndex(featured.length);
-    final shown = featured[shownIndex];
-    // Every city but the one on the card, so the row changes as cards swipe.
-    final others = cities.where((c) => !_sameCity(c, shown)).toList();
+    // The row under the cards stays put while they play: the cities after
+    // the cards, or every city when they all fit on the cards.
+    final others = cities.length > _featuredCount
+        ? cities.skip(_featuredCount).toList()
+        : cities.length > 1
+            ? cities
+            : const <CityTourCity>[];
     final bottomInset = MediaQuery.paddingOf(context).bottom;
     // Everything but the card: the room around it, the dots, the More cities
     // title and row (or the "on the way" line), and the gap above the navbar.
@@ -545,6 +649,10 @@ class _Cover extends StatelessWidget {
     if (url.isEmpty) {
       return const DecoratedBox(decoration: BoxDecoration(gradient: AppColors.secondaryGradient));
     }
+    // A sample city's photo ships with the app.
+    if (url.startsWith('asset:')) {
+      return Image.asset(url.substring(6), fit: BoxFit.cover, cacheWidth: cacheWidth);
+    }
     return CachedNetworkImage(
       imageUrl: cityTourMediaUrl(url),
       fit: BoxFit.cover,
@@ -684,9 +792,13 @@ class _FeaturedCard extends StatelessWidget {
                   top: 14,
                   left: 14,
                   right: 66,
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: _GlassChip(icon: Icons.location_on_outlined, label: place, fontSize: 13),
+                  child: Row(
+                    children: [
+                      Flexible(
+                        child: _GlassChip(icon: Icons.location_on_outlined, label: place, fontSize: 13),
+                      ),
+                      if (city.isSample) ...[const SizedBox(width: 6), const _SampleTag()],
+                    ],
                   ),
                 ),
               const Positioned(
@@ -841,6 +953,7 @@ class _SmallCityCard extends StatelessWidget {
                   ),
                 ),
               ),
+              if (city.isSample) const Positioned(top: 8, left: 8, child: _SampleTag()),
               Positioned(
                 left: 10,
                 right: 10,
@@ -914,11 +1027,18 @@ class _CityRow extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    city.city,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: _navy),
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          city.city,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: _navy),
+                        ),
+                      ),
+                      if (city.isSample) ...[const SizedBox(width: 6), const _SampleTag()],
+                    ],
                   ),
                   const SizedBox(height: 2),
                   Row(
@@ -945,6 +1065,31 @@ class _CityRow extends StatelessWidget {
               child: const Icon(Icons.north_east_rounded, size: 18, color: AppColors.brandGreen),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Marks a sample city (kCityGuidesSampleCities).
+class _SampleTag extends StatelessWidget {
+  const _SampleTag();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFBBF24),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: const Text(
+        'SAMPLE',
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w900,
+          letterSpacing: 1,
+          color: Color(0xFF422006),
         ),
       ),
     );
