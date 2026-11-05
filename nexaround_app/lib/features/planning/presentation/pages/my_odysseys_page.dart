@@ -513,9 +513,9 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
                     begin: Alignment.bottomCenter,
                     end: Alignment.topCenter,
                     colors: [
-                      const Color(0xFF0F172A).withValues(alpha: 0.95),
-                      const Color(0xFF0F172A).withValues(alpha: 0.65),
-                      Colors.black.withValues(alpha: 0.25),
+                      const Color(0xFF0F172A).withValues(alpha: 0.85),
+                      const Color(0xFF0F172A).withValues(alpha: 0.45),
+                      Colors.black.withValues(alpha: 0.15),
                     ],
                     stops: const [0.0, 0.6, 1.0],
                   ),
