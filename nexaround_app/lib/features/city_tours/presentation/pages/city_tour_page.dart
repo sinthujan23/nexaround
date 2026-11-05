@@ -5,12 +5,14 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderAbstractViewport;
 import 'package:flutter/services.dart';
+import 'package:latlong2/latlong2.dart' as ll;
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/error/user_message.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/features/city_tours/data/city_tours_service.dart';
 import 'package:nexaround_app/features/city_tours/domain/city_tour.dart';
 import 'package:nexaround_app/features/city_tours/domain/city_tour_trip.dart';
+import 'package:nexaround_app/features/city_tours/presentation/pages/city_tour_navigation_page.dart';
 import 'package:nexaround_app/features/city_tours/presentation/widgets/city_tour_widgets.dart';
 import 'package:nexaround_app/features/experiences/presentation/pages/experience_link_page.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_description.dart';
@@ -685,6 +687,31 @@ class _CityTourPageState extends State<CityTourPage> {
     );
   }
 
+  /// A ride's map full screen, with its route when it has one.
+  void _openLegMap(CityTourStep step, List<CityTourStep> stops, List<ll.LatLng>? route) {
+    final title = step.directions.isEmpty ? step.modeLabel : step.directions;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => _CityTourMapPage(
+          title: title,
+          stops: stops,
+          route: route,
+          dashed: route == null && stops.length > 1,
+          ride: step,
+        ),
+      ),
+    );
+  }
+
+  /// The nearest stop before ([by] -1) or after ([by] 1) step [i] of the day.
+  CityTourStep? _stopNear(CityTourDay day, int i, int by) {
+    for (var j = i + by; j >= 0 && j < day.steps.length; j += by) {
+      if (day.steps[j].isStop) return day.steps[j];
+    }
+    return null;
+  }
+
   /// A round button on the cover: frosted glass on the photo, plain grey
   /// once the bar has collapsed.
   Widget _barButton({required IconData icon, required VoidCallback? onTap, Widget? child}) {
@@ -1154,6 +1181,9 @@ class _CityTourPageState extends State<CityTourPage> {
                 open: _isOpen(step, schedule),
                 onToggle: () => _toggleLeg(step.id),
                 onLinkTap: _openLink,
+                from: _stopNear(day, i, -1),
+                to: _stopNear(day, i, 1),
+                onOpenMap: (stops, route) => _openLegMap(step, stops, route),
               ));
       }
     }
@@ -1340,8 +1370,20 @@ class _PinnedStepState extends State<_PinnedStep> {
 class _CityTourMapPage extends StatefulWidget {
   final String title;
   final List<CityTourStep> stops;
+  final List<ll.LatLng>? route;
+  final bool dashed;
 
-  const _CityTourMapPage({required this.title, required this.stops});
+  /// The ride this map shows, which can then be started; its last stop is
+  /// where it goes.
+  final CityTourStep? ride;
+
+  const _CityTourMapPage({
+    required this.title,
+    required this.stops,
+    this.route,
+    this.dashed = false,
+    this.ride,
+  });
 
   @override
   State<_CityTourMapPage> createState() => _CityTourMapPageState();
@@ -1350,9 +1392,20 @@ class _CityTourMapPage extends StatefulWidget {
 class _CityTourMapPageState extends State<_CityTourMapPage> {
   CityTourStep? _picked;
 
+  /// In place of this map, so ending the directions returns to the guide.
+  void _start(CityTourStep ride) {
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CityTourNavigationPage(ride: ride, destination: widget.stops.last),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final picked = _picked;
+    final ride = widget.ride;
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -1375,42 +1428,65 @@ class _CityTourMapPageState extends State<_CityTourMapPage> {
           Positioned.fill(
             child: CityTourMap(
               stops: widget.stops,
+              route: widget.route,
+              dashed: widget.dashed,
               interactive: true,
               onStopTap: (stop) => setState(() => _picked = stop),
             ),
           ),
-          if (picked != null)
+          if (picked != null || ride?.directionsMode != null)
             Positioned(
               left: 16,
               right: 16,
               bottom: 16 + MediaQuery.of(context).padding.bottom,
-              child: Material(
-                color: Colors.white,
-                elevation: 4,
-                borderRadius: BorderRadius.circular(14),
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Row(
-                    children: [
-                      CityTourStopBadge(picked.number),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          picked.name,
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.textPrimary,
-                          ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (picked != null)
+                    Material(
+                      color: Colors.white,
+                      elevation: 4,
+                      borderRadius: BorderRadius.circular(14),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Row(
+                          children: [
+                            CityTourStopBadge(picked.number),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                picked.name,
+                                style: const TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.textPrimary,
+                                ),
+                              ),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.close_rounded, size: 20),
+                              onPressed: () => setState(() => _picked = null),
+                            ),
+                          ],
                         ),
                       ),
-                      IconButton(
-                        icon: const Icon(Icons.close_rounded, size: 20),
-                        onPressed: () => setState(() => _picked = null),
+                    ),
+                  if (ride?.directionsMode != null) ...[
+                    if (picked != null) const SizedBox(height: 12),
+                    FilledButton.icon(
+                      onPressed: () => _start(ride!),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.brandGreen,
+                        foregroundColor: Colors.white,
+                        minimumSize: const Size.fromHeight(54),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                       ),
-                    ],
-                  ),
-                ),
+                      icon: const Icon(Icons.navigation_rounded, size: 20),
+                      label: const Text('Start', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+                    ),
+                  ],
+                ],
               ),
             ),
         ],

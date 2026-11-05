@@ -6,6 +6,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong2.dart' as ll;
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/constants/api_constants.dart';
+import 'package:nexaround_app/features/city_tours/data/city_tours_service.dart';
 import 'package:nexaround_app/features/city_tours/domain/city_tour.dart';
 import 'package:nexaround_app/features/city_tours/domain/city_tour_trip.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_description.dart';
@@ -238,14 +239,18 @@ class CityTourCardTile extends StatelessWidget {
   }
 }
 
-/// The stops on a map, joined in order. Inside the page it does not pan or
-/// zoom (that would fight the page's scrolling); [onExpand] opens it full
-/// screen, where [interactive] is set.
+/// The stops on a map, joined in order, by [route] when there is one and
+/// otherwise by straight lines ([dashed] for a ride with no route). Inside the
+/// page it does not pan or zoom (that would fight the page's scrolling);
+/// [onExpand] opens it full screen, where [interactive] is set.
 class CityTourMap extends StatelessWidget {
   final List<CityTourStep> stops;
   final bool interactive;
   final VoidCallback? onExpand;
   final void Function(CityTourStep stop)? onStopTap;
+  final List<ll.LatLng>? route;
+  final bool dashed;
+  final double height;
 
   const CityTourMap({
     super.key,
@@ -253,11 +258,14 @@ class CityTourMap extends StatelessWidget {
     this.interactive = false,
     this.onExpand,
     this.onStopTap,
+    this.route,
+    this.dashed = false,
+    this.height = 200,
   });
 
   /// Mapbox streets when the app has its token, else CARTO's free tiles: the
   /// same pair Neva's map and the manual-mode map use.
-  static String get _tileUrl {
+  static String get tileUrl {
     final token = ApiConstants.mapboxAccessToken;
     return token.isNotEmpty && token != 'YOUR_MAPBOX_ACCESS_TOKEN_HERE'
         ? ApiConstants.mapboxStreets
@@ -269,14 +277,16 @@ class CityTourMap extends StatelessWidget {
     final pinned = stops.where((s) => s.hasPin).toList();
     if (pinned.isEmpty) return const SizedBox.shrink();
     final points = [for (final s in pinned) ll.LatLng(s.lat!, s.lng!)];
+    final line = route ?? points;
+    final inView = [...points, ...?route];
 
     final map = FlutterMap(
       options: MapOptions(
         initialCenter: points.first,
         initialZoom: 15,
-        initialCameraFit: points.length > 1
+        initialCameraFit: inView.length > 1
             ? CameraFit.coordinates(
-                coordinates: points,
+                coordinates: inView,
                 padding: const EdgeInsets.all(36),
                 maxZoom: 16,
               )
@@ -289,18 +299,21 @@ class CityTourMap extends StatelessWidget {
       ),
       children: [
         TileLayer(
-          urlTemplate: _tileUrl,
+          urlTemplate: tileUrl,
           subdomains: const ['a', 'b', 'c', 'd'],
           maxZoom: 19,
           userAgentPackageName: 'com.nexaround.app',
         ),
-        if (points.length > 1)
+        if (line.length > 1)
           PolylineLayer(
             polylines: [
               Polyline(
-                points: points,
+                points: line,
                 color: AppColors.brandGreen.withValues(alpha: 0.85),
                 strokeWidth: 3,
+                pattern: dashed
+                    ? StrokePattern.dashed(segments: const [8, 6])
+                    : const StrokePattern.solid(),
               ),
             ],
           ),
@@ -327,7 +340,7 @@ class CityTourMap extends StatelessWidget {
     return ClipRRect(
       borderRadius: BorderRadius.circular(16),
       child: SizedBox(
-        height: 200,
+        height: height,
         width: double.infinity,
         child: Stack(
           children: [
@@ -375,6 +388,86 @@ class CityTourMap extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// A ride on a small map, from the stop before it to the stop after: the
+/// street route when Google has one, else a dashed straight line. A day's first
+/// ride has no stop before it, so it shows just where it goes. Its route is
+/// fetched the first time the ride is opened. [onExpand] opens it full screen.
+class CityTourLegMap extends StatefulWidget {
+  final CityTourStep step;
+  final CityTourStep? from;
+  final CityTourStep to;
+  final void Function(List<ll.LatLng>? route)? onExpand;
+
+  const CityTourLegMap({
+    super.key,
+    required this.step,
+    required this.to,
+    this.from,
+    this.onExpand,
+  });
+
+  @override
+  State<CityTourLegMap> createState() => _CityTourLegMapState();
+}
+
+class _CityTourLegMapState extends State<CityTourLegMap> {
+  static const double _height = 170;
+
+  final _service = CityToursService();
+  List<ll.LatLng>? _route;
+  bool _loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final from = widget.from;
+    if (from == null) return;
+    _route = _service.cachedLegRoute(widget.step, from, widget.to);
+    if (_route == null) {
+      _loading = true;
+      _fetch(from);
+    }
+  }
+
+  Future<void> _fetch(CityTourStep from) async {
+    final route = await _service.getLegRoute(widget.step, from, widget.to);
+    if (!mounted) return;
+    setState(() {
+      _route = route;
+      _loading = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // The map fits itself to the route when it is built, so it waits for it.
+    if (_loading) {
+      return Container(
+        height: _height,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: const SizedBox(
+          width: 20,
+          height: 20,
+          child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.brandGreen),
+        ),
+      );
+    }
+    final onExpand = widget.onExpand;
+    final from = widget.from;
+    return CityTourMap(
+      stops: [if (from != null) from, widget.to],
+      route: _route,
+      dashed: from != null && _route == null,
+      height: _height,
+      onExpand: onExpand == null ? null : () => onExpand(_route),
     );
   }
 }
@@ -1052,16 +1145,34 @@ class CityTourLegPill extends StatelessWidget {
   final VoidCallback? onToggle;
   final void Function(CityTourLink link) onLinkTap;
 
+  /// The stops either side of a ride, for its map. A day's first ride has no
+  /// stop before it; its last, with no stop after it, has no map.
+  final CityTourStep? from;
+  final CityTourStep? to;
+
+  /// Opens the ride's map full screen.
+  final void Function(List<CityTourStep> stops, List<ll.LatLng>? route)? onOpenMap;
+
   const CityTourLegPill({
     super.key,
     required this.step,
     required this.open,
     required this.onLinkTap,
     this.onToggle,
+    this.from,
+    this.to,
+    this.onOpenMap,
   });
 
+  bool get _hasMap => step.isMove && (to?.hasPin ?? false);
+  CityTourStep? get _pinnedFrom => (from?.hasPin ?? false) ? from : null;
+
   bool get _hasMore =>
-      step.directions.isNotEmpty || step.accessNote.isNotEmpty || step.bodyMd.isNotEmpty || step.links.isNotEmpty;
+      _hasMap ||
+      step.directions.isNotEmpty ||
+      step.accessNote.isNotEmpty ||
+      step.bodyMd.isNotEmpty ||
+      step.links.isNotEmpty;
 
   @override
   Widget build(BuildContext context) {
@@ -1150,6 +1261,15 @@ class CityTourLegPill extends StatelessWidget {
         Text(
           step.directions,
           style: const TextStyle(fontSize: 14, height: 1.45, fontWeight: FontWeight.w600, color: _navy),
+        ),
+      if (_hasMap)
+        CityTourLegMap(
+          step: step,
+          from: _pinnedFrom,
+          to: to!,
+          onExpand: onOpenMap == null
+              ? null
+              : (route) => onOpenMap!([if (_pinnedFrom != null) _pinnedFrom!, to!], route),
         ),
       if (step.accessNote.isNotEmpty) _NoteBox(text: step.accessNote),
       if (step.bodyMd.isNotEmpty) ExperienceDescription(markdown: step.bodyMd),

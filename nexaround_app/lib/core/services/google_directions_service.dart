@@ -15,6 +15,45 @@ class LatLng {
   const LatLng(this.latitude, this.longitude);
 }
 
+/// A public transport step: which vehicle, and where to get on and off.
+class TransitStep {
+  /// Google's vehicle type: "BUS", "SUBWAY", "TRAM", "HEAVY_RAIL"…
+  final String vehicleType;
+
+  /// The vehicle in words: "Bus", "Subway".
+  final String vehicleName;
+  final String lineName;
+  final String headsign;
+  final String departureStop;
+  final String arrivalStop;
+  final int stopCount;
+
+  const TransitStep({
+    required this.vehicleType,
+    required this.vehicleName,
+    required this.lineName,
+    required this.headsign,
+    required this.departureStop,
+    required this.arrivalStop,
+    required this.stopCount,
+  });
+
+  factory TransitStep.fromJson(Map details) {
+    final line = details['line'] as Map? ?? const {};
+    final vehicle = line['vehicle'] as Map? ?? const {};
+    final shortName = line['short_name'] as String? ?? '';
+    return TransitStep(
+      vehicleType: vehicle['type'] as String? ?? '',
+      vehicleName: vehicle['name'] as String? ?? '',
+      lineName: shortName.isNotEmpty ? shortName : line['name'] as String? ?? '',
+      headsign: details['headsign'] as String? ?? '',
+      departureStop: (details['departure_stop'] as Map?)?['name'] as String? ?? '',
+      arrivalStop: (details['arrival_stop'] as Map?)?['name'] as String? ?? '',
+      stopCount: (details['num_stops'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
+
 class RouteStep {
   final double startLat;
   final double startLng;
@@ -29,6 +68,9 @@ class RouteStep {
   final String? streetName;
   final List<LatLng> polylinePoints;
 
+  /// On a public transport route, the vehicle for this step; null on foot.
+  final TransitStep? transit;
+
   const RouteStep({
     required this.startLat,
     required this.startLng,
@@ -42,6 +84,7 @@ class RouteStep {
     this.maneuver,
     this.streetName,
     this.polylinePoints = const [],
+    this.transit,
   });
 
   /// Whether this step requires a turn (vs going straight/starting).
@@ -68,6 +111,7 @@ class WalkingRoute {
   final String totalDistance;
   final String totalDuration;
   final double totalDistanceM;
+  final double totalDurationS;
   final List<LatLng> overviewPolyline;
 
   const WalkingRoute({
@@ -75,6 +119,7 @@ class WalkingRoute {
     required this.totalDistance,
     required this.totalDuration,
     required this.totalDistanceM,
+    required this.totalDurationS,
     required this.overviewPolyline,
   });
 
@@ -96,13 +141,18 @@ class WalkingRoute {
 }
 
 class GoogleDirectionsService {
-  /// Fetch a walking route between two points.
+  /// Fetch a route between two points: on foot unless [mode] says otherwise
+  /// (driving, bicycling or transit).
+  /// [exactOrigin] asks for a route from this very spot, not one the server
+  /// has cached from nearby: for a route the traveller is about to follow.
   /// Returns null on failure (API error, no route found, etc.).
   static Future<WalkingRoute?> getWalkingRoute({
     required double originLat,
     required double originLng,
     required double destLat,
     required double destLng,
+    String mode = 'walking',
+    bool exactOrigin = false,
   }) async {
     try {
       debugPrint('🗺️ Fetching walking route: ($originLat,$originLng) → ($destLat,$destLng)');
@@ -112,7 +162,8 @@ class GoogleDirectionsService {
         queryParameters: {
           'origin': '$originLat,$originLng',
           'destination': '$destLat,$destLng',
-          'mode': 'walking',
+          'mode': mode,
+          if (exactOrigin) 'exact_origin': '1',
         },
       );
 
@@ -177,6 +228,9 @@ class GoogleDirectionsService {
           maneuver: step['maneuver'] as String?,
           streetName: streetName,
           polylinePoints: stepPoints,
+          transit: step['transit_details'] is Map
+              ? TransitStep.fromJson(step['transit_details'] as Map)
+              : null,
         ));
       }
 
@@ -190,6 +244,7 @@ class GoogleDirectionsService {
         totalDistance: totalDistText,
         totalDuration: leg['duration']['text'] as String? ?? '',
         totalDistanceM: totalDistVal,
+        totalDurationS: (leg['duration']['value'] as num).toDouble(),
         overviewPolyline: overviewPoints,
       );
     } catch (e) {

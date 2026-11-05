@@ -122,7 +122,7 @@ function facts(content) {
 }
 
 /** CityTourMap, as drawn inside the page: no panning, an "Open map" pill. */
-function RouteMap({ stops }) {
+function RouteMap({ stops, height, dashed = false }) {
   const el = useRef(null);
   const map = useRef(null);
   const layer = useRef(null);
@@ -154,7 +154,7 @@ function RouteMap({ stops }) {
     const group = window.L.layerGroup();
     const points = pins.map((s) => [Number(s.lat), Number(s.lng)]);
     if (points.length > 1) {
-      window.L.polyline(points, { color: '#007A7C', opacity: 0.85, weight: 3 }).addTo(group);
+      window.L.polyline(points, { color: '#007A7C', opacity: 0.85, weight: 3, dashArray: dashed ? '8 6' : null }).addTo(group);
     }
     // The start on top, then each stop over the next, as the app draws them.
     // (Leaflet would otherwise stack the southern pin on top.)
@@ -179,7 +179,7 @@ function RouteMap({ stops }) {
   }, [key]);
 
   return (
-    <div className="ctp-map" style={pins.length ? undefined : { display: 'none' }}>
+    <div className="ctp-map" style={pins.length ? { height } : { display: 'none' }}>
       <div ref={el} className="ctp-map-canvas" />
       <span className="ctp-map-pill"><Icon name="fullscreen" size={16} /> Open map</span>
     </div>
@@ -334,13 +334,15 @@ function StopCard({ step, number, caption, partners }) {
 }
 
 /** CityTourLegPill: a walk or ride as a dark navy pill on a dashed line (a break amber); a click opens it. */
-function LegPill({ step, partners }) {
+function LegPill({ step, from, to, partners }) {
   const [open, setOpen] = useState(false);
   const isBreak = step.type === 'break';
   const title = isBreak ? (step.title || 'Break') : modeOf(step.mode).label;
   const directions = isBreak ? '' : step.title;
   const extras = [step.duration && est(step.duration), step.cost, !open && directions].filter(Boolean);
-  const more = Boolean(directions || step.access_note || step.body_md || step.links?.length);
+  // The app draws the street route; this preview only joins the two stops.
+  const hasMap = step.type === 'move' && to && hasPin(to);
+  const more = Boolean(hasMap || directions || step.access_note || step.body_md || step.links?.length);
   return (
     <div>
       <div className="ctp-dash" />
@@ -356,6 +358,7 @@ function LegPill({ step, partners }) {
       {open && more && (
         <div className="ctp-leg-card">
           {directions && <div className="ctp-leg-dir">{directions}</div>}
+          {hasMap && <RouteMap stops={from && hasPin(from) ? [from, to] : [to]} height={170} dashed />}
           {step.access_note && <NoteBox text={step.access_note} />}
           {step.body_md && <AppMarkdown text={step.body_md} />}
           <Links links={step.links} partners={partners} />
@@ -374,6 +377,13 @@ function DayRoute({ day, partners }) {
   const numbers = stopNumbers(steps);
   const stops = steps.filter((s) => s.type === 'stop').map((s) => ({ ...s, number: numbers[s.id] }));
   const lastStopId = stops.length > 1 ? stops[stops.length - 1].id : null;
+  // The nearest stop before (by -1) or after (by 1) step i, for a ride's map.
+  const stopNear = (i, by) => {
+    for (let j = i + by; j >= 0 && j < steps.length; j += by) {
+      if (steps[j].type === 'stop') return { ...steps[j], number: numbers[steps[j].id] };
+    }
+    return null;
+  };
   return (
     <>
       <RouteMap key={day.id} stops={stops} />
@@ -388,7 +398,7 @@ function DayRoute({ day, partners }) {
                 caption={i === 0 ? 'START HERE' : s.id === lastStopId ? 'LAST STOP' : null}
               />
             )
-            : <LegPill step={s} partners={partners} />}
+            : <LegPill step={s} from={stopNear(i, -1)} to={stopNear(i, 1)} partners={partners} />}
         </Fragment>
       ))}
     </>

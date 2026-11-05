@@ -74,6 +74,8 @@ dependencies:
   google_mlkit_object_detection: 0.15.1
   mapbox_maps_flutter: 2.24.2
   url_launcher: 6.3.2
+  # Keeps the screen on while a city guide navigates: GPS stops if the phone locks.
+  wakelock_plus: 1.6.1
   # The phone's own share menu, for "More" in experience_share_sheet.dart.
   share_plus: 13.3.0
   # Direct Facebook / Instagram Stories sharing. A local plugin because its iOS

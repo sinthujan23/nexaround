@@ -519,6 +519,9 @@ class GooglePlacesService {
     required double destLat,
     required double destLng,
     String profile = 'driving',
+    // A route from this very spot, not one cached from nearby: for fixed
+    // places, whose route should start at the place.
+    bool exactOrigin = false,
   }) async {
     try {
       // Use Google Directions so the distance/route matches what users see in
@@ -529,6 +532,7 @@ class GooglePlacesService {
           'origin': '$originLat,$originLng',
           'destination': '$destLat,$destLng',
           'mode': profile, // driving | walking | bicycling | transit
+          if (exactOrigin) 'exact_origin': '1',
         },
       );
       final data = response.data as Map<String, dynamic>?;

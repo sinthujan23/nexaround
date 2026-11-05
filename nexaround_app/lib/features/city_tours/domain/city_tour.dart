@@ -219,6 +219,28 @@ class CityTourStep {
   bool get isBreak => kind == 'break';
   bool get hasPin => lat != null && lng != null;
 
+  /// How Google Directions plans this ride; null for a boat, which it has no
+  /// route for.
+  String? get directionsMode {
+    switch (mode) {
+      case 'walk':
+        return 'walking';
+      case 'bike':
+        return 'bicycling';
+      case 'taxi':
+      case 'car':
+      case 'tuk_tuk':
+        return 'driving';
+      case 'metro':
+      case 'bus':
+      case 'tram':
+      case 'train':
+        return 'transit';
+      default:
+        return null;
+    }
+  }
+
   factory CityTourStep.fromJson(Map<String, dynamic> json) {
     final kind = const ['stop', 'move', 'break'].contains(json['type']) ? json['type'] as String : 'move';
     final links = (json['links'] as List? ?? const [])

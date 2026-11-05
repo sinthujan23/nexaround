@@ -132,11 +132,13 @@ def _primary_types(types: str | None) -> list[str]:
     return out[:5]
 
 
-def _google_maps_cache_key(path: str, params: dict) -> str | None:
+def _google_maps_cache_key(path: str, params: dict, exact_origin: bool = False) -> str | None:
     """Normalised identity of a proxied Google Maps call.
 
     This is what the duplicates panel groups on, so it must ignore everything
     that does not change the answer — the API key, exact GPS, field ordering.
+    `exact_origin` is for a route that must start where it was asked from (see
+    proxy_google_maps): it keeps a directions origin off the ~555 m grid.
     """
     q = {k: v for k, v in params.items() if k != "key"}
     if path.startswith("place/findplacefromtext"):
@@ -144,8 +146,9 @@ def _google_maps_cache_key(path: str, params: dict) -> str | None:
         snapped = _snap_pair(bias.split("@")[-1]) if "@" in bias else ""
         return f"fpt:{(q.get('input') or '').strip().lower()}|{snapped}"
     if path.startswith("directions"):
-        return (f"dir:{_snap_pair(q.get('origin',''))}>"
-                f"{_snap_pair_fine(q.get('destination',''))}|{q.get('mode','driving')}")
+        origin = q.get("origin", "")
+        origin = _snap_pair_fine(origin) if exact_origin else _snap_pair(origin)
+        return f"dir:{origin}>{_snap_pair_fine(q.get('destination',''))}|{q.get('mode','driving')}"
     if path.startswith("geocode"):
         return f"geo:{_snap_pair(q.get('latlng','')) if q.get('latlng') else (q.get('address') or '').strip().lower()}"
     if path.startswith("place/details"):
@@ -659,6 +662,11 @@ async def proxy_google_maps(
         raise HTTPException(status_code=500, detail="Google Maps API Key not configured")
 
     params = dict(request.query_params)
+    # Ours, not Google's, so it is not sent on. Turn-by-turn directions and a
+    # guide's fixed stops need a route from this very spot: on the shared grid
+    # a route that started up to 555 m away could come back, and a traveller
+    # who strayed would be handed the route they had just left.
+    exact_origin = params.pop("exact_origin", None) == "1"
     params["key"] = api_key
 
     url = f"https://maps.googleapis.com/maps/api/{path}"
@@ -697,7 +705,7 @@ async def proxy_google_maps(
                         }
                     )
             else:
-                cache_key = _google_maps_cache_key(path, params)
+                cache_key = _google_maps_cache_key(path, params, exact_origin=exact_origin)
                 ttl = _CACHE_TTL.get(operation)
                 redis_key = f"proxy:gmaps:v1:{cache_key}" if (cache_key and ttl) else None
 

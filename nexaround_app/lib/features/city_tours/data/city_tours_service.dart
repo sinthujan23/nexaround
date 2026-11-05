@@ -2,9 +2,12 @@ import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart' show LatLng;
+import 'package:latlong2/latlong2.dart' as ll;
 import 'package:nexaround_app/core/constants/api_constants.dart';
 import 'package:nexaround_app/core/network/api_client.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
+import 'package:nexaround_app/core/services/google_places_service.dart';
 import 'package:nexaround_app/features/city_tours/domain/city_tour.dart';
 import 'package:nexaround_app/features/city_tours/domain/city_tour_trip.dart';
 
@@ -18,6 +21,8 @@ class CityToursService {
   static String _tourKey(String id) => 'city_tour_$id';
   static String _tripKey(String id) => 'city_tour_trip_$id';
   static String _planKey(String id) => 'city_tour_plan_$id';
+  static String _legKey(CityTourStep ride, CityTourStep from, CityTourStep to) =>
+      'city_tour_leg_${ride.directionsMode}_${from.lat},${from.lng}_${to.lat},${to.lng}';
 
   Future<List<CityTourCard>> getTours() async {
     final response = await _dio.get(_base);
@@ -145,6 +150,43 @@ class CityToursService {
           .whereType<Map>()
           .map((e) => CityTourCard.fromJson(e.cast<String, dynamic>()))
           .toList();
+
+  /// A ride's street route from one stop to the next, if this device has it.
+  /// The way between two fixed places doesn't change, so it is fetched once.
+  List<ll.LatLng>? cachedLegRoute(CityTourStep ride, CityTourStep from, CityTourStep to) {
+    final points = _read(_legKey(ride, from, to))?['points'];
+    if (points is! List) return null;
+    return [
+      for (final p in points.whereType<List>())
+        ll.LatLng((p[0] as num).toDouble(), (p[1] as num).toDouble()),
+    ];
+  }
+
+  /// The ride's street route from Google Directions; null when it has none
+  /// (a boat, no public transport there) or the fetch failed.
+  Future<List<ll.LatLng>?> getLegRoute(CityTourStep ride, CityTourStep from, CityTourStep to) async {
+    final mode = ride.directionsMode;
+    if (mode == null || !from.hasPin || !to.hasPin) return null;
+    final answer = await GooglePlacesService.getDirections(
+      originLat: from.lat!,
+      originLng: from.lng!,
+      destLat: to.lat!,
+      destLng: to.lng!,
+      profile: mode,
+      exactOrigin: true,
+    );
+    final points = answer?['polyline'];
+    if (points is! List<LatLng> || points.length < 2) return null;
+    await CacheService.saveUserData(
+      _legKey(ride, from, to),
+      json.encode({
+        'points': [
+          for (final p in points) [p.latitude, p.longitude],
+        ],
+      }),
+    );
+    return [for (final p in points) ll.LatLng(p.latitude, p.longitude)];
+  }
 
   static Map<String, dynamic>? _read(String key) {
     final text = CacheService.getUserData(key);
