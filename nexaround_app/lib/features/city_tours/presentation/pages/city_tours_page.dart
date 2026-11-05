@@ -13,10 +13,10 @@ import 'package:nexaround_app/features/city_tours/presentation/pages/city_tours_
 import 'package:nexaround_app/features/city_tours/presentation/widgets/city_tour_widgets.dart';
 
 /// The City Guides tab's home: "Where to next?", then big photo cards
-/// of the five newest guides that play by themselves (until the traveller
-/// swipes them), dots under them, and "More cities": the other
-/// cities, A to Z, with See all, which opens every city right under it as
-/// the same photo cards (Show less folds them back). A guide card opens its guide;
+/// of the three newest guides that play by themselves (until the traveller
+/// swipes them), dots under them, and "More cities": every city, A to Z,
+/// with See all, which opens them all right under it as the same photo
+/// cards (Show less folds them back). A guide card opens its guide;
 /// a city with one guide opens it straight away, with more its list of
 /// guides. The search button swaps the heading for a search box and the cards
 /// for a plain list of the matching cities.
@@ -42,9 +42,8 @@ const _slate = Color(0xFF64748B);
 const _hint = Color(0xFF94A3B8);
 
 // How many of the newest guides get a big card. The row under the cards has
-// only the cities not on a card (none repeat), A to Z; See all lists every
-// city, those on the cards too.
-const int _featuredCount = 5;
+// every city, A to Z, those on the cards too.
+const int _featuredCount = 3;
 
 // The home's fixed heights, which size the big card so the page fits the
 // screen: the card gets whatever these leave.
@@ -57,7 +56,7 @@ const double _endGap = 12; // above the navbar
 
 // The cards loop: their PageView has no end and page n shows guide n % count.
 // It starts far in, so a first swipe back works too; 6000 is a multiple of
-// every count up to _featuredCount (5), so it opens on the first city.
+// every count up to _featuredCount (3), so it opens on the first city.
 const int _loopStart = 6000;
 
 // How long See all / Show less takes to scroll the page.
@@ -429,17 +428,16 @@ class _CityToursPageState extends State<CityToursPage> {
 
     final featured = newest.take(_featuredCount).toList();
     final shownIndex = _shownIndex(featured.length);
-    // The row: the cities with no guide on a card, A to Z. It stays put while
-    // the cards play, and repeats none of them.
-    final onCards = {for (final g in featured) g.cityKey};
-    final others = cities.where((c) => !onCards.contains(c.tours.first.cityKey)).toList();
+    // The row: every city, A to Z. It stays put while the cards play. One
+    // city alone is already the card, so it gets no row.
+    final rowCities = cities.length > 1 ? cities : const <CityTourCity>[];
     final bottomInset = MediaQuery.paddingOf(context).bottom;
     // Everything but the card: the room around it, the dots, the More cities
     // title and row (or the "on the way" line), and the gap above the navbar.
     final double around = 6.0 +
         _cardRoom +
         (featured.length > 1 ? _dotsHeight : 0.0) +
-        (others.isEmpty ? _soonHeight : _rowTitleHeight + _rowHeight) +
+        (rowCities.isEmpty ? _soonHeight : _rowTitleHeight + _rowHeight) +
         _endGap +
         bottomInset +
         2.0;
@@ -448,7 +446,7 @@ class _CityToursPageState extends State<CityToursPage> {
         // The card takes what is left, so the whole page fits the screen with
         // no scrolling (only a very small screen still scrolls a little).
         final cardHeight = (constraints.maxHeight - around).clamp(300.0, 480.0);
-        return _home(featured, shownIndex, others, cities, cardHeight, bottomInset);
+        return _home(featured, shownIndex, rowCities, cities, cardHeight, bottomInset);
       },
     );
   }
@@ -456,7 +454,7 @@ class _CityToursPageState extends State<CityToursPage> {
   Widget _home(
     List<CityTourCard> featured,
     int shownIndex,
-    List<CityTourCity> others,
+    List<CityTourCity> rowCities,
     List<CityTourCity> cities,
     double cardHeight,
     double bottomInset,
@@ -503,8 +501,8 @@ class _CityToursPageState extends State<CityToursPage> {
                 ),
         ),
         if (featured.length > 1) _Dots(count: featured.length, index: shownIndex),
-        if (others.isEmpty) const _Soon(),
-        if (others.isNotEmpty) ...[
+        if (rowCities.isEmpty) const _Soon(),
+        if (rowCities.isNotEmpty) ...[
           Padding(
             key: _moreKey,
             padding: const EdgeInsets.fromLTRB(20, 14, 12, 6),
@@ -564,9 +562,9 @@ class _CityToursPageState extends State<CityToursPage> {
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                itemCount: others.length,
+                itemCount: rowCities.length,
                 separatorBuilder: (_, __) => const SizedBox(width: 10),
-                itemBuilder: (_, i) => _SmallCityCard(city: others[i], onTap: () => _openCity(others[i])),
+                itemBuilder: (_, i) => _SmallCityCard(city: rowCities[i], onTap: () => _openCity(rowCities[i])),
               ),
             ),
         ],
