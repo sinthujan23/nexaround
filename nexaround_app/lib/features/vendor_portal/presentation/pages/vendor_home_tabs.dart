@@ -10,9 +10,9 @@ import '../vendor_ui.dart';
 import 'package_editor_page.dart';
 import 'vendor_requests_tab.dart';
 
-/// Requests waiting for an answer (answered right here), whether the
-/// listing is live, three numbers that each open their tab, the New package
-/// button and the first few packages.
+/// A dark band with whether the listing is live, how many requests need an
+/// answer and three numbers that each open their tab; then what the vendor
+/// has to do, and the packages to swipe through, ending in New package.
 class VendorDashboardTab extends StatefulWidget {
   final VendorPortalApi api;
   final ValueNotifier<int> changed;
@@ -42,9 +42,8 @@ class VendorDashboardTab extends StatefulWidget {
 }
 
 class _VendorDashboardTabState extends State<VendorDashboardTab> {
-  static const _preview = 3;
-  // Requests listed on Home, one line each; the rest are one tap away.
-  static const _requestPreview = 3;
+  static const _sectionTitle = TextStyle(fontSize: 18, fontWeight: FontWeight.w700, letterSpacing: -0.2);
+
   // What the device kept, until the server answers.
   late VendorStats? _stats = widget.api.cachedStats();
   late List<VendorPackage>? _packages = widget.api.cachedPackages();
@@ -110,47 +109,130 @@ class _VendorDashboardTabState extends State<VendorDashboardTab> {
   Future<void> _openRequest(VendorRequest request) =>
       showRequestSheet(context, request, widget.api, onAnswered: widget.onAnswered);
 
-  /// "Requests to answer": one compact line each, in one card, like an
-  /// inbox; a tap opens the request to answer it.
-  List<Widget> _waitingRequests() {
-    final waiting = (_requests?.requests ?? const <VendorRequest>[]).where((r) => r.waiting).toList();
-    if (waiting.isEmpty) return const [];
-    final count = _requests!.waiting > waiting.length ? _requests!.waiting : waiting.length;
-    final shown = waiting.take(_requestPreview).toList();
+  List<VendorRequest> get _waiting =>
+      (_requests?.requests ?? const <VendorRequest>[]).where((r) => r.waiting).toList();
+
+  /// Requests not answered yet: the server's count, or the ones loaded if
+  /// that is more.
+  int get _waitingCount {
+    final counted = _requests?.waiting ?? _stats?.requestsWaiting ?? 0;
+    final loaded = _waiting.length;
+    return counted > loaded ? counted : loaded;
+  }
+
+  String get _headline {
+    if (_requests == null && _stats == null) return 'Welcome back';
+    final count = _waitingCount;
+    if (count == 0) return 'All caught up';
+    return count == 1 ? '1 request needs you' : '$count requests need you';
+  }
+
+  /// The soonest date waiting: "Next one: Sat 7 Nov 2026, 3 guests".
+  String _nextRequestLine(List<VendorRequest> waiting) {
+    if (waiting.isEmpty) return 'Waiting for your answer';
+    final dated = waiting.where((r) => !r.flexible).toList()
+      ..sort((a, b) => a.preferredDate!.compareTo(b.preferredDate!));
+    final next = dated.isEmpty ? waiting.first : dated.first;
+    final when = next.flexible ? 'Flexible date' : requestDay(next.preferredDate!);
+    final guests = next.partySize;
+    return guests == null ? 'Next one: $when' : 'Next one: $when, $guests ${guests == 1 ? 'guest' : 'guests'}';
+  }
+
+  /// The package of the first review with no reply yet.
+  String _replyLine() {
+    for (final review in _reviews?.reviews ?? const <VendorReview>[]) {
+      if (review.vendorReply == null && review.packageTitle != null) return review.packageTitle!;
+    }
+    return 'A traveller is waiting for your reply';
+  }
+
+  /// What the vendor has to do, each line opening the place to do it; a
+  /// single request or package opens straight away.
+  List<Widget> _toDo() {
+    final waiting = _waiting;
+    final requests = _waitingCount;
+    final replies = _reviews?.unanswered ?? 0;
+    final toFix = (_packages ?? const <VendorPackage>[]).where((p) => p.review.changesRequested).toList();
+    final rows = <Widget>[
+      if (requests > 0)
+        _TodoRow(
+          icon: Icons.inbox_rounded,
+          color: AppColors.error,
+          title: 'Answer $requests request${requests == 1 ? '' : 's'}',
+          line: _nextRequestLine(waiting),
+          onTap: () {
+            if (requests == 1 && waiting.length == 1) {
+              _openRequest(waiting.first);
+            } else {
+              widget.onOpenTab(1);
+            }
+          },
+        ),
+      if (replies > 0)
+        _TodoRow(
+          icon: Icons.rate_review_rounded,
+          color: const Color(0xFFB7791F),
+          title: 'Reply to $replies review${replies == 1 ? '' : 's'}',
+          line: _replyLine(),
+          onTap: () => widget.onOpenTab(3),
+        ),
+      if (toFix.isNotEmpty)
+        _TodoRow(
+          icon: Icons.edit_note_rounded,
+          color: AppColors.brandGreen,
+          title: 'Fix ${toFix.length} package${toFix.length == 1 ? '' : 's'}',
+          line: 'NexAround asked for a change',
+          onTap: () {
+            if (toFix.length == 1) {
+              _edit(toFix.first);
+            } else {
+              widget.onOpenTab(2);
+            }
+          },
+        ),
+    ];
+    if (rows.isEmpty) return const [];
     return [
-      Row(
-        children: [
-          const Text('Requests to answer',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, letterSpacing: -0.2)),
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-            decoration: BoxDecoration(color: AppColors.error, borderRadius: BorderRadius.circular(AppRadii.pill)),
-            child: Text('$count',
-                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white)),
-          ),
-          const Spacer(),
-          TextButton(
-            onPressed: () => widget.onOpenTab(1),
-            style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8)),
-            child: Text(count > _requestPreview ? 'See all $count' : 'See all'),
-          ),
-        ],
-      ),
+      _gutter(const Text('To do', style: _sectionTitle)),
       const SizedBox(height: 8),
-      VendorCard(
-        padding: EdgeInsets.zero,
-        child: Column(
-          children: [
-            for (var i = 0; i < shown.length; i++) ...[
-              if (i > 0) const Divider(height: 1, indent: 72),
-              _RequestLine(request: shown[i], onTap: () => _openRequest(shown[i])),
+      _gutter(
+        VendorCard(
+          padding: EdgeInsets.zero,
+          child: Column(
+            children: [
+              for (var i = 0; i < rows.length; i++) ...[
+                if (i > 0) const Divider(height: 1, indent: 62),
+                rows[i],
+              ],
             ],
-          ],
+          ),
         ),
       ),
-      const SizedBox(height: 12),
+      const SizedBox(height: 4),
     ];
+  }
+
+  Widget _gutter(Widget child) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: vendorGutter),
+        child: child,
+      );
+
+  /// The packages, side by side, then a card to add one.
+  Widget _packageCards(List<VendorPackage> packages) {
+    return SizedBox(
+      height: 158,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        // The cards' shadows reach past the row.
+        clipBehavior: Clip.none,
+        padding: const EdgeInsets.symmetric(horizontal: vendorGutter),
+        itemCount: packages.length + 1,
+        separatorBuilder: (_, _) => const SizedBox(width: 10),
+        itemBuilder: (_, i) => i < packages.length
+            ? _PackageCard(pkg: packages[i], onTap: () => _edit(packages[i]))
+            : _NewPackageCard(onTap: () => _edit()),
+      ),
+    );
   }
 
   @override
@@ -161,75 +243,74 @@ class _VendorDashboardTabState extends State<VendorDashboardTab> {
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(vendorGutter, 4, vendorGutter, 24),
+        // No bounce: it would pull the dark band away from the header.
+        physics: const AlwaysScrollableScrollPhysics(parent: ClampingScrollPhysics()),
+        padding: const EdgeInsets.only(bottom: 24),
         children: [
-          if (_error != null && _packages != null) const VendorSavedNote(),
-          _ListingStatus(live: live),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: _StatTile(
-                  icon: Icons.check_circle_rounded,
-                  color: AppColors.brandGreen,
-                  value: stats == null ? '–' : '${stats.packagesPublished}/${stats.packagesTotal}',
-                  label: 'Packages live',
-                  onTap: () => widget.onOpenTab(2),
+          _HomeHero(
+            live: live,
+            headline: _headline,
+            stats: Row(
+              children: [
+                Expanded(
+                  child: _StatTile(
+                    icon: Icons.check_circle_rounded,
+                    color: AppColors.brandGreen,
+                    value: stats == null ? '–' : '${stats.packagesPublished}/${stats.packagesTotal}',
+                    label: 'Packages live',
+                    onTap: () => widget.onOpenTab(2),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _StatTile(
-                  icon: Icons.star_rounded,
-                  color: AppColors.ratingGold,
-                  value: reviews?.average?.toStringAsFixed(1) ?? '–',
-                  label: reviews == null
-                      ? 'Rating'
-                      : '${reviews.reviewCount} review${reviews.reviewCount == 1 ? '' : 's'}',
-                  onTap: () => widget.onOpenTab(3),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _StatTile(
+                    icon: Icons.star_rounded,
+                    color: AppColors.ratingGold,
+                    value: reviews?.average?.toStringAsFixed(1) ?? '–',
+                    label: reviews == null
+                        ? 'Rating'
+                        : '${reviews.reviewCount} review${reviews.reviewCount == 1 ? '' : 's'}',
+                    onTap: () => widget.onOpenTab(3),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _StatTile(
-                  icon: Icons.mark_chat_unread_rounded,
-                  color: (reviews?.unanswered ?? 0) > 0 ? AppColors.error : AppColors.textTertiary,
-                  value: '${reviews?.unanswered ?? '–'}',
-                  label: 'To reply',
-                  onTap: () => widget.onOpenTab(3),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _StatTile(
+                    icon: Icons.mark_chat_unread_rounded,
+                    color: (reviews?.unanswered ?? 0) > 0 ? AppColors.error : AppColors.textTertiary,
+                    value: '${reviews?.unanswered ?? '–'}',
+                    label: 'To reply',
+                    onTap: () => widget.onOpenTab(3),
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-          const SizedBox(height: 16),
-          VendorPrimaryButton(
-            label: 'New package',
-            icon: Icons.add_rounded,
-            onPressed: () => _edit(),
-          ),
-          const SizedBox(height: 24),
-          ..._waitingRequests(),
-          Row(
-            children: [
-              const Expanded(
-                child: Text('Your packages',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, letterSpacing: -0.2)),
-              ),
-              if ((_packages?.length ?? 0) > 0)
-                TextButton(
-                  onPressed: () => widget.onOpenTab(2),
-                  style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8)),
-                  child: Text((_packages!.length > _preview) ? 'See all ${_packages!.length}' : 'Manage'),
-                ),
-            ],
+          const SizedBox(height: 18),
+          if (_error != null && _packages != null) _gutter(const VendorSavedNote()),
+          ..._toDo(),
+          _gutter(
+            Row(
+              children: [
+                const Expanded(child: Text('Your packages', style: _sectionTitle)),
+                if ((_packages?.length ?? 0) > 0)
+                  TextButton(
+                    onPressed: () => widget.onOpenTab(2),
+                    style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8)),
+                    child: const Text('Manage'),
+                  ),
+              ],
+            ),
           ),
           const SizedBox(height: 8),
           if (_error != null && _packages == null)
-            VendorEmptyState(
-              icon: Icons.cloud_off_rounded,
-              title: 'Couldn’t load your packages',
-              message: userMessageFor(_error),
-              action: OutlinedButton(onPressed: _load, child: const Text('Try again')),
+            _gutter(
+              VendorEmptyState(
+                icon: Icons.cloud_off_rounded,
+                title: 'Couldn’t load your packages',
+                message: userMessageFor(_error),
+                action: OutlinedButton(onPressed: _load, child: const Text('Try again')),
+              ),
             )
           else if (_packages == null)
             const Padding(
@@ -237,131 +318,82 @@ class _VendorDashboardTabState extends State<VendorDashboardTab> {
               child: Center(child: CircularProgressIndicator()),
             )
           else if (_packages!.isEmpty)
-            const VendorEmptyState(
-              icon: Icons.confirmation_number_outlined,
-              title: 'List your first package',
-              message: 'Each package appears in the app as its own experience travellers can request. '
-                  'Tap New package to add one.',
+            _gutter(
+              VendorEmptyState(
+                icon: Icons.confirmation_number_outlined,
+                title: 'List your first package',
+                message: 'Each package appears in the app as its own experience travellers can request.',
+                action: VendorPrimaryButton(
+                  label: 'New package',
+                  icon: Icons.add_rounded,
+                  compact: true,
+                  onPressed: () => _edit(),
+                ),
+              ),
             )
           else
-            for (final pkg in _packages!.take(_preview))
-              PackageRow(pkg: pkg, onTap: () => _edit(pkg)),
+            _packageCards(_packages!),
         ],
       ),
     );
   }
 }
 
-/// One request on Home: a date tile, the package, guests and price.
-class _RequestLine extends StatelessWidget {
-  final VendorRequest request;
-  final VoidCallback onTap;
+/// The dark top of Home, carrying on from the shell's header: whether the
+/// listing is live, the headline, and the three numbers half over its edge.
+class _HomeHero extends StatelessWidget {
+  final bool live;
+  final String headline;
+  final Widget stats;
 
-  const _RequestLine({required this.request, required this.onTap});
+  const _HomeHero({required this.live, required this.headline, required this.stats});
 
   @override
   Widget build(BuildContext context) {
-    const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-    final day = request.preferredDate;
-    final facts = [
-      if (request.partySize != null) '${request.partySize} ${request.partySize == 1 ? 'guest' : 'guests'}',
-      request.priceLabel ?? 'Price on request',
-    ].join(' · ');
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
-        child: Row(
-          children: [
-            Container(
-              width: 46,
-              height: 48,
-              decoration: BoxDecoration(color: AppColors.brandGreenLight, borderRadius: AppRadii.brSm),
-              child: day == null
-                  ? const Icon(Icons.event_available_outlined, color: AppColors.brandGreen, size: 22)
-                  : Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(months[day.month - 1],
-                            style: const TextStyle(
-                                fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 0.6, color: AppColors.brandGreen)),
-                        Text('${day.day}',
-                            style: const TextStyle(
-                                fontSize: 18, fontWeight: FontWeight.w800, height: 1.1, color: AppColors.brandGreen)),
-                      ],
-                    ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+    final statusColor = live ? const Color(0xFFA7F3D0) : const Color(0xFFFCA5A5);
+    return Stack(
+      children: [
+        const Positioned.fill(
+          bottom: 44,
+          child: DecoratedBox(decoration: BoxDecoration(gradient: vendorHeaderGradient)),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(vendorGutter, 8, vendorGutter, 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
                 children: [
-                  Text(request.packageTitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700)),
-                  const SizedBox(height: 2),
-                  Text(day == null ? 'Flexible date · $facts' : facts,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 12.5, color: AppColors.textSecondary)),
+                  Icon(Icons.circle, size: 8, color: statusColor),
+                  const SizedBox(width: 7),
+                  Expanded(
+                    child: Text(
+                      live ? 'Your listing is live' : 'Your listing is hidden. Contact NexAround.',
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: statusColor),
+                    ),
+                  ),
                 ],
               ),
-            ),
-            const SizedBox(width: 6),
-            const Icon(Icons.chevron_right_rounded, color: AppColors.textTertiary),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Green "live" or red "hidden" at the top of Home.
-class _ListingStatus extends StatelessWidget {
-  final bool live;
-
-  const _ListingStatus({required this.live});
-
-  @override
-  Widget build(BuildContext context) {
-    final color = live ? AppColors.success : AppColors.error;
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
-        borderRadius: AppRadii.brMd,
-        border: Border.all(color: color.withValues(alpha: 0.25), width: 0.8),
-      ),
-      child: Row(
-        children: [
-          Icon(live ? Icons.public_rounded : Icons.visibility_off_rounded, size: 20, color: color),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  live ? 'Your listing is live on NexAround' : 'Your listing is hidden',
-                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
-                ),
-                const SizedBox(height: 1),
-                Text(
-                  live
-                      ? 'Travellers can find and request your live packages.'
-                      : 'Travellers can’t see your packages. Contact NexAround.',
-                  style: const TextStyle(fontSize: 12.5, height: 1.35, color: AppColors.textSecondary),
-                ),
-              ],
-            ),
+              const SizedBox(height: 4),
+              Text(
+                headline,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                    fontSize: 26, fontWeight: FontWeight.w700, letterSpacing: -0.5, color: Colors.white),
+              ),
+              const SizedBox(height: 14),
+              stats,
+            ],
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
 
-/// One number on Home, like the stats on the traveller's Profile.
+/// One number on Home. Solid white, not a GlassCard: that one is see-through
+/// enough to show the dark band behind its top half.
 class _StatTile extends StatelessWidget {
   final IconData icon;
   final Color color;
@@ -379,30 +411,172 @@ class _StatTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: const BoxDecoration(borderRadius: AppRadii.brMd, boxShadow: AppShadows.sm),
+      child: Material(
+        color: Colors.white,
+        borderRadius: AppRadii.brMd,
+        child: InkWell(
+          borderRadius: AppRadii.brMd,
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(11, 11, 11, 10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(icon, size: 18, color: color),
+                const SizedBox(height: 4),
+                Text(value,
+                    style: const TextStyle(
+                        fontSize: 21, fontWeight: FontWeight.w800, height: 1.15, color: AppColors.textPrimary)),
+                Text(label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 11.5, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// One thing the vendor has to do.
+class _TodoRow extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final String title;
+  final String line;
+  final VoidCallback onTap;
+
+  const _TodoRow({
+    required this.icon,
+    required this.color,
+    required this.title,
+    required this.line,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+        child: Row(
+          children: [
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: AppRadii.brSm),
+              child: Icon(icon, size: 19, color: color),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 2),
+                  Text(line,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 12.5, color: AppColors.textSecondary)),
+                ],
+              ),
+            ),
+            const SizedBox(width: 6),
+            const Icon(Icons.chevron_right_rounded, color: AppColors.textTertiary),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A package on Home: photo, title and main price. A tap opens it to edit.
+class _PackageCard extends StatelessWidget {
+  static const _width = 168.0;
+
+  final VendorPackage pkg;
+  final VoidCallback onTap;
+
+  const _PackageCard({required this.pkg, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
     return GlassCard(
       onTap: onTap,
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+      padding: EdgeInsets.zero,
       borderRadius: AppRadii.brMd,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 30,
-            height: 30,
-            decoration: BoxDecoration(color: color.withValues(alpha: 0.12), shape: BoxShape.circle),
-            child: Icon(icon, size: 16, color: color),
-          ),
-          const SizedBox(height: 10),
-          Text(value,
-              style: const TextStyle(
-                  fontSize: 22, fontWeight: FontWeight.w800, height: 1.1, color: AppColors.textPrimary)),
-          const SizedBox(height: 2),
-          Text(label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                  fontSize: 11.5, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
-        ],
+      child: SizedBox(
+        width: _width,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // The photo takes what the text leaves, at any text size.
+            Expanded(
+              child: PackageThumb(
+                pkg.photoUrls,
+                previews: pkg.imagePreviews,
+                size: _width,
+                height: double.infinity,
+                borderRadius: BorderRadius.zero,
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(pkg.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 2),
+                  Text(packagePriceLine(pkg),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The last card in the row: adds a package.
+class _NewPackageCard extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _NewPackageCard({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassCard(
+      onTap: onTap,
+      padding: EdgeInsets.zero,
+      borderRadius: AppRadii.brMd,
+      child: const SizedBox(
+        width: 120,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.add_circle_rounded, size: 30, color: AppColors.brandGreen),
+            SizedBox(height: 6),
+            Text('New package',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.brandGreen)),
+          ],
+        ),
       ),
     );
   }

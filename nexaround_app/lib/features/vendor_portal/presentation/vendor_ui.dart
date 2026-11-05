@@ -17,6 +17,10 @@ import 'package:nexaround_app/features/vendor_portal/data/vendor_portal_models.d
 /// The side margin of every vendor screen, as in Experiences.
 const vendorGutter = 16.0;
 
+/// The dark band across the top of Home. It runs left to right, so the
+/// shell's header and the Home tab's part of it meet without a seam.
+const vendorHeaderGradient = LinearGradient(colors: [Color(0xFF0F172A), Color(0xFF075E60)]);
+
 /// The package categories the server takes: the app's, without the "All"
 /// filter chip, plus "Other", which the app shows with the generic style.
 final List<ExperienceCategory> vendorCategories = [
@@ -121,6 +125,9 @@ class VendorCircleButton extends StatelessWidget {
   final Color color;
   final Widget? badge;
 
+  /// On Home's dark band: see-through, with a white icon.
+  final bool onDark;
+
   const VendorCircleButton({
     super.key,
     required this.icon,
@@ -128,6 +135,7 @@ class VendorCircleButton extends StatelessWidget {
     required this.onPressed,
     this.color = AppColors.textPrimary,
     this.badge,
+    this.onDark = false,
   });
 
   @override
@@ -136,15 +144,21 @@ class VendorCircleButton extends StatelessWidget {
       width: 40,
       height: 40,
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: onDark ? Colors.white.withValues(alpha: 0.14) : AppColors.surface,
         shape: BoxShape.circle,
-        border: Border.all(color: AppColors.border.withValues(alpha: 0.6)),
+        border: Border.all(
+          color: onDark ? Colors.white.withValues(alpha: 0.2) : AppColors.border.withValues(alpha: 0.6),
+        ),
       ),
       child: IconButton(
         tooltip: tooltip,
         padding: EdgeInsets.zero,
         onPressed: onPressed,
-        icon: Icon(icon, size: icon == Icons.arrow_back_ios_new_rounded ? 16 : 20, color: color),
+        icon: Icon(
+          icon,
+          size: icon == Icons.arrow_back_ios_new_rounded ? 16 : 20,
+          color: onDark ? Colors.white : color,
+        ),
       ),
     );
     if (badge == null) return button;
@@ -643,11 +657,17 @@ class PackageThumb extends StatelessWidget {
   final Map<String, String> previews;
   final double size;
 
+  /// Taller or shorter than wide; square when null.
+  final double? height;
+  final BorderRadius? borderRadius;
+
   const PackageThumb(
     this.photoUrls, {
     super.key,
     this.previews = const {},
     this.size = 64,
+    this.height,
+    this.borderRadius,
   });
 
   @override
@@ -657,10 +677,10 @@ class PackageThumb extends StatelessWidget {
       child: const Icon(Icons.kayaking_rounded, color: AppColors.textMuted),
     );
     return ClipRRect(
-      borderRadius: AppRadii.brSm,
+      borderRadius: borderRadius ?? AppRadii.brSm,
       child: SizedBox(
         width: size,
-        height: size,
+        height: height ?? size,
         child: photoUrls.isEmpty
             ? placeholder
             : CachedNetworkImage(

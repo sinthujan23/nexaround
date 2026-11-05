@@ -33,13 +33,33 @@ class _VendorReviewsTabState extends State<VendorReviewsTab> {
   // A fresh list (pull, or the filter changed) outdates any load still
   // running: its answer is for the old filter.
   int _generation = 0;
+  // Reviews per star, one star first, for the summary's bars. The server sends
+  // no such counts, so they exist only while every review is loaded; with
+  // more than a page there are no bars rather than wrong ones.
+  List<int>? _starCounts;
 
   bool get _hasMore => _summary != null && _reviews.length < _summary!.total;
 
   @override
   void initState() {
     super.initState();
+    _countStars();
     _load(reset: true);
+  }
+
+  /// Counts the unfiltered list; the filtered one leaves the bars as they are.
+  void _countStars() {
+    final summary = _summary;
+    if (_unansweredOnly || summary == null) return;
+    if (_reviews.isEmpty || _reviews.length < summary.reviewCount) {
+      _starCounts = null;
+      return;
+    }
+    final counts = List.filled(5, 0);
+    for (final review in _reviews) {
+      if (review.rating >= 1 && review.rating <= 5) counts[review.rating - 1]++;
+    }
+    _starCounts = counts;
   }
 
   Future<void> _load({bool reset = false}) async {
@@ -57,6 +77,7 @@ class _VendorReviewsTabState extends State<VendorReviewsTab> {
         _reviews.addAll(result.reviews);
         if (reset) _fromCache = false;
         _error = null;
+        _countStars();
       });
     } catch (e) {
       if (mounted && generation == _generation) setState(() => _error = e);
@@ -157,10 +178,7 @@ class _VendorReviewsTabState extends State<VendorReviewsTab> {
         children: [
           const Text('Reviews',
               style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, letterSpacing: -0.3)),
-          const SizedBox(height: 2),
-          const Text('What travellers say about your packages',
-              style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           if (_error != null && _fromCache) const VendorSavedNote(),
           if (summary != null) _summaryCard(summary),
           _filters(summary),
@@ -200,73 +218,120 @@ class _VendorReviewsTabState extends State<VendorReviewsTab> {
 
   Widget _summaryCard(VendorReviewPage summary) {
     final average = summary.average;
+    final counts = _starCounts;
     return VendorCard(
-      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(14),
       child: Row(
         children: [
-          Text(average == null ? '–' : average.toStringAsFixed(1),
-              style: const TextStyle(fontSize: 40, fontWeight: FontWeight.w800, height: 1, letterSpacing: -1)),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _Stars(rating: average ?? 0, size: 18),
-                const SizedBox(height: 4),
-                Text(
-                  '${summary.reviewCount} review${summary.reviewCount == 1 ? '' : 's'}',
-                  style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
-                ),
-              ],
-            ),
+          Column(
+            children: [
+              Text(average == null ? '–' : average.toStringAsFixed(1),
+                  style: const TextStyle(fontSize: 38, fontWeight: FontWeight.w800, height: 1, letterSpacing: -1)),
+              const SizedBox(height: 4),
+              _Stars(rating: average ?? 0, size: 14),
+              const SizedBox(height: 3),
+              Text(
+                '${summary.reviewCount} review${summary.reviewCount == 1 ? '' : 's'}',
+                style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+              ),
+            ],
           ),
+          if (counts != null) ...[
+            const SizedBox(width: 16),
+            Expanded(child: _RatingBars(counts: counts)),
+          ],
         ],
       ),
     );
   }
 
-  /// All / Waiting for a reply, as one segmented control.
+  /// All / Waiting for a reply, as chips.
   Widget _filters(VendorReviewPage? summary) {
     final waiting = summary?.unanswered ?? 0;
-    Widget segment(String label, bool selected, VoidCallback onTap) => Expanded(
-          child: Semantics(
-            button: true,
-            selected: selected,
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: onTap,
-              child: AnimatedContainer(
-                duration: AppDurations.fast,
-                height: 38,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: selected ? Colors.white : Colors.transparent,
-                  borderRadius: BorderRadius.circular(AppRadii.pill),
-                  boxShadow: selected ? AppShadows.sm : null,
-                ),
-                child: Text(label,
-                    style: TextStyle(
-                      fontSize: 13.5,
-                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                      color: selected ? AppColors.textPrimary : AppColors.textSecondary,
-                    )),
+    Widget chip(String label, bool selected, VoidCallback onTap) => Semantics(
+          button: true,
+          selected: selected,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onTap,
+            child: AnimatedContainer(
+              duration: AppDurations.fast,
+              height: 34,
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: selected ? AppColors.primary : Colors.white,
+                borderRadius: BorderRadius.circular(AppRadii.pill),
+                border: Border.all(color: selected ? AppColors.primary : AppColors.border),
               ),
+              child: Text(label,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                    color: selected ? Colors.white : AppColors.textPrimary,
+                  )),
             ),
           ),
         );
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(AppRadii.pill),
-      ),
-      child: Row(
-        children: [
-          segment('All', !_unansweredOnly, () => _filter(false)),
-          segment(waiting > 0 ? 'Waiting for a reply ($waiting)' : 'Waiting for a reply', _unansweredOnly,
+    return Row(
+      children: [
+        chip('All', !_unansweredOnly, () => _filter(false)),
+        const SizedBox(width: 8),
+        Flexible(
+          child: chip(waiting > 0 ? 'Waiting for a reply · $waiting' : 'Waiting for a reply', _unansweredOnly,
               () => _filter(true)),
-        ],
-      ),
+        ),
+      ],
+    );
+  }
+}
+
+/// How the reviews split by stars, five at the top.
+class _RatingBars extends StatelessWidget {
+  /// Reviews per star, one star first.
+  final List<int> counts;
+
+  const _RatingBars({required this.counts});
+
+  @override
+  Widget build(BuildContext context) {
+    final total = counts.fold<int>(0, (sum, n) => sum + n);
+    return Column(
+      children: [
+        for (var star = 5; star >= 1; star--)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 2),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 10,
+                  child: Text('$star',
+                      style: const TextStyle(fontSize: 11.5, height: 1.2, color: AppColors.textSecondary)),
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Container(
+                    height: 6,
+                    alignment: Alignment.centerLeft,
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceVariant,
+                      borderRadius: BorderRadius.circular(AppRadii.pill),
+                    ),
+                    child: FractionallySizedBox(
+                      widthFactor: total == 0 ? 0.0 : counts[star - 1] / total,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: AppColors.ratingGold,
+                          borderRadius: BorderRadius.circular(AppRadii.pill),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
     );
   }
 }
@@ -312,100 +377,82 @@ class _ReviewCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final name = review.reviewerName.trim();
     final replied = review.vendorReply != null;
     return VendorCard(
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 6),
+      padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Container(
-                width: 36,
-                height: 36,
-                alignment: Alignment.center,
-                decoration: const BoxDecoration(color: AppColors.surfaceVariant, shape: BoxShape.circle),
-                child: Text(name.isEmpty ? '?' : name.characters.first.toUpperCase(),
-                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
-              ),
-              const SizedBox(width: 10),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700)),
-                    const SizedBox(height: 2),
-                    Row(
-                      children: [
-                        _Stars(rating: review.rating.toDouble(), size: 14),
-                        const SizedBox(width: 6),
-                        Text(_date(review.createdAt),
-                            style: const TextStyle(fontSize: 11.5, color: AppColors.textTertiary)),
-                      ],
-                    ),
-                  ],
-                ),
+                child: Text(review.reviewerName.trim(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700)),
               ),
+              const SizedBox(width: 8),
+              Text(_date(review.createdAt),
+                  style: const TextStyle(fontSize: 11.5, color: AppColors.textTertiary)),
             ],
           ),
-          if (review.packageTitle != null) ...[
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                const Icon(Icons.confirmation_number_outlined, size: 14, color: AppColors.brandGreen),
-                const SizedBox(width: 5),
+          const SizedBox(height: 3),
+          Row(
+            children: [
+              _Stars(rating: review.rating.toDouble(), size: 14),
+              if (review.packageTitle != null) ...[
+                const SizedBox(width: 6),
                 Expanded(
                   child: Text(review.packageTitle!,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          fontSize: 12.5, color: AppColors.brandGreen, fontWeight: FontWeight.w600)),
+                      style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
                 ),
               ],
-            ),
-          ],
-          if ((review.comment ?? '').isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Text(review.comment!, style: const TextStyle(fontSize: 14, height: 1.45)),
-          ],
-          if (replied) ...[
-            const SizedBox(height: 12),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-              decoration: const BoxDecoration(
-                color: AppColors.brandGreenLight,
-                borderRadius: AppRadii.brSm,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Your reply',
-                      style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: AppColors.brandGreen)),
-                  const SizedBox(height: 4),
-                  Text(review.vendorReply!, style: const TextStyle(fontSize: 13.5, height: 1.4)),
-                ],
-              ),
-            ),
-          ],
-          const SizedBox(height: 4),
-          Row(
-            children: [
-              if (!replied)
-                const Text('Waiting for your reply',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFFB7791F))),
-              const Spacer(),
-              TextButton.icon(
-                onPressed: onReply,
-                icon: Icon(replied ? Icons.edit_outlined : Icons.reply_rounded, size: 18),
-                label: Text(replied ? 'Edit reply' : 'Reply'),
-              ),
             ],
           ),
+          if ((review.comment ?? '').isNotEmpty) ...[
+            const SizedBox(height: 7),
+            Text(review.comment!, style: const TextStyle(fontSize: 13.5, height: 1.4)),
+          ],
+          const SizedBox(height: 10),
+          if (replied) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
+              decoration: const BoxDecoration(color: AppColors.surface, borderRadius: AppRadii.brSm),
+              child: Text.rich(
+                TextSpan(
+                  children: [
+                    const TextSpan(text: 'Your reply: ', style: TextStyle(fontWeight: FontWeight.w700)),
+                    TextSpan(text: review.vendorReply),
+                  ],
+                ),
+                style: const TextStyle(fontSize: 13, height: 1.35, color: AppColors.textSecondary),
+              ),
+            ),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: onReply,
+                icon: const Icon(Icons.edit_outlined, size: 16),
+                label: const Text('Edit reply'),
+              ),
+            ),
+          ] else
+            ElevatedButton(
+              onPressed: onReply,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+                minimumSize: const Size(0, 36),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadii.pill)),
+                // From the theme's, which carries the app font: this one replaces it.
+                textStyle: Theme.of(context).textTheme.labelLarge?.copyWith(fontSize: 13.5, fontWeight: FontWeight.w700),
+              ),
+              child: const Text('Reply'),
+            ),
         ],
       ),
     );

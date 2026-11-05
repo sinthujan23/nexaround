@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/app/theme/app_dimensions.dart';
 import 'package:nexaround_app/core/error/user_message.dart';
@@ -534,76 +535,90 @@ class _VendorShellState extends State<VendorShell> {
   }
 
   Widget _header() {
-    return SafeArea(
-      bottom: false,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(vendorGutter, 8, vendorGutter, 10),
-        child: Row(
-          children: [
-            if (Navigator.of(context).canPop()) ...[
-              VendorCircleButton(
-                icon: Icons.arrow_back_ios_new_rounded,
-                tooltip: 'Back',
-                onPressed: () => Navigator.maybePop(context),
-              ),
-              const SizedBox(width: 12),
-            ],
-            VendorAvatar(name: _vendorName),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Not AppTypography.eyebrow: it names a font family the app
-                  // never registers, so the label would drop the app font.
-                  const Text('VENDOR PORTAL',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 1.6,
-                        color: AppColors.brandGreen,
-                      )),
-                  const SizedBox(height: 2),
-                  Text(
-                    _vendorName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: -0.2,
-                      color: AppColors.textPrimary,
-                    ),
+    // Home's dark band starts here; the other tabs stay white.
+    final dark = _tab == 0;
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: dark ? Brightness.light : Brightness.dark,
+        statusBarBrightness: dark ? Brightness.dark : Brightness.light,
+      ),
+      child: Container(
+        decoration: dark ? const BoxDecoration(gradient: vendorHeaderGradient) : null,
+        child: SafeArea(
+          bottom: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(vendorGutter, 8, vendorGutter, 10),
+            child: Row(
+              children: [
+                if (Navigator.of(context).canPop()) ...[
+                  VendorCircleButton(
+                    icon: Icons.arrow_back_ios_new_rounded,
+                    tooltip: 'Back',
+                    onDark: dark,
+                    onPressed: () => Navigator.maybePop(context),
                   ),
+                  const SizedBox(width: 12),
                 ],
-              ),
-            ),
-            const SizedBox(width: 12),
-            VendorCircleButton(
-              icon: Icons.notifications_none_rounded,
-              tooltip: 'Notifications',
-              onPressed: _openNotifications,
-              badge: _unread > 0
-                  ? Container(
-                      constraints: const BoxConstraints(minWidth: 18),
-                      height: 18,
-                      padding: const EdgeInsets.symmetric(horizontal: 5),
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: AppColors.error,
-                        borderRadius: BorderRadius.circular(AppRadii.pill),
-                        border: Border.all(color: Colors.white, width: 1.5),
+                VendorAvatar(name: _vendorName),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Not AppTypography.eyebrow: it names a font family the app
+                      // never registers, so the label would drop the app font.
+                      Text('VENDOR PORTAL',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 1.6,
+                            color: dark ? const Color(0xFF5EEAD4) : AppColors.brandGreen,
+                          )),
+                      const SizedBox(height: 2),
+                      Text(
+                        _vendorName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.2,
+                          color: dark ? Colors.white : AppColors.textPrimary,
+                        ),
                       ),
-                      child: Text(
-                        _unread > 99 ? '99+' : '$_unread',
-                        style: const TextStyle(
-                            color: Colors.white, fontSize: 10, fontWeight: FontWeight.w700, height: 1.1),
-                      ),
-                    )
-                  : null,
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                VendorCircleButton(
+                  icon: Icons.notifications_none_rounded,
+                  tooltip: 'Notifications',
+                  onDark: dark,
+                  onPressed: _openNotifications,
+                  badge: _unread > 0
+                      ? Container(
+                          constraints: const BoxConstraints(minWidth: 18),
+                          height: 18,
+                          padding: const EdgeInsets.symmetric(horizontal: 5),
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: AppColors.error,
+                            borderRadius: BorderRadius.circular(AppRadii.pill),
+                            border: Border.all(color: Colors.white, width: 1.5),
+                          ),
+                          child: Text(
+                            _unread > 99 ? '99+' : '$_unread',
+                            style: const TextStyle(
+                                color: Colors.white, fontSize: 10, fontWeight: FontWeight.w700, height: 1.1),
+                          ),
+                        )
+                      : null,
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
