@@ -12,7 +12,7 @@ import 'package:video_player/video_player.dart';
 /// The City Guides home as it was before the "Where to next?" cards (kept so
 /// it can come back: set kClassicCityGuidesHome in city_tours_page.dart).
 ///
-/// Curated Hubs → City Tours: the cities that have guides, under the header
+/// City Tours: the cities that have guides, under the header
 /// video, which shrinks to a white bar as the page scrolls. A city with one
 /// guide opens it straight away; with more, its list of guides.
 ///

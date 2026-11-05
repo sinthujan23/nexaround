@@ -12,7 +12,7 @@ import 'package:nexaround_app/features/city_tours/presentation/pages/city_tour_p
 import 'package:nexaround_app/features/city_tours/presentation/pages/city_tours_classic_page.dart';
 import 'package:nexaround_app/features/city_tours/presentation/widgets/city_tour_widgets.dart';
 
-/// Curated Hubs → City Guides home: "Where to next?", then big photo cards
+/// The City Guides tab's home: "Where to next?", then big photo cards
 /// of the five newest guides that play by themselves (until the traveller
 /// swipes them), dots under them, and "More cities": the other
 /// cities, A to Z, with See all, which opens every city right under it as

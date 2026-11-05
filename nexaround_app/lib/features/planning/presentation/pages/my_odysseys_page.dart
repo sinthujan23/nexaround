@@ -10,7 +10,6 @@ import 'package:nexaround_app/features/planning/presentation/pages/odyssey_plann
 import 'package:nexaround_app/features/mini_tour/presentation/widgets/mini_tour_launcher.dart';
 import 'package:nexaround_app/features/planning/presentation/pages/history_page.dart';
 import 'package:nexaround_app/features/planning/presentation/pages/museums_list_page.dart';
-import 'package:nexaround_app/features/city_tours/presentation/pages/city_tours_page.dart';
 import 'package:nexaround_app/core/utils/number_format.dart';
 import 'package:video_player/video_player.dart';
 import 'package:nexaround_app/core/error/user_message.dart';
@@ -350,11 +349,11 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
             ),
 
             // ── Bento Grid: Curated Hubs ──
-            // 1. City Guides Hero Card (Top, full width)
-            _buildBentoCityGuidesHero(),
+            // 1. Experiences Hero Card (Top, full width)
+            _buildBentoExperiencesHero(),
             const SizedBox(height: 10),
 
-            // 2 & 3. Museums & Walking Challenge (Mid Row, 2 side-by-side squares)
+            // 2 & 3. Museums & Walking Challenge (Bottom Row, 2 side-by-side squares)
             Row(
               children: [
                 Expanded(
@@ -392,10 +391,6 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
                 ),
               ],
             ),
-            const SizedBox(height: 10),
-
-            // 4. Experiences (Bottom Banner, full width)
-            _buildBentoExperiencesBanner(),
           ],
         ).animate(key: ValueKey('curated_hub_$_selectedTabIndex')).fade(duration: 220.ms).slideX(
           begin: 0.08,
@@ -436,214 +431,6 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  // City Guides has one home: the navbar tab. The hub card switches to it
-  // (first back to the main screen when these hubs were opened as a page of
-  // their own) rather than opening a second copy of it.
-  void _openCityGuides() {
-    final home = context.findAncestorStateOfType<HomePageState>() ?? HomePage.homeKey.currentState;
-    if (home == null || !home.mounted) {
-      Navigator.push(context, MaterialPageRoute(builder: (_) => const CityToursPage()));
-      return;
-    }
-    final homeRoute = ModalRoute.of(home.context);
-    if (homeRoute != null) Navigator.of(context).popUntil((route) => route == homeRoute);
-    home.switchToCityGuides();
-  }
-
-  Widget _buildBentoCityGuidesHero() {
-    return GestureDetector(
-      onTap: _openCityGuides,
-      child: Container(
-        height: 195,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(24),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.18),
-              blurRadius: 16,
-              offset: const Offset(0, 6),
-            ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(24),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              Image.asset(
-                'assets/images/city_tours_bg.jpg',
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-              ),
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.bottomCenter,
-                    end: Alignment.topCenter,
-                    colors: [
-                      const Color(0xFF0F172A).withValues(alpha: 0.94),
-                      const Color(0xFF0F172A).withValues(alpha: 0.55),
-                      Colors.black.withValues(alpha: 0.20),
-                    ],
-                    stops: const [0.0, 0.55, 1.0],
-                  ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.all(15),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    // Top: Tag + Badge
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4.5),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF7C4DFF),
-                            borderRadius: BorderRadius.circular(8),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.25),
-                                blurRadius: 4,
-                                offset: const Offset(0, 1),
-                              ),
-                            ],
-                          ),
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.alt_route_rounded, color: Colors.white, size: 12),
-                              SizedBox(width: 4.5),
-                              Text(
-                                'CITY GUIDES',
-                                style: TextStyle(
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.w900,
-                                  letterSpacing: 1.1,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.55),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.15),
-                              width: 0.8,
-                            ),
-                          ),
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.signpost_rounded, color: Color(0xFFB388FF), size: 11),
-                              SizedBox(width: 4),
-                              Text(
-                                'STEP BY STEP',
-                                style: TextStyle(
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: 0.8,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    // Bottom: Title, Chips & CTA
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Text(
-                                'City Guides',
-                                style: TextStyle(
-                                  fontSize: 21,
-                                  fontWeight: FontWeight.w900,
-                                  letterSpacing: -0.4,
-                                  color: Colors.white,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Wrap(
-                                spacing: 6,
-                                runSpacing: 4,
-                                children: [
-                                  _buildMicroChip(
-                                    icon: Icons.place_rounded,
-                                    label: 'Stops',
-                                    iconColor: const Color(0xFFB388FF),
-                                  ),
-                                  _buildMicroChip(
-                                    icon: Icons.subway_rounded,
-                                    label: 'Rides',
-                                    iconColor: const Color(0xFFB388FF),
-                                  ),
-                                  _buildMicroChip(
-                                    icon: Icons.confirmation_number_rounded,
-                                    label: 'Tickets',
-                                    iconColor: const Color(0xFFB388FF),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(16),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.20),
-                                blurRadius: 6,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                'Explore',
-                                style: TextStyle(
-                                  fontSize: 11.5,
-                                  fontWeight: FontWeight.w800,
-                                  color: Color(0xFF0F172A),
-                                ),
-                              ),
-                              SizedBox(width: 3),
-                              Icon(Icons.arrow_forward_rounded, size: 12.5, color: Color(0xFF0F172A)),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }
@@ -826,24 +613,24 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
     );
   }
 
-  Widget _buildBentoExperiencesBanner() {
+  Widget _buildBentoExperiencesHero() {
     final isComingSoon = ExperiencesPage.isComingSoon;
     return GestureDetector(
       onTap: _openExperiences,
       child: Container(
-        height: 118,
+        height: 195,
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(24),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.16),
-              blurRadius: 14,
-              offset: const Offset(0, 5),
+              color: Colors.black.withValues(alpha: 0.18),
+              blurRadius: 16,
+              offset: const Offset(0, 6),
             ),
           ],
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(24),
           child: Stack(
             fit: StackFit.expand,
             children: [
@@ -860,163 +647,164 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
                     colors: [
                       const Color(0xFF0F172A).withValues(alpha: 0.94),
                       const Color(0xFF0F172A).withValues(alpha: 0.55),
-                      Colors.black.withValues(alpha: 0.25),
+                      Colors.black.withValues(alpha: 0.20),
                     ],
-                    stops: const [0.0, 0.6, 1.0],
+                    stops: const [0.0, 0.55, 1.0],
                   ),
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 13),
-                child: Row(
+                padding: const EdgeInsets.all(15),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    // Modern Duotone Squircle Icon
-                    Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF00E676).withValues(alpha: 0.16),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                          color: const Color(0xFF00E676).withValues(alpha: 0.45),
-                          width: 1,
-                        ),
-                      ),
-                      child: const Icon(
-                        Icons.sailing_rounded,
-                        color: Color(0xFF00E676),
-                        size: 22,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    // Middle Details
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Row(
+                    // Top: Tag + Badge
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4.5),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF00E676),
+                            borderRadius: BorderRadius.circular(8),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.25),
+                                blurRadius: 4,
+                                offset: const Offset(0, 1),
+                              ),
+                            ],
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
                             children: [
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6.5, vertical: 2.5),
-                                decoration: BoxDecoration(
-                                  color: Colors.black.withValues(alpha: 0.50),
-                                  borderRadius: BorderRadius.circular(6),
-                                  border: Border.all(
-                                    color: const Color(0xFF00E676).withValues(alpha: 0.60),
-                                    width: 0.7,
-                                  ),
+                              Icon(Icons.sailing_rounded, color: Color(0xFF0F172A), size: 12),
+                              SizedBox(width: 4.5),
+                              Text(
+                                'EXPERIENCES',
+                                style: TextStyle(
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 1.1,
+                                  color: Color(0xFF0F172A),
                                 ),
-                                child: const Text(
-                                  'EXPERIENCES',
-                                  style: TextStyle(
-                                    fontSize: 8,
-                                    fontWeight: FontWeight.w900,
-                                    letterSpacing: 1.0,
-                                    color: Color(0xFF00E676),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (!isComingSoon)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.55),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.15),
+                                width: 0.8,
+                              ),
+                            ),
+                            child: const Text(
+                              '120+ TOURS',
+                              style: TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.8,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                    // Bottom: Title, Chips & CTA
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Text(
+                                'Handcrafted\nTours & Trips',
+                                style: TextStyle(
+                                  fontSize: 21,
+                                  fontWeight: FontWeight.w900,
+                                  height: 1.14,
+                                  letterSpacing: -0.4,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Wrap(
+                                spacing: 6,
+                                runSpacing: 4,
+                                children: [
+                                  _buildMicroChip(
+                                    icon: Icons.explore_rounded,
+                                    label: 'Safari & Sea',
+                                    iconColor: const Color(0xFF00E676),
                                   ),
+                                  _buildMicroChip(
+                                    icon: Icons.verified_user_rounded,
+                                    label: 'Vetted Guides',
+                                    iconColor: const Color(0xFF00E676),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: isComingSoon
+                                ? const Color(0xFF334155).withValues(alpha: 0.75)
+                                : Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            border: isComingSoon
+                                ? Border.all(
+                                    color: const Color(0xFF64748B).withValues(alpha: 0.45),
+                                    width: 0.8,
+                                  )
+                                : null,
+                            boxShadow: isComingSoon
+                                ? null
+                                : [
+                                    BoxShadow(
+                                      color: Colors.black.withValues(alpha: 0.20),
+                                      blurRadius: 6,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                isComingSoon ? 'Coming Soon' : 'Explore',
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: isComingSoon ? FontWeight.w700 : FontWeight.w800,
+                                  color: isComingSoon
+                                      ? const Color(0xFF94A3B8)
+                                      : const Color(0xFF0F172A),
                                 ),
                               ),
                               if (!isComingSoon) ...[
-                                const SizedBox(width: 6),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withValues(alpha: 0.15),
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                  child: const Text(
-                                    '120+ TOURS',
-                                    style: TextStyle(
-                                      fontSize: 8,
-                                      fontWeight: FontWeight.w700,
-                                      letterSpacing: 0.6,
-                                      color: Colors.white,
-                                    ),
-                                  ),
+                                const SizedBox(width: 3),
+                                const Icon(
+                                  Icons.arrow_forward_rounded,
+                                  size: 12.5,
+                                  color: Color(0xFF0F172A),
                                 ),
                               ],
                             ],
                           ),
-                          const SizedBox(height: 5),
-                          const Text(
-                            'Handcrafted Tours & Trips',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: -0.2,
-                              color: Colors.white,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Row(
-                            children: [
-                              _buildMicroChip(
-                                icon: Icons.explore_rounded,
-                                label: 'Safari & Sea',
-                                iconColor: const Color(0xFF00E676),
-                              ),
-                              const SizedBox(width: 6),
-                              _buildMicroChip(
-                                icon: Icons.verified_user_rounded,
-                                label: 'Vetted Guides',
-                                iconColor: const Color(0xFF00E676),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    // CTA button
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7.5),
-                      decoration: BoxDecoration(
-                        color: isComingSoon
-                            ? const Color(0xFF334155).withValues(alpha: 0.75)
-                            : Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        border: isComingSoon
-                            ? Border.all(
-                                color: const Color(0xFF64748B).withValues(alpha: 0.45),
-                                width: 0.8,
-                              )
-                            : null,
-                        boxShadow: isComingSoon
-                            ? null
-                            : [
-                                BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.15),
-                                  blurRadius: 4,
-                                  offset: const Offset(0, 2),
-                                ),
-                              ],
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            isComingSoon ? 'Coming Soon' : 'Explore',
-                            style: TextStyle(
-                              fontSize: 10.5,
-                              fontWeight: isComingSoon ? FontWeight.w700 : FontWeight.w800,
-                              color: isComingSoon
-                                  ? const Color(0xFF94A3B8)
-                                  : const Color(0xFF0F172A),
-                            ),
-                          ),
-                          if (!isComingSoon) ...[
-                            const SizedBox(width: 3),
-                            const Icon(
-                              Icons.arrow_forward_rounded,
-                              size: 11.5,
-                              color: Color(0xFF0F172A),
-                            ),
-                          ],
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
