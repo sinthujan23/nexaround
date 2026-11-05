@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -305,9 +306,34 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
     );
   }
 
+  // Curated Hubs: the "CURATED PORTALS" row with the space around it, the top
+  // card, the gap between cards, and the least the two tiles under it may be.
+  static const double _hubHeaderHeight = 30;
+  static const double _hubHeroHeight = 195;
+  static const double _hubCardGap = 10;
+  static const double _hubTileMinHeight = 175;
+
   Widget _buildCuratedHubsSliver() {
+    return SliverLayoutBuilder(
+      builder: (context, constraints) {
+        // The two tiles take the height left on the screen, so the cards end
+        // just above the navbar on any phone (no white gap). The body's bottom
+        // padding is the navbar here: the home Scaffold has extendBody. On a
+        // short screen they keep their least height and the page scrolls.
+        final bottomSpace = MediaQuery.paddingOf(context).bottom + 12;
+        final room = constraints.viewportMainAxisExtent - constraints.precedingScrollExtent;
+        final tileHeight = math.max(
+          _hubTileMinHeight,
+          room - _hubHeaderHeight - _hubHeroHeight - _hubCardGap - bottomSpace,
+        );
+        return _buildCuratedHubs(tileHeight: tileHeight, bottomSpace: bottomSpace);
+      },
+    );
+  }
+
+  Widget _buildCuratedHubs({required double tileHeight, required double bottomSpace}) {
     return SliverPadding(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 120),
+      padding: EdgeInsets.fromLTRB(16, 4, 16, bottomSpace),
       sliver: SliverToBoxAdapter(
         child: Column(
           children: [
@@ -351,13 +377,14 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
             // ── Bento Grid: Curated Hubs ──
             // 1. Experiences Hero Card (Top, full width)
             _buildBentoExperiencesHero(),
-            const SizedBox(height: 10),
+            const SizedBox(height: _hubCardGap),
 
-            // 2 & 3. Museums & Walking Challenge (Bottom Row, 2 side-by-side squares)
+            // 2 & 3. Museums & Walking Challenge (Bottom Row, 2 side-by-side tall tiles)
             Row(
               children: [
                 Expanded(
                   child: _buildBentoSquareTile(
+                    height: tileHeight,
                     tag: 'TOP MUSEUMS',
                     tagIcon: Icons.account_balance_rounded,
                     accentColor: const Color(0xFF00E5FF),
@@ -376,6 +403,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
                 const SizedBox(width: 10),
                 Expanded(
                   child: _buildBentoSquareTile(
+                    height: tileHeight,
                     tag: 'CHALLENGE',
                     tagIcon: Icons.directions_walk_rounded,
                     accentColor: const Color(0xFFFFB800),
@@ -436,6 +464,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
   }
 
   Widget _buildBentoSquareTile({
+    required double height,
     required String tag,
     required IconData tagIcon,
     required Color accentColor,
@@ -451,7 +480,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        height: 175,
+        height: height,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(22),
           boxShadow: [
@@ -553,8 +582,8 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
                           title,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 15,
+                          style: TextStyle(
+                            fontSize: height >= 240 ? 18 : 15,
                             fontWeight: FontWeight.w800,
                             height: 1.15,
                             letterSpacing: -0.2,
@@ -618,7 +647,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
     return GestureDetector(
       onTap: _openExperiences,
       child: Container(
-        height: 195,
+        height: _hubHeroHeight,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(24),
           boxShadow: [
