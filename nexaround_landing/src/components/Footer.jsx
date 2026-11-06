@@ -74,32 +74,32 @@ export default function Footer() {
             <ul className="footer-links-list">
               <li>
                 <a href="/app#odyssey" onClick={handleNavClick('/app', '#odyssey')} className="footer-link">
-                  Odyssey Trip Planner
+                  Odyssey AI Planner
                 </a>
               </li>
               <li>
-                <a href="/app#camera" onClick={handleNavClick('/app', '#camera')} className="footer-link">
-                  AR Landmark Scanner
+                <a href="/app#ar" onClick={handleNavClick('/app', '#ar')} className="footer-link">
+                  AR Discovery
                 </a>
               </li>
               <li>
                 <a href="/app#neva" onClick={handleNavClick('/app', '#neva')} className="footer-link">
-                  Neva 24/7 AI Concierge
+                  Neva AI Companion
                 </a>
               </li>
               <li>
-                <a href="/app#radar" onClick={handleNavClick('/app', '#radar')} className="footer-link">
-                  Around You Proximity Radar
+                <a href="/app#city-guides" onClick={handleNavClick('/app', '#city-guides')} className="footer-link">
+                  City Guides
                 </a>
               </li>
               <li>
-                <a href="/app#museum" onClick={handleNavClick('/app', '#museum')} className="footer-link">
-                  Curated Heritage Guides
+                <a href="/app#today" onClick={handleNavClick('/app', '#today')} className="footer-link">
+                  Where Should I Go Today?
                 </a>
               </li>
               <li>
-                <a href="/app#stories" onClick={handleNavClick('/app', '#stories')} className="footer-link">
-                  Travel Stories & Journal
+                <a href="/app#experiences" onClick={handleNavClick('/app', '#experiences')} className="footer-link">
+                  Local Experiences
                 </a>
               </li>
             </ul>
@@ -127,6 +127,11 @@ export default function Footer() {
               <li>
                 <a href="/solutions" onClick={handleNavClick('/solutions', null)} className="footer-link">
                   Solutions
+                </a>
+              </li>
+              <li>
+                <a href="/list-your-experience" onClick={handleNavClick('/list-your-experience', null)} className="footer-link">
+                  List Your Experience
                 </a>
               </li>
               <li>

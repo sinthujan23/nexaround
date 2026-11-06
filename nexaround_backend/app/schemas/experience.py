@@ -10,7 +10,7 @@ the phone and WhatsApp numbers are the public contact channels.
 
 import uuid
 from datetime import date, datetime
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -646,6 +646,11 @@ class ProviderApplicationCreate(BaseModel):
     city: Optional[str] = Field(None, max_length=120)
     offering: str = Field(..., min_length=10, max_length=3000)
     links: Optional[str] = Field(None, max_length=1000)
+    # Where it was sent from: the app, or the app website's
+    # /list-your-experience page. Only named in the team's email.
+    source: Literal["app", "website"] = "app"
+    # Hidden on the website form, so only a bot fills it in.
+    website: Optional[str] = Field(None, max_length=255)
 
     @field_validator("contact_email")
     @classmethod

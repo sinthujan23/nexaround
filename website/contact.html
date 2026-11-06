@@ -56,10 +56,10 @@
                 <option>Other Services &amp; Consulting</option>
               </select>
             </div>
-            <div><label for="msg">Project details &amp; requirements</label><textarea id="msg" name="msg" placeholder="Tell us about your goals, scope, timeline..." required></textarea></div>
+            <div><label for="msg">Project details &amp; requirements</label><textarea id="msg" name="msg" required minlength="5" placeholder="Tell us about your goals, scope, timeline..." required></textarea></div>
+            <div style="position:absolute; left:-9999px;" aria-hidden="true"><label>Leave this empty <input type="text" name="website" tabindex="-1" autocomplete="off"></label></div>
             <button type="submit" class="btn btn--dark" style="align-self:flex-start; margin-top:8px;">Send message <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M3 11L11 3M11 3H4.5M11 3V9.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-            <p class="form__status" hidden style="color:var(--blue); font-weight:600; font-size:14.5px;">
-              Your message is ready. Connect this form to your mail service or backend to deliver it.</p>
+            <p class="form__status" role="status" hidden style="color:var(--blue); font-weight:600; font-size:14.5px;"></p>
           </form>
         </div>
 
@@ -122,6 +122,6 @@
 </div>
 
 <script src="components.js"></script>
-<script src="script.js"></script>
+<script src="script.js?v=20261106"></script>
 </body>
 </html>

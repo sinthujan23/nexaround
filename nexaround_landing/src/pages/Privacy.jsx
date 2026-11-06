@@ -65,7 +65,7 @@ export default function Privacy() {
               How NexAround collects, protects, and handles your data across our platforms and the <strong>NexAround</strong> smart tourism mobile application.
             </p>
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: 'rgba(255,255,255,0.7)', background: 'rgba(255,255,255,0.08)', padding: '6px 16px', borderRadius: 'var(--radius-pill)', border: '1px solid rgba(255,255,255,0.15)' }}>
-              <span>Last Updated: August 2026</span>
+              <span>Last Updated: November 2026</span>
               <span>•</span>
               <span>Effective Date: August 2026</span>
             </div>
@@ -91,7 +91,7 @@ export default function Privacy() {
               <h3 style={{ fontSize: '1.15rem', fontWeight: 500, color: 'var(--dark-charcoal)', margin: 0 }}>Privacy Summary & Commitment</h3>
             </div>
             <p style={{ fontSize: '0.94rem', color: 'var(--text-secondary)', lineHeight: 1.65, margin: 0 }}>
-              NexAround is engineered with a strict <strong>Privacy-by-Design</strong> architecture. We do not sell or broker your personal location data. Camera vision landmark scans are processed on-device or ephemerally in volatile memory without retaining private imagery.
+              NexAround is engineered with a strict <strong>Privacy-by-Design</strong> architecture. We do not sell or broker your personal location data. The live AR camera view stays on your device and is not recorded or sent to our servers.
             </p>
           </div>
 
@@ -107,8 +107,9 @@ export default function Privacy() {
             <ul style={{ paddingLeft: '24px', fontSize: '0.94rem', color: 'var(--text-secondary)', lineHeight: 1.8, display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <li><strong>Account Credentials:</strong> Name, email address, profile picture (via Firebase Authentication).</li>
               <li><strong>Precise Location Data:</strong> GPS coordinates requested strictly with foreground permissions to power the Around You radar and Odyssey route navigation.</li>
-              <li><strong>Camera & Sensor Input:</strong> Live camera feeds used strictly during active AR camera mode to identify historical landmarks.</li>
-              <li><strong>Travel Logs & Preferences:</strong> Saved itineraries, journal stamps, and dietary preferences specified for Neva AI suggestions.</li>
+              <li><strong>Camera & Sensor Input:</strong> The camera view, compass and motion sensors are used only while AR mode is open, to show place labels over the camera view. The camera view is not recorded or sent to our servers. Photos you add to a travel story are stored on our servers; Travel Journal photos are saved to the Google Drive or Dropbox account you choose.</li>
+              <li><strong>Microphone:</strong> Used only when you search by voice in AR or talk to Neva. Neva Voice recordings are sent to our servers and our AI provider to understand your question.</li>
+              <li><strong>Travel Logs & Preferences:</strong> Saved trip plans, journal entries, favourite places and the preferences you set, such as your currency and nationality.</li>
             </ul>
           </div>
 
@@ -120,7 +121,7 @@ export default function Privacy() {
             </h2>
             <ul style={{ paddingLeft: '24px', fontSize: '0.94rem', color: 'var(--text-secondary)', lineHeight: 1.8, display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <li>Generating optimized multi-day travel itineraries via Odyssey.</li>
-              <li>Real-time visual landmark identification and historical overlay rendering.</li>
+              <li>Showing nearby places in AR, based on your location and compass direction.</li>
               <li>Personalized conversational recommendations through Neva AI.</li>
               <li>Detecting proximity attractions and authentic dining options on the living map.</li>
             </ul>

@@ -158,8 +158,43 @@
   if(form){
     form.addEventListener('submit', function(e){
       e.preventDefault();
-      var s = form.querySelector('.form__status');
-      if(s) s.hidden = false;
+      var status = form.querySelector('.form__status');
+      var button = form.querySelector('button[type="submit"]');
+      var val = function(name){ return (form.elements[name] ? form.elements[name].value : '').trim(); };
+      var say = function(text, failed){
+        status.textContent = text;
+        status.style.color = failed ? '#C0392B' : '';
+        status.hidden = false;
+      };
+      button.disabled = true;
+      status.hidden = true;
+      fetch('https://api.nexaround.com/api/v1/landing/contact', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          site: 'nexaround.com',
+          name: (val('fn') + ' ' + val('ln')).trim(),
+          email: val('em'),
+          phone: val('ph') || null,
+          company: val('org') || null,
+          topic: val('tp'),
+          message: val('msg'),
+          website: val('website') || null
+        })
+      }).then(function(res){
+        if(res.ok){
+          form.reset();
+          say('Thank you. Your message has been sent, and we will reply by email.');
+        } else if(res.status === 429){
+          say('Too many messages from here. Please email support@nexaround.com.', true);
+        } else {
+          say('Your message could not be sent. Please check your details, or email support@nexaround.com.', true);
+        }
+      }).catch(function(){
+        say('Your message could not be sent. Please email support@nexaround.com.', true);
+      }).then(function(){
+        button.disabled = false;
+      });
     });
   }
 })();

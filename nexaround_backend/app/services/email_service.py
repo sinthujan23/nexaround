@@ -6,12 +6,14 @@ from email.mime.multipart import MIMEMultipart
 from app.core.config import settings
 
 
-def _send_smtp_sync(to_email: str, subject: str, html_body: str) -> bool:
+def _send_smtp_sync(to_email: str, subject: str, html_body: str, reply_to: str = "") -> bool:
     """Synchronous SMTP worker executed in threadpool to prevent blocking async loop."""
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
     msg["From"] = settings.EMAILS_FROM_EMAIL
     msg["To"] = to_email
+    if reply_to:
+        msg["Reply-To"] = reply_to
     msg.attach(MIMEText(html_body, "html"))
 
     with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=5) as server:
@@ -334,4 +336,60 @@ async def send_experience_update_email(
         return True
     except Exception as e:
         print(f"❌ Failed to send '{subject}' via SMTP to {to_email}: {e}")
+        return False
+
+
+async def send_website_contact_email(
+    to_email: str,
+    *,
+    site: str,
+    topic: str,
+    name: str,
+    email: str,
+    message: str,
+    company: str = "",
+    phone: str = "",
+) -> bool:
+    """A visitor's message from a website contact form.
+
+    Replying goes straight to the visitor. Every value is escaped here, because
+    anyone can type into these forms. Unlike the other senders, a missing SMTP
+    setup returns False: the form only says "sent" when the mail really left.
+    """
+    if not settings.SMTP_HOST or not settings.SMTP_USER:
+        print("❌ Website contact message not emailed: SMTP is not configured.")
+        return False
+
+    esc = html.escape
+    # Headers are one line. A pasted line break must not reach the subject.
+    subject = " ".join(f"Website message ({site}): {topic}".split())
+    rows = "".join(
+        f'<tr><td style="padding:6px 12px 6px 0;color:#78909C;vertical-align:top;">{esc(label)}</td>'
+        f'<td style="padding:6px 0;color:#263238;"><strong>{esc(value)}</strong></td></tr>'
+        for label, value in (
+            ("Site", site), ("Topic", topic), ("Name", name), ("Email", email),
+            ("Company", company), ("Phone", phone),
+        )
+        if value
+    )
+    html_body = f"""
+    <!DOCTYPE html>
+    <html>
+    <body style="font-family: 'Segoe UI', Arial, sans-serif; background-color: #f4f7f6; margin: 0; padding: 20px;">
+      <div style="max-width: 540px; margin: 0 auto; background: #ffffff; border-radius: 12px; padding: 30px;">
+        <h2 style="color: #00897B;">New website message</h2>
+        <table style="width:100%;border-collapse:collapse;font-size:14px;">{rows}</table>
+        <div style="background: #FAFAFA; border-left: 3px solid #00897B; padding: 12px 16px; margin: 16px 0;
+                    color: #263238; font-size: 14px; line-height: 1.5;">{esc(message).replace(chr(10), "<br>")}</div>
+        <p style="color:#546E7A;font-size:13px;">Reply to this email to answer {esc(name)} directly.</p>
+      </div>
+    </body>
+    </html>
+    """
+
+    try:
+        await asyncio.to_thread(_send_smtp_sync, to_email, subject, html_body, email)
+        return True
+    except Exception as e:
+        print(f"❌ Failed to send website contact message via SMTP: {e}")
         return False

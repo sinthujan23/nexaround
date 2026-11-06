@@ -112,7 +112,7 @@ export default function GetApp() {
             lineHeight: 1.7,
             fontWeight: 400
           }}>
-            Download the NexAround app to explore attractions, food, hotels, taxis, and AI itineraries- all in one place, across 50+ global destinations.
+            Download the nexARound app to plan trips with AI, discover places around you, follow city guides and find local experiences, all in one place.
           </p>
 
           {/* Official Black Store Badges */}
@@ -139,7 +139,7 @@ export default function GetApp() {
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.92rem', color: 'var(--dark-charcoal)', fontWeight: 500 }}>
               <CheckCircle2 style={{ width: '18px', height: '18px', color: 'var(--brand-teal)' }} />
-              <span>Live Spatial AR Camera</span>
+              <span>AR Place Discovery</span>
             </div>
           </div>
 

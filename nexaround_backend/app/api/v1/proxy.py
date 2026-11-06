@@ -3,9 +3,12 @@ import hashlib
 import json
 import logging
 import math
+from typing import Literal, Optional
+
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -14,12 +17,16 @@ from app.core.rate_limiter import RateLimiter, get_client_ip, get_redis_client
 from app.models.user import User
 from app.services.settings_service import SettingsService
 from app.services import telemetry, spend_guard, place_cache_service
-from app.services import country_cities_service
+from app.services import country_cities_service, email_service
 
 # Public landing chatbot ("Neva") — unauthenticated, so it is rate limited per
 # client IP. Generous enough for a real conversation, tight enough that the
 # endpoint cannot be abused as a free general-purpose Gemini proxy.
 _landing_neva_limiter = RateLimiter(requests_per_minute=15, window_seconds=60)
+
+# Public website contact forms: anyone may send one, but a script must not be
+# able to flood the support inbox.
+_landing_contact_limiter = RateLimiter(requests_per_minute=5, window_seconds=600)
 
 router = APIRouter(tags=["Proxy API"])
 
@@ -514,6 +521,77 @@ async def landing_neva_chat(
 
     # Nothing usable — let the client show its local FAQ answer.
     raise HTTPException(status_code=502, detail="Chat is temporarily unavailable.")
+
+class LandingContactMessage(BaseModel):
+    """A message from a contact form on nexaround.com or app.nexaround.com."""
+
+    site: Literal["nexaround.com", "app.nexaround.com"]
+    name: str = Field(..., min_length=2, max_length=120)
+    email: str = Field(..., min_length=5, max_length=255)
+    message: str = Field(..., min_length=5, max_length=5000)
+    topic: str = Field("General enquiry", max_length=120)
+    company: Optional[str] = Field(None, max_length=255)
+    phone: Optional[str] = Field(None, max_length=40)
+    # Hidden on the forms, so only a bot fills it in.
+    website: Optional[str] = Field(None, max_length=255)
+
+    @field_validator("email")
+    @classmethod
+    def _looks_like_email(cls, value):
+        value = value.strip()
+        if (
+            "@" not in value
+            or "." not in value.split("@")[-1]
+            or any(ch.isspace() for ch in value)
+        ):
+            raise ValueError("Please enter a valid email address.")
+        return value
+
+
+@router.post("/landing/contact")
+async def landing_contact(
+    data: LandingContactMessage,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Email a website contact form to the platform inbox.
+
+    Success means the mail server accepted it. A failed send returns an error,
+    so the form never tells a visitor a lost message was sent.
+    """
+    rl_key = f"rate_limit:landing_contact:ip:{get_client_ip(request)}"
+    try:
+        exceeded = await _landing_contact_limiter._check_rate_limit(rl_key, await get_redis_client())
+    except Exception:
+        exceeded = await _landing_contact_limiter._check_rate_limit(rl_key, None)
+    if exceeded:
+        raise HTTPException(
+            status_code=429,
+            detail="Too many messages from here. Please try again later.",
+        )
+
+    # Looks accepted, so a bot learns nothing, but nothing is sent.
+    if (data.website or "").strip():
+        return {"ok": True}
+
+    inbox = await SettingsService(db).get_setting("contact_email")
+    sent = await email_service.send_website_contact_email(
+        inbox or "support@nexaround.com",
+        site=data.site,
+        topic=data.topic.strip() or "General enquiry",
+        name=data.name.strip(),
+        email=data.email,
+        message=data.message.strip(),
+        company=(data.company or "").strip(),
+        phone=(data.phone or "").strip(),
+    )
+    if not sent:
+        raise HTTPException(
+            status_code=502,
+            detail="Your message could not be sent. Please email support@nexaround.com.",
+        )
+    return {"ok": True}
+
 
 @router.post("/proxy/gemini/generate")
 async def proxy_gemini_generate(

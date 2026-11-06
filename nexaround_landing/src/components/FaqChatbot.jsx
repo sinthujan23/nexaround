@@ -32,7 +32,7 @@ export default function FaqChatbot() {
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       suggestions: [
         'What is NexAround?',
-        'How does the AR camera scanner work?',
+        'How does AR Discovery work?',
         'How does Odyssey build itineraries?',
         'Is NexAround free to download?',
         'Does NexAround require internet?'

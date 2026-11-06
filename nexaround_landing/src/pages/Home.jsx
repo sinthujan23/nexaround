@@ -8,6 +8,8 @@ import {
   Layers, Heart, Eye, ArrowUpRight, Hotel, Car, Smile
 } from 'lucide-react';
 import StoreButtons from '../components/StoreButtons';
+import AppScreen from '../components/AppScreen';
+import { APP_MODULES } from '../data/appModules';
 
 export default function Home() {
   const [activeStep, setActiveStep] = useState(0);
@@ -31,151 +33,77 @@ export default function Home() {
   const appWorkflow = [
     {
       step: '01',
-      title: 'Plan Your Odyssey Itinerary',
-      subtitle: 'AI-Powered Smart Travel Planning',
-      desc: 'Select your travel mood (Cultural, Adventure, Relaxed, or Foodie), input your budget, and let Odyssey craft an optimized multi-day itinerary with real-time transit and opening hours.',
-      badge: 'Odyssey Engine',
-      image: '/app_odyssey_planner_v4.png',
+      title: 'Plan Your Trip with Odyssey',
+      subtitle: 'AI Trip Planning',
+      desc: 'Enter a destination, dates, travellers and budget, and Odyssey builds a complete day-by-day plan with flights, stays, a budget breakdown and visa guidance.',
+      badge: 'Odyssey AI Planner',
+      image: '/app_odyssey_plans_v4.png',
       features: [
-        'Multi-day dynamic route optimization',
-        'Pacing & budget customization (Backpacker to Luxury)',
-        'Live transit time & museum schedule integration'
+        'Day-by-day plans for one city or several',
+        'Flight and hotel options with partner booking links',
+        'Budget breakdown, visa guidance and booking timeline'
       ]
     },
     {
       step: '02',
-      title: 'Scan Landmarks with Spatial AR',
-      subtitle: 'Real-Time Camera Vision Recognition',
-      desc: 'Point your smartphone camera at ancient monuments, heritage temples, or historic architecture. Instant computer vision identifies the landmark and displays interactive historical facts, stories, and spatial context.',
-      badge: 'Spatial AR Camera',
+      title: 'Point Your Phone with AR',
+      subtitle: 'See What Is Around You',
+      desc: 'Hold up your phone and look around to see nearby places over the camera view. Point at a place and nexARound uses your location and compass to show what it is, then tap Neva to learn more.',
+      badge: 'AR Discovery',
       image: '/app_scan_landmark_v4.png',
       features: [
-        'Sub-second real-time camera landmark detection',
-        'Interactive historical facts and spatial context overlays',
-        'Spatial contextual storytelling tailored to your vantage point'
+        'Place labels for food, shopping, hotels, nature and more',
+        'Ask Neva about the place you point at',
+        'Walking routes with direction arrows in the camera view'
       ]
     },
     {
       step: '03',
-      title: 'Chat with Neva AI Concierge',
-      subtitle: '24/7 Intelligent Local Travel Companion',
-      desc: 'Meet Neva, your personal travel assistant. Ask about hidden local spots, check opening hours, get cultural insights, or ask for dietary-safe local cuisine recommendations.',
-      badge: 'Neva 24/7 AI',
+      title: 'Chat or Talk with Neva',
+      subtitle: 'Your AI Travel Companion',
+      desc: 'Ask Neva about places, food, history, budgets or what to do next, and get answers based on your location. Type or talk, and Neva shows the places she suggests on a map.',
+      badge: 'Neva AI',
       image: '/meet_neva_v4.png',
       features: [
-        'Context-aware conversational assistance',
-        'Conversational voice assistance & local wisdom',
-        'Real-time itinerary adjustments on the go'
+        'Answers based on where you are',
+        'Voice chat with replies read aloud',
+        'Suggested places shown on a map'
       ]
     },
     {
       step: '04',
-      title: 'Discover with Live Radar & Map',
-      subtitle: 'Proximity Attraction & Food Radar',
-      desc: 'The Smart Tourism Map acts as a living radar around you. Discover hidden gems, authentic street food, verified medical centers, and book official skip-the-line tickets.',
-      badge: 'Living Radar Map',
-      image: '/app_maps_v4.png',
+      title: 'Follow a City Guide',
+      subtitle: 'Day-by-Day Guides with Navigation',
+      desc: 'Pick a city guide, choose how many days you have and follow it stop by stop. Press Start for live directions, including which public transport line to take.',
+      badge: 'City Guides',
+      image: '/app_city_guides.png',
       features: [
-        'Live proximity attraction & street food radar',
-        'Crowd density & best visiting time indicators',
-        'Direct ticket integration with Viator, GetYourGuide, Headout'
+        'Guides written by creators and reviewed by nexARound',
+        'Plan by day or by place',
+        'Live navigation with public transport directions'
       ]
     },
     {
       step: '05',
-      title: 'Archive Journal & Share Stories',
-      subtitle: 'Digital Passport & Community Travel Logs',
-      desc: 'Every landmark you visit automatically stamps your digital travel passport. Log personal memories, view trip stats, and discover curated stories from global explorers.',
-      badge: 'Travel Passport & Feed',
+      title: 'Share Stories and Keep a Journal',
+      subtitle: 'Travel Stories & Community',
+      desc: 'Read stories from travellers near you, post your own with photos, ask the Travel Forum and keep a private journal of every trip.',
+      badge: 'Stories & Journal',
       image: '/app_travel_stories_v4.png',
       features: [
-        'Automatic GPS landmark passport stamping',
-        'Trip milestone stats, photo logs & memory diary',
-        'Community travel stories & verified creator guides'
+        'Stories near you first, or by country',
+        'Travel Forum for questions and answers',
+        'Private journal with notes, spending and photos'
       ]
     }
   ];
 
-  // 11 Interactive In-App Screens from website/app.html
-  const appScreens = [
-    {
-      num: '01',
-      title: 'AR Location Discovery',
-      tag: 'Augmented Reality',
-      desc: 'Simply raise your phone and spin it around. NexAround overlays attractions, restaurants, cafés, shopping, hidden gems, and transport directly onto your real-world camera view.',
-      image: '/app_scan_landmark_v4.png'
-    },
-    {
-      num: '02',
-      title: 'Neva AI Companion',
-      tag: '24/7 Travel AI',
-      desc: 'Ask Neva about what you see, where to eat, or what to do next. She understands your location, camera view, trip history, and preferences to give you one personalized answer.',
-      image: '/meet_neva_v4.png'
-    },
-    {
-      num: '03',
-      title: 'Travel Stories',
-      tag: 'Community Logs',
-      desc: 'Discover authentic visual travel stories, photo diaries, and curated recommendations shared by fellow travelers across Europe, Asia, and the Americas.',
-      image: '/app_travel_stories_v4.png'
-    },
-    {
-      num: '04',
-      title: 'Odyssey Travel Planner',
-      tag: 'Smart Itineraries',
-      desc: 'Tell Odyssey your destination, dates, and budget. It generates a time-optimized multi-day itinerary with verified opening hours that adapts as you explore.',
-      image: '/app_cap_04_v4.png'
-    },
-    {
-      num: '05',
-      title: 'Digital Travel Journal',
-      tag: 'Memory Archive',
-      desc: 'Automatically captures the places you visit, landmark stamps, notes, and photos to create a personal searchable travel memoir.',
-      image: '/new_journal_entry.png'
-    },
-    {
-      num: '06',
-      title: 'Curated Cultural Guides',
-      tag: 'Cultural Guides',
-      desc: 'Curated cultural landmark guides, visiting details, and admission ticketing for top institutions and heritage sites worldwide.',
-      image: '/app_cap_02_v4.png'
-    },
-    {
-      num: '07',
-      title: 'Mood-Based Journey Planner',
-      tag: 'Vibe Matching',
-      desc: 'Tell NexAround how you feel: adventurous, relaxed, romantic, curious, or hungry: and it curates experiences perfectly matched to your mood.',
-      image: '/app_mood_planner_v4.png'
-    },
-    {
-      num: '08',
-      title: 'Living Tourism Maps',
-      tag: 'Spatial Map',
-      desc: 'An intelligent map layering real-time local data, saved places, crowd meters, and AR beacons into a unified interactive radar.',
-      image: '/nexaround_app_v4.png'
-    },
-    {
-      num: '09',
-      title: 'Odyssey Plans & Bookings',
-      tag: 'Budget & Bookings',
-      desc: 'View complete budget allocations, compare flight options, and confirm verified stays and activities with integrated partners like Booking.com, Viator, and Skyscanner.',
-      image: '/app_odyssey_plans_v4.png'
-    },
-    {
-      num: '10',
-      title: 'Discover',
-      tag: 'Nearby Places',
-      desc: "Find what's around you at a glance. Browse nearby landmarks, culture, museums, leisure, nature, food, shopping, and medical services, with ratings and distance on every card.",
-      image: '/discovery_food_tab_v4.png'
-    },
-    {
-      num: '11',
-      title: 'Curated Experiences & Adventures',
-      tag: 'Local Experiences',
-      desc: 'Discover bookable local experiences such as jeep safaris, boat rides, water sports, and wildlife tours. Browse by country or category, with the closest first.',
-      image: '/app_experiences.png'
-    }
-  ];
+  // The app's features, shared with the App page (src/data/appModules.js)
+  const appScreens = APP_MODULES.map((m, i) => ({
+    ...m,
+    num: String(i + 1).padStart(2, '0'),
+    tag: m.badge,
+  }));
 
   // 9 World Wonders from website folder
   const destinations = [
@@ -185,7 +113,7 @@ export default function Home() {
       image: '/bg_sigiriya.png',
       badge: 'UNESCO Heritage',
       tag: 'Ancient Citadel',
-      desc: 'Explore the 5th-century palace in the sky with interactive AR fresco recognition, historical facts, and cultural storytelling.',
+      desc: 'Climb the 5th-century rock fortress. See nearby sights in AR, ask Neva about its history and plan the day with Odyssey.',
       arEnabled: true
     },
     {
@@ -194,7 +122,7 @@ export default function Home() {
       image: '/bg_eiffel_tower.png',
       badge: 'Iconic Wonder',
       tag: 'Architectural Marvel',
-      desc: 'Panoramic viewpoint overlays, night light timings, and historical viewpoint guides along Champ de Mars.',
+      desc: "Find viewpoints and cafés around the Champ de Mars, read travellers' stories and get walking directions on the 3D map.",
       arEnabled: true
     },
     {
@@ -203,7 +131,7 @@ export default function Home() {
       image: '/bg_colosseum_rome.png',
       badge: 'Ancient Roman',
       tag: 'Gladiator Arena',
-      desc: 'Point your camera at the arena to discover detailed histories of ancient gladiatorial events and hypogeum chambers.',
+      desc: 'Plan a day in ancient Rome with Odyssey, ask Neva about the arena and find food and sights nearby.',
       arEnabled: true
     },
     {
@@ -212,7 +140,7 @@ export default function Home() {
       image: '/bg_great_wall.png',
       badge: 'World Wonder',
       tag: 'Ancient Fortress',
-      desc: 'Section-by-section trail maps, watchtower histories, and optimal photography times along Mutianyu and Badaling.',
+      desc: 'Plan your trip from Beijing with Odyssey, compare stays and ask Neva which section of the wall to visit.',
       arEnabled: true
     },
     {
@@ -221,7 +149,7 @@ export default function Home() {
       image: '/bg_machu_picchu.png',
       badge: 'Inca Wonder',
       tag: 'Sacred Valley',
-      desc: 'Step-by-step hiking route guide, astronomical temple alignments, and interactive GPS elevation mapping.',
+      desc: 'Plan the journey through Cusco and the Sacred Valley, with flights, stays, visa guidance and a day-by-day itinerary.',
       arEnabled: true
     },
     {
@@ -230,7 +158,7 @@ export default function Home() {
       image: '/bg_pyramids_giza.png',
       badge: 'Ancient Wonder',
       tag: 'Pharaoh Tombs',
-      desc: 'Scan the Great Pyramid and Sphinx for architectural AR overlays and historical timeline narratives.',
+      desc: 'Plan your days in Cairo with Odyssey, ask Neva about the pyramids and the Sphinx, and find food and sights nearby.',
       arEnabled: true
     },
     {
@@ -239,7 +167,7 @@ export default function Home() {
       image: '/bg_taj_mahal.png',
       badge: 'Mughal Architecture',
       tag: 'Marble Wonder',
-      desc: 'Discover symmetry secrets, calligraphy translations, and optimal sunrise photography spots.',
+      desc: 'Plan a visit to Agra, ask Neva about the best time to go and find food and sights near the monument.',
       arEnabled: true
     },
     {
@@ -248,7 +176,7 @@ export default function Home() {
       image: '/bg_statue_liberty.png',
       badge: 'Historic Harbor',
       tag: 'Freedom Icon',
-      desc: 'Harbor viewpoint guide, crown access tips, and interactive historical timeline of Ellis Island.',
+      desc: 'Plan New York day by day, find nearby places in Discover and get directions on the 3D map.',
       arEnabled: true
     },
     {
@@ -257,7 +185,7 @@ export default function Home() {
       image: '/bg_sydney_opera.png',
       badge: 'Modern Wonder',
       tag: 'Harbor Landmark',
-      desc: 'Acoustic architecture breakdown, walking tours, and harbor ferry schedule integrations.',
+      desc: "See harbour sights in AR, read travellers' stories and ask Neva what to do next.",
       arEnabled: true
     }
   ];
@@ -348,7 +276,7 @@ export default function Home() {
               fontWeight: 300,
               textShadow: '0 2px 10px rgba(0,0,0,0.5)'
             }}>
-              Point your camera to recognize ancient ruins & landmarks in real-time, generate personalized Odyssey itineraries, and chat with Neva- your 24/7 AI travel concierge.
+              Plan trips day by day with Odyssey, see what's around you in AR, follow city guides and chat with Neva, your AI travel companion.
             </p>
 
             {/* Action Buttons */}
@@ -448,7 +376,7 @@ export default function Home() {
                 ARound
               </h3>
               <p style={{ fontSize: '0.96rem', color: 'var(--text-secondary)', lineHeight: 1.7, margin: 0 }}>
-                Everything happening around you- from hidden cafés and scenic viewpoints to local festivals, authentic food, and culture.
+                Everything around you, from hidden cafés and scenic viewpoints to authentic food, culture and local experiences.
               </p>
             </div>
 
@@ -461,7 +389,7 @@ export default function Home() {
                 Augmented Reality (AR)
               </h3>
               <p style={{ fontSize: '0.96rem', color: 'var(--text-secondary)', lineHeight: 1.7, margin: 0 }}>
-                Simply raise your phone to overlay nearby attractions, dining, shopping, and transport in real time with instant familiarity.
+                Simply raise your phone to see nearby attractions, food, shopping and hotels over the camera view.
               </p>
             </div>
 
@@ -502,7 +430,7 @@ export default function Home() {
               How <span className="text-gradient-teal">NexAround</span> Works
             </h2>
             <p style={{ fontSize: '1.08rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.7 }}>
-              From planning your journey to exploring real-world monuments and logging your travel memories, here is how the mobile ecosystem guides your adventure every step of the way.
+              From planning your trip to finding your way on the ground and sharing your stories, here is how the app guides your adventure every step of the way.
             </p>
           </div>
 
@@ -623,16 +551,10 @@ export default function Home() {
                   border: '6px solid #111a24',
                   background: '#111a24'
                 }}>
-                  <img
-                    src={appWorkflow[activeStep].image}
-                    alt={appWorkflow[activeStep].title}
-                    style={{
-                      width: '100%',
-                      height: 'auto',
-                      maxHeight: '400px',
-                      objectFit: 'contain',
-                      display: 'block'
-                    }}
+                  <AppScreen
+                    module={appWorkflow[activeStep]}
+                    imgStyle={{ maxHeight: '400px', objectFit: 'contain' }}
+                    minHeight={400}
                   />
                 </div>
               </div>
@@ -654,10 +576,10 @@ export default function Home() {
               <Layers style={{ width: '14px', height: '14px' }} /> Inside the App
             </div>
             <h2 style={{ fontSize: 'clamp(2.2rem, 4vw, 3.2rem)', fontWeight: 500, color: 'var(--dark-charcoal)', margin: '0 0 16px', letterSpacing: '-0.025em' }}>
-              11 Screens, <span className="text-gradient-teal">One Unified Experience</span>
+              14 Features, <span className="text-gradient-teal">One Unified Experience</span>
             </h2>
             <p style={{ fontSize: '1.08rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.7 }}>
-              Tap any feature below to view its live screen mockup and explore the full mobile capabilities.
+              Tap any feature below to see its screen and what it does.
             </p>
           </div>
 
@@ -715,11 +637,7 @@ export default function Home() {
                 border: '6px solid #111a24',
                 background: '#111a24'
               }}>
-                <img
-                  src={appScreens[activeScreenIndex].image}
-                  alt={appScreens[activeScreenIndex].title}
-                  style={{ width: '100%', height: 'auto', display: 'block' }}
-                />
+                <AppScreen module={appScreens[activeScreenIndex]} />
               </div>
             </div>
 
@@ -834,17 +752,16 @@ export default function Home() {
         <div className="container">
           <div style={{ textAlign: 'center', marginBottom: '28px' }}>
             <span style={{ fontSize: '0.76rem', fontWeight: 500, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '1.2px' }}>
-              Integrated with Top Global Booking & Transit Networks
+              Booking links to trusted travel partners
             </span>
           </div>
 
           <div className="partner-logos-row" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '36px', flexWrap: 'wrap', opacity: 0.85 }}>
-            <img src="/booking.svg" alt="Booking.com Integration" style={{ height: '18px', objectFit: 'contain' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
-            <img src="/viator.png" alt="Viator Integration" style={{ height: '24px', objectFit: 'contain' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
-            <img src="/getyourguide.png" alt="GetYourGuide Integration" style={{ height: '28px', objectFit: 'contain' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
-            <img src="/headout.png" alt="Headout Integration" style={{ height: '26px', objectFit: 'contain' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
-            <img src="/skyscanner.png" alt="Skyscanner Integration" style={{ height: '24px', objectFit: 'contain' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
-            <img src="/uber_logo.png" alt="Uber Integration" style={{ height: '22px', objectFit: 'contain' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+            <img src="/booking.svg" alt="Booking.com" style={{ height: '18px', objectFit: 'contain' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+            <img src="/viator.png" alt="Viator" style={{ height: '24px', objectFit: 'contain' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+            <img src="/getyourguide.png" alt="GetYourGuide" style={{ height: '28px', objectFit: 'contain' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+            <img src="/skyscanner.png" alt="Skyscanner" style={{ height: '24px', objectFit: 'contain' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+            <img src="/uber_logo.png" alt="Uber" style={{ height: '22px', objectFit: 'contain' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
           </div>
         </div>
       </section>
@@ -881,7 +798,7 @@ export default function Home() {
                 </h2>
 
                 <p style={{ fontSize: '1.05rem', color: 'var(--text-secondary)', lineHeight: 1.7, margin: '0 0 28px' }}>
-                  Trained on authentic cultural knowledge and destination telemetry, Neva understands context. Ask questions in natural speech or text, and get instant answers formatted specifically for travelers.
+                  Neva knows where you are and answers like a local friend. Ask by text or voice, and get short answers with places you can open on a map.
                 </p>
 
                 {/* Sample Prompt Chips */}
@@ -889,7 +806,7 @@ export default function Home() {
                   {[
                     '“Find me the best authentic seafood street spot within 10 mins walk”',
                     '“Explain the architectural background and history of this landmark”',
-                    '“It started raining. Re-route my afternoon for indoor attractions”',
+                    '“It started raining. What indoor places are near me?”',
                   ].map((prompt, idx) => (
                     <div key={idx} style={{ 
                       background: '#ffffff', 
@@ -975,7 +892,7 @@ export default function Home() {
                 </h2>
 
                 <p style={{ fontSize: '1.08rem', color: 'rgba(255, 255, 255, 0.82)', lineHeight: 1.7, margin: '0 0 36px', maxWidth: '540px' }}>
-                  Available on iOS and Android. Download the NexAround mobile application today and explore destinations across Europe, Asia, and the Americas.
+                  Available on iOS and Android. Download the nexARound app today and explore destinations around the world.
                 </p>
 
                 {/* Store Download Buttons */}

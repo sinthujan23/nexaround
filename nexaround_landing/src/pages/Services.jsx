@@ -33,67 +33,67 @@ export default function Services() {
     {
       num: '01',
       icon: <Camera style={{ width: '24px', height: '24px', color: 'var(--brand-teal)' }} />,
-      title: 'Spatial AR Camera Landmark Vision',
-      desc: 'Edge-accelerated computer vision that identifies ancient temples, heritage ruins, architectural structures, and city landmarks in sub-500ms.',
+      title: 'AR Discovery',
+      desc: 'Hold up your phone to see nearby places over the camera view. Point at a place and nexARound uses your location and compass to show what it is.',
       highlights: [
-        'Real-time camera landmark recognition',
-        'Interactive historical facts & spatial orientation overlays',
-        'Spatial vantage point contextual storytelling'
+        'Place labels by category',
+        'Ask Neva about the place in front of you',
+        'Walking routes in the camera view'
       ]
     },
     {
       num: '02',
       icon: <Compass style={{ width: '24px', height: '24px', color: 'var(--brand-teal)' }} />,
-      title: 'Odyssey AI Dynamic Itinerary Engine',
-      desc: 'Multi-day personalized travel planner that optimizes routes, adapts to weather, and balances pacing across your preferred budget tier.',
+      title: 'Odyssey AI Trip Planner',
+      desc: 'A complete day-by-day trip plan from your destination, dates, travellers and budget, with flights, stays and visa guidance.',
       highlights: [
-        'Dynamic multi-day route & transit optimization',
-        'Budget matching from backpacker to luxury',
-        'Live opening hours & crowd density sync'
+        'Routes across several cities',
+        'Budget breakdown line by line',
+        'What to book now and what can wait'
       ]
     },
     {
       num: '03',
       icon: <MessageSquare style={{ width: '24px', height: '24px', color: 'var(--brand-teal)' }} />,
-      title: 'Neva 24/7 AI Smart Concierge',
-      desc: 'Context-aware conversational companion delivering instant local recommendations, cultural context, and emergency safety support.',
+      title: 'Neva AI Companion',
+      desc: 'Chat or talk with Neva about places, food, history and what to do next, with answers based on your location.',
       highlights: [
-        'Natural conversational voice & text intelligence',
-        'Hyper-local dining & dietary preference filters',
-        'Real-time itinerary adjustments on the fly'
+        'Text and voice chat',
+        'Suggested places shown on a map',
+        'Shortcuts to the right tool'
       ]
     },
     {
       num: '04',
-      icon: <MapPin style={{ width: '24px', height: '24px', color: 'var(--brand-teal)' }} />,
-      title: 'Living Tourism Radar & Proximity Maps',
-      desc: 'Intelligent spatial radar scanning attractions, viewpoints, authentic street food, and verified healthcare facilities in your immediate radius.',
+      icon: <Landmark style={{ width: '24px', height: '24px', color: 'var(--brand-teal)' }} />,
+      title: 'City Guides & Museum Guides',
+      desc: 'Day-by-day city guides with live navigation, and route guides to more than 50 leading museums.',
       highlights: [
-        'Live proximity distance radar around your GPS',
-        'Curated Food, Nature, and Cultural POI filters',
-        'Direct skip-the-line ticket bookings'
+        'Plan by day or by place',
+        'Public transport directions',
+        'Museum routes from 3 hours to 2 days'
       ]
     },
     {
       num: '05',
-      icon: <Landmark style={{ width: '24px', height: '24px', color: 'var(--brand-teal)' }} />,
-      title: 'Curated Heritage & Cultural Guides',
-      desc: 'Interactive destination guides crafted by historians and cultural experts with detailed cultural context and visiting logistics.',
+      icon: <MapPin style={{ width: '24px', height: '24px', color: 'var(--brand-teal)' }} />,
+      title: 'Smart Maps & Discover',
+      desc: 'A 3D map with turn-by-turn navigation, and nearby places by category, from food and nature to hospitals.',
       highlights: [
-        'Deep historical storytelling for world wonders',
-        'Landmark visiting logistics & ticketing guides',
-        'Must-see cultural highlights & verified schedules'
+        'Driving and walking directions',
+        'Auto Tour of the top places',
+        'Local emergency numbers and phrases'
       ]
     },
     {
       num: '06',
       icon: <Ticket style={{ width: '24px', height: '24px', color: 'var(--brand-teal)' }} />,
-      title: 'Integrated Bookings & Transit Dispatch',
-      desc: 'Book verified activities, museum tickets, hotels, and Uber rides directly inside your daily itinerary without jumping between multiple apps.',
+      title: 'Local Experiences & Booking Partners',
+      desc: 'Request dates for experiences run by local providers, and book flights, stays, tours and more on trusted partner sites.',
       highlights: [
-        'Integrated with Viator, GetYourGuide, Headout',
-        'One-tap Uber & local ride-hailing dispatch',
-        'Zero markups on official landmark tickets'
+        'The provider confirms your date',
+        'Pay the provider at the experience',
+        'Links for flights, stays, eSIMs and insurance'
       ]
     }
   ];
@@ -101,27 +101,28 @@ export default function Services() {
   const enterpriseServices = [
     {
       icon: <Landmark style={{ width: '24px', height: '24px', color: 'var(--brand-teal)' }} />,
-      title: 'Heritage & Landmark Spatial Digitization',
-      tag: 'For Cultural Ministries & DMOs',
-      desc: 'We create interactive digital landmark guides, spatial mapping, and rich historical storytelling for national heritage sites.'
-    },
-    {
-      icon: <Globe style={{ width: '24px', height: '24px', color: 'var(--brand-teal)' }} />,
-      title: 'Destination Tourism Telemetry',
-      tag: 'For Smart Cities & Tourism Boards',
-      desc: 'Anonymized visitor flow analytics, dwell time tracking, and crowd distribution heatmaps for sustainable destination management.'
-    },
-    {
-      icon: <Landmark style={{ width: '24px', height: '24px', color: 'var(--brand-teal)' }} />,
-      title: 'Curated Cultural Landmark Guide Production',
-      tag: 'For Cultural Sites & Destinations',
-      desc: 'End-to-end research, curated cultural descriptions, and spatial guides for permanent heritage landmarks and destinations.'
+      title: 'Destination Partnerships',
+      tag: 'For Tourism Boards & DMOs',
+      desc: 'Work with us to feature your destination in nexARound, through city guides, travel stories and local experiences. Talk to our team about a partnership.'
     },
     {
       icon: <HeartHandshake style={{ width: '24px', height: '24px', color: 'var(--brand-teal)' }} />,
-      title: 'Hospitality Partner White-Labeling',
-      tag: 'For Resorts & Luxury Hotels',
-      desc: 'Customized in-stay guest concierges featuring branded hotel recommendations, wellness schedules, and VIP excursions.'
+      title: 'Experience Providers',
+      tag: 'For Tour Operators & Activity Providers',
+      desc: 'List your tours and activities in the app, then manage packages, availability, booking requests and reviews in the app or on the provider portal.',
+      link: '/list-your-experience'
+    },
+    {
+      icon: <Layers style={{ width: '24px', height: '24px', color: 'var(--brand-teal)' }} />,
+      title: 'Museum & Cultural Site Partnerships',
+      tag: 'For Museums & Cultural Sites',
+      desc: 'Museum Master Guides cover more than 50 leading museums. Talk to us about featuring your museum or cultural site.'
+    },
+    {
+      icon: <Globe style={{ width: '24px', height: '24px', color: 'var(--brand-teal)' }} />,
+      title: 'Hotel Partnerships',
+      tag: 'For Hotels & Resorts',
+      desc: 'Talk to us about recommending your property and nearby experiences to travellers who plan their trips with nexARound.'
     }
   ];
 
@@ -208,7 +209,7 @@ export default function Services() {
               fontWeight: 300,
               textShadow: '0 2px 10px rgba(0,0,0,0.5)'
             }}>
-              Explore the advanced spatial AI, computer vision, dynamic itinerary engines, and heritage exhibit services that make NexAround the ultimate smart tourism companion.
+              Explore the AR discovery, AI trip planning, city guides and local experiences that make nexARound a complete travel companion.
             </p>
 
             {/* Action Buttons */}
@@ -329,7 +330,7 @@ export default function Services() {
               Services for <span className="text-gradient-teal">Destinations & Tourism Partners</span>
             </h2>
             <p style={{ color: 'var(--text-secondary)', fontSize: '1.05rem', margin: 0, lineHeight: 1.7 }}>
-              Collaborate with NexAround to bring cutting-edge spatial storytelling and digital concierge capabilities to your destination.
+              Work with nexARound to reach travellers planning trips to your destination.
             </p>
           </div>
 
@@ -342,6 +343,12 @@ export default function Services() {
                 <span style={{ fontSize: '0.74rem', fontWeight: 500, color: 'var(--brand-teal)', textTransform: 'uppercase', letterSpacing: '0.8px' }}>{m.tag}</span>
                 <h3 style={{ fontSize: '1.2rem', fontWeight: 500, color: 'var(--dark-charcoal)', margin: '4px 0 12px' }}>{m.title}</h3>
                 <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', lineHeight: 1.65, margin: 0 }}>{m.desc}</p>
+                {m.link && (
+                  <NavLink to={m.link} className="btn-teal" style={{ marginTop: '18px', padding: '10px 20px', fontSize: '0.85rem', textDecoration: 'none' }}>
+                    <span>List your experience</span>
+                    <ArrowRight style={{ width: '14px', height: '14px' }} />
+                  </NavLink>
+                )}
               </div>
             ))}
           </div>
@@ -370,7 +377,7 @@ export default function Services() {
           </h2>
 
           <p style={{ color: 'var(--text-secondary)', margin: '0 auto 36px', fontSize: '1.08rem', maxWidth: '620px', lineHeight: 1.7 }}>
-            Download the NexAround mobile app today and experience the world with real-time AR recognition, smart Odyssey itineraries, and Neva 24/7 AI.
+            Download the nexARound app today and explore with AR Discovery, Odyssey trip plans, City Guides and Neva.
           </p>
 
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px' }}>

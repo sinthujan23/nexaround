@@ -106,7 +106,7 @@ export default function Terms() {
               3. Spatial AR & Physical Safety Advisory
             </h2>
             <p style={{ fontSize: '0.96rem', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
-              When utilizing the Augmented Reality camera scanning and navigation features, you must always maintain awareness of your physical surroundings, traffic, terrain, and local safety rules. Do not operate AR camera modes while walking across busy roadways or hazardous areas.
+              When using the augmented reality camera and navigation features, you must always maintain awareness of your physical surroundings, traffic, terrain, and local safety rules. Do not operate AR camera modes while walking across busy roadways or hazardous areas.
             </p>
           </div>
 

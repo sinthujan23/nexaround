@@ -31,13 +31,13 @@ export default function About() {
   const values = [
     { title: 'Innovation with Purpose', desc: 'Blending spatial AR computing and artificial intelligence to enrich human cultural discovery.' },
     { title: 'Privacy & Security First', desc: 'Zero data brokering, enterprise-grade encryption, and strict GDPR/CCPA compliance.' },
-    { title: 'Sub-Second Performance', desc: 'Edge computer vision and low-latency APIs engineered for seamless real-time exploration.' },
-    { title: 'Cultural Integrity', desc: 'Collaborating with local historians and heritage authorities for authentic storytelling.' },
+    { title: 'Fast Performance', desc: 'Caching and low-latency APIs engineered for smooth real-time exploration.' },
+    { title: 'Reviewed Content', desc: 'City guides from creators are reviewed by our team before they go live.' },
     { title: 'Global Accessibility', desc: 'Intuitive spatial UX and inclusive design crafted for travelers of all ages and backgrounds.' }
   ];
 
   const expertises = [
-    { name: 'Spatial AR & Computer Vision', desc: 'Real-time camera landmark recognition, spatial orientation, and rich contextual storytelling.' },
+    { name: 'Spatial AR & Location', desc: 'GPS and compass-based AR place discovery, spatial orientation and walking navigation.' },
     { name: 'Conversational Travel AI', desc: 'Multi-modal LLMs customized for destination context and travel assistance.' },
     { name: 'Geo-Spatial Systems', desc: 'PostGIS spatial indexing and real-time proximity telemetry routing.' },
     { name: 'High-Concurrency Cloud', desc: 'Microservices architecture with Redis caching and Docker orchestration.' },
@@ -218,7 +218,7 @@ export default function About() {
                 Making Every Journey <span className="text-gradient-teal">Unforgettable & Effortless</span>
               </h2>
               <p style={{ fontSize: '1.05rem', color: 'var(--text-secondary)', lineHeight: 1.75, margin: '0 0 20px' }}>
-                We believe travel should be more than following static maps and tourist crowds. By pairing real-time camera computer vision with localized AI guidance, NexAround empowers travelers to understand the rich stories behind every monument, alley, and artifact.
+                We believe travel should be more than following static maps and tourist crowds. By pairing location-aware AR with localized AI guidance, NexAround empowers travelers to understand the rich stories behind every monument, alley, and artifact.
               </p>
               <p style={{ fontSize: '1rem', color: 'var(--text-secondary)', lineHeight: 1.75, margin: 0 }}>
                 From our engineering roots in Sri Lanka to global heritage destinations worldwide, our platform connects travelers, local businesses, and cultural heritage sites into one seamless digital ecosystem.
@@ -336,7 +336,7 @@ export default function About() {
               </h2>
 
               <p style={{ fontSize: '1.05rem', color: 'rgba(255, 255, 255, 0.82)', lineHeight: 1.75, margin: '0 0 28px' }}>
-                nexARound application is our flagship AI &amp; AR powered smart tourism companion, built entirely in-house. It is where our computer vision, conversational AI, mobile, and dynamic trip planning engineering come together in one innovative product.
+                nexARound application is our flagship AI &amp; AR powered smart tourism companion, built entirely in-house. It is where our augmented reality, conversational AI, mobile, and dynamic trip planning engineering come together in one innovative product.
               </p>
 
               <NavLink

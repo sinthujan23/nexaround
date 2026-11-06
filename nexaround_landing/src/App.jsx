@@ -10,6 +10,7 @@ import Solutions from './pages/Solutions';
 import NexARoundApp from './pages/NexARoundApp';
 import About from './pages/About';
 import Contact from './pages/Contact';
+import ListExperience from './pages/ListExperience';
 import GetApp from './pages/GetApp';
 import Privacy from './pages/Privacy';
 import Terms from './pages/Terms';
@@ -50,6 +51,7 @@ export default function App() {
             <Route path="/app" element={<NexARoundApp />} />
             <Route path="/about" element={<About />} />
             <Route path="/contact" element={<Contact />} />
+            <Route path="/list-your-experience" element={<ListExperience />} />
             <Route path="/get-app" element={<GetApp />} />
             <Route path="/download" element={<GetApp />} />
             <Route path="/privacy" element={<Privacy />} />

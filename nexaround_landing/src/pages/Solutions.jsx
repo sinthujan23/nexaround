@@ -34,70 +34,69 @@ export default function Solutions() {
   const solutions = [
     {
       id: 'travelers',
-      badge: 'B2C Travel Companion',
+      badge: 'For Travellers',
       tag: 'For Global Travelers & Explorers',
-      title: 'Intelligent Spatial Travel in Your Pocket',
-      subtitle: 'From itinerary planning to real-world AR exploration and memory journaling',
-      desc: 'NexAround transforms the traveler journey from overwhelming research into seamless discovery. Point your camera at any monument, ask Neva anything about the area, and let Odyssey curate the perfect day.',
+      title: 'Your Travel Companion in Your Pocket',
+      subtitle: 'From trip planning to finding your way on the ground',
+      desc: 'nexARound helps you plan a trip and find your way when you arrive. Plan day by day with Odyssey, point your phone at places around you, follow a city guide and ask Neva anything about the area.',
       icon: <Compass style={{ width: '26px', height: '26px', color: 'var(--brand-teal)' }} />,
       image: '/app_scan_landmark_v4.png',
       features: [
-        'Sub-second real-time camera AR landmark scanning',
-        'Odyssey AI smart multi-day itinerary generation',
-        'Neva 24/7 conversational travel assistant',
-        'Living radar map for authentic food, viewpoints & cafes',
-        'Automatic GPS landmark passport stamps & photo journal'
+        'Odyssey AI day-by-day trip plans',
+        'AR Discovery: point your phone to see what is around you',
+        'City Guides with live navigation',
+        'Neva AI companion, by text or voice',
+        'Local experiences, travel stories and a private journal'
       ]
     },
     {
       id: 'dmo',
-      badge: 'Tourism Boards & Heritage',
-      tag: 'For DMOs & Cultural Ministries',
-      title: 'Smart Heritage Digitization & Visitor Telemetry',
-      subtitle: 'Transform historical monuments into interactive spatial learning centers',
-      desc: 'Empower national tourism organizations and cultural ministries to digitize historic monuments, preserve cultural heritage with interactive AR overlays, and understand visitor flow patterns without invasive hardware.',
+      badge: 'Tourism Boards & Destinations',
+      tag: 'For DMOs & Tourism Boards',
+      title: 'Destination Partnerships',
+      subtitle: 'Help travellers discover your destination',
+      desc: 'Tourism boards and destination teams can work with us to feature their destination in nexARound, through city guides, travel stories and local experiences. Talk to our team about a partnership.',
       icon: <Landmark style={{ width: '26px', height: '26px', color: 'var(--brand-teal)' }} />,
       image: '/app_heritage_dmo_v4.png',
       features: [
-        'Interactive historical & architectural AR overlays',
-        'Interactive digital exhibit guide preservation',
-        'Visitor footfall telemetry & crowd distribution insights',
-        'Zero-hardware maintenance: runs natively on traveler smartphones',
-        'Eco-friendly digital-only guides replacing paper brochures'
+        'Feature your destination in City Guides',
+        'Share stories about your destination with travellers',
+        'Bring local providers onto the Experiences marketplace',
+        "Runs on travellers' own smartphones, with no hardware to install",
+        'Talk to our team about a partnership'
       ]
     },
     {
       id: 'museums',
-      badge: 'Cultural Sites & Heritage',
-      tag: 'For Cultural Institutions & Historic Ruins',
-      title: 'Next-Gen Interactive Cultural & Heritage Site Guides',
-      subtitle: 'Curated spatial guides & outdoor architectural landmark recognition',
-      desc: 'Replace static paper brochures with rich, interactive smartphone guides. Visitors point their camera at historic monuments, ancient structures, and heritage sites to discover contextual storytelling, architectural facts, and spatial navigation.',
+      badge: 'Museums & Cultural Sites',
+      tag: 'For Museums & Cultural Institutions',
+      title: 'Museum and Cultural Site Guides',
+      subtitle: 'Routes through more than 50 leading museums',
+      desc: "nexARound's Museum Master Guides help visitors plan their time, from 3 hours to 2 days, with routes through the masterpieces, opening hours and ticket links. Museums and cultural sites can talk to us about being featured.",
       icon: <BookOpen style={{ width: '26px', height: '26px', color: 'var(--brand-teal)' }} />,
       image: '/app_cap_02_v4.png',
       features: [
-        'Camera vision architectural landmark & monument recognition',
-        'Interactive historical facts with curated historian notes',
-        'Spatial orientation and site navigation',
-        'Rich destination details with verified cultural insights',
-        'Integrated admission ticketing and skip-the-line access'
+        'Routes from 3 hours to 2 days',
+        'Opening hours and skip-the-line ticket links',
+        'More than 50 leading museums today',
+        'Talk to us about featuring your museum or site'
       ]
     },
     {
       id: 'hospitality',
-      badge: 'Hotels & Tour Operators',
-      tag: 'For Hospitality & Travel Providers',
-      title: 'In-Stay Concierge & Experience Monetization',
-      subtitle: 'Elevate guest stays with hyper-local AI recommendations and bookings',
-      desc: 'Hotels, resorts, and tour operators can deliver instant local recommendations to their guests. Seamlessly connect guests with verified local dining, skip-the-line activities, and integrated transit.',
+      badge: 'Tour Operators & Hotels',
+      tag: 'For Experience Providers & Hotels',
+      title: 'Experience Providers and Hotel Partnerships',
+      subtitle: 'Reach travellers who are planning what to do',
+      desc: 'Tour operators and activity providers can list their experiences in the app, and manage packages, availability, booking requests and reviews from the app or the provider portal. Hotels can talk to us about partnerships.',
       icon: <Hotel style={{ width: '26px', height: '26px', color: 'var(--brand-teal)' }} />,
-      image: '/app_download_v4.png',
+      image: '/app_experiences.png',
       features: [
-        'Curated neighborhood guides verified by local experts',
-        'Direct ticket & experience integration with top networks',
-        'Seamless taxi & transit dispatch directly in the itinerary',
-        'Real-time opening status & dietary safety recommendations',
-        'Enhanced guest satisfaction and in-destination spend'
+        'List tours and activities on the Experiences marketplace',
+        'Manage packages, prices and availability',
+        'Confirm requests or offer another date',
+        'Reply to traveller reviews',
+        'Hotels: talk to us about partnerships'
       ]
     }
   ];
@@ -105,17 +104,17 @@ export default function Solutions() {
   const benefits = [
     {
       title: 'Zero Hardware Required',
-      desc: 'No rented hardware wands or beacons needed. The entire spatial experience runs on consumer smartphones.',
+      desc: "No rented devices or beacons. Everything runs on travellers' own smartphones.",
       icon: <Smartphone style={{ width: '24px', height: '24px', color: 'var(--brand-teal)' }} />
     },
     {
-      title: 'Live Spatial Telemetry',
-      desc: 'Real-time camera landmark recognition and live GPS radar around your destination.',
+      title: 'Location-Aware Discovery',
+      desc: 'AR place labels, nearby places and directions based on where travellers are.',
       icon: <ShieldCheck style={{ width: '24px', height: '24px', color: 'var(--brand-teal)' }} />
     },
     {
-      title: 'Ecosystem Integrations',
-      desc: 'Direct integrations with Viator, GetYourGuide, Headout, and Uber for seamless booking execution.',
+      title: 'Trusted Booking Partners',
+      desc: 'Links to partners for flights, stays, tours, transfers, eSIMs and insurance.',
       icon: <Ticket style={{ width: '24px', height: '24px', color: 'var(--brand-teal)' }} />
     }
   ];
@@ -203,7 +202,7 @@ export default function Solutions() {
               fontWeight: 300,
               textShadow: '0 2px 10px rgba(0,0,0,0.5)'
             }}>
-              Discover how NexAround solves critical challenges for modern travelers, heritage landmarks, museums, and destination tourism boards worldwide.
+              See how nexARound helps travellers, and how destinations, museums, tour operators and hotels can work with us.
             </p>
 
             {/* Action Buttons */}
@@ -280,7 +279,7 @@ export default function Solutions() {
               Solutions Built for the <span className="text-gradient-teal">Entire Tourism Ecosystem</span>
             </h2>
             <p style={{ fontSize: '1.05rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.7 }}>
-              Select a sector below to explore how NexAround elevates discovery, heritage preservation, and visitor engagement.
+              Select a sector below to see how nexARound works for travellers and partners.
             </p>
           </div>
 
@@ -294,9 +293,9 @@ export default function Solutions() {
           }}>
             {[
               { id: 'travelers', label: 'For Travelers & Explorers', num: '01' },
-              { id: 'dmo', label: 'For Tourism Boards & Heritage', num: '02' },
+              { id: 'dmo', label: 'For Tourism Boards & Destinations', num: '02' },
               { id: 'museums', label: 'For Museums & Cultural Sites', num: '03' },
-              { id: 'hospitality', label: 'For Hotels & Tour Operators', num: '04' },
+              { id: 'hospitality', label: 'For Tour Operators & Hotels', num: '04' },
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -388,6 +387,11 @@ export default function Solutions() {
                     <NavLink to="/get-app" className="btn-secondary">
                       <span>Get the App</span>
                     </NavLink>
+                    {sol.id === 'hospitality' && (
+                      <NavLink to="/list-your-experience" className="btn-secondary">
+                        <span>List your experience</span>
+                      </NavLink>
+                    )}
                   </div>
                 </div>
 
@@ -468,7 +472,7 @@ export default function Solutions() {
           </h2>
 
           <p style={{ color: 'var(--text-secondary)', margin: '0 auto 36px', fontSize: '1.08rem', maxWidth: '620px', lineHeight: 1.7 }}>
-            Download the consumer app or partner with us to deploy spatial guides across your landmarks, museums, and hotels.
+            Download the app, or talk to us about featuring your destination, museum, hotel or experiences.
           </p>
 
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px' }}>

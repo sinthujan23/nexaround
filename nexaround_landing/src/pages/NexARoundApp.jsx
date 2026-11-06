@@ -1,13 +1,11 @@
 import { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
-import { 
-  Sparkles, Camera, MapPin, Compass, BookOpen, 
-  MessageSquare, Layers, Download, CheckCircle2, 
-  ArrowRight, ArrowUpRight, Smartphone, ShieldCheck, Zap, Globe,
-  Landmark, Cpu, Award, Volume2, Clock, Eye, Play, Star,
-  ChevronDown, ChevronUp
+import {
+  Sparkles, Layers, CheckCircle2, ArrowRight, ArrowUpRight, ChevronDown, ChevronUp
 } from 'lucide-react';
 import StoreButtons from '../components/StoreButtons';
+import AppScreen from '../components/AppScreen';
+import { APP_MODULES } from '../data/appModules';
 
 const heroBackgrounds = [
   { name: 'Colosseum, Rome', src: '/bg_colosseum_rome.png' },
@@ -33,179 +31,13 @@ export default function NexARoundApp() {
     return () => clearInterval(timer);
   }, []);
 
-  const appFeatures = [
-    {
-      id: 'ar',
-      num: '01',
-      badge: 'Spatial Augmented Reality',
-      title: 'AR Location & Landmark Discovery',
-      subtitle: 'Real-Time Camera Recognition for Landmarks & Architecture',
-      desc: 'Simply raise your phone and spin it around. NexAround overlays nearby attractions, restaurants, historic monuments, and transport hubs directly onto your real-world camera view with instant orientation.',
-      icon: <Camera style={{ width: '26px', height: '26px', color: '#007A7C' }} />,
-      image: '/app_scan_landmark_v4.png',
-      highlights: [
-        'Sub-500ms visual landmark identification',
-        'Interactive spatial landmark information overlays',
-        'Spatial vantage point landmark storytelling',
-        'Works with monuments, ruins & heritage landmarks'
-      ]
-    },
-    {
-      id: 'neva',
-      num: '02',
-      badge: 'Conversational Concierge',
-      title: 'Neva AI Travel Companion',
-      subtitle: 'Hyper-Local Wisdom Right in Your Pocket',
-      desc: 'Neva is your personal 24/7 travel guide: always with you, never overbearing. Ask her about what you see, where to eat, or how to get there. She understands your location, camera view, and preferences.',
-      icon: <MessageSquare style={{ width: '26px', height: '26px', color: '#007A7C' }} />,
-      image: '/meet_neva_v4.png',
-      highlights: [
-        'Natural conversational voice & text intelligence',
-        'Authentic culinary & hidden gem recommendations',
-        'Emergency numbers, embassy contacts & safety guidance',
-        'Dynamic live itinerary modifications'
-      ]
-    },
-    {
-      id: 'stories',
-      num: '03',
-      badge: 'Explorer Community',
-      title: 'Travel Stories & Visual Feeds',
-      subtitle: 'Authentic Visual Logs from Fellow Travelers',
-      desc: 'Discover authentic visual travel stories, photo logs, and curated itineraries shared by verified explorers who have walked the path before you across Europe, Asia, and the Americas.',
-      icon: <Globe style={{ width: '26px', height: '26px', color: '#007A7C' }} />,
-      image: '/app_travel_stories_v4.png',
-      highlights: [
-        'Visual photo diaries & verified traveler notes',
-        'Real user tips on tickets, lines & hidden angles',
-        'Interactive route sharing & itinerary clones'
-      ]
-    },
-    {
-      id: 'odyssey',
-      num: '04',
-      badge: 'Smart Trip Engine',
-      title: 'Odyssey AI Travel Planner',
-      subtitle: 'Multi-Day Optimized Itineraries in Seconds',
-      desc: 'Tell Odyssey your destination, travel dates, interests, and budget: and it crafts a full multi-day itinerary with time-optimized routes, verified opening hours, and real-time updates.',
-      icon: <Compass style={{ width: '26px', height: '26px', color: '#007A7C' }} />,
-      image: '/app_cap_04_v4.png',
-      highlights: [
-        'Dynamic multi-day route & schedule optimization',
-        'Budget-aware planning (Hostels to 5-Star Luxury)',
-        'Live opening hours & crowd density consideration',
-        'One-tap sync to Apple Maps & Google Maps'
-      ]
-    },
-    {
-      id: 'journal',
-      num: '05',
-      badge: 'Digital Passport Log',
-      title: 'Travel Journal & Memory Archive',
-      subtitle: 'Automatic Memory Archive & Landmark Stamps',
-      desc: 'Your journey, documented automatically. Captures the places you visit, landmark stamps, notes, and photos to create a personal searchable travel memoir.',
-      icon: <BookOpen style={{ width: '26px', height: '26px', color: '#007A7C' }} />,
-      image: '/new_journal_entry.png',
-      highlights: [
-        'Automatic GPS landmark passport stamps & achievements',
-        'Private photo journal & travel logbook archive',
-        'Country counters & personal travel statistics'
-      ]
-    },
-    {
-      id: 'museum',
-      num: '06',
-      badge: 'Cultural Heritage',
-      title: 'Curated Heritage & Culture Guides',
-      subtitle: 'Cultural Highlights & Admission Details',
-      desc: 'Transform ancient ruins, historic monuments, and cultural landmarks into intuitive personal tours. Access visiting highlights, historical backgrounds, and integrated ticket booking.',
-      icon: <Landmark style={{ width: '26px', height: '26px', color: '#007A7C' }} />,
-      image: '/app_cap_02_v4.png',
-      highlights: [
-        'Deep historical storytelling for global heritage sites',
-        'Landmark visiting logistics & admission guides',
-        'Must-see cultural highlights & opening schedules',
-        'Curated expert information for top heritage destinations'
-      ]
-    },
-    {
-      id: 'mood',
-      num: '07',
-      badge: 'Vibe Matching',
-      title: 'Mood-Based Journey Planner',
-      subtitle: 'Travel Matched to How You Feel',
-      desc: 'Not every trip starts with a destination: sometimes it starts with a feeling. Tell NexAround how you feel: adventurous, relaxed, romantic, curious, or hungry: and it matches the perfect vibe.',
-      icon: <Sparkles style={{ width: '26px', height: '26px', color: '#007A7C' }} />,
-      image: '/app_mood_planner_v4.png',
-      highlights: [
-        'Instant vibe selector (Relaxed, Adventure, Romantic, Foodie)',
-        'Surfaces hidden experiences tailored to your energy level',
-        'Adaptive suggestions matching real-time weather'
-      ]
-    },
-    {
-      id: 'radar',
-      num: '08',
-      badge: 'Living Spatial Map',
-      title: 'Smart Maps & Location Radar',
-      subtitle: 'Real-Time Attraction & Food Discovery Radar',
-      desc: 'An intelligent map that goes beyond pins and directions. Layers real-time local data, saved places, Neva recommendations, and live AR data into a single interactive view.',
-      icon: <MapPin style={{ width: '26px', height: '26px', color: '#007A7C' }} />,
-      image: '/nexaround_app_v4.png',
-      highlights: [
-        'Live proximity distance radar around your GPS position',
-        'Curated Food, Nature, Medical & Shopping tabs',
-        'Direct ticket bookings (Viator, GetYourGuide, Headout)',
-        'Real-time opening statuses & crowd levels'
-      ]
-    },
-    {
-      id: 'bookings',
-      num: '09',
-      badge: 'Integrated Travel Ops',
-      title: 'Seamless Hotel & Taxi Bookings',
-      subtitle: 'Book Stays and Rides In Journey Flow',
-      desc: 'Book your stay or your ride without switching apps. NexAround integrates hotel discovery and taxi bookings directly into your itinerary flow.',
-      icon: <Smartphone style={{ width: '26px', height: '26px', color: '#007A7C' }} />,
-      image: '/app_download_v4.png',
-      highlights: [
-        'Instant hotel and transit booking confirmations',
-        'Direct Uber and local transit integration',
-        'Verified boutique to luxury accommodations'
-      ]
-    },
-    {
-      id: 'discover',
-      num: '10',
-      badge: 'Nearby Discovery',
-      title: 'Discover',
-      subtitle: 'Points of Interest Around You',
-      desc: "Find what's around you at a glance. Discover lists nearby landmarks, culture, museums, leisure, nature, food, shopping, and medical services, with ratings and distance on every card.",
-      icon: <MapPin style={{ width: '26px', height: '26px', color: '#007A7C' }} />,
-      image: '/discovery_food_tab_v4.png',
-      highlights: [
-        'Category tabs: POI, Nature, Food, Shopping & Medical',
-        'Landmarks, culture, museums & leisure at a tap',
-        'Ratings and live distance on every place'
-      ]
-    },
-    {
-      id: 'experiences',
-      num: '11',
-      badge: 'Curated Experiences',
-      title: 'Curated Experiences & Adventures',
-      subtitle: 'Bookable Local Adventures, Closest First',
-      desc: 'Go beyond the tourist trail with experiences run by local operators: jeep safaris, boat rides, water sports, wildlife tours, and more. See photos, duration, and per-group pricing at a glance.',
-      icon: <Award style={{ width: '26px', height: '26px', color: '#007A7C' }} />,
-      image: '/app_experiences.png',
-      highlights: [
-        'Category filters: Adventure, Wildlife, Boat & Water sports',
-        'Country switcher with closest-first sorting',
-        'Photo galleries, duration & per-group pricing',
-        'Send an enquiry directly to the operator'
-      ]
-    }
-  ];
+  // The app's features, shared with the Home page (src/data/appModules.js)
+  const appFeatures = APP_MODULES.map((m, i) => ({
+    ...m,
+    num: String(i + 1).padStart(2, '0'),
+    subtitle: m.short,
+    iconNode: <m.icon style={{ width: '26px', height: '26px', color: '#007A7C' }} />,
+  }));
 
   return (
     <div style={{ background: '#ffffff', minHeight: '100vh', paddingBottom: '80px' }}>
@@ -391,7 +223,7 @@ export default function NexARoundApp() {
               </span>
               <h3 style={{ fontSize: '1.5rem', fontWeight: 500, color: 'var(--dark-charcoal)', margin: '0 0 12px' }}>ARound</h3>
               <p style={{ fontSize: '0.96rem', color: 'var(--text-secondary)', lineHeight: 1.7, margin: 0 }}>
-                Everything happening around you- from hidden cafés and scenic viewpoints to local festivals, authentic food, and culture.
+                Everything around you, from hidden cafés and scenic viewpoints to authentic food, culture and local experiences.
               </p>
             </div>
 
@@ -401,7 +233,7 @@ export default function NexARoundApp() {
               </span>
               <h3 style={{ fontSize: '1.5rem', fontWeight: 500, color: 'var(--dark-charcoal)', margin: '0 0 12px' }}>Augmented Reality (AR)</h3>
               <p style={{ fontSize: '0.96rem', color: 'var(--text-secondary)', lineHeight: 1.7, margin: 0 }}>
-                Simply raise your phone to overlay nearby attractions, dining, shopping, and transport in real time with instant familiarity.
+                Simply raise your phone to see nearby attractions, food, shopping and hotels over the camera view.
               </p>
             </div>
           </div>
@@ -441,7 +273,7 @@ export default function NexARoundApp() {
 
             {expandedStory && (
               <p style={{ fontSize: '0.95rem', color: 'var(--text-secondary)', lineHeight: 1.7, marginTop: '16px', paddingTop: '16px', borderTop: '1px solid var(--border-color)', textAlign: 'left' }}>
-                NexAround is an AI-powered Tourism Companion that transforms how people explore destinations across Europe, Latin America, North America, and Asia. It understands your location, mood, weather, budget, and interests to create intelligent, personalized itineraries that evolve with your journey.
+                NexAround is an AI-powered Tourism Companion that transforms how people explore destinations around the world. It uses your location, mood, budget and available time to plan days that suit you.
               </p>
             )}
           </div>
@@ -458,7 +290,7 @@ export default function NexARoundApp() {
               <Layers style={{ width: '14px', height: '14px' }} /> Complete App Capabilities
             </div>
             <h2 style={{ fontSize: 'clamp(2.2rem, 4vw, 3.2rem)', fontWeight: 500, color: 'var(--dark-charcoal)', margin: '0 0 16px', letterSpacing: '-0.025em' }}>
-              10 Integrated <span className="text-gradient-teal">Feature Modules</span>
+              14 App <span className="text-gradient-teal">Feature Modules</span>
             </h2>
             <p style={{ color: 'var(--text-secondary)', fontSize: '1.08rem', margin: 0, lineHeight: 1.7 }}>
               Engineered to deliver an intelligent, effortless travel companion from the moment you plan your trip to when you step foot in the destination.
@@ -489,7 +321,7 @@ export default function NexARoundApp() {
                   <div style={{ order: idx % 2 === 0 ? 1 : 2, textAlign: 'left' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
                       <div style={{ width: '48px', height: '48px', borderRadius: '14px', background: 'rgba(0, 122, 124, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(0, 122, 124, 0.25)' }}>
-                        {mod.icon}
+                        {mod.iconNode}
                       </div>
                       <span style={{ fontSize: '0.78rem', fontWeight: 500, color: 'var(--brand-teal)', background: 'rgba(0, 122, 124, 0.08)', padding: '6px 14px', borderRadius: '9999px', textTransform: 'uppercase', letterSpacing: '0.8px' }}>
                         Module {mod.num} • {mod.badge}
@@ -533,7 +365,7 @@ export default function NexARoundApp() {
                       border: '6px solid #111a24',
                       background: '#111a24'
                     }}>
-                      <img src={mod.image} alt={mod.title} style={{ width: '100%', height: 'auto', display: 'block' }} />
+                      <AppScreen module={mod} />
                     </div>
                   </div>
 
@@ -546,6 +378,29 @@ export default function NexARoundApp() {
       </section>
 
 
+
+      {/* ═══ FOR EXPERIENCE PROVIDERS ═══ */}
+      <section className="container" style={{ padding: '80px 32px 0' }}>
+        <div className="feature-card" style={{ padding: '44px 38px', textAlign: 'left', maxWidth: '960px', margin: '0 auto' }}>
+          <div className="badge badge-teal" style={{ marginBottom: '16px' }}>For experience providers</div>
+          <h2 style={{ fontSize: 'clamp(1.8rem, 3vw, 2.4rem)', fontWeight: 500, color: 'var(--dark-charcoal)', margin: '0 0 12px' }}>
+            Run your experiences from the app
+          </h2>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '1.02rem', lineHeight: 1.7, margin: '0 0 22px' }}>
+            Run tours, boat trips or activities? Apply here or from the app. Once you are listed, manage your packages, availability, booking requests and reviews in the app or on the provider portal.
+          </p>
+          <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', alignItems: 'center' }}>
+            <NavLink to="/list-your-experience" className="btn-teal" style={{ padding: '12px 26px', fontSize: '0.9rem', textDecoration: 'none' }}>
+              <span>List your experience</span>
+              <ArrowRight style={{ width: '16px', height: '16px' }} />
+            </NavLink>
+            <a href="https://partner.nexaround.com" className="btn-secondary" style={{ padding: '12px 26px', fontSize: '0.9rem', textDecoration: 'none' }}>
+              <span>Open the provider portal</span>
+              <ArrowUpRight style={{ width: '16px', height: '16px' }} />
+            </a>
+          </div>
+        </div>
+      </section>
 
       {/* ═══ EXPLORE CTA ═══ */}
       <section className="container" style={{ padding: '80px 32px 0' }}>
@@ -568,7 +423,7 @@ export default function NexARoundApp() {
           </h2>
 
           <p style={{ color: 'var(--text-secondary)', margin: '0 auto 36px', fontSize: '1.08rem', maxWidth: '600px', lineHeight: 1.7 }}>
-            Experience real-time spatial AR recognition, multi-day Odyssey planning, and 24/7 Neva AI travel assistance on your smartphone.
+            Plan trips with Odyssey, explore with AR Discovery and City Guides, and ask Neva anything, all on your smartphone.
           </p>
 
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px' }}>

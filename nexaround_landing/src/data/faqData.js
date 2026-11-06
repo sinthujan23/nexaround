@@ -6,226 +6,241 @@ export const APP_STORE_URL = 'https://apps.apple.com/app/nexaround/id6806252363'
 export const FAQ_CATEGORIES = [
   { id: 'all', label: 'All Topics' },
   { id: 'general', label: 'About & Getting Started' },
-  { id: 'ar', label: 'Spatial AR Scanner' },
-  { id: 'neva', label: 'Neva AI Concierge' },
-  { id: 'odyssey', label: 'Odyssey Trip Planner' },
-  { id: 'radar', label: 'Maps & Radar' },
-  { id: 'bookings', label: 'Bookings & Tickets' },
+  { id: 'ar', label: 'AR Discovery' },
+  { id: 'neva', label: 'Neva AI' },
+  { id: 'odyssey', label: 'Trip Planning' },
+  { id: 'guides', label: 'City Guides & Museums' },
+  { id: 'radar', label: 'Maps & Discover' },
+  { id: 'bookings', label: 'Bookings & Experiences' },
   { id: 'privacy', label: 'Privacy & Security' },
-];
+]
 
 export const FAQ_ITEMS = [
   {
-    id: 'what-is-nexaround',
-    category: 'general',
-    question: 'What is NexAround?',
-    shortAnswer: 'NexAround is a next-generation AI and Augmented Reality smart tourism companion designed to revolutionize how you explore the world.',
-    answer: `NexAround is a smart tourism AI & Spatial Augmented Reality platform. It combines real-time camera computer vision for landmark recognition, the Odyssey multi-day trip planning engine, and Neva—your 24/7 intelligent travel concierge—into a single mobile application available for iOS and Android.`,
-    keywords: ['what is', 'overview', 'about', 'introduction', 'how it works', 'nexaround app', 'explain'],
+    id: "what-is-nexaround",
+    category: "general",
+    question: "What is nexARound?",
+    shortAnswer: "nexARound is an AI-powered travel companion app for iOS and Android.",
+    answer: "nexARound helps you plan a trip, discover what is around you and book local experiences anywhere in the world. It brings together the Odyssey AI trip planner, AR Discovery, City Guides, Where Should I Go Today?, local experiences, travel stories and Neva, your AI travel companion, in one free app.",
+    keywords: ["what is", "overview", "about", "introduction", "how it works", "nexaround app", "explain", "features"],
     actionLinks: [
-      { text: 'Explore App Features', url: '/app' },
-      { text: 'Download App', url: '/get-app' }
+      { text: "Explore App Features", url: "/app" },
+      { text: "Download App", url: "/get-app" }
     ],
-    relatedIds: ['is-it-free', 'supported-devices', 'neva-capabilities']
+    relatedIds: ["is-it-free", "city-guides", "neva-capabilities"]
   },
   {
-    id: 'is-it-free',
-    category: 'general',
-    question: 'Is NexAround free to download and use?',
-    shortAnswer: 'Yes! NexAround is 100% free to download on both Apple App Store and Google Play Store.',
-    answer: `Yes, NexAround is completely free to download on iOS and Android. You can start exploring landmarks with AR, chat with Neva AI, generate basic itineraries with Odyssey, and browse travel stories right away without any upfront subscription or credit card requirement.`,
-    keywords: ['free', 'cost', 'pricing', 'subscription', 'price', 'pay', 'charge', 'money', 'trial', 'fee'],
+    id: "is-it-free",
+    category: "general",
+    question: "Is nexARound free to download and use?",
+    shortAnswer: "Yes. nexARound is free to download on the App Store and Google Play.",
+    answer: "Yes. nexARound is free to download on iOS and Android, with no subscription. Flights, stays, tours and local experiences are paid to the partner or provider you book with.",
+    keywords: ["free", "cost", "pricing", "subscription", "price", "pay", "charge", "money", "trial", "fee"],
     actionLinks: [
-      { text: 'Download on App Store', url: APP_STORE_URL },
-      { text: 'Get on Google Play', url: PLAY_STORE_URL },
-      { text: 'Get App Overview', url: '/get-app' }
+      { text: "Download on App Store", url: APP_STORE_URL },
+      { text: "Get on Google Play", url: PLAY_STORE_URL },
+      { text: "Get App Overview", url: "/get-app" }
     ],
-    relatedIds: ['what-is-nexaround', 'supported-devices']
+    relatedIds: ["what-is-nexaround", "supported-devices"]
   },
   {
-    id: 'supported-devices',
-    category: 'general',
-    question: 'Which devices and operating systems are supported?',
-    shortAnswer: 'NexAround supports iOS devices running iOS 15+ and Android devices running Android 9.0 (Pie) or higher.',
-    answer: `NexAround is optimized for modern mobile hardware. For iOS, it supports iPhone 8 and newer running iOS 15.0 or later with ARKit support. For Android, it supports devices running Android 9.0+ with ARCore compatibility for real-time spatial AR tracking.`,
-    keywords: ['devices', 'ios', 'android', 'iphone', 'samsung', 'compatibility', 'requirements', 'system', 'download', 'phone'],
+    id: "supported-devices",
+    category: "general",
+    question: "Which devices and operating systems are supported?",
+    shortAnswer: "iPhones with iOS 15.5 or later, and Android phones with Android 7.0 or later.",
+    answer: "nexARound runs on iPhones with iOS 15.5 or later and on Android phones with Android 7.0 or later. AR Discovery uses your camera, GPS and compass.",
+    keywords: ["devices", "ios", "android", "iphone", "samsung", "compatibility", "requirements", "system", "download", "phone"],
     actionLinks: [
-      { text: 'Download on App Store', url: APP_STORE_URL },
-      { text: 'Get on Google Play', url: PLAY_STORE_URL }
+      { text: "Download on App Store", url: APP_STORE_URL },
+      { text: "Get on Google Play", url: PLAY_STORE_URL }
     ],
-    relatedIds: ['what-is-nexaround', 'how-ar-works']
+    relatedIds: ["what-is-nexaround", "how-ar-works"]
   },
   {
-    id: 'destinations-available',
-    category: 'general',
-    question: 'Where can I use NexAround? Which cities/countries are supported?',
-    shortAnswer: 'NexAround works globally across major destinations in Europe, Asia, the Americas, and beyond.',
-    answer: `NexAround works worldwide! We have rich spatial landmark data and museum guides across top global destinations including Paris, Rome, Tokyo, London, New York, Cairo, Sigiriya, Florence, Sydney, Rio de Janeiro, and hundreds more cities. Neva AI and Odyssey trip planning work anywhere on the planet!`,
-    keywords: ['destinations', 'cities', 'countries', 'where', 'paris', 'rome', 'tokyo', 'global', 'locations', 'available'],
+    id: "destinations-available",
+    category: "general",
+    question: "Where can I use nexARound?",
+    shortAnswer: "nexARound works anywhere in the world.",
+    answer: "Odyssey, Neva, AR Discovery, maps and Where Should I Go Today? work anywhere in the world. City Guides and local experiences are available in a growing list of cities and countries, and Museum Master Guides cover more than 50 leading museums.",
+    keywords: ["destinations", "cities", "countries", "where", "paris", "rome", "tokyo", "global", "locations", "available"],
     actionLinks: [
-      { text: 'Explore App Features', url: '/app' },
-      { text: 'Download App', url: '/get-app' }
+      { text: "Explore App Features", url: "/app" },
+      { text: "Download App", url: "/get-app" }
     ],
-    relatedIds: ['what-is-nexaround', 'odyssey-how-it-works']
+    relatedIds: ["city-guides", "odyssey-how-it-works"]
   },
   {
-    id: 'how-ar-works',
-    category: 'ar',
-    question: 'How does the Spatial AR Landmark Scanner work?',
-    shortAnswer: 'Raise your camera toward any monument, historic building, or outdoor landmark to get sub-second identification and spatial context.',
-    answer: `Simply open the NexAround camera scanner and point your phone at any monument, historic building, cathedral, temple, or outdoor statue. Our sub-500ms computer vision neural engine matches visual features against global spatial datasets to overlay historical facts, architectural stories, and spatial details directly onto your camera screen.`,
-    keywords: ['ar', 'camera', 'scan', 'landmark', 'augmented reality', 'vision', 'monuments', 'statue', 'temple', 'recognition', 'scanner'],
+    id: "how-ar-works",
+    category: "ar",
+    question: "How does AR Discovery work?",
+    shortAnswer: "Hold up your phone to see nearby places over the camera view.",
+    answer: "Open the AR tab and look around. nexARound uses your location and compass to show nearby places over the camera view, such as food, shops, hotels, nature and medical services. Point your phone at a place to see what it is, tap Neva for a short description, or start a walking route with direction arrows. AR Discovery finds places from your location; it does not recognise buildings from the camera image.",
+    keywords: ["ar", "camera", "scan", "landmark", "augmented reality", "vision", "monuments", "statue", "temple", "recognition", "scanner", "point"],
     actionLinks: [
-      { text: 'View AR Technology', url: '/app#camera' }
+      { text: "AR Discovery", url: "/app#ar" }
     ],
-    relatedIds: ['museum-artwork', 'privacy-data']
+    relatedIds: ["museum-artwork", "privacy-data"]
   },
   {
-    id: 'museum-artwork',
-    category: 'ar',
-    question: 'Does NexAround include museum information and landmark guides?',
-    shortAnswer: 'Yes! NexAround includes curated landmark guides, visiting details, and ticket bookings for top cultural institutions.',
-    answer: `Yes! NexAround features curated destination information and skip-the-line ticket bookings for top global museums and heritage sites (such as Musée d’Orsay, the Louvre, Uffizi, or Vatican Museums). Please note that the AR camera visual scanner is designed for outdoor monuments, historic buildings, and architectural structures rather than individual indoor paintings or museum gallery exhibits.`,
-    keywords: ['museum', 'landmark', 'monument', 'heritage', 'tickets', 'louvre', 'exhibits', 'guides'],
+    id: "neva-capabilities",
+    category: "neva",
+    question: "What is Neva and what can she help me with?",
+    shortAnswer: "Neva is the AI travel companion in the app, by text or voice.",
+    answer: "Neva is the AI travel companion built into the app. She can:\n• Answer questions about places, food, history, budgets and what to do next, based on your location.\n• Show the places she suggests on a map, with directions.\n• Talk with you by voice and read her replies aloud.\n• Take you to the right tool, such as AR or Odyssey.",
+    keywords: ["neva", "ai", "concierge", "assistant", "chat", "voice", "food recommendations", "safety", "features", "help"],
     actionLinks: [
-      { text: 'Museum Guides', url: '/app#museum' }
+      { text: "Meet Neva", url: "/app#neva" }
     ],
-    relatedIds: ['how-ar-works', 'neva-capabilities']
+    relatedIds: ["where-should-i-go", "privacy-data"]
   },
   {
-    id: 'neva-capabilities',
-    category: 'neva',
-    question: 'What is Neva AI and what can she help me with?',
-    shortAnswer: 'Neva is your 24/7 personal AI travel concierge with voice and text capabilities.',
-    answer: `Neva is your 24/7 intelligent travel companion built into the app. She can:
-• Answer questions about what you are seeing around you.
-• Recommend authentic local food, cafes, and hidden scenic spots.
-• Filter recommendations by your dietary preferences (vegan, halal, gluten-free, allergies).
-• Provide local cultural context and destination information.
-• Provide emergency assistance, embassy contacts, and safety tips.
-• Dynamically adjust your Odyssey itinerary when your plans change.`,
-    keywords: ['neva', 'ai', 'concierge', 'assistant', 'chat', 'voice', 'food recommendations', 'safety', 'features', 'help'],
+    id: "neva-languages",
+    category: "neva",
+    question: "What languages does nexARound support?",
+    shortAnswer: "The app is currently in English.",
+    answer: "The nexARound app is currently in English. Language settings are coming soon.",
+    keywords: ["languages", "translation", "multilingual", "english", "roadmap", "language support"],
     actionLinks: [
-      { text: 'Meet Neva AI', url: '/app#neva' }
+      { text: "Learn About Neva", url: "/app#neva" }
     ],
-    relatedIds: ['odyssey-how-it-works', 'privacy-data']
+    relatedIds: ["neva-capabilities"]
   },
   {
-    id: 'neva-languages',
-    category: 'neva',
-    question: 'What languages does NexAround support?',
-    shortAnswer: 'NexAround is currently available in English, with multi-language support actively on our future product roadmap.',
-    answer: `NexAround currently operates in English. Multi-language support and live translation across global languages are part of our upcoming product roadmap to make travel even more accessible worldwide.`,
-    keywords: ['languages', 'translation', 'multilingual', 'english', 'roadmap', 'language support'],
+    id: "odyssey-how-it-works",
+    category: "odyssey",
+    question: "How does the Odyssey AI Planner create a trip plan?",
+    shortAnswer: "Odyssey builds a day-by-day plan from your destination, dates, travellers and budget.",
+    answer: "Enter your destination, dates, number of travellers, budget and nationality. Odyssey builds a complete day-by-day plan, with flight and hotel options, a line-by-line budget breakdown, visa guidance and a timeline of what to book first. For trips across several cities you can preview and compare routes. Then drag places to reorder them, tick off what you visit and record what you spend.",
+    keywords: ["odyssey", "itinerary", "trip planner", "multi-day", "schedule", "route", "budget", "visa", "flights", "plan trip"],
     actionLinks: [
-      { text: 'Learn About Neva', url: '/app#neva' }
+      { text: "Odyssey AI Planner", url: "/app#odyssey" }
     ],
-    relatedIds: ['neva-capabilities']
+    relatedIds: ["where-should-i-go", "bookings-tickets"]
   },
   {
-    id: 'odyssey-how-it-works',
-    category: 'odyssey',
-    question: 'How does the Odyssey AI Travel Planner create itineraries?',
-    shortAnswer: 'Odyssey builds time-optimized, multi-day routes tailored to your travel mood, budget, dates, and live venue hours.',
-    answer: `Odyssey uses generative AI and spatial route optimization algorithms. When you input your destination, travel duration, budget tier (Backpacker to Luxury), and travel mood (Adventurous, Relaxed, Cultural, or Foodie), Odyssey crafts an hour-by-hour itinerary that minimizes travel transit times and checks live opening hours. You can customize, swap stops, or export directly to Google Maps and Apple Maps with one tap.`,
-    keywords: ['odyssey', 'itinerary', 'trip planner', 'multi-day', 'schedule', 'route', 'budget', 'google maps', 'apple maps', 'plan trip'],
+    id: "where-should-i-go",
+    category: "odyssey",
+    question: "What is Where Should I Go Today?",
+    shortAnswer: "Tell nexARound your mood and get a plan for today.",
+    answer: "Where Should I Go Today? plans your day from how you feel. Choose your mood, your location, the weather, the time you have and who you are with, then pick a mode such as Food Quest, Photo Hunt or Surprise Me. Neva builds a plan of nearby stops with arrival times, tips and food suggestions, and sends a notification when it is ready. Your past plans stay in History.",
+    keywords: ["mood", "vibe", "today", "where should i go", "feeling", "weather", "plan my day", "day plan", "romantic", "relaxed"],
     actionLinks: [
-      { text: 'Odyssey Trip Planner', url: '/app#odyssey' }
+      { text: "Where Should I Go Today?", url: "/app#today" }
     ],
-    relatedIds: ['mood-planner', 'bookings-tickets']
+    relatedIds: ["odyssey-how-it-works", "city-guides"]
   },
   {
-    id: 'mood-planner',
-    category: 'odyssey',
-    question: 'What is the Mood-Based Journey Planner?',
-    shortAnswer: 'Match your travel day to how you feel: Adventure, Chill, Romantic, Cultural, or Foodie.',
-    answer: `Sometimes you don’t have a rigid destination in mind, just a vibe! Select your current mood—such as "Energized & Adventurous", "Quiet & Relaxed", "Romantic Evening", or "Hungry Foodie"—and NexAround immediately reshapes your nearby suggestions and day plan to match your energy level and current weather.`,
-    keywords: ['mood', 'vibe', 'adventure', 'romantic', 'relaxed', 'feeling', 'weather'],
+    id: "city-guides",
+    category: "guides",
+    question: "What are City Guides?",
+    shortAnswer: "Day-by-day city guides with live navigation.",
+    answer: "City Guides are day-by-day guides to cities, written by creators and reviewed by nexARound, with sights, rides, breaks and photos. Plan by day or by place, tick off sights as you visit them and get reminders during the trip. Press Start on a walk or ride for live directions, including which public transport line to take.",
+    keywords: ["city guide", "city guides", "guide", "walking tour", "tour", "navigation", "public transport", "metro", "sightseeing"],
     actionLinks: [
-      { text: 'Explore Mood Planner', url: '/app#mood' }
+      { text: "City Guides", url: "/app#city-guides" }
     ],
-    relatedIds: ['odyssey-how-it-works', 'radar-discovery']
+    relatedIds: ["museum-artwork", "where-should-i-go"]
   },
   {
-    id: 'radar-discovery',
-    category: 'radar',
-    question: 'What is the Around You Proximity Radar?',
-    shortAnswer: 'A live interactive 360° radar highlighting attractions, local food stalls, and essentials around your GPS position.',
-    answer: `The Smart Tourism Radar acts as your real-time spatial awareness tool. It displays dynamic rings around your current location showcasing:
-• Top-rated authentic street food & verified culinary gems
-• Historical landmarks within walking distance
-• Real-time crowd density and best visiting hours
-• Essential services: pharmacies, medical centers, transit hubs, and embassies.`,
-    keywords: ['radar', 'maps', 'around me', 'proximity', 'gps', 'nearby', 'crowds', 'pharmacy', 'walking', 'map'],
+    id: "museum-artwork",
+    category: "guides",
+    question: "Does nexARound have museum guides?",
+    shortAnswer: "Yes. Museum Master Guides cover more than 50 leading museums.",
+    answer: "Yes. Museum Master Guides cover more than 50 leading museums, such as the Louvre, the Uffizi and the Vatican Museums. Choose your time, from 3 hours to 2 days, and follow a route through the masterpieces, with opening hours and skip-the-line ticket links. Itineraries are still being added for some museums.",
+    keywords: ["museum", "museums", "gallery", "heritage", "tickets", "louvre", "exhibits", "masterpieces"],
     actionLinks: [
-      { text: 'See Radar Features', url: '/app#radar' }
+      { text: "Museum Guides", url: "/app#museums" }
     ],
-    relatedIds: ['bookings-tickets', 'privacy-data']
+    relatedIds: ["city-guides", "how-ar-works"]
   },
   {
-    id: 'bookings-tickets',
-    category: 'bookings',
-    question: 'Can I book museum tickets, hotels, and taxis directly in NexAround?',
-    shortAnswer: 'Yes! NexAround integrates official skip-the-line tickets, hotel accommodations, and taxi services directly into your itinerary flow.',
-    answer: `Yes! We partner with leading global travel providers:
-• Official skip-the-line attraction & museum tickets via Viator, GetYourGuide, and Headout.
-• Hotel & boutique stay reservations seamlessly embedded into your trip stops.
-• One-tap Uber and local taxi hailing directly from your current landmark to your next destination.`,
-    keywords: ['tickets', 'booking', 'viator', 'getyourguide', 'headout', 'uber', 'hotel', 'taxi', 'skip the line', 'reserve'],
+    id: "radar-discovery",
+    category: "radar",
+    question: "How do I find places near me?",
+    shortAnswer: "Use Discover, the Smart Map or AR to see what is nearby.",
+    answer: "Discover lists nearby places by category: points of interest, nature, food, shopping, medical and hospitals. The 3D Smart Map lets you search any location, get driving or walking directions and start turn-by-turn navigation. If you need help, the emergency button on Home gives you local emergency numbers, useful phrases and nearby hospitals.",
+    keywords: ["radar", "maps", "map", "around me", "nearby", "gps", "discover", "pharmacy", "hospital", "emergency", "directions", "navigation"],
     actionLinks: [
-      { text: 'View Integrated Bookings', url: '/app#bookings' }
+      { text: "Smart Maps", url: "/app#maps" },
+      { text: "Discover", url: "/app#discover" }
     ],
-    relatedIds: ['odyssey-how-it-works', 'radar-discovery']
+    relatedIds: ["how-ar-works", "privacy-data"]
   },
   {
-    id: 'internet-requirement',
-    category: 'privacy',
-    question: 'Does NexAround require an active internet connection?',
-    shortAnswer: 'Yes, NexAround requires an active cellular data or Wi-Fi connection for real-time spatial AR vision and AI concierge.',
-    answer: `Yes, NexAround requires an active cellular data (4G/5G) or Wi-Fi internet connection to perform real-time camera spatial recognition, stream live travel recommendations from Neva AI, and update itinerary logistics.`,
-    keywords: ['internet', 'connection', 'cellular', 'wifi', 'data connection', 'online', 'requirements', 'offline'],
+    id: "bookings-tickets",
+    category: "bookings",
+    question: "Can I book hotels, flights, tickets and taxis through nexARound?",
+    shortAnswer: "nexARound links you to trusted partners, and you book on their site or app.",
+    answer: "Your Odyssey plan links to travel partners for flights, stays, tours and airport cars, with eSIMs, travel insurance and luggage storage where available. You book and pay on the partner's site or app. Museum guides link to skip-the-line tickets, and ride app suggestions show which taxi apps work in your destination.",
+    keywords: ["tickets", "booking", "book", "viator", "getyourguide", "uber", "hotel", "flight", "taxi", "skip the line", "reserve", "esim", "insurance"],
     actionLinks: [
-      { text: 'Get App', url: '/get-app' }
+      { text: "Booking Partners", url: "/app#partners" }
     ],
-    relatedIds: ['privacy-data', 'supported-devices']
+    relatedIds: ["experiences-booking", "odyssey-how-it-works"]
   },
   {
-    id: 'privacy-data',
-    category: 'privacy',
-    question: 'How does NexAround handle my camera feed and location privacy?',
-    shortAnswer: 'Your privacy is paramount. Camera frames are processed for landmark recognition and not stored or sold.',
-    answer: `We adhere strictly to global privacy standards (GDPR, CCPA). Camera video streams are analyzed locally and securely in real-time to detect landmarks—we never record or store private video footage. Your GPS location is used solely to provide relevant nearby recommendations and is never sold to third-party advertisers.`,
-    keywords: ['privacy', 'security', 'camera permissions', 'location data', 'gps tracking', 'gdpr', 'safe', 'data'],
+    id: "experiences-booking",
+    category: "bookings",
+    question: "How do I book a local experience?",
+    shortAnswer: "Send a request in the app. The provider confirms, and you pay them at the experience.",
+    answer: "Open Experiences to browse activities run by local providers, near you or by country. Choose a date, your group size and pickup, then send a request. The provider confirms your date or offers another one, and you can follow or cancel your request in My Requests. You pay the provider directly at the experience. The Experience Booking Terms explain cancellations.",
+    keywords: ["experience", "experiences", "activity", "activities", "safari", "boat", "provider", "request", "cancel", "operator"],
     actionLinks: [
-      { text: 'Read Privacy Policy', url: '/privacy' },
-      { text: 'Terms of Service', url: '/terms' }
+      { text: "Local Experiences", url: "/app#experiences" },
+      { text: "Experience Booking Terms", url: "/experience-terms" }
     ],
-    relatedIds: ['internet-requirement', 'how-ar-works']
+    relatedIds: ["bookings-tickets", "contact-support"]
   },
   {
-    id: 'contact-support',
-    category: 'general',
-    question: 'How can I get human support or partner with NexAround?',
-    shortAnswer: 'Reach our team via email at support@nexaround.com or through our dedicated Contact page.',
-    answer: `Our dedicated support and partnerships team is available 24/7. You can email us at support@nexaround.com or visit our Contact page to submit custom inquiries, enterprise DMO partnerships, or feedback.`,
-    keywords: ['contact', 'support', 'help', 'email', 'partner', 'human', 'feedback', 'issue', 'reach out', 'call'],
+    id: "internet-requirement",
+    category: "privacy",
+    question: "Does nexARound need an internet connection?",
+    shortAnswer: "Yes. Most features need mobile data or Wi-Fi.",
+    answer: "Yes. AR place labels, Neva, Odyssey, maps and City Guides need a mobile data or Wi-Fi connection to load places, directions and answers.",
+    keywords: ["internet", "connection", "cellular", "wifi", "data connection", "online", "requirements", "offline"],
     actionLinks: [
-      { text: 'Contact Us', url: '/contact' }
+      { text: "Get App", url: "/get-app" }
     ],
-    relatedIds: ['what-is-nexaround']
+    relatedIds: ["privacy-data", "supported-devices"]
+  },
+  {
+    id: "privacy-data",
+    category: "privacy",
+    question: "How does nexARound handle my camera, microphone and location?",
+    shortAnswer: "The AR camera view stays on your device, and your location is never sold.",
+    answer: "The live AR camera view stays on your device and is not recorded or sent to our servers. The microphone is used only when you search by voice or talk to Neva; Neva Voice recordings are sent to our servers and our AI provider to understand your question. Your location is used to show nearby places and directions, and is never sold to advertisers. The Privacy Policy has the details.",
+    keywords: ["privacy", "security", "camera permissions", "microphone", "voice", "location data", "gps tracking", "safe", "data"],
+    actionLinks: [
+      { text: "Read Privacy Policy", url: "/privacy" },
+      { text: "Terms of Service", url: "/terms" }
+    ],
+    relatedIds: ["internet-requirement", "how-ar-works"]
+  },
+  {
+    id: "contact-support",
+    category: "general",
+    question: "How can I contact support or partner with nexARound?",
+    shortAnswer: "Email support@nexaround.com or use our Contact page.",
+    answer: "Email support@nexaround.com or send a message from our Contact page. We usually reply within one business day. Tour operators and activity providers can apply on our List your experience page. Tourism boards, museums and hotels can use the Contact page to ask about partnerships.",
+    keywords: ["contact", "support", "help", "email", "partner", "human", "feedback", "issue", "reach out", "call"],
+    actionLinks: [
+      { text: "Contact Us", url: "/contact" },
+      { text: "List Your Experience", url: "/list-your-experience" }
+    ],
+    relatedIds: ["what-is-nexaround"]
   }
 ];
 
 // Quick Starter Suggestions for the Chatbot
 export const STARTER_PROMPTS = [
-  'How does the AR camera scanner work?',
-  'What can Neva AI do for me?',
-  'How does Odyssey build itineraries?',
-  'Is NexAround free to download?',
-  'Does NexAround require internet?',
-  'How do I book skip-the-line tickets?',
+  'How does AR Discovery work?',
+  'What can Neva do for me?',
+  'How does Odyssey plan a trip?',
+  'What are City Guides?',
+  'What is Where Should I Go Today?',
+  'Is nexARound free to download?',
   'Which devices are supported?'
-];
+]
 
 // Smart Natural Language & Keyword Query Matcher
 export function searchFaq(query) {
@@ -284,13 +299,13 @@ export function generateNevaResponse(userMessage) {
   const greetings = ['hi', 'hello', 'hey', 'good morning', 'good afternoon', 'good evening', 'howdy', 'greetings', 'sup', 'yo'];
   if (greetings.some(g => query === g || query.startsWith(g + ' ') || query.endsWith(' ' + g) || query.startsWith(g + '!') || query.startsWith(g + '?'))) {
     return {
-      text: `Hello there! 👋 I'm **Neva**, your 24/7 NexAround AI Travel Concierge.\n\nI'm here to help with anything regarding the **NexAround app**, **AR Landmark Scanning**, **Odyssey Trip Planner**, **smart live navigation**, **museum guides**, or **ticket bookings**.\n\nWhat can I help you discover today?`,
+      text: "Hello there! 👋 I'm **Neva**, the nexARound AI travel companion.\n\nI can help with anything about the **nexARound app**: **AR Discovery**, the **Odyssey AI Planner**, **City Guides**, **museum guides** or **local experiences**.\n\nWhat can I help you discover today?",
       actionLinks: [
         { text: 'Explore App Features', url: '/app' },
         { text: 'Download App', url: '/get-app' }
       ],
       suggestions: [
-        'How does the AR camera scanner work?',
+        'How does AR Discovery work?',
         'How does Odyssey build itineraries?',
         'Is NexAround free to download?',
         'Does NexAround require internet?'
@@ -302,13 +317,13 @@ export function generateNevaResponse(userMessage) {
   const identityQueries = ['who are you', 'what is your name', 'what can you do', 'what do you do', 'who made you', 'who created you', 'tell me about yourself'];
   if (identityQueries.some(q => query.includes(q))) {
     return {
-      text: `I'm **Neva**, the 24/7 AI travel concierge built right into the **NexAround** mobile app! 🌟\n\nI help travelers around the globe by:\n• Identifying landmarks through your camera using Spatial AR\n• Crafting custom multi-day travel itineraries with Odyssey\n• Recommending authentic local restaurants and secret viewpoints\n• Discovering local culture and neighborhood insights\n• Providing 24/7 safety and navigation assistance.`,
+      text: "I'm **Neva**, the AI travel companion built into the **nexARound** app! 🌟\n\nIn the app I help travellers by:\n• Answering questions about places, food and what to do next, based on their location\n• Showing suggested places on a map, with directions\n• Planning a day with Where Should I Go Today?\n• Talking by voice and reading replies aloud\n\nHere on the website, I can answer your questions about the app.",
       actionLinks: [
         { text: 'Meet Neva AI on App Page', url: '/app#neva' },
         { text: 'Download App', url: '/get-app' }
       ],
       suggestions: [
-        'How does the AR camera work?',
+        'How does AR Discovery work?',
         'How does Odyssey plan trips?',
         'Is the app free to use?'
       ]
@@ -322,7 +337,7 @@ export function generateNevaResponse(userMessage) {
       text: `You're very welcome! ✨ Traveling is all about exploring with wonder and confidence. Let me know whenever you have more questions about NexAround!`,
       suggestions: [
         'How do I download NexAround?',
-        'Can I book museum tickets?',
+        'Does nexARound have museum guides?',
         'How does location privacy work?'
       ]
     };
@@ -334,7 +349,7 @@ export function generateNevaResponse(userMessage) {
       text: `I'm doing great and ready to help you plan your next adventure! 🌍 How can I assist you with NexAround today?`,
       suggestions: [
         'How does Odyssey plan trips?',
-        'How does the AR camera scanner work?',
+        'How does AR Discovery work?',
         'Is the app free to use?'
       ]
     };
@@ -361,14 +376,14 @@ export function generateNevaResponse(userMessage) {
 
   // 6. Intelligent conversational fallback
   return {
-    text: `That's an interesting question! While I might not have a specific preset article for that exact phrase, here is what **NexAround** offers:\n\n• **Spatial AR Landmark Scanner**: Point your camera at any monument or historic building for instant history.\n• **Odyssey AI Trip Engine**: Automatically generates time-optimized travel schedules based on your budget & mood.\n• **Neva 24/7 Concierge**: Real-time voice/text assistance anywhere you travel.\n\nWould you like to explore any of these topics, or contact our support team?`,
+    text: "That's a good question! I don't have a ready answer for that, but here is what **nexARound** offers:\n\n• **AR Discovery**: hold up your phone to see nearby places over the camera view.\n• **Odyssey AI Planner**: a day-by-day trip plan from your destination, dates and budget.\n• **City Guides**: day-by-day guides with live navigation.\n• **Neva**: your AI travel companion, by text or voice.\n\nWould you like to explore one of these, or contact our support team?",
     actionLinks: [
       { text: 'View App Features', url: '/app' },
       { text: 'Contact Support', url: '/contact' }
     ],
     suggestions: [
       'What is NexAround?',
-      'How does the AR camera scanner work?',
+      'How does AR Discovery work?',
       'Is NexAround free to download?',
       'How does Odyssey create itineraries?',
       'How do I contact human support?'

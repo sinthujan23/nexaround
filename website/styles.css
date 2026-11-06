@@ -1960,3 +1960,7 @@ section{position:relative; padding:96px 40px;}
   }
 }
 
+/* Holding panel for an app module with no screenshot yet */
+.phone__screen--panel{display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; padding:24px 20px; text-align:center; color:#fff; background:linear-gradient(160deg,#007A7C 0%,#0B3B45 100%);}
+.phone__screen--panel strong{font-size:18px; font-weight:600; line-height:1.25;}
+.phone__screen--panel span{font-size:13px; line-height:1.45; color:rgba(255,255,255,.82);}

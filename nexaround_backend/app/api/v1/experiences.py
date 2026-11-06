@@ -766,7 +766,13 @@ async def _too_many_applications(ip: str) -> bool:
         return await _application_limiter._check_rate_limit(key, None)
 
 
-async def _email_application(application_id: uuid.UUID) -> None:
+_APPLICATION_SOURCES = {
+    "app": ("nexARound app", "Sent from the app's List your experience form."),
+    "website": ("app.nexaround.com website", "Sent from the List your experience page on app.nexaround.com."),
+}
+
+
+async def _email_application(application_id: uuid.UUID, source: str = "app") -> None:
     """Tell the platform inbox, on its own session. Never raises."""
     from app.services import email_service
     from app.services.ride_apps_service import COUNTRY_NAMES
@@ -777,6 +783,7 @@ async def _email_application(application_id: uuid.UUID) -> None:
             inbox = await SettingsService(db).get_setting("contact_email")
             if not app_row or not inbox:
                 return
+            sent_from, sent_from_line = _APPLICATION_SOURCES.get(source, _APPLICATION_SOURCES["app"])
             place = ", ".join(
                 p for p in (app_row.city, COUNTRY_NAMES.get(app_row.country_code, app_row.country_code)) if p
             )
@@ -784,9 +791,9 @@ async def _email_application(application_id: uuid.UUID) -> None:
                 inbox,
                 subject=f"New provider application: {app_row.business_name}",
                 heading="A business wants to list its experiences",
-                intro="Sent from the app's List your experience form. "
-                      "Review it in Admin > Provider applications.",
+                intro=f"{sent_from_line} Review it in Admin > Provider applications.",
                 rows=(
+                    ("Sent from", sent_from),
                     ("Business", app_row.business_name),
                     ("Contact", app_row.contact_name),
                     ("Phone", app_row.contact_phone),
@@ -813,8 +820,9 @@ async def create_provider_application(
     db: AsyncSession = Depends(get_db),
     current_user: Optional[User] = Depends(get_current_user_optional),
 ):
-    """The app's "List your experience" form. Stored for Admin > Provider
-    applications and emailed to the platform inbox; nothing is published."""
+    """The "List your experience" form, in the app and on app.nexaround.com.
+    Stored for Admin > Provider applications and emailed to the platform
+    inbox; nothing is published."""
     from app.services.ride_apps_service import COUNTRY_NAMES
 
     if await _too_many_applications(get_client_ip(request)):
@@ -822,6 +830,10 @@ async def create_provider_application(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Too many applications from here. Please try again later.",
         )
+    # The website form's hidden field was filled in, so a bot sent it: it
+    # looks accepted, but nothing is saved or emailed.
+    if (data.website or "").strip():
+        return ProviderApplicationCreated(id=uuid.uuid4(), status="new")
     if data.country_code not in COUNTRY_NAMES:
         raise HTTPException(status_code=400, detail="Please choose your country.")
 
@@ -840,5 +852,5 @@ async def create_provider_application(
     db.add(row)
     await db.commit()
     await db.refresh(row)
-    background_tasks.add_task(_email_application, row.id)
+    background_tasks.add_task(_email_application, row.id, data.source)
     return ProviderApplicationCreated(id=row.id, status=row.status)

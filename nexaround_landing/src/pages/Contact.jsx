@@ -23,17 +23,51 @@ export default function Contact() {
     return () => clearInterval(timer);
   }, []);
   const [submitted, setSubmitted] = useState(false);
-  const [formData, setFormData] = useState({
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState('');
+  const emptyForm = {
     name: '',
     email: '',
     company: '',
     topic: 'App Inquiry & Feedback',
-    message: ''
-  });
+    message: '',
+    website: ''
+  };
+  const [formData, setFormData] = useState(emptyForm);
 
-  const handleSubmit = (e) => {
+  // Sent to support@nexaround.com by the API. "Sent" only shows when the mail
+  // really left; a failure keeps the message on screen with the support email.
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    setSubmitted(true);
+    setSending(true);
+    setError('');
+    try {
+      const res = await fetch('https://api.nexaround.com/api/v1/landing/contact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          site: 'app.nexaround.com',
+          name: formData.name.trim(),
+          email: formData.email.trim(),
+          company: formData.company.trim() || null,
+          topic: formData.topic,
+          message: formData.message.trim(),
+          website: formData.website || null
+        })
+      });
+      if (res.ok) {
+        setSubmitted(true);
+        setFormData(emptyForm);
+      } else if (res.status === 429) {
+        setError('Too many messages from here. Please email support@nexaround.com.');
+      } else {
+        setError('Your message could not be sent. Please check your details, or email support@nexaround.com.');
+      }
+    } catch {
+      setError('Your message could not be sent. Please email support@nexaround.com.');
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
@@ -211,9 +245,9 @@ export default function Contact() {
             {submitted ? (
               <div style={{ background: 'var(--brand-teal-soft)', border: '1px solid rgba(0, 122, 124, 0.3)', borderRadius: '16px', padding: '36px', textAlign: 'center' }}>
                 <CheckCircle2 style={{ width: '48px', height: '48px', color: 'var(--brand-teal)', margin: '0 auto 16px' }} />
-                <h4 style={{ fontSize: '1.3rem', fontWeight: 500, color: 'var(--dark-charcoal)', margin: '0 0 8px' }}>Message Received!</h4>
+                <h4 style={{ fontSize: '1.3rem', fontWeight: 500, color: 'var(--dark-charcoal)', margin: '0 0 8px' }}>Message Sent!</h4>
                 <p style={{ fontSize: '0.95rem', color: 'var(--text-secondary)', margin: '0 0 20px' }}>
-                  Thank you for reaching out. A NexAround team member will contact you shortly.
+                  Thank you. Your message has been sent, and we will reply by email.
                 </p>
                 <button onClick={() => setSubmitted(false)} className="btn-teal">
                   Send Another Message
@@ -226,6 +260,7 @@ export default function Contact() {
                   <input
                     type="text"
                     required
+                    minLength={2}
                     placeholder="e.g. Sarah Connor"
                     className="form-input"
                     value={formData.name}
@@ -254,6 +289,7 @@ export default function Contact() {
                   >
                     <option>App Inquiry & Feedback</option>
                     <option>Destination / Tourism Board Partnership</option>
+                    <option>Museum, Hotel or Experience Provider Partnership</option>
                     <option>Enterprise Software & Integration</option>
                     <option>Technical Consultation</option>
                     <option>Other</option>
@@ -264,6 +300,7 @@ export default function Contact() {
                   <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 500, color: 'var(--dark-charcoal)', marginBottom: '6px' }}>Message *</label>
                   <textarea
                     required
+                    minLength={5}
                     rows="5"
                     placeholder="Tell us about your questions or requirements..."
                     className="form-textarea"
@@ -272,9 +309,26 @@ export default function Contact() {
                   />
                 </div>
 
-                <button type="submit" className="btn-teal" style={{ width: '100%', justifyContent: 'center', marginTop: '10px' }}>
+                <div style={{ position: 'absolute', left: '-9999px' }} aria-hidden="true">
+                  <label>
+                    Leave this empty
+                    <input
+                      type="text"
+                      tabIndex={-1}
+                      autoComplete="off"
+                      value={formData.website}
+                      onChange={(e) => setFormData({ ...formData, website: e.target.value })}
+                    />
+                  </label>
+                </div>
+
+                {error && (
+                  <p role="alert" style={{ color: '#C0392B', fontSize: '0.9rem', margin: 0 }}>{error}</p>
+                )}
+
+                <button type="submit" disabled={sending} className="btn-teal" style={{ width: '100%', justifyContent: 'center', marginTop: '10px', opacity: sending ? 0.7 : 1 }}>
                   <Send style={{ width: '16px', height: '16px' }} />
-                  <span>Submit Message</span>
+                  <span>{sending ? 'Sending…' : 'Submit Message'}</span>
                 </button>
               </form>
             )}
