@@ -989,7 +989,8 @@ class _CityTourPageState extends State<CityTourPage> {
         ? null
         : '${cityTourClock(context, first.start)} – ${cityTourClock(context, last.end)}';
     if (range == null && stops.isEmpty) return const [SizedBox(height: 12)];
-    final allOpen = stops.isNotEmpty && stops.every((s) => _isOpen(s, schedule));
+    // Every card of the day: the sights, and the walks, rides and breaks.
+    final allOpen = stops.isNotEmpty && day.steps.every((s) => _isOpen(s, schedule));
     return [
       const SizedBox(height: 6),
       Row(
@@ -1012,7 +1013,13 @@ class _CityTourPageState extends State<CityTourPage> {
             GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: () => setState(() {
+                final legs = [for (final s in day.steps) if (!s.isStop) s.id];
                 _openSights = allOpen ? <String>{} : {for (final s in stops) s.id};
+                if (allOpen) {
+                  _openLegs.removeAll(legs);
+                } else {
+                  _openLegs.addAll(legs);
+                }
               }),
               // A black pill with white text (client), the navbar's black.
               child: Container(

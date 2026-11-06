@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -394,8 +395,9 @@ class CityTourMap extends StatelessWidget {
 
 /// A ride on a small map, from the stop before it to the stop after: the
 /// street route when Google has one, else a dashed straight line. A day's first
-/// ride has no stop before it, so it shows just where it goes. Its route is
-/// fetched the first time the ride is opened. [onExpand] opens it full screen.
+/// ride has no stop before it, so it shows just where it goes. Expand all opens
+/// every ride at once, so a ride fetches its route (paid) and draws its map
+/// only once it is near the screen. [onExpand] opens it full screen.
 class CityTourLegMap extends StatefulWidget {
   final CityTourStep step;
   final CityTourStep? from;
@@ -416,21 +418,61 @@ class CityTourLegMap extends StatefulWidget {
 
 class _CityTourLegMapState extends State<CityTourLegMap> {
   static const double _height = 170;
+  // How far off the screen still counts as near it.
+  static const double _nearMargin = 200;
 
   final _service = CityToursService();
   List<ll.LatLng>? _route;
   bool _loading = false;
+  bool _nearScreen = false;
+  ScrollPosition? _scroll;
+  Timer? _settle;
+  bool _settled = false;
 
   @override
   void initState() {
     super.initState();
+    // After the cards finish opening: until then the ones above are still
+    // small, and rides that end up far below would look near.
+    _settle = Timer(cityTourMorph + const Duration(milliseconds: 50), () {
+      _settled = true;
+      _checkNearScreen();
+    });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final scroll = Scrollable.maybeOf(context)?.position;
+    if (scroll == _scroll) return;
+    _scroll?.removeListener(_checkNearScreen);
+    _scroll = scroll;
+    if (!_nearScreen) _scroll?.addListener(_checkNearScreen);
+  }
+
+  @override
+  void dispose() {
+    _settle?.cancel();
+    _scroll?.removeListener(_checkNearScreen);
+    super.dispose();
+  }
+
+  void _checkNearScreen() {
+    if (!mounted || _nearScreen || !_settled) return;
+    final box = context.findRenderObject();
+    if (box is! RenderBox || !box.hasSize) return;
+    final top = box.localToGlobal(Offset.zero).dy;
+    if (top + box.size.height < -_nearMargin) return;
+    if (top > MediaQuery.sizeOf(context).height + _nearMargin) return;
+    _scroll?.removeListener(_checkNearScreen);
     final from = widget.from;
-    if (from == null) return;
-    _route = _service.cachedLegRoute(widget.step, from, widget.to);
-    if (_route == null) {
-      _loading = true;
-      _fetch(from);
-    }
+    final saved = from == null ? null : _service.cachedLegRoute(widget.step, from, widget.to);
+    setState(() {
+      _nearScreen = true;
+      _route = saved;
+      _loading = from != null && saved == null;
+    });
+    if (from != null && saved == null) _fetch(from);
   }
 
   Future<void> _fetch(CityTourStep from) async {
@@ -445,7 +487,7 @@ class _CityTourLegMapState extends State<CityTourLegMap> {
   @override
   Widget build(BuildContext context) {
     // The map fits itself to the route when it is built, so it waits for it.
-    if (_loading) {
+    if (!_nearScreen || _loading) {
       return Container(
         height: _height,
         alignment: Alignment.center,
