@@ -5900,8 +5900,11 @@ class _ArCameraPageState extends State<ArCameraPage>
   }
 
   Widget _buildDiscoveryTarget() {
-    // Auto-load places if not already loaded
-    if (_landmarks.isEmpty && !_isSilentCapturing) {
+    // Auto-load places if not already loaded — only while the AR tab is on
+    // screen. The navbar builds every tab at app start, so without the
+    // isActive check this bought AR's places for nearly every user, AR opened
+    // or not. Opening the tab loads them through _startArCapture.
+    if (widget.isActive && _landmarks.isEmpty && !_isSilentCapturing) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _fetchLivePlaces());
     }
 

@@ -40,7 +40,9 @@ async def place_exists(
     query_str = f"{place_name} {location_context}"
     logger.info(f"🔍 PlaceVerifier: Querying Google Places for '{query_str}'")
     try:
-        results = await google_places_client.text_search(
+        # Only the location is read below, so only the location is asked for:
+        # the cheaper Text Search Pro price, not Enterprise.
+        results = await google_places_client.text_search_locations(
             query=query_str,
             latitude=center_lat,
             longitude=center_lng,

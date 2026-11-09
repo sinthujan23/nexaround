@@ -283,6 +283,43 @@ def background_stats() -> dict:
     }
 
 
+# A note that we already asked Google about an area, per category and radius.
+#
+# The database step treats a wide search as thin when none of its saved places
+# sits in the outer 30% of the radius, and then asks Google again in the
+# background. One Google search returns the 20 best-known places, which often
+# all sit nearer the centre — so without this note, every new ~500 m cache tile
+# in the same town would re-buy those same 20 places for as long as the town
+# stayed "thin". The note covers a cell about a tenth of the radius across
+# (≈5.5 km for a 50 km search) and lasts as long as the cached lists, 14 days.
+def _asked_google_key(
+    category: Optional[str], radius: int, latitude: float, longitude: float
+) -> str:
+    step = max(place_cache_service._GRID_DEG, radius / 1_000_000)
+    cell_lat = math.floor(latitude / step) * step
+    cell_lng = math.floor(longitude / step) * step
+    cat = (category or "all").replace(" ", "_").replace("&", "and").lower()
+    return f"places:asked:v1:{cat}:r{radius}:{cell_lat:.3f}:{cell_lng:.3f}"
+
+
+async def _note_asked_google(
+    category: Optional[str], radius: int, latitude: float, longitude: float
+) -> None:
+    await place_cache_service.set_raw(
+        _asked_google_key(category, radius, latitude, longitude),
+        "1",
+        ttl=place_cache_service._TTL_SECONDS,
+    )
+
+
+async def _asked_google_recently(
+    category: Optional[str], radius: int, latitude: float, longitude: float
+) -> bool:
+    return await place_cache_service.get_raw(
+        _asked_google_key(category, radius, latitude, longitude)
+    ) is not None
+
+
 async def seed_places_from_google_bg(
     latitude: float,
     longitude: float,
@@ -385,6 +422,8 @@ async def seed_places_from_google_bg(
                     if pid and pid not in seen_ids:
                         seen_ids.add(pid)
                         raw_places.append(p)
+
+        await _note_asked_google(category, radius, latitude, longitude)
 
         if not raw_places:
             return
@@ -770,9 +809,12 @@ async def get_nearby(
         if len(place_dicts) >= 10:
             place_dicts = _enforce_distance_distribution(place_dicts, radius, category)
             
-            # Revalidate in the background if the coverage is not adequate yet
-            if not has_adequate_coverage:
-                import asyncio
+            # Revalidate in the background if the coverage is not adequate yet —
+            # once per area: if Google was already asked about this spot, its
+            # answer is what the database holds, and asking again re-buys it.
+            if not has_adequate_coverage and not await _asked_google_recently(
+                category, radius, latitude, longitude
+            ):
                 spawn_background(seed_places_from_google_bg(
                     latitude=latitude,
                     longitude=longitude,
@@ -803,105 +845,46 @@ async def get_nearby(
 
     # Session closed here! No connection is held during the slow Google query.
     
-    # Otherwise, query Google Places API as a fallback
-    import asyncio
+    # Otherwise, query Google Places API as a fallback.
+    #
+    # One search per request, whatever the radius. Wide searches (25 km and up)
+    # used to add four half-radius circles around the centre to reach more
+    # far-away places: five paid calls instead of one, about a third of all
+    # Nearby Search spend in Nov 2026. Their only consumer is the app's
+    # background list behind Curated For You and the Discover tabs; Around You
+    # runs its own distance bands (banded_places_service) and is unaffected.
     raw_places = []
     if not use_legacy:
         try:
-            if radius < 25000:
-                raw_places = await google_places_client.nearby_search(
-                    latitude=latitude,
-                    longitude=longitude,
-                    category=category,
-                    radius=radius,
-                )
-            else:
-                # Annulus offset center queries to cover the entire band (since single query caps at 20 places)
-                mid = radius * 0.7
-                sample_radius = int(radius * 0.5)
-                
-                # Scale centers: 4 offsets to get more places
-                num_centers = 4
-                bearings = [(360.0 / num_centers) * i for i in range(num_centers)]
-                offset_coords = [offset_lat_lng(latitude, longitude, b, mid) for b in bearings]
-                
-                # Add center query as well to ensure total coverage
-                all_queries = [(latitude, longitude, radius)] + [
-                    (olat, olng, sample_radius) for olat, olng in offset_coords
-                ]
-                
-                async def fetch_one(lat: float, lng: float, rad: int) -> list:
-                    return await google_places_client.nearby_search(
-                        latitude=lat,
-                        longitude=lng,
-                        category=category,
-                        radius=rad,
-                    )
-                
-                # Fetch all in parallel
-                results = await asyncio.gather(*(fetch_one(lat, lng, rad) for lat, lng, rad in all_queries))
-                
-                # Merge and deduplicate
-                seen_ids = set()
-                for r_list in results:
-                    for p in r_list:
-                        pid = p.get("id") or p.get("place_id")
-                        if pid and pid not in seen_ids:
-                            seen_ids.add(pid)
-                            raw_places.append(p)
+            raw_places = await google_places_client.nearby_search(
+                latitude=latitude,
+                longitude=longitude,
+                category=category,
+                radius=radius,
+            )
         except Exception as e:
             print(f"⚠️ Places API (New) failed with error: {e}. Falling back to Legacy Nearby Search API.")
             use_legacy = True
 
     # Execute legacy search if use_legacy is True (either requested or as fallback)
     if use_legacy:
-        if radius < 25000:
-            # Standard single query at center
+        try:
             raw_places = await google_places_client.nearby_search_legacy(
                 latitude=latitude,
                 longitude=longitude,
                 category=category,
                 radius=radius,
             )
-        else:
-            # Annulus offset center queries to cover the entire band (since single query caps at 20 places)
-            mid = radius * 0.7
-            sample_radius = int(radius * 0.5)
-            
-            # Scale centers: 4 offsets to get more places
-            num_centers = 4
-            bearings = [(360.0 / num_centers) * i for i in range(num_centers)]
-            offset_coords = [offset_lat_lng(latitude, longitude, b, mid) for b in bearings]
-            
-            # Add center query as well to ensure total coverage
-            all_queries = [(latitude, longitude, radius)] + [
-                (olat, olng, sample_radius) for olat, olng in offset_coords
-            ]
-            
-            async def fetch_one_legacy(lat: float, lng: float, rad: int) -> list:
-                try:
-                    return await google_places_client.nearby_search_legacy(
-                        latitude=lat,
-                        longitude=lng,
-                        category=category,
-                        radius=rad,
-                    )
-                except Exception as e:
-                    print(f"⚠️ Error fetching offset nearby search legacy in get_nearby: {e}")
-                    return []
-            
-            # Fetch all in parallel
-            results = await asyncio.gather(*(fetch_one_legacy(lat, lng, rad) for lat, lng, rad in all_queries))
-            
-            # Merge and deduplicate
-            seen_ids = set()
-            for r_list in results:
-                for p in r_list:
-                    pid = p.get("id") or p.get("place_id")
-                    if pid and pid not in seen_ids:
-                        seen_ids.add(pid)
-                        raw_places.append(p)
-    
+        except Exception as e:
+            # Wide searches have always answered a failed legacy call with an
+            # empty list rather than an error; small ones have always raised.
+            if radius < 25000:
+                raise
+            print(f"⚠️ Legacy nearby search failed in get_nearby: {e}")
+            raw_places = []
+
+    await _note_asked_google(category, radius, latitude, longitude)
+
     # Convert raw places to PlaceResponses
     if use_legacy:
         if category == "Food & Drink":

@@ -9,7 +9,7 @@ from typing import Optional
 import httpx
 from app.core.database import async_session
 from app.services.settings_service import SettingsService
-from app.services import telemetry
+from app.services import google_dedupe, telemetry
 
 
 _BASE = "https://maps.googleapis.com/maps/api"
@@ -471,57 +471,76 @@ async def nearby_search(
     if included_types:
         body["includedTypes"] = list(included_types)
 
-    client = await _get_http_client()
-    # Self-heal: the Places API (New) rejects the WHOLE request with 400 if
-    # any single includedType isn't supported (e.g. legacy 'place_of_worship').
-    # Strip the type(s) Google names and retry, so the valid types still
-    # return results instead of the category coming back empty.
-    resp = None
-    for _attempt in range(len(included_types) + 1):
-        # Tracked per attempt, not per call: the self-heal retry issues a
-        # fresh request each time, and each successful one is billed.
-        async with _google_call_semaphore:
-            async with telemetry.track(
-                "google_maps", "nearby_search",
-                sku="nearby_search_new",
-                cache_key=(
-                    f"nb:{latitude:.4f}:{longitude:.4f}:{category}"
-                    f"{':' + type_group if type_group else ''}:{radius}"
-                ),
-                params=body,
-            ) as t:
-                resp = await client.post(
-                    "https://places.googleapis.com/v1/places:searchNearby",
-                    json=body,
-                    headers=headers,
-                )
-                t.upstream(resp)
-        if resp.status_code == 200:
-            break
+    telemetry_key = (
+        f"nb:{latitude:.4f}:{longitude:.4f}:{category}"
+        f"{':' + type_group if type_group else ''}:{radius}"
+    )
 
-        bad = _unsupported_types(resp) if resp.status_code == 400 else set()
-        if not bad:
-            break  # not a recoverable type error — fall through to raise
+    async def buy() -> list[dict]:
+        nonlocal included_types
+        client = await _get_http_client()
+        # Self-heal: the Places API (New) rejects the WHOLE request with 400 if
+        # any single includedType isn't supported (e.g. legacy 'place_of_worship').
+        # Strip the type(s) Google names and retry, so the valid types still
+        # return results instead of the category coming back empty.
+        resp = None
+        for _attempt in range(len(included_types) + 1):
+            # Tracked per attempt, not per call: the self-heal retry issues a
+            # fresh request each time, and each successful one is billed.
+            async with _google_call_semaphore:
+                async with telemetry.track(
+                    "google_maps", "nearby_search",
+                    sku="nearby_search_new",
+                    cache_key=telemetry_key,
+                    params=body,
+                ) as t:
+                    resp = await client.post(
+                        "https://places.googleapis.com/v1/places:searchNearby",
+                        json=body,
+                        headers=headers,
+                    )
+                    t.upstream(resp)
+            if resp.status_code == 200:
+                break
 
-        included_types = [t for t in included_types if t not in bad]
-        print(f"⚠️ Dropping unsupported includedTypes {sorted(bad)}; "
-              f"retrying with {len(included_types)} type(s)")
-        if included_types:
-            body["includedTypes"] = list(included_types)
-        else:
-            # All types were unsupported — fall back to an untyped nearby
-            # search rather than failing the whole category.
-            body.pop("includedTypes", None)
+            bad = _unsupported_types(resp) if resp.status_code == 400 else set()
+            if not bad:
+                break  # not a recoverable type error — fall through to raise
 
-    if resp.status_code != 200:
-        # Log Google's verbatim error (API-not-enabled / billing disabled /
-        # key restriction) so the cause is visible in server logs instead of
-        # surfacing as a blind 500.
-        print(f"❌ Google searchNearby HTTP {resp.status_code}: {resp.text[:600]}")
-        resp.raise_for_status()
-    data = resp.json()
+            included_types = [t for t in included_types if t not in bad]
+            print(f"⚠️ Dropping unsupported includedTypes {sorted(bad)}; "
+                  f"retrying with {len(included_types)} type(s)")
+            if included_types:
+                body["includedTypes"] = list(included_types)
+            else:
+                # All types were unsupported — fall back to an untyped nearby
+                # search rather than failing the whole category.
+                body.pop("includedTypes", None)
 
-    return data.get("places", [])
+        if resp.status_code != 200:
+            # Log Google's verbatim error (API-not-enabled / billing disabled /
+            # key restriction) so the cause is visible in server logs instead of
+            # surfacing as a blind 500.
+            print(f"❌ Google searchNearby HTTP {resp.status_code}: {resp.text[:600]}")
+            resp.raise_for_status()
+        data = resp.json()
+
+        return data.get("places", [])
+
+    # The same search asked twice at the same moment (the app's home screen
+    # does this in about one open in four) is bought once and shared. Keyed on
+    # what Google is actually asked, to ~11 m, which is what made the pairs
+    # identical: the coordinates in the telemetry key above.
+    dedupe_key = google_dedupe.request_key(
+        "nearby",
+        lat=round(latitude, 4),
+        lng=round(longitude, 4),
+        radius=eff_radius,
+        types=sorted(included_types),
+    )
+    return await google_dedupe.shared(
+        dedupe_key, buy, operation="nearby_search", telemetry_key=telemetry_key,
+    )
 
 
 async def text_search(
@@ -583,6 +602,67 @@ async def text_search(
     data = resp.json()
 
     return data.get("places", [])
+
+
+async def text_search_locations(
+    *,
+    query: str,
+    latitude: float,
+    longitude: float,
+) -> list[dict]:
+    """Text Search (New) that asks only WHERE each match is.
+
+    For callers that check a place exists near somewhere and read nothing but
+    its coordinates (Where Should I Go Today?'s place check). Google prices a
+    search by the fields it returns: the full `text_search` mask includes
+    rating and review count, which bills as Text Search Enterprise ($35/1000,
+    1,000 free a month). Location alone bills as Text Search Pro ($32/1000,
+    5,000 free a month) — and these checks run about 3,100 a month.
+
+    Same 50 km location bias as `text_search`, so the matches are the same.
+    """
+    async with async_session() as db:
+        settings_service = SettingsService(db)
+        google_maps_key = await settings_service.get_setting("google_maps_api_key")
+
+    if not google_maps_key:
+        print("⚠️ google_maps_api_key not set in admin settings — returning no places")
+        return []
+
+    headers = {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": google_maps_key,
+        "X-Goog-FieldMask": "places.id,places.location",
+    }
+    body = {
+        "textQuery": query,
+        "languageCode": "en",
+        "locationBias": {
+            "circle": {
+                "center": {"latitude": latitude, "longitude": longitude},
+                "radius": 50000.0,
+            }
+        },
+    }
+
+    client = await _get_http_client()
+    async with _google_call_semaphore:
+        async with telemetry.track(
+            "google_maps", "text_search",
+            sku="text_search_pro",
+            cache_key=f"ts:{query.strip().lower()}",
+            params=body,
+        ) as t:
+            resp = await client.post(
+                "https://places.googleapis.com/v1/places:searchText",
+                json=body,
+                headers=headers,
+            )
+            t.upstream(resp)
+    if resp.status_code != 200:
+        print(f"❌ Google searchText HTTP {resp.status_code}: {resp.text[:600]}")
+        resp.raise_for_status()
+    return resp.json().get("places", [])
 
 
 async def nearby_search_typed(

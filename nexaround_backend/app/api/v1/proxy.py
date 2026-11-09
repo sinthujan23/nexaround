@@ -210,9 +210,15 @@ _PLACES_NEW_DETAILS = "https://places.googleapis.com/v1/places"
 # What the app reads off a details result. Requested explicitly because New
 # bills by field mask, so asking for everything would cost more than the legacy
 # call it replaces.
-_DETAILS_FIELD_MASK = (
-    "id,displayName,formattedAddress,location,rating,userRatingCount,photos"
-)
+#
+# Every caller of this path in the app (the location picker, AR search, the
+# Travel Story location, the two map pages) reads only the name and the
+# coordinates. Rating and review count would put each lookup in Place Details
+# Enterprise ($20/1000, 1,000 free a month); without them it is Place Details
+# Pro ($17/1000, 5,000 free). The legacy envelope still carries `rating`,
+# `user_ratings_total` and `photos` — null and empty — which the app already
+# treats as "none".
+_DETAILS_FIELD_MASK = "id,displayName,formattedAddress,location"
 
 
 def _to_legacy_autocomplete(data: dict) -> dict:
