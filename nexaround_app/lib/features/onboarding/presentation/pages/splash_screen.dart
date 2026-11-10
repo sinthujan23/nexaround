@@ -5,7 +5,10 @@ import 'package:flutter/material.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:go_router/go_router.dart';
+import 'package:nexaround_app/core/constants/api_constants.dart';
+import 'package:nexaround_app/core/services/app_version.dart';
 import 'package:nexaround_app/core/services/config_key_service.dart';
+import 'package:nexaround_app/features/plans/presentation/widgets/plan_widgets.dart';
 import 'package:nexaround_app/core/services/notification_service.dart';
 import 'package:nexaround_app/core/services/permission_service.dart';
 
@@ -102,6 +105,16 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen> {
     _navigated = true;
     _loadTimeoutTimer?.cancel();
     _completionTimer?.cancel();
+
+    // A build older than the server's minimum (subscription plans need the
+    // plans screen that newer builds have) stops here with an update screen.
+    if (AppVersion.isOlderThan(ApiConstants.minAppVersion)) {
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const UpdateRequiredPage()),
+        (_) => false,
+      );
+      return;
+    }
 
     if (CacheService.isFirstTime()) {
       context.go('/onboarding');

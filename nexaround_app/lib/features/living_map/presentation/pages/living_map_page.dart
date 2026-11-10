@@ -56,6 +56,8 @@ import 'package:nexaround_app/features/planning/presentation/pages/my_odysseys_p
 import 'package:nexaround_app/features/experiences/presentation/pages/experiences_page.dart';
 import 'package:nexaround_app/features/forum/presentation/pages/forum_home_page.dart';
 import 'package:nexaround_app/core/services/avatar_service.dart';
+import 'package:nexaround_app/core/services/plan_service.dart';
+import 'package:nexaround_app/features/plans/presentation/widgets/plan_widgets.dart';
 
 class _LocalEvent {
   final String title;
@@ -6857,6 +6859,14 @@ class _LivingMapPageState extends State<LivingMapPage>
                     },
                   );
                 }),
+                  // Explorer sees the nearest two bands: the third, locked.
+                  if (PlanGate.bandsLimited(categoryName) &&
+                      PlaceBands.forCategory(categoryName).length >= 3)
+                    LockedBandRow(
+                      themeColor: themeColor,
+                      fromKm: PlaceBands.forCategory(categoryName)[2].minKm,
+                      toKm: PlaceBands.forCategory(categoryName)[2].maxKm,
+                    ),
                 ],
               ),
             ),

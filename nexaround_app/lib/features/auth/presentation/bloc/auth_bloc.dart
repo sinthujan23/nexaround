@@ -15,6 +15,8 @@ import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter/services.dart';
 import 'package:nexaround_app/core/error/user_message.dart';
+import 'package:nexaround_app/core/services/purchase_service.dart';
+import 'package:nexaround_app/core/services/plan_service.dart';
 
 class AuthBloc extends Bloc<AuthEvent, AuthState> {
   final AuthRepository _authRepository;
@@ -47,6 +49,10 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     if (!ConfigKeyService.isMapboxReady) {
       ConfigKeyService.fetchAndApplyKeys();
     }
+    // Subscriptions: the store customer is this user (so a purchase is theirs
+    // on every device), and the plan screen and counters start current.
+    PurchaseService.logIn(user.id);
+    PlanService.refresh();
     final userPrefs = CacheService.getUserPreferences();
     return UserModel(
       id: user.id,
@@ -463,6 +469,8 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   ) async {
     await _authRepository.logout();
     await CacheService.clearUserData();
+    await PurchaseService.logOut();
+    PlanService.clear();
     emit(const AuthUnauthenticated());
   }
 
@@ -473,6 +481,8 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     emit(const AuthLoading());
     final result = await _authRepository.deleteAccount();
     await CacheService.clearUserData();
+    await PurchaseService.logOut();
+    PlanService.clear();
     result.fold(
       (failure) => emit(AuthError(failure.message, sessionExpired: failure.isSessionExpired)),
       (_) => emit(const AuthAccountDeleted()),

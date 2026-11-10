@@ -242,7 +242,8 @@ async def check(user_id) -> None:
     cap = cfg["daily_seconds"]
     if cap and user_id and await seconds_today(user_id) >= cap:
         raise VoiceBlocked("voice_quota")
-    allowed, _reason = await spend_guard.allowed(user_id)
+    # Speech is not map data, so the plan's live map limit does not silence Neva.
+    allowed, _reason = await spend_guard.allowed(user_id, map_data=False)
     if not allowed:
         raise VoiceBlocked("voice_quota")
 

@@ -32,6 +32,7 @@ from app.api.v1.legal import (
 )
 
 from app.api.v1.fx import admin_router as fx_admin_router, router as fx_router
+from app.api.v1.billing import admin_router as billing_admin_router, router as billing_router
 
 api_router = APIRouter(prefix="/api/v1")
 
@@ -65,5 +66,7 @@ api_router.include_router(legal_partner_router)
 api_router.include_router(legal_admin_router)
 api_router.include_router(fx_router)
 api_router.include_router(fx_admin_router)
+api_router.include_router(billing_router)
+api_router.include_router(billing_admin_router)
 api_router.include_router(ar_router, prefix="/ar", tags=["AR"])
 

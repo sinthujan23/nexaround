@@ -17,6 +17,7 @@ import 'package:nexaround_app/core/constants/trip_cost_floor.dart';
 import 'package:nexaround_app/core/widgets/country_picker_sheet.dart';
 import 'package:nexaround_app/core/error/user_message.dart';
 import 'package:nexaround_app/features/planning/presentation/widgets/odyssey_disclaimer_sheet.dart';
+import 'package:nexaround_app/core/services/plan_service.dart';
 
 class OdysseyPlannerPage extends StatefulWidget {
   const OdysseyPlannerPage({super.key});
@@ -30,7 +31,8 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
   // Gemini call capped at 8192 output tokens. Beyond ~14 days that routinely
   // truncates mid-JSON and the Odyssey comes back as "failed", so trip length
   // is capped here to match the server-side limit in OdysseyGenerateRequest.
-  static const int _maxTripDays = 14;
+  // The plan can lower it: Explorer 5 days, Voyager 10, Globetrotter 14.
+  int get _maxTripDays => PlanGate.odysseyMaxDays;
 
   String _currency = 'USD';
 
@@ -899,6 +901,8 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _isSubmitting = false);
+      // A plan limit: the plans sheet is already open (ApiClient → PlanService).
+      if (PlanService.isPlanLimit(e)) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(userMessageFor(e, action: 'start planning'))),
       );
@@ -1852,13 +1856,21 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
         _hotelCheckOutDate ??= end;
       });
       if (wasCapped && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Trips are capped at $_maxTripDays days so the AI planner can reliably generate every day — end date adjusted.',
+        if (_maxTripDays < 14) {
+          // The plan's limit, not the planner's: say so and offer the plans.
+          PlanService.showLimit(
+            'odyssey_days',
+            'Your plan covers trips of up to $_maxTripDays days — end date adjusted.',
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Trips are capped at $_maxTripDays days so the AI planner can reliably generate every day — end date adjusted.',
+              ),
             ),
-          ),
-        );
+          );
+        }
       }
     }
   }

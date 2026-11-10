@@ -4,6 +4,11 @@ class ApiConstants {
   static String googleMapsApiKey = '';
   static String geminiApiKey = '';
   static String serpApiKey = '';
+  // RevenueCat public SDK keys (appl_… / goog_…), from /config/keys.
+  static String revenueCatAppleKey = '';
+  static String revenueCatGoogleKey = '';
+  // Builds older than this are asked to update (from /config/keys).
+  static String minAppVersion = '';
   
   // Custom Google Sign-In credentials (from Google Cloud Project with Google Drive API enabled)
   static const String googleClientId = '';       // For iOS OAuth Client ID

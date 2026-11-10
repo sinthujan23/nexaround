@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 import 'package:nexaround_app/core/constants/api_constants.dart';
+import 'package:nexaround_app/core/services/purchase_service.dart';
 
 /// Fetches public client SDK keys (Mapbox, Google Maps) from the backend and
 /// applies them to the relevant SDKs. Safe to call multiple times — subsequent
@@ -78,6 +80,15 @@ class ConfigKeyService {
               'ConfigKeyService: Failed to set Google Maps key on native side: $e');
         }
       }
+
+      // ── Subscriptions (RevenueCat public SDK keys) + minimum version ──
+      final rcApple = data['revenuecat_ios_key'];
+      if (rcApple is String && rcApple.isNotEmpty) ApiConstants.revenueCatAppleKey = rcApple;
+      final rcGoogle = data['revenuecat_android_key'];
+      if (rcGoogle is String && rcGoogle.isNotEmpty) ApiConstants.revenueCatGoogleKey = rcGoogle;
+      final minVersion = data['min_app_version'];
+      if (minVersion is String) ApiConstants.minAppVersion = minVersion;
+      unawaited(PurchaseService.init());
 
       return true;
     } catch (e) {

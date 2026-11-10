@@ -110,6 +110,7 @@ export default function Privacy() {
               <li><strong>Camera & Sensor Input:</strong> The camera view, compass and motion sensors are used only while AR mode is open, to show place labels over the camera view. The camera view is not recorded or sent to our servers. Photos you add to a travel story are stored on our servers; Travel Journal photos are saved to the Google Drive or Dropbox account you choose.</li>
               <li><strong>Microphone:</strong> Used only when you search by voice in AR or talk to Neva. Neva Voice recordings are sent to our servers and our AI provider to understand your question.</li>
               <li><strong>Travel Logs & Preferences:</strong> Saved trip plans, journal entries, favourite places and the preferences you set, such as your currency and nationality.</li>
+              <li><strong>Subscriptions:</strong> If you subscribe to Voyager or Globetrotter, Apple or Google takes the payment; we never see your card details. Our subscription provider, RevenueCat, tells us which plan your account has, when it renews or ends, and the store transaction it belongs to, linked to your NexAround account ID. We also count how many Odyssey plans and Neva messages you use, to apply your plan's limits.</li>
             </ul>
           </div>
 

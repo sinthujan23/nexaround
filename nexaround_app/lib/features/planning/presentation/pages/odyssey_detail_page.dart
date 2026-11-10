@@ -8,6 +8,7 @@ import 'package:nexaround_app/features/planning/domain/odyssey.dart';
 import 'package:nexaround_app/features/planning/presentation/widgets/odyssey_plan_view.dart';
 import 'package:nexaround_app/features/planning/presentation/pages/history_page.dart';
 import 'package:nexaround_app/core/error/user_message.dart';
+import 'package:nexaround_app/core/services/plan_service.dart';
 
 /// Read-only view of a saved Odyssey, with the option to delete it.
 class OdysseyDetailPage extends StatefulWidget {
@@ -143,6 +144,8 @@ class _OdysseyDetailPageState extends State<OdysseyDetailPage> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _retrying = false);
+      // A plan limit: the plans sheet is already open.
+      if (PlanService.isPlanLimit(e)) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(userMessageFor(e, action: 'retry'))),
       );

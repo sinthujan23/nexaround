@@ -400,8 +400,13 @@ async def get_nearby_banded(
     max_photos: int = 1,
     force_refresh: bool = False,
     per_band: Optional[int] = None,
+    max_bands: Optional[int] = None,
 ) -> BandedPlacesResponse:
     """One category's section, drawn across its distance bands and backfilled.
+
+    `max_bands` is the plan's reach (Explorer: the nearest two). The pool and
+    its cache entry are the same for every plan; a limited caller just never
+    pays to fill a band it cannot see, and gets the visible bands back.
 
     `per_band` overrides the per-band quota for callers that want a longer list:
     Discovery lists everything it can, while Around You is the quick-access strip
@@ -412,6 +417,14 @@ async def get_nearby_banded(
     """
     category = google_places_client.canonical_category(category)
     bands = place_bands.bands_for(category)
+    visible_bands = bands[:max_bands] if max_bands else bands
+
+    def _within_reach(places: list[dict]) -> list[dict]:
+        if visible_bands is bands:
+            return places
+        reach = visible_bands[-1][1]
+        return [p for p in places if (p.get("distance_m") or 0) <= reach]
+
     key = _cache_key(latitude, longitude, category)
     excluded_keywords = await excluded_keyword_service.get_active_keywords()
 
@@ -427,8 +440,8 @@ async def get_nearby_banded(
             cached = await place_visibility.filter_places(cached)
             _tag_excluded(cached, excluded_keywords)
             return _assemble(
-                latitude, longitude, category, bands, cached, max_photos,
-                cached_flag=True, source="cache", per_band=per_band,
+                latitude, longitude, category, visible_bands, _within_reach(cached),
+                max_photos, cached_flag=True, source="cache", per_band=per_band,
             )
 
     # ── Step 1: PostGIS ring queries ─────────────────────────────────────────
@@ -483,6 +496,8 @@ async def get_nearby_banded(
         i for i, (bmin, bmax) in enumerate(bands)
         if sum(1 for p in pool if bmin <= (p.get("distance_m") or 0) <= bmax)
         < place_bands.quota_for_band(i)
+        # A band beyond the caller's plan is never bought for them.
+        and i < len(visible_bands)
     ]
 
     source = "database"
@@ -577,7 +592,7 @@ async def get_nearby_banded(
             partial=near_fill_incomplete,
         ))
     return _assemble(
-        latitude, longitude, category, bands, visible, max_photos,
+        latitude, longitude, category, visible_bands, _within_reach(visible), max_photos,
         cached_flag=False, source=source, per_band=per_band,
         pending=bool(defer_bands) or near_fill_incomplete,
     )

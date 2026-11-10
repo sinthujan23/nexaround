@@ -19,8 +19,10 @@ from app.schemas.place import (
 )
 from app.services import (
     banded_places_service,
+    google_places_client,
     places_service,
     photo_cache_service,
+    plan_service,
     spend_guard,
     telemetry,
 )
@@ -38,9 +40,22 @@ async def get_nearby_places(
     max_photos: int = Query(1, ge=1, le=10, description="Max photos per place to return"),
     limit: int = Query(20, ge=1, le=100, description="Max places to return (pagination)"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
+    ctx: Optional[str] = Query(
+        None, max_length=16,
+        description="Which screen is asking: 'ar' for the AR view. The plan's "
+                    "range limit differs per screen (Explorer: AR 2 km, "
+                    "Around You / Discover 25 km).",
+    ),
     current_user: User = Depends(get_current_user),
 ):
     """Return Google Places near a coordinate. Cached server-side for 7 days. Requires authentication."""
+    # The plan's range limit. Clamped rather than refused: the screen still
+    # fills, with the nearer places. Hospitals and clinics are never capped.
+    cap = await plan_service.radius_cap_for(
+        current_user.id, google_places_client.canonical_category(category), ctx,
+    )
+    if cap is not None and radius > cap:
+        radius = cap
     result = await places_service.get_nearby(
         latitude=lat,
         longitude=lng,
@@ -89,6 +104,10 @@ async def get_nearby_places_banded(
     and text search all want a flat radius query, and should not inherit band
     semantics or the extra Google requests that filling an outer band can cost.
     """
+    # Explorer sees the nearest two distance bands (Medical / Hospital: all).
+    max_bands = await plan_service.max_bands_for(
+        current_user.id, google_places_client.canonical_category(category),
+    )
     result = await banded_places_service.get_nearby_banded(
         latitude=lat,
         longitude=lng,
@@ -96,6 +115,7 @@ async def get_nearby_places_banded(
         max_photos=max_photos,
         force_refresh=force_refresh,
         per_band=per_band,
+        max_bands=max_bands,
     )
     return result
 

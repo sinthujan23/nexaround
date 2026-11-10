@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
 from app.services.ai_service import ai_service
+from app.services import plan_service
 from app.api.deps import get_current_user
 from app.models.user import User
 
@@ -21,13 +22,17 @@ async def send_message(
 ):
     """
     Send a message to the AI Guide and get a response.
+
+    Counts as a Neva message: it is the same companion on an older path.
     """
+    await plan_service.check_neva(current_user.id)
     try:
         response_text = await ai_service.get_chat_response(
             message=request.message,
             context=request.context,
             preferences=current_user.preferences
         )
+        await plan_service.count_neva(current_user.id)
         return ChatResponse(response=response_text)
     except Exception as e:
         import logging

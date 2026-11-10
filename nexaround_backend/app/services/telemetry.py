@@ -470,6 +470,14 @@ def _spend_keys(row: dict) -> list[tuple[str, int]]:
     ]
     if row.get("user_id"):
         keys.append((f"spend:{_NS}:user:{row['user_id']}:{day}", 2 * 86400))
+        # The plan's live map data limit counts Google Maps spend only, and not
+        # the Google calls an Odyssey generation makes (see spend_guard).
+        if row.get("provider") == "google_maps" and not str(
+            row.get("route") or ""
+        ).startswith("/api/v1/itineraries"):
+            base = f"spend:{_NS}:map:{row['user_id']}"
+            keys.append((f"{base}:d:{day}", 2 * 86400))
+            keys.append((f"{base}:m:{month}", 40 * 86400))
     return keys
 
 

@@ -231,6 +231,9 @@ class GooglePlacesService {
     String? categoryName,
     int radius = 5000,
     bool useLegacy = false,
+    // Which screen asks: 'ar' for the AR view, whose range the plan sets
+    // separately (Explorer: 2 km in AR, 25 km elsewhere).
+    String? ctx,
   }) async {
     final cacheKey = _buildClientCacheKey(latitude, longitude, categoryName, radius, useLegacy);
     final now = DateTime.now();
@@ -250,6 +253,7 @@ class GooglePlacesService {
           'category': categoryName,
           'radius': radius,
           'use_legacy': useLegacy,
+          if (ctx != null) 'ctx': ctx,
         },
       );
 
@@ -388,6 +392,7 @@ class GooglePlacesService {
     required double longitude,
     String? category,
     double radiusM = 2000.0,
+    String? ctx,
   }) async {
     try {
       final List<AttractionEntity> places = await fetchNearbyPlaces(
@@ -395,6 +400,7 @@ class GooglePlacesService {
         longitude: longitude,
         radius: radiusM.toInt(),
         categoryName: category,
+        ctx: ctx,
       );
 
       // Strictly filter within radius and sort ascending by distance

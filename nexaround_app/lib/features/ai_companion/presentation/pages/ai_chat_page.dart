@@ -719,6 +719,7 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
       _snack(switch (outcome.failure) {
         NevaVoiceFailure.noSpeech => "Didn't catch that. Tap the mic and try again.",
         NevaVoiceFailure.voiceOff => 'Voice chat is off right now. Please type to Neva.',
+        NevaVoiceFailure.planLimit => "You've used today's Neva messages on your plan.",
         _ => "Neva couldn't hear you just now. Please try again or type.",
       });
       return;

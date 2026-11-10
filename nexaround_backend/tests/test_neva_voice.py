@@ -53,7 +53,7 @@ def voice_config(monkeypatch, tmp_path):
     async def _add(user_id, seconds):
         spent["seconds"] += seconds
 
-    async def _allowed(user_id=None):
+    async def _allowed(user_id=None, **_kwargs):
         return True, None
 
     monkeypatch.setattr(neva_voice, "_load_config", _load)
@@ -219,7 +219,7 @@ def test_switched_off_nothing_is_spoken(voice_config, engines):
 
 
 def test_a_spent_api_budget_stops_speech(voice_config, engines, monkeypatch):
-    async def _blocked(user_id=None):
+    async def _blocked(user_id=None, **_kwargs):
         return False, "daily cap"
 
     monkeypatch.setattr(neva_voice.spend_guard, "allowed", _blocked)

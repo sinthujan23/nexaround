@@ -191,7 +191,14 @@ async def bind_request_context(request: Request, call_next):
         request.headers["X-Platform"][:16]
     )
     request_context.route_var.set(str(request.url.path)[:255])
-    return await call_next(request)
+    flags: dict = {}
+    request_context.flags_var.set(flags)
+    response = await call_next(request)
+    # The app shows "today's live updates are used up" when this is present:
+    # the request still succeeded, with saved places only.
+    if flags.get("plan_limit"):
+        response.headers["X-Plan-Limit"] = str(flags["plan_limit"])
+    return response
 
 
 # Security Headers Middleware
@@ -204,6 +211,19 @@ async def add_security_headers(request: Request, call_next):
     response.headers["X-XSS-Protection"] = "1; mode=block"
     response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     return response
+# A subscription plan's limit (plan_service). 429 with the reason in `code`
+# and a sentence in `detail`: old app builds show `detail` as it is, new ones
+# open the plans screen.
+from app.services.plan_service import PlanLimitExceeded
+
+
+@app.exception_handler(PlanLimitExceeded)
+async def plan_limit_handler(request: Request, exc: PlanLimitExceeded):
+    from fastapi.responses import JSONResponse
+    return JSONResponse(status_code=429, content=exc.body(),
+                        headers={"X-Plan-Limit": exc.feature})
+
+
 # Include routes
 app.include_router(api_router)
 # Public share pages (HTML), reached at nexaround.com/e/<id> and nexaround.com/f/<id> via nginx.

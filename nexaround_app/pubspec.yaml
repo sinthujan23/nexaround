@@ -78,6 +78,12 @@ dependencies:
   wakelock_plus: 1.6.1
   # The phone's own share menu, for "More" in experience_share_sheet.dart.
   share_plus: 13.3.0
+  # Subscription plans (Voyager / Globetrotter): Apple / Google in-app
+  # purchase through RevenueCat. See lib/core/services/purchase_service.dart.
+  purchases_flutter: 10.18.1
+  # This build's version, sent as X-App-Version and checked against the
+  # server's min_app_version.
+  package_info_plus: 10.2.2
   # Direct Facebook / Instagram Stories sharing. A local plugin because its iOS
   # side needs Facebook's share kit (see packages/nexaround_share).
   nexaround_share:

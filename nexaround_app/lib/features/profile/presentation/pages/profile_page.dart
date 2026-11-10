@@ -20,6 +20,7 @@ import 'package:nexaround_app/core/services/avatar_service.dart';
 import 'package:nexaround_app/features/planning/data/odyssey_repository.dart';
 import 'package:nexaround_app/features/planning/presentation/pages/history_page.dart';
 import 'package:nexaround_app/features/experiences/presentation/pages/my_experience_requests_page.dart';
+import 'package:nexaround_app/features/plans/presentation/widgets/plan_widgets.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -102,6 +103,10 @@ class _ProfilePageState extends State<ProfilePage> {
                   children: [
                     // Header
                     _buildProfileHeader(context, user),
+                    const SizedBox(height: 20),
+
+                    // Subscription plan (Explorer / Voyager / Globetrotter)
+                    const MyPlanCard(),
                     const SizedBox(height: 20),
 
                     // Stats row (Trips Completed & Favourite Places)

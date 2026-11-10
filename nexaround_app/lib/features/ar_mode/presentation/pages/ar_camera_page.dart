@@ -33,6 +33,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:nexaround_app/features/living_map/presentation/pages/google_maps_page.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'package:nexaround_app/features/attractions/presentation/pages/attraction_detail_page.dart';
+import 'package:nexaround_app/core/services/plan_service.dart';
 
 class ArCameraPage extends StatefulWidget {
   final Map<String, dynamic>? initialPlace;
@@ -257,6 +258,15 @@ class _ArCameraPageState extends State<ArCameraPage>
   List<int> _rangeStepsForCategory(String filter) {
     if (!_categoryHasRange(filter)) return const [2];
     return const [2, 10];
+  }
+
+  /// The plan's AR range (Explorer: 2 km; Medical is never limited). Picking
+  /// a range beyond it opens the plans sheet and keeps the current range.
+  bool _rangeBlockedByPlan(List<int> steps) {
+    final next = steps[(steps.indexOf(_rangeKm) + 1) % steps.length];
+    if (next <= PlanGate.arMaxKm(_selectedFilter)) return false;
+    PlanService.showLimit('ar_range', 'Your plan shows places within ${PlanGate.arMaxKm(_selectedFilter)} km in AR.');
+    return true;
   }
 
   /// The live fetch keeps every place within range (up to the marker ceiling).
@@ -2271,6 +2281,7 @@ class _ArCameraPageState extends State<ArCameraPage>
                   longitude: c[1],
                   radius: sampleRadius,
                   categoryName: cat,
+                  ctx: 'ar',
                 ).catchError((err) {
                   debugPrint(
                     'AR far-ring sample (bearing ${b.toStringAsFixed(0)}, $cat) failed: $err',
@@ -2666,6 +2677,7 @@ class _ArCameraPageState extends State<ArCameraPage>
               longitude: pos.longitude,
               radius: radius,
               categoryName: cat,
+              ctx: 'ar',
             );
             if (places.isNotEmpty) {
               for (final p in places) {
@@ -4065,6 +4077,7 @@ class _ArCameraPageState extends State<ArCameraPage>
           latitude: lat,
           longitude: lng,
           radiusM: 2000.0,
+          ctx: 'ar',
         );
         results = _attractionsToSearchResults(nearPlaces, 'Nearby attraction');
       } else if (isNearMe) {
@@ -4996,6 +5009,7 @@ class _ArCameraPageState extends State<ArCameraPage>
     return GestureDetector(
       onTap: () {
         if (steps.length <= 1) return;
+                if (_rangeBlockedByPlan(steps)) return;
         HapticFeedback.selectionClick();
         final idx = steps.indexOf(_rangeKm);
         final next = steps[(idx + 1) % steps.length];
@@ -6171,6 +6185,7 @@ class _ArCameraPageState extends State<ArCameraPage>
                                                   _selectedFilter,
                                                 );
                                             if (steps.length <= 1) return;
+                if (_rangeBlockedByPlan(steps)) return;
                                             HapticFeedback.selectionClick();
                                             final idx = steps.indexOf(_rangeKm);
                                             setState(() {
@@ -6405,6 +6420,7 @@ class _ArCameraPageState extends State<ArCameraPage>
                                               _selectedFilter,
                                             );
                                         if (steps.length <= 1) return;
+                if (_rangeBlockedByPlan(steps)) return;
                                         HapticFeedback.selectionClick();
                                         final idx = steps.indexOf(_rangeKm);
                                         setState(() {
@@ -8875,6 +8891,7 @@ HOW TO FORMAT EVERY REPLY:
                                                       _selectedFilter,
                                                     );
                                                 if (steps.length <= 1) return;
+                if (_rangeBlockedByPlan(steps)) return;
                                                 HapticFeedback.selectionClick();
                                                 final idx = steps.indexOf(
                                                   _rangeKm,

@@ -5642,6 +5642,7 @@ async def generate_odyssey(
     departure_longitude: float | None = None,
     preset_route: dict | None = None,
     departure_airport: str = "",
+    lite: bool = False,
 ) -> tuple[str, list[dict]]:
     """Generate the plan. Returns (title, items) ready to store on an Itinerary.
 
@@ -6551,6 +6552,11 @@ async def generate_odyssey(
     # Ratings and opening hours come from Google or they do not appear. The
     # model's own are discarded first, so this cannot be a partial improvement
     # that leaves some invented numbers behind — see `verify_venue_facts`.
+    if lite:
+        # Explorer's Lite plan: ratings and hours are a paid-plan feature, so
+        # the model's own are removed and nothing is looked up.
+        _strip_unverified_venue_claims(day_items)
+        return title, [meta] + day_items
     try:
         checked = await verify_venue_facts(day_items, city_legs, maps_key)
         if checked.get("checked"):

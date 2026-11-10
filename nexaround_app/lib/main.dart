@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:nexaround_app/app/app.dart';
+import 'package:nexaround_app/core/services/app_version.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/features/travel_stories/data/datasources/travel_stories_service.dart';
 import 'package:nexaround_app/core/services/config_key_service.dart';
@@ -68,6 +69,9 @@ void main() async {
     CacheService.init(),
     _openLocalDatabase(),
     _initFirebase(),
+    // Read locally (no network): sent as X-App-Version and checked against
+    // the server's minimum before the first screen opens.
+    AppVersion.load(),
   ]);
 
   // Clear attractions cache on app startup to force a fresh fetch from Google Places

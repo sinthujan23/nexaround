@@ -28,6 +28,18 @@ platform_var: ContextVar[Optional[str]] = ContextVar("platform", default=None)
 # The inbound endpoint that caused this work. request_id groups the upstream
 # calls one client action produced; this names the action.
 route_var: ContextVar[Optional[str]] = ContextVar("route", default=None)
+# A dict the request middleware creates and reads back after the endpoint has
+# run. Mutated, never re-set: the endpoint runs in a copied context, so only a
+# shared object makes what it records visible to the middleware.
+flags_var: ContextVar[Optional[dict]] = ContextVar("flags", default=None)
+
+
+def flag(name: str, value) -> None:
+    """Note something about this request for the response headers (e.g. the
+    plan's live map limit stopped a Google call: X-Plan-Limit: live_map)."""
+    flags = flags_var.get()
+    if flags is not None:
+        flags[name] = value
 
 
 def current_request_id() -> Optional[uuid.UUID]:

@@ -15,6 +15,10 @@ import 'package:nexaround_app/features/experiences/presentation/pages/experience
 import 'package:nexaround_app/features/forum/presentation/pages/forum_link_page.dart';
 
 class AppRouter {
+  /// The app's root navigator: app-wide sheets (the plans sheet when a
+  /// subscription limit is reached) open on it from anywhere.
+  static final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
+
   /// A shared package (nexaround.com/e/<id>) opened while signed out. Held
   /// until sign-in completes, then opened over Home. In memory only: if the
   /// app is killed during sign-in, the user lands on Home as usual.
@@ -37,6 +41,7 @@ class AppRouter {
 
   static GoRouter createRouter(AuthBloc authBloc) {
     return GoRouter(
+      navigatorKey: rootNavigatorKey,
       initialLocation: '/',
       refreshListenable: GoRouterRefreshStream(authBloc.stream),
       redirect: (context, state) {

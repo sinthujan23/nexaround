@@ -16,7 +16,7 @@ from app.api.deps import get_current_user
 from app.core.database import get_db
 from app.models.user import User
 from app.schemas.place import PlaceResponse
-from app.services import neva_service, neva_voice
+from app.services import neva_service, neva_voice, plan_service
 from app.services.settings_service import SettingsService
 
 logger = logging.getLogger(__name__)
@@ -107,6 +107,7 @@ async def neva_chat(
     current_user: User = Depends(get_current_user),
 ):
     """One Neva reply. "Where is…" questions come back with real places to map."""
+    await plan_service.check_neva(current_user.id)
     api_key = await _gemini_key(db)
     if not api_key:
         raise HTTPException(status_code=500, detail="Gemini API Key not configured")
@@ -131,6 +132,7 @@ async def neva_chat(
         raise HTTPException(status_code=503, detail="Neva returned an empty reply.")
     # Signing costs nothing; speech is only made if the app asks for a clip.
     speech = neva_voice.speech_for(reply["text"], reply["lang"], current_user.id)
+    await plan_service.count_neva(current_user.id)
     return NevaChatResponse(**reply, speech=speech)
 
 
@@ -145,6 +147,7 @@ async def neva_voice_turn(
     current_user: User = Depends(get_current_user),
 ):
     """A spoken question: what the user said, and Neva's short reply to say aloud."""
+    await plan_service.check_neva(current_user.id)
     if not await neva_voice.is_enabled():
         raise HTTPException(status_code=503, detail="voice_off")
     clip = await audio.read(neva_voice.MAX_CLIP_BYTES + 1)
@@ -225,6 +228,7 @@ async def neva_voice_turn(
             paused, speech = True, []
         except neva_voice.VoiceUnavailable as e:
             logger.warning("Neva voice: no audio with the reply: %s", e)
+    await plan_service.count_neva(current_user.id)
     return NevaVoiceResponse(
         **reply, speech=speech, transcript=heard or "", voice_paused=paused,
         audio=base64.b64encode(audio).decode() if audio else "", audio_mime=audio_mime,

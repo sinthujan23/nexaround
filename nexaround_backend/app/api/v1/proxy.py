@@ -430,9 +430,17 @@ async def get_config_keys(
     settings = SettingsService(db)
     mapbox_token = await settings.get_setting("mapbox_access_token")
     google_maps_key = await settings.get_setting("google_maps_api_key")
+    from app.services import plan_service
     return {
         "mapbox_access_token": mapbox_token,
-        "google_maps_api_key": google_maps_key
+        "google_maps_api_key": google_maps_key,
+        # Builds older than this are asked to update (subscription plans need
+        # the plans screen that ships with them). Empty = no minimum.
+        "min_app_version": await plan_service.min_app_version(),
+        # RevenueCat's PUBLIC app keys (appl_… / goog_…): meant to ship in the
+        # app, like the Mapbox token. The secret API key never leaves the server.
+        "revenuecat_ios_key": await settings.get_setting("revenuecat_ios_key", ""),
+        "revenuecat_android_key": await settings.get_setting("revenuecat_android_key", ""),
     }
 
 
@@ -599,6 +607,23 @@ async def landing_contact(
     return {"ok": True}
 
 
+def _is_neva_prompt(payload: dict) -> bool:
+    """Whether this proxied call is a Neva message.
+
+    The app falls back to this proxy whenever /neva/chat fails, and the AR
+    view's "Ask Neva" uses it directly; both send Neva's own system prompt. A
+    plan's Neva limit has to hold here too, or a limited user's next message
+    would simply come through this door instead.
+    """
+    try:
+        # The app writes it snake_case; Gemini accepts either spelling.
+        si = payload.get("systemInstruction") or payload.get("system_instruction") or {}
+        parts = (si.get("parts") if isinstance(si, dict) else None) or []
+        return any("You are Neva" in str((p or {}).get("text") or "") for p in parts)
+    except AttributeError:
+        return False
+
+
 @router.post("/proxy/gemini/generate")
 async def proxy_gemini_generate(
     payload: dict,
@@ -606,6 +631,10 @@ async def proxy_gemini_generate(
     current_user: User = Depends(get_current_user)
 ):
     """Proxy Gemini generative AI requests securely."""
+    from app.services import plan_service
+    is_neva = _is_neva_prompt(payload)
+    if is_neva:
+        await plan_service.check_neva(current_user.id)
     settings = SettingsService(db)
     raw_key = await settings.get_setting("gemini_api_key")
     api_key = (raw_key or "").strip().strip('"').strip("'")
@@ -692,6 +721,8 @@ async def proxy_gemini_generate(
             if cache_key and resp is not None and resp.status_code == 200:
                 await place_cache_service.set_raw(
                     cache_key, resp.text, ttl=6 * 3600)
+            if is_neva and resp is not None and resp.status_code == 200:
+                await plan_service.count_neva(current_user.id)
             return Response(content=resp.content, status_code=resp.status_code, media_type="application/json")
         except Exception as e:
             raise HTTPException(status_code=500, detail="Proxy request failed. Please try again.")

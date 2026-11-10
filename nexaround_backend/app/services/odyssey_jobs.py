@@ -28,11 +28,12 @@ logger = logging.getLogger(__name__)
 JOB_NAME = "generate_odyssey"
 
 
-async def dispatch(background_tasks: BackgroundTasks, **kwargs) -> None:
+async def dispatch(background_tasks: BackgroundTasks, *, priority: bool = False, **kwargs) -> None:
     """Hand a generation to the worker, or run it in-process if the queue is
-    unreachable. `kwargs` are exactly `run_generation`'s parameters."""
+    unreachable. `kwargs` are exactly `run_generation`'s parameters;
+    `priority` is the plan's priority queue (Globetrotter)."""
     try:
-        job_id = await job_queue.enqueue(JOB_NAME, **kwargs)
+        job_id = await job_queue.enqueue(JOB_NAME, _priority=priority, **kwargs)
         logger.info("Odyssey %s queued as job %s", kwargs.get("itinerary_id"), job_id)
     except Exception as e:
         logger.warning(
@@ -89,6 +90,9 @@ async def run_generation(
     # JSON on the way to the worker, so anything here has to survive a
     # round-trip through it. Re-validated by `plan_route` at the other end.
     preset_route: Optional[dict] = None,
+    # Explorer's Lite plan: ratings and opening hours are left out instead of
+    # checked against Google. Live flight and hotel prices stay.
+    lite: bool = False,
 ) -> None:
     """The generation itself.
 
@@ -159,6 +163,7 @@ async def run_generation(
             departure_latitude=departure_latitude,
             departure_longitude=departure_longitude,
             departure_airport=departure_airport or "",
+            lite=lite,
         )
         print(f"[ODYSSEY] SUCCESS {itinerary_id}: {title}", flush=True)
     except Exception as e:

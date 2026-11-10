@@ -737,9 +737,14 @@ async def list_users(
         sort_order=sort_order
     )
     countries = await ip_country.countries_for(db, [u.id for u in users])
+    from app.api.v1.billing import plans_for_users
+    plans = await plans_for_users(db, [u.id for u in users])
     return {
         "users": [
-            {**UserResponse.model_validate(u).model_dump(), "country_code": countries.get(u.id)}
+            {**UserResponse.model_validate(u).model_dump(), "country_code": countries.get(u.id),
+             "plan": (plans.get(u.id) or {}).get("plan", "explorer"),
+             "plan_source": (plans.get(u.id) or {}).get("source"),
+             "plan_period_end": (plans.get(u.id) or {}).get("period_end")}
             for u in users
         ],
         "total": total,

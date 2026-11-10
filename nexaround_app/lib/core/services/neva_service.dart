@@ -8,6 +8,7 @@ import 'package:nexaround_app/core/constants/api_constants.dart';
 import 'package:nexaround_app/core/network/api_client.dart';
 import 'package:nexaround_app/features/attractions/data/models/attraction_model.dart';
 import 'package:nexaround_app/features/attractions/domain/entities/attraction.dart';
+import 'package:nexaround_app/core/services/plan_service.dart';
 
 /// One clip of Neva's reply that the backend signed for speaking: only these
 /// can be turned into audio, by [NevaService.speak].
@@ -69,7 +70,7 @@ class NevaReply {
 }
 
 /// Why a spoken question got no reply.
-enum NevaVoiceFailure { noSpeech, voiceOff, unavailable }
+enum NevaVoiceFailure { noSpeech, voiceOff, unavailable, planLimit }
 
 class NevaVoiceOutcome {
   final NevaReply? reply;
@@ -118,6 +119,9 @@ class NevaService {
       if (response.statusCode != 200) return null;
       return _parse(response.data);
     } catch (e) {
+      // The plan's daily Neva limit is an answer, not an outage: falling back
+      // to the plain proxy would only be refused again.
+      if (PlanService.isPlanLimit(e)) rethrow;
       debugPrint('Neva chat endpoint failed, falling back: $e');
       return null;
     }
@@ -168,6 +172,10 @@ class NevaService {
       }
       if (status == 503 && detail == 'voice_off') {
         return const NevaVoiceOutcome.failed(NevaVoiceFailure.voiceOff);
+      }
+      // Today's Neva messages are used up (the plans sheet is already open).
+      if (PlanService.isPlanLimit(e)) {
+        return const NevaVoiceOutcome.failed(NevaVoiceFailure.planLimit);
       }
       debugPrint('Neva voice failed: $e');
       return const NevaVoiceOutcome.failed(NevaVoiceFailure.unavailable);

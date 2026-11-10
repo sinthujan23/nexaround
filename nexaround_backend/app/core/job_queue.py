@@ -111,11 +111,19 @@ def decode(raw: str) -> dict:
     return json.loads(raw)
 
 
-async def enqueue(name: str, **kwargs: Any) -> str:
+async def enqueue(name: str, *, _priority: bool = False, **kwargs: Any) -> str:
     """Queue a job. Returns the job id. Raises if Redis is unreachable — the
-    caller decides whether to fall back to running in-process."""
+    caller decides whether to fall back to running in-process.
+
+    `_priority` (Globetrotter's priority queue) pushes onto the end the worker
+    takes from, so the job runs next instead of waiting behind the queue.
+    """
     payload = encode(name, kwargs)
-    await _get_redis().lpush(pending_key(), payload)
+    r = _get_redis()
+    if _priority:
+        await r.rpush(pending_key(), payload)
+    else:
+        await r.lpush(pending_key(), payload)
     return decode(payload)["id"]
 
 

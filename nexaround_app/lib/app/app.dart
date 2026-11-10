@@ -16,6 +16,7 @@ import 'package:nexaround_app/features/manual_mode/presentation/bloc/map_bloc.da
 import 'package:nexaround_app/features/attractions/data/repositories/attraction_repository_impl.dart';
 import 'package:nexaround_app/features/attractions/data/datasources/attraction_remote_datasource.dart';
 import 'package:nexaround_app/features/chat/data/repositories/chat_repository.dart';
+import 'package:nexaround_app/features/plans/presentation/widgets/plan_widgets.dart';
 
 class NexAroundApp extends StatelessWidget {
   const NexAroundApp({super.key});
@@ -76,11 +77,14 @@ class _AppViewState extends State<AppView> {
       routerConfig: _router,
       debugShowCheckedModeBanner: false,
       builder: (context, child) {
-        return GestureDetector(
-          onTap: () {
-            FocusManager.instance.primaryFocus?.unfocus();
-          },
-          child: child,
+        return PlanLimitListener(
+          navigatorKey: AppRouter.rootNavigatorKey,
+          child: GestureDetector(
+            onTap: () {
+              FocusManager.instance.primaryFocus?.unfocus();
+            },
+            child: child,
+          ),
         );
       },
     );

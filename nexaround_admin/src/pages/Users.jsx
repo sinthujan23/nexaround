@@ -560,6 +560,15 @@ export default function Users() {
                                 {countryFlag(u.country_code)} {countryName(u.country_code)}
                               </span>
                             )}
+                            {u.plan && u.plan !== 'explorer' && (
+                              <Badge
+                                tone="blue"
+                                style={{ fontSize: '9px', padding: '2px 6px' }}
+                                title={u.plan_source === 'admin' ? 'Plan given by hand (Payments page)' : 'Paid subscription'}
+                              >
+                                {u.plan === 'globetrotter' ? 'Globetrotter' : 'Voyager'}{u.plan_source === 'admin' ? ' · granted' : ''}
+                              </Badge>
+                            )}
                             {!u.is_active && <Badge tone="red" style={{ fontSize: '9px', padding: '2px 6px' }}>Suspended</Badge>}
                           </div>
                           <div className="list-item-meta">

@@ -12,7 +12,7 @@ from app.models.itinerary import Itinerary
 from app.repositories.itinerary_repository import ItineraryRepository
 from app.repositories.attraction_repository import AttractionRepository
 from app.services.ai_service import ai_service
-from app.services import odyssey_ai_service, odyssey_jobs
+from app.services import odyssey_ai_service, odyssey_jobs, plan_service
 from app.services.settings_service import SettingsService
 from app.services import cover_photo_service
 from app.services import ride_apps_service
@@ -191,6 +191,10 @@ async def generate_odyssey(
     # blocks for destinations not in the dictionary (e.g. "Petra") and ensures
     # every generated plan shows honest, real pricing.
 
+    # The plan's Odyssey allowance and trip length. Raises PlanLimitExceeded
+    # (HTTP 429) before anything is saved or spent.
+    grant = await plan_service.check_odyssey(current_user.id, data.days)
+
     repo = ItineraryRepository(db)
     start_dt_str = data.start_date or data.flight_start_date or data.hotel_check_in_date or ""
     end_dt_str = data.end_date or data.flight_end_date or data.hotel_check_out_date or ""
@@ -243,6 +247,9 @@ async def generate_odyssey(
         "departure_latitude": data.departure_latitude,
         "departure_longitude": data.departure_longitude,
         "departure_airport": data.departure_airport or "",
+        # Explorer's Lite plan: the app shows "upgrade to see ratings and
+        # hours" instead of empty fields.
+        "lite": grant.lite,
     }
     meta = odyssey_ai_service.build_meta_item(
         destination=data.destination,
@@ -314,6 +321,8 @@ async def generate_odyssey(
         preset_route=(
             data.preset_route.model_dump() if data.preset_route is not None else None
         ),
+        lite=grant.lite,
+        priority=grant.priority,
     )
     return saved
 
@@ -561,6 +570,15 @@ async def retry_odyssey_generation(
     departure_longitude = gen_params.get("departure_longitude")
     departure_airport = str(gen_params.get("departure_airport") or "")[:19]
 
+    # A failed plan did not count against the allowance; retrying it makes it
+    # count, so it needs a free slot. Retrying a plan that already counts only
+    # has to fit the plan's trip length.
+    grant = await plan_service.check_odyssey(
+        current_user.id, days, new_plan=(itin.status == "failed"),
+    )
+    gen_params["lite"] = grant.lite
+    meta["generation_params"] = gen_params
+
     meta.pop("failure_reason", None)
     itin.status = "generating"
     itin.items = [meta]
@@ -602,6 +620,8 @@ async def retry_odyssey_generation(
         departure_latitude=departure_latitude,
         departure_longitude=departure_longitude,
         departure_airport=departure_airport,
+        lite=grant.lite,
+        priority=grant.priority,
     )
     return saved
 

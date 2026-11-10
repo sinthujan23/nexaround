@@ -40,7 +40,7 @@ _config: dict = {}
 _config_at: float = 0.0
 
 # Counters for observability: how often did the guard actually stop something.
-_stats = {"budget_blocks": 0, "quota_blocks": 0, "checks": 0}
+_stats = {"budget_blocks": 0, "quota_blocks": 0, "plan_blocks": 0, "checks": 0}
 
 
 class SpendBlocked(Exception):
@@ -130,6 +130,46 @@ async def user_today_usd(user_id) -> float:
     return await _read_float(f"spend:{_ns()}:user:{user_id}:{day}")
 
 
+def map_spend_keys(user_id, now: Optional[datetime] = None) -> tuple[str, str]:
+    """(day, month) counters of one user's live map data spend: Google Maps
+    calls made outside Odyssey generation. Written by telemetry._spend_keys."""
+    now = now or datetime.now(timezone.utc)
+    base = f"spend:{_ns()}:map:{user_id}"
+    return f"{base}:d:{now.strftime('%Y-%m-%d')}", f"{base}:m:{now.strftime('%Y-%m')}"
+
+
+async def user_map_spend(user_id) -> tuple[float, float]:
+    """(today, this month) of the user's live map data spend, in USD."""
+    if not user_id:
+        return 0.0, 0.0
+    day_key, month_key = map_spend_keys(user_id)
+    return await _read_float(day_key), await _read_float(month_key)
+
+
+def _in_odyssey() -> bool:
+    """Odyssey's own Google calls are part of the plan the user already has an
+    allowance for, so they never count against, or stop at, the map limit."""
+    from app.core import request_context
+    return (request_context.route_var.get() or "").startswith("/api/v1/itineraries")
+
+
+async def _check_plan_map_cap(user_id) -> None:
+    """The plan's live map data limit (Explorer $0.15/day + $0.50/month, ...)."""
+    from app.services import plan_service
+    day_cap, month_cap = await plan_service.map_caps(user_id)
+    if not (day_cap or month_cap):
+        return
+    spent_day, spent_month = await user_map_spend(user_id)
+    if (day_cap and spent_day >= day_cap) or (month_cap and spent_month >= month_cap):
+        _stats["plan_blocks"] += 1
+        from app.core import request_context
+        request_context.flag("plan_limit", "live_map")
+        raise SpendBlocked(
+            "plan_map_limit",
+            "This plan's live map updates are used up for now. Serving saved places only.",
+        )
+
+
 async def status() -> dict:
     """Current spend against the configured limits — for the dashboard banner."""
     cfg = await _load_config()
@@ -147,13 +187,25 @@ async def status() -> dict:
     }
 
 
-async def check(user_id=None) -> None:
+async def check(user_id=None, *, map_data: bool = True) -> None:
     """Raise SpendBlocked if this call should not be paid for.
 
-    Call this immediately before a billable provider request. It is a no-op
-    unless enforcement is switched on and a limit is actually configured.
+    Call this immediately before a billable provider request. The budget and
+    daily cap are a no-op unless enforcement is switched on and a limit is
+    configured; the plan's map limit applies once plans are enforced.
+
+    `user_id` defaults to the signed-in user of the current request, so the
+    background seeds and fills a request starts are held to that user's plan
+    too. `map_data=False` is for paid calls that are not map data (Neva's
+    voice), which the live map limit must not stop.
     """
     _stats["checks"] += 1
+    if user_id is None:
+        from app.core import request_context
+        user_id = request_context.current_user_id()
+    if map_data and user_id and not _in_odyssey():
+        await _check_plan_map_cap(user_id)
+
     cfg = await _load_config()
     if not cfg["enforce"]:
         return
@@ -181,10 +233,10 @@ async def check(user_id=None) -> None:
             )
 
 
-async def allowed(user_id=None) -> tuple[bool, Optional[str]]:
+async def allowed(user_id=None, *, map_data: bool = True) -> tuple[bool, Optional[str]]:
     """Non-raising form, for call sites that would rather branch than catch."""
     try:
-        await check(user_id)
+        await check(user_id, map_data=map_data)
         return True, None
     except SpendBlocked as e:
         return False, e.detail

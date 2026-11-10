@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:nexaround_app/core/constants/api_constants.dart';
 import 'package:nexaround_app/core/network/api_client.dart';
 import 'package:nexaround_app/core/error/user_message.dart';
+import 'package:nexaround_app/core/services/plan_service.dart';
 
 /// What Neva says when she can't answer: a plain sentence, never the raw
 /// error. That named the HTTP library, the API and Google's billing text,
@@ -12,6 +13,10 @@ import 'package:nexaround_app/core/error/user_message.dart';
 String nevaTroubleMessage(Object? error, {int? status}) {
   if (kDebugMode) debugPrint('⚠️ Neva could not answer: $error');
   status ??= error is DioException ? error.response?.statusCode : null;
+  if (PlanService.isPlanLimit(error)) {
+    return "You've used today's Neva messages on your plan. They reset at midnight (UTC), "
+        'or see the plans for more.';
+  }
   if (status == 429) {
     return "I'm getting a lot of questions right now. Please try again in a minute.";
   }

@@ -2,6 +2,8 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:nexaround_app/core/constants/api_constants.dart';
 import 'package:nexaround_app/core/network/auth_token_cache.dart';
+import 'package:nexaround_app/core/services/app_version.dart';
+import 'package:nexaround_app/core/services/plan_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiClient {
@@ -43,9 +45,28 @@ class ApiClient {
         if (token != null) {
           options.headers['Authorization'] = 'Bearer $token';
         }
+        // Lets the backend tell builds apart (telemetry, min_app_version).
+        if (AppVersion.version.isNotEmpty) {
+          options.headers['X-App-Version'] = AppVersion.version;
+        }
+        options.headers['X-Platform'] = AppVersion.platform;
         return handler.next(options);
       },
+      onResponse: (response, handler) {
+        // The plan's live map limit: the request worked, but with saved
+        // places only. PlanService tells the user (at most once an hour).
+        if (response.headers.value('x-plan-limit') == 'live_map') {
+          PlanService.reportMapLimited();
+        }
+        return handler.next(response);
+      },
       onError: (error, handler) async {
+        // A subscription plan limit: the app-wide listener shows the plans
+        // sheet; the calling screen still gets the error to stop its spinner.
+        if (PlanService.isPlanLimit(error)) {
+          PlanService.reportLimit(error.response);
+          return handler.next(error);
+        }
         final path = error.requestOptions.path;
         final isAuthEndpoint = path.contains('/auth/login') ||
             path.contains('/auth/register') ||

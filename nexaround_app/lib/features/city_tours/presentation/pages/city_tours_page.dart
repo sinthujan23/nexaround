@@ -326,7 +326,7 @@ class _CityToursPageState extends State<CityToursPage> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            'CITY GUIDES',
+            'CITY/REGION GUIDES',
             style: TextStyle(
               fontSize: 11.5,
               fontWeight: FontWeight.w800,
