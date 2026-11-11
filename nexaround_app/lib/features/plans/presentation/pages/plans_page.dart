@@ -19,16 +19,20 @@ class _PlanLook {
   final String photo;
   final Color color;
 
-  const _PlanLook(this.key, this.name, this.tag, this.tagline, this.photo, this.color);
+  /// How far the photo is pulled up, as a share of the card's height, so its
+  /// subject sits in the part above the white sheet instead of behind it.
+  final double lift;
+
+  const _PlanLook(this.key, this.name, this.tag, this.tagline, this.photo, this.color, this.lift);
 }
 
 const _plans = <_PlanLook>[
   _PlanLook('explorer', 'Explorer', 'FREE', 'For new and casual travellers',
-      'assets/images/city_tours_bg.jpg', Color(0xFF64748B)),
+      'assets/images/plan_explorer.jpg', Color(0xFF64748B), 0.67),
   _PlanLook('voyager', 'Voyager', 'PRO · MOST POPULAR', 'For someone planning a real trip soon',
-      'assets/images/hero_luxury.png', Color(0xFF007A7C)),
+      'assets/images/plan_voyager.jpg', Color(0xFF007A7C), 0.25),
   _PlanLook('globetrotter', 'Globetrotter', 'NEXT LEVEL', 'For frequent travellers, families and creators',
-      'assets/images/odyssey_planner.png', Color(0xFF0B3D91)),
+      'assets/images/plan_globetrotter.jpg', Color(0xFF0B3D91), 0.15),
 ];
 
 /// Explorer / Voyager / Globetrotter as swipe cards ("A2", picked 2026-11-11):
@@ -359,7 +363,15 @@ class _PlansPageState extends State<PlansPage> {
             return Stack(
               fit: StackFit.expand,
               children: [
-                Image.asset(p.photo, fit: BoxFit.cover, cacheWidth: 900),
+                // Taller than the card and anchored to its bottom: the top of
+                // the photo is cropped so its subject shows above the sheet.
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  top: -box.maxHeight * p.lift,
+                  child: Image.asset(p.photo, fit: BoxFit.cover),
+                ),
                 Positioned(
                   top: 16,
                   left: 16,
