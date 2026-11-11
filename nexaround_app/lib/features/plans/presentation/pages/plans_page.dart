@@ -370,26 +370,59 @@ class _PlansPageState extends State<PlansPage> {
       onPressed = _busy ? null : () => _buy(p.key);
     }
 
-    Widget chip((IconData, String) h) => Expanded(
+    final chipStyle = (text.bodySmall ?? const TextStyle(fontSize: 12))
+        .copyWith(color: AppColors.textPrimary, fontWeight: FontWeight.w700, height: 1.2);
+    const chipPadH = 8.0, chipIcon = 18.0, chipIconGap = 6.0, chipGap = 8.0;
+
+    Widget chip((IconData, String) h, TextStyle style) => Expanded(
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+            padding: const EdgeInsets.symmetric(horizontal: chipPadH, vertical: 9),
             decoration: BoxDecoration(color: const Color(0xFFF1F7F7), borderRadius: BorderRadius.circular(12)),
             child: Row(
               children: [
-                Icon(h.$1, size: 18, color: p.color),
-                const SizedBox(width: 7),
-                // Every word shown: a long label wraps onto a second line
-                // instead of being cut with "…".
+                Icon(h.$1, size: chipIcon, color: p.color),
+                const SizedBox(width: chipIconGap),
+                // Every word on one line, never cut with "…": the font size
+                // is picked below so the longest label fits; FittedBox is
+                // only a safety net for rounding.
                 Expanded(
-                  child: Text(h.$2,
-                      softWrap: true,
-                      style: text.bodySmall
-                          ?.copyWith(color: AppColors.textPrimary, fontWeight: FontWeight.w700, height: 1.2)),
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(h.$2, maxLines: 1, softWrap: false, style: style),
+                  ),
                 ),
               ],
             ),
           ),
         );
+
+    // All four labels share one size: the normal one, or smaller only as far
+    // as the longest label needs to fit its chip on this screen.
+    Widget chips() => LayoutBuilder(builder: (context, c) {
+          final room = (c.maxWidth - chipGap) / 2 - chipPadH * 2 - chipIcon - chipIconGap;
+          final scaler = MediaQuery.textScalerOf(context);
+          var widest = 0.0;
+          for (final h in highlights) {
+            final tp = TextPainter(
+              text: TextSpan(text: h.$2, style: chipStyle),
+              maxLines: 1,
+              textDirection: TextDirection.ltr,
+              textScaler: scaler,
+            )..layout();
+            if (tp.width > widest) widest = tp.width;
+            tp.dispose();
+          }
+          final scale = (widest > room && room > 0) ? room / widest : 1.0;
+          final style = chipStyle.copyWith(fontSize: (chipStyle.fontSize ?? 12) * scale);
+          return Column(
+            children: [
+              Row(children: [chip(highlights[0], style), const SizedBox(width: chipGap), chip(highlights[1], style)]),
+              const SizedBox(height: 8),
+              Row(children: [chip(highlights[2], style), const SizedBox(width: chipGap), chip(highlights[3], style)]),
+            ],
+          );
+        });
 
     return Container(
       padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
@@ -420,17 +453,7 @@ class _PlansPageState extends State<PlansPage> {
             Text(p.tagline, style: text.bodySmall?.copyWith(color: AppColors.textSecondary)),
           ],
           const SizedBox(height: 12),
-          IntrinsicHeight(
-            child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [chip(highlights[0]), const SizedBox(width: 8), chip(highlights[1])]),
-          ),
-          const SizedBox(height: 8),
-          IntrinsicHeight(
-            child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [chip(highlights[2]), const SizedBox(width: 8), chip(highlights[3])]),
-          ),
+          chips(),
           InkWell(
             onTap: () => _showEverything(text, p, limits),
             child: Padding(

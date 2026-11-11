@@ -192,7 +192,7 @@ class _MyPlanCardState extends State<MyPlanCard> {
           detail = paid ? 'Thank you for subscribing' : 'Free plan';
         } else {
           detail = '${s.odysseyLeft} of ${s.odysseyPerPeriod} Odyssey plan'
-              '${s.odysseyPerPeriod == 1 ? '' : 's'} left · '
+              '${s.odysseyPerPeriod == 1 ? '' : 's'} left\n'
               '${s.nevaLeft} Neva messages today';
         }
         if (s?.status == 'billing_issue') {
@@ -226,6 +226,7 @@ class _MyPlanCardState extends State<MyPlanCard> {
                     ],
                   ),
                 ),
+                const SizedBox(width: 10),
                 Text(paid ? 'Manage' : 'Upgrade',
                     style: text.labelLarge?.copyWith(
                         color: paid ? Colors.white : AppColors.brandGreen, fontWeight: FontWeight.w800)),
