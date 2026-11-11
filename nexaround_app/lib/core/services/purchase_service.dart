@@ -19,8 +19,8 @@ enum PurchaseOutcome { purchased, cancelled, failed, unavailable }
 /// throwing.
 ///
 /// RevenueCat setup this expects: offering "default" (the current one) with
-/// four packages identified `voyager_monthly`, `voyager_yearly`,
-/// `globetrotter_monthly`, `globetrotter_yearly`.
+/// two packages identified `voyager_monthly` and `globetrotter_monthly`.
+/// Monthly plans only since 2026-11-11 (the TL dropped annual plans).
 class PurchaseService {
   PurchaseService._();
 

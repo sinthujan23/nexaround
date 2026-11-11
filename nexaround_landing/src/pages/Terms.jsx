@@ -117,13 +117,13 @@ export default function Terms() {
               4. Subscriptions (Voyager & Globetrotter)
             </h2>
             <p style={{ fontSize: '0.96rem', color: 'var(--text-secondary)', lineHeight: 1.7, marginBottom: '12px' }}>
-              NexAround has a free plan, Explorer, and two paid plans, Voyager and Globetrotter, each billed monthly or yearly. What each plan includes, such as the number of Odyssey plans a month, Neva messages a day and the AR and map range, is shown on the plans screen in the app before you buy. Plans are for personal use and are subject to fair use.
+              NexAround has a free plan, Explorer, and two paid plans, Voyager and Globetrotter, each billed monthly. What each plan includes, such as the number of Odyssey plans a month, Neva messages a day and the AR and map range, is shown on the plans screen in the app before you buy. Plans are for personal use and are subject to fair use.
             </p>
             <p style={{ fontSize: '0.96rem', color: 'var(--text-secondary)', lineHeight: 1.7, marginBottom: '12px' }}>
               <strong>Payment.</strong> Subscriptions are bought in the app through the Apple App Store or Google Play. Payment is charged to your Apple ID or Google account when you confirm the purchase, at the price the store shows in your currency, including any applicable taxes.
             </p>
             <p style={{ fontSize: '0.96rem', color: 'var(--text-secondary)', lineHeight: 1.7, marginBottom: '12px' }}>
-              <strong>Automatic renewal.</strong> A subscription renews automatically for the same period and at the same price unless you cancel it at least 24 hours before the end of the current period. Your account is charged for the renewal within the 24 hours before the period ends.
+              <strong>Automatic renewal.</strong> A subscription renews automatically every month at the same price unless you cancel it at least 24 hours before the end of the current period. Your account is charged for the renewal within the 24 hours before the period ends.
             </p>
             <p style={{ fontSize: '0.96rem', color: 'var(--text-secondary)', lineHeight: 1.7, marginBottom: '12px' }}>
               <strong>Cancelling.</strong> You can cancel or change your plan at any time in your App Store or Google Play subscription settings. Cancelling stops the next renewal; you keep your plan until the end of the period you have paid for, then return to Explorer.

@@ -13,8 +13,8 @@ import './Payments.css';
 
 const PLAN = {
   explorer: { name: 'Explorer', color: '#64748b', price: 'Free', cls: 'pp-c-explorer' },
-  voyager: { name: 'Voyager', color: '#007a7c', price: '$4.59 a month · $45.99 a year', cls: 'pp-c-voyager' },
-  globetrotter: { name: 'Globetrotter', color: '#0b3d91', price: '$6.89 a month · $68.99 a year', cls: 'pp-c-globetrotter' },
+  voyager: { name: 'Voyager', color: '#007a7c', price: '$4.59 a month', cls: 'pp-c-voyager' },
+  globetrotter: { name: 'Globetrotter', color: '#0b3d91', price: '$6.89 a month', cls: 'pp-c-globetrotter' },
 };
 const PLANS = ['explorer', 'voyager', 'globetrotter'];
 
@@ -162,7 +162,7 @@ function OverviewTab({ o, s, onToggle }) {
                 <div className="price">{PLAN[p].price}</div>
                 {p === 'explorer'
                   ? <div className="count" style={{ fontSize: 16, marginTop: 14 }}>Everyone who hasn't paid</div>
-                  : <div className="count">{b.total ?? 0}<small>{b.monthly ?? 0} monthly · {b.yearly ?? 0} yearly</small></div>}
+                  : <div className="count">{b.total ?? 0}<small>{(b.total ?? 0) === 1 ? 'subscriber' : 'subscribers'}</small></div>}
               </div>
               <div className="pp-plan-body">
                 <div className="pp-row"><span>Odyssey plans a month</span><span>{l.odyssey_per_period}{l.odyssey_lite ? ' Lite' : ''}</span></div>
@@ -276,7 +276,7 @@ function SubscribersTab({ notify, onChanged }) {
                         <div><div className="n">{r.name || '—'}</div><div className="e">{r.email}</div></div>
                       </div>
                     </td>
-                    <td><PlanPill plan={r.plan} suffix={r.period === 'yearly' ? 'yearly' : r.period === 'monthly' ? 'monthly' : ''} /></td>
+                    <td><PlanPill plan={r.plan} /></td>
                     <td>
                       <span className={`pp-tag ${tone}`}>{label}</span>
                       {r.environment === 'SANDBOX' && <span className="pp-tag blue" style={{ marginLeft: 6 }}>Test</span>}

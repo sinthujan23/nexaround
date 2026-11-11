@@ -63,14 +63,11 @@ class _PlansPageState extends State<PlansPage> {
   // USD list prices (shown only if the store's own price cannot be loaded).
   static const _fallbackPrices = {
     'voyager_monthly': r'$4.59',
-    'voyager_yearly': r'$45.99',
     'globetrotter_monthly': r'$6.89',
-    'globetrotter_yearly': r'$68.99',
   };
 
   late final PageController _pager;
   int _index = 1; // Voyager first: the most popular plan
-  bool _yearly = false;
   bool _busy = false;
   Map<String, Package> _packages = const {};
 
@@ -94,21 +91,15 @@ class _PlansPageState extends State<PlansPage> {
   // ── Prices ───────────────────────────────────────────────────────────────
 
   String _priceFor(String plan) {
-    final key = '${plan}_${_yearly ? 'yearly' : 'monthly'}';
+    final key = '${plan}_monthly'; // monthly plans only (TL, 2026-11-11)
     return _packages[key]?.storeProduct.priceString ?? _fallbackPrices[key] ?? '';
   }
 
-  String? _perMonthFor(String plan) {
-    if (!_yearly || plan == 'explorer') return null;
-    final p = _packages['${plan}_yearly']?.storeProduct;
-    if (p != null) return '≈ ${p.currencyCode} ${(p.price / 12).toStringAsFixed(2)} a month';
-    return plan == 'voyager' ? r'≈ $3.83 a month' : r'≈ $5.75 a month';
-  }
 
   // ── Actions ──────────────────────────────────────────────────────────────
 
   Future<void> _buy(String plan) async {
-    final key = '${plan}_${_yearly ? 'yearly' : 'monthly'}';
+    final key = '${plan}_monthly'; // monthly plans only (TL, 2026-11-11)
     final package = _packages[key];
     if (package == null) {
       _snack("The store isn't available right now. Please try again in a moment.");
@@ -232,7 +223,6 @@ class _PlansPageState extends State<PlansPage> {
                   child: Column(
                     children: [
                       _header(text),
-                      _periodSwitch(text),
                       Expanded(
                         child: PageView.builder(
                           controller: _pager,
@@ -308,43 +298,6 @@ class _PlansPageState extends State<PlansPage> {
     );
   }
 
-  Widget _periodSwitch(TextTheme text) {
-    Widget option(String label, bool yearly) {
-      final selected = _yearly == yearly;
-      return Expanded(
-        child: GestureDetector(
-          onTap: () => setState(() => _yearly = yearly),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            height: 40,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: selected ? Colors.white : Colors.transparent,
-              borderRadius: BorderRadius.circular(11),
-            ),
-            child: Text(
-              label,
-              style: text.labelLarge?.copyWith(
-                color: selected ? AppColors.charcoal : const Color(0xFFD3E4E4),
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
-    return Container(
-      margin: const EdgeInsets.fromLTRB(20, 12, 20, 8),
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
-      ),
-      child: Row(children: [option('Monthly', false), const SizedBox(width: 4), option('Yearly · save 17%', true)]),
-    );
-  }
 
   Widget _card(TextTheme text, _PlanLook p, Map<String, dynamic> limits,
       {required bool current, required String userPlan}) {
@@ -404,7 +357,6 @@ class _PlansPageState extends State<PlansPage> {
   Widget _sheet(TextTheme text, _PlanLook p, Map<String, dynamic> limits,
       {required bool current, required String userPlan, required bool compact}) {
     final explorer = p.key == 'explorer';
-    final perMonth = _perMonthFor(p.key);
     final highlights = _highlights(p.key, limits);
 
     String label;
@@ -456,16 +408,11 @@ class _PlansPageState extends State<PlansPage> {
               if (!explorer)
                 Padding(
                   padding: const EdgeInsets.only(left: 3, bottom: 3),
-                  child: Text(_yearly ? '/ yr' : '/ mo',
+                  child: Text('/ mo',
                       style: text.bodySmall?.copyWith(color: AppColors.textSecondary)),
                 ),
             ],
           ),
-          if (perMonth != null)
-            Align(
-              alignment: Alignment.centerRight,
-              child: Text(perMonth, style: text.bodySmall?.copyWith(color: AppColors.textSecondary)),
-            ),
           if (!compact) ...[
             const SizedBox(height: 2),
             Text(p.tagline, style: text.bodySmall?.copyWith(color: AppColors.textSecondary)),
@@ -600,7 +547,7 @@ class _PlansPageState extends State<PlansPage> {
       child: Column(
         children: [
           Text(
-            'Renews automatically at the same price until cancelled at least 24 hours before '
+            'Billed monthly. Renews automatically at the same price until cancelled at least 24 hours before '
             'the period ends. Cancel any time in your $store subscription settings.',
             style: small,
             textAlign: TextAlign.center,
