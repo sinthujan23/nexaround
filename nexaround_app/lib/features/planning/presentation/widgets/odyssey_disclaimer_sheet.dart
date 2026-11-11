@@ -10,6 +10,7 @@ Future<void> showOdysseyDisclaimerModal(BuildContext context) {
   return showModalBottomSheet<void>(
     context: context,
     backgroundColor: Colors.white,
+    showDragHandle: true,
     isScrollControlled: true,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -18,22 +19,11 @@ Future<void> showOdysseyDisclaimerModal(BuildContext context) {
       return SafeArea(
         top: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 16, 24, 20),
+          padding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.black12,
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 18),
               Row(
                 children: [
                   Container(

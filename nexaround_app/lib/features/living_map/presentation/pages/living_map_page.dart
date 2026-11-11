@@ -4757,6 +4757,7 @@ class _LivingMapPageState extends State<LivingMapPage>
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      showDragHandle: false,
       backgroundColor: Colors.transparent,
       builder: (context) {
         return Container(

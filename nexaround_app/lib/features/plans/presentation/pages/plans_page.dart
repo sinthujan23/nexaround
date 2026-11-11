@@ -516,23 +516,17 @@ class _PlansPageState extends State<PlansPage> {
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.white,
+      showDragHandle: true,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
       builder: (sheetContext) => SafeArea(
+        top: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(22, 14, 22, 18),
+          padding: const EdgeInsets.fromLTRB(22, 0, 22, 18),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(color: AppColors.border, borderRadius: BorderRadius.circular(2)),
-                ),
-              ),
-              const SizedBox(height: 16),
               Text('Everything in ${p.name}',
                   style: text.titleMedium?.copyWith(color: AppColors.textPrimary, fontWeight: FontWeight.w800)),
               const SizedBox(height: 10),

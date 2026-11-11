@@ -4609,6 +4609,7 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      showDragHandle: false,
       backgroundColor: Colors.transparent,
       builder: (ctx) {
         return Padding(
@@ -4815,6 +4816,7 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
   ) {
     showModalBottomSheet(
       context: context,
+      showDragHandle: false,
       backgroundColor: Colors.transparent,
       builder: (ctx) {
         return Container(

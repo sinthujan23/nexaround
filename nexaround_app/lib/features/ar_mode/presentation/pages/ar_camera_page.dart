@@ -3043,6 +3043,7 @@ class _ArCameraPageState extends State<ArCameraPage>
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
+      showDragHandle: false,
       builder: (sheetContext) {
         return SafeArea(
           top: false,

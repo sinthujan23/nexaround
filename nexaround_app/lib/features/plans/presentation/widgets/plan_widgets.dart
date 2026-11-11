@@ -43,6 +43,7 @@ class _PlanLimitListenerState extends State<PlanLimitListener> {
       await showModalBottomSheet<void>(
         context: ctx,
         backgroundColor: Colors.white,
+        showDragHandle: true,
         shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
         ),
@@ -121,20 +122,13 @@ class _PlanLimitSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     return SafeArea(
+      top: false,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(22, 14, 22, 18),
+        padding: const EdgeInsets.fromLTRB(22, 0, 22, 18),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(color: AppColors.border, borderRadius: BorderRadius.circular(2)),
-              ),
-            ),
-            const SizedBox(height: 18),
             const Icon(Icons.workspace_premium_rounded, color: AppColors.brandGreen, size: 34),
             const SizedBox(height: 10),
             Text(_title,
