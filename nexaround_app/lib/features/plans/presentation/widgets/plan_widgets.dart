@@ -273,7 +273,9 @@ class LockedBandRow extends StatelessWidget {
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                'Places ${_km(fromKm)}–${_km(toKm)} km away · Voyager & Globetrotter',
+                'Places ${_km(fromKm)}–${_km(toKm)} km away · Voyager',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(color: themeColor, fontSize: 11.5, fontWeight: FontWeight.w700),
               ),
             ),

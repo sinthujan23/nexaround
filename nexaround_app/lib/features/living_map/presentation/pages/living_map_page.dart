@@ -6463,9 +6463,13 @@ class _LivingMapPageState extends State<LivingMapPage>
         ? 10
         : (rawMaxPlaces == 0 ? 0 : rawMaxPlaces.clamp(1, 10));
 
+    // Explorer's locked third-band row (LockedBandRow) sits under the list:
+    // the card grows by its height, or the column overflows.
+    final double lockedRowExtra =
+        PlaceBands.sections.any(PlanGate.bandsLimited) ? 44.0 : 0.0;
     final double cardHeight = effectiveMaxPlaces == 0
         ? 160.0
-        : (76.0 + effectiveMaxPlaces * 37.0).clamp(160.0, 448.0);
+        : (76.0 + effectiveMaxPlaces * 37.0).clamp(160.0, 448.0) + lockedRowExtra;
 
     // Six streamlined cards, in the order PlaceBands.sections declares.
     return SizedBox(
