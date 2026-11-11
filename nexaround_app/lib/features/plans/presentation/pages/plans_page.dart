@@ -163,13 +163,13 @@ class _PlansPageState extends State<PlansPage> {
     final neva = _n(l, 'neva_per_day', explorer ? 20 : (plan == 'voyager' ? 100 : 300));
     final arKm = (_n(l, 'ar_radius_m', explorer ? 2000 : 10000) / 1000).round();
     return [
-      (Icons.map_outlined, explorer ? '$odyssey Lite plan' : '$odyssey Odyssey plans'),
-      (Icons.calendar_today_outlined, 'Trips to $days days'),
-      (Icons.chat_bubble_outline_rounded, '$neva Neva / day'),
+      (Icons.map_rounded, explorer ? '$odyssey Lite plan' : '$odyssey Odyssey plans'),
+      (Icons.calendar_month_rounded, 'Trips to $days days'),
+      (Icons.forum_rounded, '$neva Neva / day'),
       if (plan == 'globetrotter' && l['priority_queue'] != false)
         (Icons.bolt_rounded, 'Priority queue')
       else
-        (Icons.view_in_ar_outlined, explorer ? 'AR $arKm km' : 'AR up to $arKm km'),
+        (Icons.view_in_ar_rounded, explorer ? 'AR $arKm km' : 'AR up to $arKm km'),
     ];
   }
 
@@ -376,13 +376,15 @@ class _PlansPageState extends State<PlansPage> {
             decoration: BoxDecoration(color: const Color(0xFFF1F7F7), borderRadius: BorderRadius.circular(12)),
             child: Row(
               children: [
-                Icon(h.$1, size: 16, color: p.color),
+                Icon(h.$1, size: 18, color: p.color),
                 const SizedBox(width: 7),
+                // Every word shown: a long label wraps onto a second line
+                // instead of being cut with "…".
                 Expanded(
                   child: Text(h.$2,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: text.bodySmall?.copyWith(color: AppColors.textPrimary, fontWeight: FontWeight.w700)),
+                      softWrap: true,
+                      style: text.bodySmall
+                          ?.copyWith(color: AppColors.textPrimary, fontWeight: FontWeight.w700, height: 1.2)),
                 ),
               ],
             ),
@@ -418,9 +420,17 @@ class _PlansPageState extends State<PlansPage> {
             Text(p.tagline, style: text.bodySmall?.copyWith(color: AppColors.textSecondary)),
           ],
           const SizedBox(height: 12),
-          Row(children: [chip(highlights[0]), const SizedBox(width: 8), chip(highlights[1])]),
+          IntrinsicHeight(
+            child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [chip(highlights[0]), const SizedBox(width: 8), chip(highlights[1])]),
+          ),
           const SizedBox(height: 8),
-          Row(children: [chip(highlights[2]), const SizedBox(width: 8), chip(highlights[3])]),
+          IntrinsicHeight(
+            child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [chip(highlights[2]), const SizedBox(width: 8), chip(highlights[3])]),
+          ),
           InkWell(
             onTap: () => _showEverything(text, p, limits),
             child: Padding(
