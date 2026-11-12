@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:nexaround_app/features/attractions/presentation/widgets/place_rating.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_compass/flutter_compass.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mapbox;
@@ -1644,11 +1645,10 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
             // Rating + Distance
             Row(
               children: [
-                const Icon(Icons.star_rounded, color: AppColors.ratingGold, size: 16),
-                const SizedBox(width: 4),
-                Text(
-                  place.rating.toStringAsFixed(1),
-                  style: const TextStyle(color: AppColors.ratingGold, fontWeight: FontWeight.w700, fontSize: 13),
+                PlaceRating(
+                  place: place,
+                  iconSize: 16,
+                  textStyle: const TextStyle(color: AppColors.ratingGold, fontWeight: FontWeight.w700, fontSize: 13),
                 ),
                 const Spacer(),
                 if (distText.isNotEmpty) ...[

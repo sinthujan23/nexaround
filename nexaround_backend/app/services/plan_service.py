@@ -37,36 +37,48 @@ DEFAULT_LIMITS: dict[str, dict] = {
         "odyssey_per_period": 1,
         "odyssey_max_days": 5,
         "odyssey_lite": True,          # ratings and opening hours hidden
-        "neva_per_day": 20,
+        "odyssey_live_prices": False,  # estimated flight and hotel prices
+        "neva_per_day": 5,
         "ar_radius_m": 2000,
         "nearby_max_radius_m": 25000,  # Around You / Discover: nearest 2 bands
         "banded_max_bands": 2,
-        "map_day_usd": 0.15,           # live map data limit
-        "map_month_usd": 0.50,
+        "map_day_usd": 0.05,           # live map data limit (Google backup)
+        "map_month_usd": 0.05,
+        "google_photos": False,        # photos already saved on our server only
+        "discover_per_month": 3,       # Where Should I Go; 0 = unlimited
+        "places_source": "open",       # free map data (needs the free_data_layer switch)
         "priority_queue": False,
     },
     VOYAGER: {
         "odyssey_per_period": 8,
         "odyssey_max_days": 10,
         "odyssey_lite": False,
+        "odyssey_live_prices": True,
         "neva_per_day": 100,
         "ar_radius_m": 10000,
         "nearby_max_radius_m": 50000,
         "banded_max_bands": 3,
         "map_day_usd": 0,
         "map_month_usd": 2.00,
+        "google_photos": True,
+        "discover_per_month": 0,
+        "places_source": "google",
         "priority_queue": False,
     },
     GLOBETROTTER: {
         "odyssey_per_period": 15,
         "odyssey_max_days": 14,
         "odyssey_lite": False,
+        "odyssey_live_prices": True,
         "neva_per_day": 300,
         "ar_radius_m": 10000,
         "nearby_max_radius_m": 50000,
         "banded_max_bands": 3,
         "map_day_usd": 0,
         "map_month_usd": 4.00,
+        "google_photos": True,
+        "discover_per_month": 0,
+        "places_source": "google",
         "priority_queue": True,
     },
 }
@@ -75,6 +87,12 @@ K_ENFORCE = "plans_enforce"
 K_ENFORCE_USERS = "plans_enforce_users"
 K_LIMITS = "plan_limits"
 K_MIN_APP_VERSION = "min_app_version"
+# Free map data for free users: "off" | "test" (plans_enforce_users only) | "on".
+# Off puts every user back on the Google method at once, no app release needed.
+K_FREE_DATA = "free_data_layer"
+K_FREE_DATA_MIN_VERSION = "free_data_min_app_version"
+FREE_DATA_MODES = ("off", "test", "on")
+DEFAULT_FREE_DATA_MIN_VERSION = "1.0.18"
 
 _CONFIG_TTL = 60.0
 _PLAN_CACHE_TTL = 60
@@ -147,6 +165,18 @@ def merge_limits(overrides: Optional[dict]) -> dict[str, dict]:
                 if k in merged[plan]:
                     merged[plan][k] = v
     return merged
+
+
+def overrides_json(limits: dict) -> str:
+    """What to save in the `plan_limits` setting: only the values that differ
+    from DEFAULT_LIMITS, as compact JSON. The settings column holds 1,000
+    characters and the full table no longer fits."""
+    out: dict[str, dict] = {}
+    for plan, values in merge_limits(limits).items():
+        diff = {k: v for k, v in values.items() if DEFAULT_LIMITS[plan].get(k) != v}
+        if diff:
+            out[plan] = diff
+    return json.dumps(out, separators=(",", ":"))
 
 
 def best_plan(rows: Iterable, now: Optional[datetime] = None) -> PlanInfo:
@@ -255,6 +285,10 @@ async def _load_config(force: bool = False) -> dict:
                 "test_ids": test_ids,
                 "limits": merge_limits(overrides),
                 "min_app_version": (await svc.get_setting(K_MIN_APP_VERSION) or "").strip(),
+                "free_data": _mode(await svc.get_setting(K_FREE_DATA)),
+                "free_data_min_version": (
+                    await svc.get_setting(K_FREE_DATA_MIN_VERSION) or DEFAULT_FREE_DATA_MIN_VERSION
+                ).strip(),
             }
             _config_at = now
     except Exception as e:
@@ -262,8 +296,14 @@ async def _load_config(force: bool = False) -> dict:
         _config = _config or {
             "enforce": False, "test_ids": set(),
             "limits": merge_limits(None), "min_app_version": "",
+            "free_data": "off", "free_data_min_version": DEFAULT_FREE_DATA_MIN_VERSION,
         }
     return _config
+
+
+def _mode(raw) -> str:
+    v = (raw or "off").strip().lower()
+    return v if v in FREE_DATA_MODES else "off"
 
 
 async def refresh_config() -> dict:
@@ -364,6 +404,7 @@ async def odyssey_used(user_id, start: datetime) -> int:
 class OdysseyGrant:
     lite: bool = False
     priority: bool = False
+    live_prices: bool = True   # False: no SerpAPI, estimated flight and hotel prices
 
 
 async def check_odyssey(user_id, days: int, *, new_plan: bool = True) -> OdysseyGrant:
@@ -372,7 +413,8 @@ async def check_odyssey(user_id, days: int, *, new_plan: bool = True) -> Odyssey
     info = await get_plan(user_id)
     limits = await limits_for(info.plan)
     grant = OdysseyGrant(lite=bool(limits["odyssey_lite"]),
-                         priority=bool(limits["priority_queue"]))
+                         priority=bool(limits["priority_queue"]),
+                         live_prices=bool(limits.get("odyssey_live_prices", True)))
     if not await enforced_for(user_id):
         return OdysseyGrant()
     max_days = int(limits["odyssey_max_days"])
@@ -437,6 +479,58 @@ async def count_neva(user_id) -> None:
         pass
 
 
+# ── Where Should I Go ───────────────────────────────────────────────────────
+
+def month_window(now: Optional[datetime] = None) -> tuple[datetime, datetime]:
+    """The calendar month (UTC)."""
+    now = now or datetime.now(timezone.utc)
+    start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    return start, _add_months(start, 1)
+
+
+async def discover_used(user_id, start: datetime) -> int:
+    """Where Should I Go results saved since `start`. A run that failed saved
+    nothing, so it does not count."""
+    from sqlalchemy import func, select
+    from app.core.database import async_session
+    from app.models.discovery_history import DiscoveryHistory
+    async with async_session() as db:
+        n = (await db.execute(
+            select(func.count()).select_from(DiscoveryHistory).where(
+                DiscoveryHistory.user_id == user_id,
+                DiscoveryHistory.created_at >= start,
+            )
+        )).scalar()
+    return int(n or 0)
+
+
+async def check_discover(user_id) -> None:
+    if not await enforced_for(user_id):
+        return
+    info = await get_plan(user_id)
+    allowed = int((await limits_for(info.plan)).get("discover_per_month") or 0)
+    if allowed <= 0:
+        return
+    start, resets = month_window()
+    if await discover_used(user_id, start) >= allowed:
+        raise PlanLimitExceeded(
+            "discover",
+            f"You have used this month's {allowed} Where Should I Go suggestions. "
+            "Please update the app to choose a plan with more.",
+            plan=info.plan, limit=allowed, resets_at=resets,
+        )
+
+
+# ── Photos ──────────────────────────────────────────────────────────────────
+
+async def google_photos_allowed(user_id) -> bool:
+    """False when this user's plan only gets photos we already hold."""
+    if not user_id or not await enforced_for(user_id):
+        return True
+    info = await get_plan(user_id)
+    return bool((await limits_for(info.plan)).get("google_photos", True))
+
+
 # ── Map data ────────────────────────────────────────────────────────────────
 
 async def radius_cap_for(user_id, category: Optional[str], ctx: Optional[str]) -> Optional[int]:
@@ -452,6 +546,36 @@ async def max_bands_for(user_id, category: Optional[str]) -> Optional[int]:
     info = await get_plan(user_id)
     n = int((await limits_for(info.plan))["banded_max_bands"])
     return n if n < 3 else None
+
+
+async def places_source_for(user_id, category: Optional[str]) -> str:
+    """"open" when this request should get free map data, else "google".
+
+    All of these must hold, otherwise today's Google method is used:
+    the switch is On (or Test and this is a test account), the section has
+    good free data, the user's plan says "open" (Explorer), and the app build
+    is new enough to show places without ratings (older builds print "0.0").
+    """
+    from app.core import request_context
+    from app.services.open_data import sections
+
+    if not user_id or category not in sections.OPEN_SECTIONS:
+        return "google"
+    cfg = await _load_config()
+    mode = cfg.get("free_data", "off")
+    if mode == "off" or (mode == "test" and str(user_id) not in cfg["test_ids"]):
+        return "google"
+    if not sections.version_at_least(
+        request_context.app_version_var.get(), cfg.get("free_data_min_version")
+    ):
+        return "google"
+    info = await get_plan(user_id)
+    limits = cfg["limits"].get(info.plan) or cfg["limits"][EXPLORER]
+    return "open" if limits.get("places_source") == "open" else "google"
+
+
+async def free_data_mode() -> str:
+    return (await _load_config()).get("free_data", "off")
 
 
 async def map_caps(user_id) -> tuple[float, float]:
@@ -482,6 +606,12 @@ async def plan_summary(user_id) -> dict:
         o_used = 0
     n_used = await neva_used(user_id)
     _, n_reset = day_window(now)
+    d_start, d_reset = month_window(now)
+    try:
+        d_used = await discover_used(user_id, d_start)
+    except Exception:
+        d_used = 0
+    d_allowed = int(limits.get("discover_per_month") or 0)
     day_cap, month_cap = float(limits["map_day_usd"] or 0), float(limits["map_month_usd"] or 0)
     d_spent, m_spent = await spend_guard.user_map_spend(user_id)
     map_limited = enforced and (
@@ -507,6 +637,10 @@ async def plan_summary(user_id) -> dict:
             "neva_left": max(0, int(limits["neva_per_day"]) - n_used),
             "neva_resets_at": n_reset.isoformat(),
             "map_limited": bool(map_limited),
+            "discover_used": d_used,
+            # None = unlimited on this plan.
+            "discover_left": max(0, d_allowed - d_used) if d_allowed > 0 else None,
+            "discover_resets_at": d_reset.isoformat(),
         },
         # Every plan's limits, so the plans screen renders from the server and
         # a limit the TL changes in the admin panel shows without a release.

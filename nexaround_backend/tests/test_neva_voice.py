@@ -18,10 +18,22 @@ import pytest
 from fastapi import HTTPException, UploadFile
 
 from app.api.v1 import neva as neva_api
-from app.services import neva_service, neva_voice, telemetry
+from app.services import neva_service, neva_voice, plan_service, telemetry
 
 USER = uuid.UUID("11111111-2222-3333-4444-555555555555")
 OTHER = uuid.UUID("99999999-2222-3333-4444-555555555555")
+
+
+@pytest.fixture(autouse=True)
+def _no_plan_limits(monkeypatch):
+    """These tests are about voice, not plans. Without this they read the live
+    plan settings (limits on, Explorer 5 Neva a day) and add to the Neva
+    counters in the shared Redis on every run."""
+    async def _nothing(user_id):
+        return None
+
+    monkeypatch.setattr(plan_service, "check_neva", _nothing)
+    monkeypatch.setattr(plan_service, "count_neva", _nothing)
 
 
 def _wav(seconds=1.0, rate=16000) -> bytes:

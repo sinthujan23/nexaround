@@ -26,6 +26,7 @@ from app.models.fx_rate import FxRate
 from app.models.legal import LegalAcceptance, LegalDocument
 from app.models.city_tour import CityTour, CityTourTap, CityTourTrip, ContentCreator
 from app.models.subscription import Subscription, SubscriptionEvent
+from app.models.open_place import OpenPlace, OpenArea
 
 from app.models.forum import (
     ForumCategory, ForumTopic, ForumPost, ForumLike, ForumBookmark,

@@ -160,7 +160,7 @@ class _PlansPageState extends State<PlansPage> {
     final explorer = plan == 'explorer';
     final odyssey = _n(l, 'odyssey_per_period', explorer ? 1 : (plan == 'voyager' ? 8 : 15));
     final days = _n(l, 'odyssey_max_days', explorer ? 5 : (plan == 'voyager' ? 10 : 14));
-    final neva = _n(l, 'neva_per_day', explorer ? 20 : (plan == 'voyager' ? 100 : 300));
+    final neva = _n(l, 'neva_per_day', explorer ? 5 : (plan == 'voyager' ? 100 : 300));
     final arKm = (_n(l, 'ar_radius_m', explorer ? 2000 : 10000) / 1000).round();
     return [
       (Icons.map_rounded, explorer ? '$odyssey Lite plan' : '$odyssey Odyssey plans'),
@@ -178,12 +178,16 @@ class _PlansPageState extends State<PlansPage> {
     final explorer = plan == 'explorer';
     final odyssey = _n(l, 'odyssey_per_period', explorer ? 1 : (plan == 'voyager' ? 8 : 15));
     final days = _n(l, 'odyssey_max_days', explorer ? 5 : (plan == 'voyager' ? 10 : 14));
-    final neva = _n(l, 'neva_per_day', explorer ? 20 : (plan == 'voyager' ? 100 : 300));
+    final neva = _n(l, 'neva_per_day', explorer ? 5 : (plan == 'voyager' ? 100 : 300));
     final arKm = (_n(l, 'ar_radius_m', explorer ? 2000 : 10000) / 1000).round();
     final lite = l['odyssey_lite'] ?? explorer;
+    final livePrices = (l['odyssey_live_prices'] ?? !explorer) == true;
+    final discover = _n(l, 'discover_per_month', explorer ? 3 : 0);
+    final photos = (l['google_photos'] ?? !explorer) == true;
+    final prices = livePrices ? 'Live flight and hotel prices' : 'Estimated flight and hotel prices';
     return [
       ('Odyssey plans per month',
-          explorer ? '$odyssey Lite plan${odyssey == 1 ? '' : 's'}' : '$odyssey full plans'),
+          explorer ? '$odyssey Lite plan${odyssey == 1 ? '' : 's'}\n$prices' : '$odyssey full plans\n$prices'),
       ('Longest trip', '$days days'),
       ('Ratings and opening hours checked', lite == true ? 'Hidden' : 'Shown'),
       ('Booking plan with partner links', 'Yes'),
@@ -191,7 +195,9 @@ class _PlansPageState extends State<PlansPage> {
       ('AR view range', explorer ? '$arKm km' : 'Up to $arKm km'),
       ('Around You / Discover distance',
           explorer ? 'Nearest 2 bands (up to 25 km)\nMedical / Hospital: full range' : 'All 3 bands (up to 50 km)'),
-      ('Live map data', explorer ? 'Daily limit' : (plan == 'voyager' ? 'Higher limit' : 'Highest limit')),
+      ('Where Should I Go suggestions', discover > 0 ? '$discover per month' : 'Unlimited'),
+      ('Place photos', photos ? 'All photos' : 'Saved photos only'),
+      ('Live map data', explorer ? 'Small limit' : (plan == 'voyager' ? 'Higher limit' : 'Highest limit')),
       ('Journal, stories, forum, Experiences', 'Yes'),
       ('Plan queue (Odyssey)', l['priority_queue'] == true ? 'Priority' : 'Standard'),
     ];

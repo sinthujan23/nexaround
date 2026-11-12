@@ -84,7 +84,9 @@ class _PlanLimitSheet extends StatelessWidget {
       case 'bands':
         return 'See places further away';
       case 'live_map':
-        return "Today's live map updates are used up";
+        return 'Live map updates are used up';
+      case 'discover':
+        return "You've used this month's suggestions";
       default:
         return 'Upgrade your plan';
     }
@@ -108,6 +110,10 @@ class _PlanLimitSheet extends StatelessWidget {
         return 'Explorer shows the nearest two distance bands. Voyager and Globetrotter show all three.';
       case 'live_map':
         return "You're seeing places we've already saved. Voyager and Globetrotter include far more live updates.";
+      case 'discover':
+        return 'Explorer includes ${event.limit ?? 3} Where Should I Go suggestions a month'
+            '${when != null ? ', and they renew on ${_date(when)}' : ''}. '
+            'Voyager and Globetrotter have no monthly limit.';
       default:
         return event.message;
     }

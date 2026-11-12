@@ -2,6 +2,7 @@ import 'dart:math';
 import 'dart:convert';
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:nexaround_app/features/attractions/presentation/widgets/place_rating.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/utils/number_format.dart';
 import 'package:nexaround_app/core/utils/distance_format.dart';
@@ -1733,9 +1734,7 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
                 const SizedBox(height: 8),
                 Row(
                   children: [
-                    const Icon(Icons.star_rounded, size: 14, color: AppColors.ratingGold),
-                    const SizedBox(width: 4),
-                    Text('${place.rating}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Colors.white)),
+                    PlaceRating(place: place, iconSize: 14, textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Colors.white)),
                     const SizedBox(width: 12),
                     Icon(Icons.location_on_rounded, size: 12, color: Colors.white.withOpacity(0.7)),
                     const SizedBox(width: 3),
@@ -1884,8 +1883,7 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
                     const SizedBox(height: 6),
                     Row(
                       children: [
-                        const Icon(Icons.star_rounded, size: 14, color: AppColors.warning),
-                        Text(' ${a.rating}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                        PlaceRating(place: a, iconSize: 14, textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
                         const SizedBox(width: 10),
                         const Icon(Icons.near_me_rounded, size: 12, color: AppColors.textTertiary),
                         Text(' ${formatDistance(a.distanceM)}', style: const TextStyle(fontSize: 11, color: AppColors.textTertiary)),
@@ -3385,9 +3383,7 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
             Row(
                mainAxisSize: MainAxisSize.min,
                children: [
-                 Icon(Icons.star_rounded, size: 14, color: AppColors.warning),
-                 const SizedBox(width: 3),
-                 Text('${item.rating}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+                 PlaceRating(place: item, iconSize: 14, textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
                  const SizedBox(width: 12),
                  Icon(Icons.near_me_rounded, size: 12, color: AppColors.primary),
                  const SizedBox(width: 4),

@@ -15,6 +15,7 @@ import 'package:nexaround_app/features/manual_mode/presentation/bloc/map_bloc.da
 import 'package:nexaround_app/features/manual_mode/presentation/bloc/map_state.dart';
 import 'package:nexaround_app/features/manual_mode/presentation/bloc/map_event.dart';
 import 'package:nexaround_app/features/attractions/domain/entities/attraction.dart';
+import 'package:nexaround_app/features/attractions/presentation/widgets/place_rating.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:nexaround_app/core/utils/place_image_helper.dart';
@@ -940,8 +941,10 @@ class _LivingMapPageState extends State<LivingMapPage>
         }
       }
 
+      // Free-map-data places have no rating: our popularity score stands in.
+      double rank(AttractionEntity p) => p.isFreeData ? p.popularity / 25.0 : p.rating;
       uniquePlaces.sort((a, b) {
-        if (b.rating != a.rating) return b.rating.compareTo(a.rating);
+        if (rank(b) != rank(a)) return rank(b).compareTo(rank(a));
         final da = a.distanceM ?? 0;
         final db = b.distanceM ?? 0;
         return da.compareTo(db);
@@ -3746,6 +3749,12 @@ class _LivingMapPageState extends State<LivingMapPage>
   /// already-loaded data — no network calls, so this is instant and free.
   double _trendingScore(AttractionEntity place) {
     // Quality: rating (0–5) → 0–1.
+    // Free-map-data places: our popularity score stands in for rating and buzz.
+    if (place.isFreeData) {
+      final double pop = (place.popularity / 100.0).clamp(0.0, 1.0);
+      final double near = (1.0 - (place.distanceM ?? 0).toDouble() / 5000.0).clamp(0.0, 1.0);
+      return pop * 0.7 + near * 0.15 + (_hasEventOpportunity(place) ? 0.35 : 0.0);
+    }
     final double quality = place.rating.clamp(0.0, 5.0) / 5.0;
 
     // Buzz: review count, log-scaled so 500 reviews ≫ 5 reviews but doesn't
@@ -4384,20 +4393,15 @@ class _LivingMapPageState extends State<LivingMapPage>
                           const SizedBox(height: 8),
                           Row(
                             children: [
-                              const Icon(
-                                Icons.star_rounded,
-                                size: 16,
-                                color: AppColors.ratingGold,
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                '${matchedPlace.rating}',
-                                style: const TextStyle(
+                              PlaceRating(
+                              place: matchedPlace,
+                              iconSize: 16,
+                              textStyle: const TextStyle(
                                   fontSize: 13,
                                   fontWeight: FontWeight.w700,
                                   color: Colors.black87,
                                 ),
-                              ),
+                            ),
                             ],
                           ),
                         ],
@@ -5494,15 +5498,10 @@ class _LivingMapPageState extends State<LivingMapPage>
                         const SizedBox(height: 10),
                         Row(
                           children: [
-                            const Icon(
-                              Icons.star_rounded,
-                              size: 14,
-                              color: AppColors.ratingGold,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              '${place.rating}',
-                              style: const TextStyle(
+                            PlaceRating(
+                              place: place,
+                              iconSize: 14,
+                              textStyle: const TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w800,
                                 color: Colors.white,
@@ -5758,15 +5757,10 @@ class _LivingMapPageState extends State<LivingMapPage>
                         const SizedBox(height: 8),
                         Row(
                           children: [
-                            const Icon(
-                              Icons.star_rounded,
-                              size: 16,
-                              color: AppColors.ratingGold,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              '${place.rating}',
-                              style: const TextStyle(
+                            PlaceRating(
+                              place: place,
+                              iconSize: 16,
+                              textStyle: const TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w700,
                                 color: Colors.white,

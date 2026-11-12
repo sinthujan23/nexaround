@@ -32,6 +32,9 @@ route_var: ContextVar[Optional[str]] = ContextVar("route", default=None)
 # run. Mutated, never re-set: the endpoint runs in a copied context, so only a
 # shared object makes what it records visible to the middleware.
 flags_var: ContextVar[Optional[dict]] = ContextVar("flags", default=None)
+# Set for Medical / Hospital place requests: the plan's live map limit never
+# stops those (safety). Budget and per-user daily caps still apply.
+map_cap_exempt_var: ContextVar[bool] = ContextVar("map_cap_exempt", default=False)
 
 
 def flag(name: str, value) -> None:

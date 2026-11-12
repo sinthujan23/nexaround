@@ -91,8 +91,12 @@ async def run_generation(
     # round-trip through it. Re-validated by `plan_route` at the other end.
     preset_route: Optional[dict] = None,
     # Explorer's Lite plan: ratings and opening hours are left out instead of
-    # checked against Google. Live flight and hotel prices stay.
+    # checked against Google.
     lite: bool = False,
+    # Explorer: no SerpAPI searches. Flights and hotels take the same
+    # estimate path a missing SerpAPI key has always taken. Jobs queued before
+    # this existed carry no value and keep live prices.
+    live_prices: bool = True,
 ) -> None:
     """The generation itself.
 
@@ -118,7 +122,7 @@ async def run_generation(
             return
 
         unsplash_api_key = await svc.get_setting("unsplash_api_key")
-        serpapi_key = await svc.get_setting("serpapi_key")
+        serpapi_key = await svc.get_setting("serpapi_key") if live_prices else ""
         maps_key = await svc.get_setting("google_maps_api_key")
 
     # No session is open across this await.

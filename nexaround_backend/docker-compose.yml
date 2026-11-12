@@ -82,6 +82,38 @@ services:
       driver: json-file
       options: { max-size: "10m", max-file: "3" }
 
+  # Free map data for free users: downloads Overture places one 0.5-degree
+  # area at a time into open_places (app/open_data_worker.py). Its own small
+  # box so an import can never take memory or CPU from the api or the Odyssey
+  # worker; it also waits by itself when the host is short of memory or disk.
+  # Measured per area: ~80 s, ~200 MB peak, a few seconds of CPU.
+  openimport:
+    build:
+      context: .
+      dockerfile: ./docker/Dockerfile
+    command: ["python", "-m", "app.open_data_worker"]
+    restart: unless-stopped
+    environment:
+      - DB_CONNECTION_BUDGET=10
+      - DATABASE_URL=${DATABASE_URL}
+      - SECRET_KEY=${SECRET_KEY}
+      - REDIS_URL=redis://redis:6379/0
+      - OPEN_DATA_MIN_FREE_MB=500
+      - OPEN_DATA_MAX_DISK_PCT=90
+      - OPEN_DATA_MAX_GB=5
+      - OPEN_DATA_DUCKDB_MEMORY=300MB
+    volumes:
+      - ./app:/app/app
+    depends_on:
+      - db
+      - redis
+    mem_limit: 512m
+    cpus: 0.5
+    stop_grace_period: 10s
+    logging:
+      driver: json-file
+      options: { max-size: "5m", max-file: "2" }
+
   # Background process, same image as the api. Runs Odyssey generation (pulled
   # from a Redis queue — see app/core/job_queue.py) and the telemetry
   # rollup/alert loops, so 35–120 s Gemini chains never share an event loop or

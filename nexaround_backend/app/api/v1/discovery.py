@@ -10,7 +10,7 @@ from app.models.user import User
 from app.models.discovery_history import DiscoveryHistory
 from app.repositories.discovery_history_repository import DiscoveryHistoryRepository
 from app.schemas.discovery_history import DiscoveryHistoryCreate, DiscoveryHistoryResponse, DiscoveryGenerateRequest
-from app.services import discovery_ai_service
+from app.services import discovery_ai_service, plan_service
 from app.services.settings_service import SettingsService
 
 logger = logging.getLogger(__name__)
@@ -80,6 +80,8 @@ async def generate_discovery(
     current_user: User = Depends(get_current_user),
 ):
     """Kick off backend Gemini discovery generation asynchronously."""
+    # Explorer: 3 a month. Raises 429 plan_limit, like Odyssey and Neva.
+    await plan_service.check_discover(current_user.id)
     background_tasks.add_task(
         _run_discovery_generation,
         user_id=current_user.id,

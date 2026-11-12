@@ -127,7 +127,7 @@ class MapBloc extends Bloc<MapEvent, MapState> {
             geofenceRadiusM: model.geofenceRadiusM,
             distanceM: distM,
             isActive: model.isActive,
-            createdAt: model.createdAt,
+            createdAt: model.createdAt, popularity: model.popularity, popularityLabel: model.popularityLabel, dataSource: model.dataSource,
           ));
         }
       }
@@ -587,7 +587,7 @@ class MapBloc extends Bloc<MapEvent, MapState> {
               geofenceRadiusM: a.geofenceRadiusM,
               distanceM: distM,
               isActive: a.isActive,
-              createdAt: a.createdAt,
+              createdAt: a.createdAt, popularity: a.popularity, popularityLabel: a.popularityLabel, dataSource: a.dataSource,
             ));
           }
         }
@@ -664,7 +664,7 @@ class MapBloc extends Bloc<MapEvent, MapState> {
                   categoryName: cat, address: p.address, openingHours: p.openingHours,
                   entryFee: p.entryFee, currency: p.currency, rating: p.rating, reviewCount: p.reviewCount,
                   photoUrls: p.photoUrls, tags: p.tags, geofenceRadiusM: p.geofenceRadiusM,
-                  distanceM: p.distanceM, isActive: p.isActive, createdAt: p.createdAt,
+                  distanceM: p.distanceM, isActive: p.isActive, createdAt: p.createdAt, popularity: p.popularity, popularityLabel: p.popularityLabel, dataSource: p.dataSource,
                 );
                 addPlaceToMerged(correctedP);
               }
@@ -691,7 +691,7 @@ class MapBloc extends Bloc<MapEvent, MapState> {
                     categoryName: cat, address: p.address, openingHours: p.openingHours,
                     entryFee: p.entryFee, currency: p.currency, rating: p.rating, reviewCount: p.reviewCount,
                     photoUrls: p.photoUrls, tags: p.tags, geofenceRadiusM: p.geofenceRadiusM,
-                    distanceM: p.distanceM, isActive: p.isActive, createdAt: p.createdAt,
+                    distanceM: p.distanceM, isActive: p.isActive, createdAt: p.createdAt, popularity: p.popularity, popularityLabel: p.popularityLabel, dataSource: p.dataSource,
                   );
                   addPlaceToMerged(correctedP);
                 }
@@ -714,7 +714,7 @@ class MapBloc extends Bloc<MapEvent, MapState> {
                 categoryName: p.categoryName, address: p.address, openingHours: p.openingHours,
                 entryFee: p.entryFee, currency: p.currency, rating: p.rating, reviewCount: p.reviewCount,
                 photoUrls: p.photoUrls, tags: p.tags, geofenceRadiusM: p.geofenceRadiusM,
-                distanceM: distM, isActive: p.isActive, createdAt: p.createdAt,
+                distanceM: distM, isActive: p.isActive, createdAt: p.createdAt, popularity: p.popularity, popularityLabel: p.popularityLabel, dataSource: p.dataSource,
               );
             }).toList();
             mergedList.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));

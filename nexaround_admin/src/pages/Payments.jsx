@@ -20,9 +20,9 @@ const PLANS = ['explorer', 'voyager', 'globetrotter'];
 
 // The packages document (2026-11-10); "Reset" puts these back.
 const DOC_LIMITS = {
-  explorer: { odyssey_per_period: 1, odyssey_max_days: 5, odyssey_lite: true, neva_per_day: 20, ar_radius_m: 2000, nearby_max_radius_m: 25000, banded_max_bands: 2, map_day_usd: 0.15, map_month_usd: 0.5, priority_queue: false },
-  voyager: { odyssey_per_period: 8, odyssey_max_days: 10, odyssey_lite: false, neva_per_day: 100, ar_radius_m: 10000, nearby_max_radius_m: 50000, banded_max_bands: 3, map_day_usd: 0, map_month_usd: 2, priority_queue: false },
-  globetrotter: { odyssey_per_period: 15, odyssey_max_days: 14, odyssey_lite: false, neva_per_day: 300, ar_radius_m: 10000, nearby_max_radius_m: 50000, banded_max_bands: 3, map_day_usd: 0, map_month_usd: 4, priority_queue: true },
+  explorer: { odyssey_per_period: 1, odyssey_max_days: 5, odyssey_lite: true, odyssey_live_prices: false, neva_per_day: 5, ar_radius_m: 2000, nearby_max_radius_m: 25000, banded_max_bands: 2, map_day_usd: 0.05, map_month_usd: 0.05, google_photos: false, discover_per_month: 3, places_source: 'open', priority_queue: false },
+  voyager: { odyssey_per_period: 8, odyssey_max_days: 10, odyssey_lite: false, odyssey_live_prices: true, neva_per_day: 100, ar_radius_m: 10000, nearby_max_radius_m: 50000, banded_max_bands: 3, map_day_usd: 0, map_month_usd: 2, google_photos: true, discover_per_month: 0, places_source: 'google', priority_queue: false },
+  globetrotter: { odyssey_per_period: 15, odyssey_max_days: 14, odyssey_lite: false, odyssey_live_prices: true, neva_per_day: 300, ar_radius_m: 10000, nearby_max_radius_m: 50000, banded_max_bands: 3, map_day_usd: 0, map_month_usd: 4, google_photos: true, discover_per_month: 0, places_source: 'google', priority_queue: true },
 };
 
 const WEBHOOK_URL = 'https://api.nexaround.com/api/v1/billing/revenuecat';
@@ -101,7 +101,7 @@ export default function Payments() {
         ))}
       </div>
 
-      {tab === 'overview' && <OverviewTab o={o} s={s} onToggle={toggleEveryone} />}
+      {tab === 'overview' && <OverviewTab o={o} s={s} onToggle={toggleEveryone} save={save} />}
       {tab === 'subscribers' && <SubscribersTab notify={notify} onChanged={overview.refetch} />}
       {tab === 'test' && <TestTab s={s} save={save} notify={notify} onChanged={overview.refetch} />}
       {tab === 'limits' && <LimitsTab s={s} save={save} />}
@@ -123,7 +123,7 @@ const EVENT = {
   TEST: ['Test message from RevenueCat', CheckIcon],
 };
 
-function OverviewTab({ o, s, onToggle }) {
+function OverviewTab({ o, s, onToggle, save }) {
   const events = useApi('/admin/billing/events?limit=12');
   const limits = s.plan_limits || DOC_LIMITS;
   const byPlan = o.by_plan || {};
@@ -143,6 +143,8 @@ function OverviewTab({ o, s, onToggle }) {
           {s.plans_enforce ? 'Turn off' : 'Turn on for everyone'}
         </button>
       </div>
+
+      <FreeDataCard s={s} save={save} />
 
       <div className="pp-grid-4">
         <Kpi value={o.subscribers ?? 0} label="Paying subscribers" />
@@ -168,6 +170,7 @@ function OverviewTab({ o, s, onToggle }) {
                 <div className="pp-row"><span>Odyssey plans a month</span><span>{l.odyssey_per_period}{l.odyssey_lite ? ' Lite' : ''}</span></div>
                 <div className="pp-row"><span>Longest trip</span><span>{l.odyssey_max_days} days</span></div>
                 <div className="pp-row"><span>Neva messages a day</span><span>{l.neva_per_day}</span></div>
+                <div className="pp-row"><span>Where Should I Go</span><span>{l.discover_per_month > 0 ? `${l.discover_per_month} a month` : 'Unlimited'}</span></div>
                 <div className="pp-row"><span>AR range</span><span>{Math.round(l.ar_radius_m / 1000)} km</span></div>
                 <div className="pp-row"><span>Around You</span><span>{l.banded_max_bands >= 3 ? 'All 3 bands' : `Nearest ${l.banded_max_bands} bands`}</span></div>
                 <div className="pp-row"><span>Priority queue</span><span>{l.priority_queue ? 'Yes' : 'No'}</span></div>
@@ -454,18 +457,77 @@ function TestTab({ s, save, notify, onChanged }) {
   );
 }
 
+/* ── Free map data ────────────────────────────────────────────────────── */
+
+const FREE_MODES = [
+  ['off', 'Off', 'Everyone uses Google, as before'],
+  ['test', 'Test accounts', 'Only the emails in “Test a plan”'],
+  ['on', 'On', 'All free users on the new app'],
+];
+
+function FreeDataCard({ s, save }) {
+  const st = useApi('/admin/billing/free-data');
+  const [version, setVersion] = useState(null);
+  const mode = s.free_data_layer || 'off';
+  const d = st.data || {};
+  const areas = d.areas || {};
+
+  const choose = async (m) => {
+    if (m === mode) return;
+    if (m === 'on' && !window.confirm('Turn free map data ON for all free users?\n\nFree users on the new app get Food, Shopping, Hotels, Medical and Hospital places from free map data, with no Google ratings. Paid users and older app versions are not affected. You can switch it Off at any time.')) return;
+    if (await save({ free_data_layer: m }, `Free map data: ${FREE_MODES.find(([k]) => k === m)[1]}`)) st.refetch();
+  };
+
+  return (
+    <div className={`pp-card pp-switch-card ${mode === 'off' ? 'off' : 'on'}`} style={{ alignItems: 'flex-start' }}>
+      <div style={{ flex: '1 1 320px' }}>
+        <h3>Free map data for free users</h3>
+        <p className="pp-sub" style={{ margin: '4px 0 10px' }}>
+          Food, Shopping, Hotels, Medical and Hospital places come from free map data (Overture, OpenStreetMap) instead of Google.
+          Sights stay on Google. Paid users and older app versions always use Google.
+        </p>
+        <div className="pp-row"><span>Areas downloaded</span><span>{areas.done ?? 0} ready · {areas.queued ?? 0} waiting{areas.importing ? ` · ${areas.importing} downloading` : ''}{areas.failed ? ` · ${areas.failed} failed` : ''}</span></div>
+        <div className="pp-row"><span>Places</span><span>{(d.places ?? 0).toLocaleString()} · {d.size_mb ?? 0} MB</span></div>
+        <div className="pp-row"><span>Geoapify today</span><span>{d.geoapify_credits_today ?? 0} of {d.geoapify_daily_cap ?? 2700} free requests</span></div>
+        <div className="pp-row" style={{ alignItems: 'center' }}>
+          <span>Oldest app version that gets it</span>
+          <span className="pp-num">
+            <input className="form-input" style={{ width: 90 }} value={version ?? s.free_data_min_app_version ?? ''}
+              onChange={(e) => setVersion(e.target.value)} />
+            {version !== null && version !== s.free_data_min_app_version && (
+              <button className="btn btn-ghost" onClick={async () => { if (await save({ free_data_min_app_version: version }, 'Version saved')) setVersion(null); }}>Save</button>
+            )}
+          </span>
+        </div>
+      </div>
+      <div className="segmented-tabs" role="radiogroup" aria-label="Free map data">
+        {FREE_MODES.map(([k, label, hint]) => (
+          <button key={k} role="radio" aria-checked={mode === k} title={hint}
+            className={`segmented-tab ${mode === k ? 'active' : ''}`} onClick={() => choose(k)}>
+            {label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /* ── Limits ───────────────────────────────────────────────────────────── */
 
-// [key, label, hint, kind]; kind: num | days | km | bands | usd | lite | yesno
+// [key, label, hint, kind]; kind: num | days | km | bands | usd | a key of TOGGLES
 const LIMIT_GROUPS = [
   ['Odyssey trip planner', [
     ['odyssey_per_period', 'Plans a month', 'Free plans reset on the 1st; paid on their billing day', 'num'],
     ['odyssey_max_days', 'Longest trip', '', 'days'],
     ['odyssey_lite', 'Ratings & opening hours', '“Hidden” = Lite plan', 'lite'],
+    ['odyssey_live_prices', 'Flight & hotel prices', '“Estimated” = no live price search', 'live'],
     ['priority_queue', 'Priority queue', 'Plans start before others when it is busy', 'yesno'],
   ]],
   ['Neva', [
     ['neva_per_day', 'Messages a day', 'Resets at midnight UTC', 'num'],
+  ]],
+  ['Where Should I Go', [
+    ['discover_per_month', 'Suggestions a month', '0 = unlimited; resets on the 1st', 'num'],
   ]],
   ['Map, Around You & AR', [
     ['ar_radius_m', 'AR view range', 'Medical is never limited', 'km'],
@@ -473,8 +535,17 @@ const LIMIT_GROUPS = [
     ['banded_max_bands', 'Around You distance bands', '3 = all bands', 'bands'],
     ['map_day_usd', 'Live map data — per day', '0 = no daily limit', 'usd'],
     ['map_month_usd', 'Live map data — per month', '0 = no monthly limit', 'usd'],
+    ['google_photos', 'Place photos', '“Saved only” = photos we already hold', 'photos'],
   ]],
 ];
+
+// Boolean limits: [label when true, label when false, true is the "good" state]
+const TOGGLES = {
+  lite: ['Hidden', 'Shown', false],
+  yesno: ['Yes', 'No', true],
+  live: ['Live', 'Estimated', true],
+  photos: ['All photos', 'Saved only', true],
+};
 
 function LimitsTab({ s, save }) {
   const [form, setForm] = useState(null);
@@ -489,11 +560,12 @@ function LimitsTab({ s, save }) {
 
   const cell = (p, k, kind) => {
     const v = form[p]?.[k];
-    if (kind === 'lite' || kind === 'yesno') {
-      const yes = kind === 'lite' ? !v : !!v;
+    if (TOGGLES[kind]) {
+      const [onLabel, offLabel, onIsGood] = TOGGLES[kind];
+      const good = onIsGood ? !!v : !v;
       return (
-        <button className={`pp-toggle ${yes ? 'yes' : ''}`} onClick={() => set(p, k, kind === 'lite' ? yes : !v)}>
-          {kind === 'lite' ? (v ? 'Hidden' : 'Shown') : (v ? 'Yes' : 'No')}
+        <button className={`pp-toggle ${good ? 'yes' : ''}`} onClick={() => set(p, k, !v)}>
+          {v ? onLabel : offLabel}
         </button>
       );
     }

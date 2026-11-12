@@ -130,6 +130,10 @@ def _rank_for_selection(place: dict) -> tuple:
     score = place_bands.quality_score(
         place.get("rating"), place.get("review_count")
     )
+    if not score and place.get("popularity"):
+        # Free map data has no ratings: our popularity score (0..100) on the
+        # same 0..4 scale instead. Never set on Google places.
+        score = float(place["popularity"]) / 25.0
     return (-score, place.get("distance_m") or 0.0)
 
 

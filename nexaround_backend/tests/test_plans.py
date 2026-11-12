@@ -107,11 +107,16 @@ def test_limits_match_the_document():
     lim = plan_service.merge_limits(None)
     assert [lim[p]["odyssey_per_period"] for p in (EXPLORER, VOYAGER, GLOBETROTTER)] == [1, 8, 15]
     assert [lim[p]["odyssey_max_days"] for p in (EXPLORER, VOYAGER, GLOBETROTTER)] == [5, 10, 14]
-    assert [lim[p]["neva_per_day"] for p in (EXPLORER, VOYAGER, GLOBETROTTER)] == [20, 100, 300]
+    assert [lim[p]["neva_per_day"] for p in (EXPLORER, VOYAGER, GLOBETROTTER)] == [5, 100, 300]
     assert [lim[p]["ar_radius_m"] for p in (EXPLORER, VOYAGER, GLOBETROTTER)] == [2000, 10000, 10000]
     assert lim[EXPLORER]["odyssey_lite"] and not lim[VOYAGER]["odyssey_lite"]
     assert lim[GLOBETROTTER]["priority_queue"] and not lim[VOYAGER]["priority_queue"]
-    assert (lim[EXPLORER]["map_day_usd"], lim[EXPLORER]["map_month_usd"]) == (0.15, 0.50)
+    assert (lim[EXPLORER]["map_day_usd"], lim[EXPLORER]["map_month_usd"]) == (0.05, 0.05)
+    # Free limits added 2026-11-12 (packages document + free map data plan).
+    assert [lim[p]["discover_per_month"] for p in (EXPLORER, VOYAGER, GLOBETROTTER)] == [3, 0, 0]
+    assert [lim[p]["google_photos"] for p in (EXPLORER, VOYAGER, GLOBETROTTER)] == [False, True, True]
+    assert [lim[p]["odyssey_live_prices"] for p in (EXPLORER, VOYAGER, GLOBETROTTER)] == [False, True, True]
+    assert [lim[p]["places_source"] for p in (EXPLORER, VOYAGER, GLOBETROTTER)] == ["open", "google", "google"]
 
 
 def test_admin_overrides_merge_but_cannot_invent_keys():
@@ -204,12 +209,54 @@ def test_test_accounts_are_limited_before_go_live(plans):
 
 def test_neva_daily_limit(plans):
     uid = uuid.uuid4()
-    for _ in range(20):
+    for _ in range(5):
         run(plan_service.check_neva(uid))
         run(plan_service.count_neva(uid))
     with pytest.raises(PlanLimitExceeded) as e:
         run(plan_service.check_neva(uid))
-    assert e.value.limit == 20 and e.value.resets_at.hour == 0
+    assert e.value.limit == 5 and e.value.resets_at.hour == 0
+
+
+def test_explorer_odyssey_uses_estimated_prices(plans):
+    assert run(plan_service.check_odyssey(uuid.uuid4(), 5)).live_prices is False
+    plans.plan = PlanInfo(plan=VOYAGER, period_start=NOW - timedelta(days=3))
+    assert run(plan_service.check_odyssey(uuid.uuid4(), 5)).live_prices is True
+
+
+def test_unenforced_odyssey_keeps_live_prices(plans):
+    plan_service._config["enforce"] = False
+    assert run(plan_service.check_odyssey(uuid.uuid4(), 5)).live_prices is True
+
+
+def test_where_should_i_go_three_a_month(plans, monkeypatch):
+    used = {"n": 0}
+
+    async def _used(uid, start):
+        assert start.day == 1 and start.hour == 0
+        return used["n"]
+
+    monkeypatch.setattr(plan_service, "discover_used", _used)
+    uid = uuid.uuid4()
+    used["n"] = 2
+    run(plan_service.check_discover(uid))
+    used["n"] = 3
+    with pytest.raises(PlanLimitExceeded) as e:
+        run(plan_service.check_discover(uid))
+    assert e.value.feature == "discover" and e.value.limit == 3
+    assert e.value.resets_at.day == 1
+    plans.plan = PlanInfo(plan=VOYAGER, period_start=NOW - timedelta(days=3))
+    used["n"] = 500
+    run(plan_service.check_discover(uid))  # paid: unlimited
+
+
+def test_explorer_gets_saved_photos_only(plans):
+    assert run(plan_service.google_photos_allowed(uuid.uuid4())) is False
+    plans.plan = PlanInfo(plan=GLOBETROTTER, period_start=NOW - timedelta(days=3))
+    assert run(plan_service.google_photos_allowed(uuid.uuid4())) is True
+    assert run(plan_service.google_photos_allowed(None)) is True
+    plan_service._config["enforce"] = False
+    plans.plan = PlanInfo()
+    assert run(plan_service.google_photos_allowed(uuid.uuid4())) is True
 
 
 def test_bands_explorer_two_medical_all(plans):
@@ -381,3 +428,14 @@ def test_event_user_ids():
     ids = billing.event_user_ids({"type": "TRANSFER", "transferred_from": [str(uid)],
                                   "transferred_to": [str(other)]})
     assert set(ids) == {uid, other}
+
+
+def test_saved_limits_hold_only_the_changes_and_fit_the_column():
+    lim = plan_service.merge_limits(None)
+    lim[EXPLORER]["google_photos"] = True
+    lim[EXPLORER]["map_month_usd"] = 0.5
+    raw = plan_service.overrides_json(lim)
+    assert len(raw) < 1000
+    assert json.loads(raw) == {"explorer": {"google_photos": True, "map_month_usd": 0.5}}
+    assert plan_service.merge_limits(json.loads(raw)) == lim
+    assert plan_service.overrides_json(plan_service.merge_limits(None)) == "{}"

@@ -31,6 +31,11 @@ class PlaceResponse(BaseModel):
     distance_m: Optional[float] = None
     is_active: bool = True
     created_at: datetime
+    # Free map data (free users): our 0..100 score instead of a Google rating,
+    # an optional chip ("Famous" / "Popular with travellers") and the source.
+    popularity: int = 0
+    popularity_label: Optional[str] = None
+    data_source: Optional[str] = None
     excluded_by_keyword: bool = Field(
         False,
         description="Matches an admin-managed exclude keyword. Only the Around "

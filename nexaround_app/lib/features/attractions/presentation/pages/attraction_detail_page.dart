@@ -19,6 +19,7 @@ import 'package:nexaround_app/features/living_map/presentation/pages/google_maps
 import 'package:nexaround_app/features/ar_mode/presentation/pages/ar_camera_page.dart';
 import 'package:nexaround_app/core/services/google_places_service.dart';
 import 'package:nexaround_app/core/services/permission_service.dart';
+import 'package:nexaround_app/features/plans/presentation/pages/plans_page.dart';
 
 class AttractionDetailPage extends StatefulWidget {
   final String? id;
@@ -70,6 +71,17 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
   String? _closingTime;
   int? _totalReviews;
   String? _priceLevel;
+  // Free map data (free users): contact details, the source credit and the
+  // popularity chip, from /places/{id}/details.
+  String? _phone;
+  String? _website;
+  String? _credit;
+  String? _popLabel;
+
+  bool get _isFreeData {
+    final id = widget.id ?? '';
+    return id.startsWith('op_') || id.startsWith('ga_');
+  }
   List<Map<String, dynamic>> _realReviews = [];
   List<String> _weekdayHours = [];
 
@@ -189,6 +201,10 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
               _closingTime = closingTime;
               _totalReviews = totalReviews;
               _priceLevel = priceLevel;
+              _phone = data['phone'] as String?;
+              _website = data['website'] as String?;
+              _credit = data['credit'] as String?;
+              _popLabel = data['popularity_label'] as String?;
               _realReviews = reviews;
               _weekdayHours = weekday;
               if ((_resolvedImageUrl == null || _resolvedImageUrl!.isEmpty) && firstPhoto != null) {
@@ -205,6 +221,70 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
         setState(() => _isLoadingPlaces = false);
       }
     }
+  }
+
+  /// Free-map-data place: ratings live with paid plans; contact details and
+  /// the data credit come from free map data.
+  Widget _buildFreeDataInfo() {
+    Widget row(IconData icon, String text, VoidCallback? onTap) => InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Row(
+              children: [
+                Icon(icon, size: 18, color: AppColors.actionTeal),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(text,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                ),
+              ],
+            ),
+          ),
+        );
+    return Padding(
+      padding: const EdgeInsets.only(top: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          GestureDetector(
+            onTap: () => PlansPage.open(context),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: AppColors.brandGreen.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: AppColors.brandGreen.withOpacity(0.25)),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.star_rounded, size: 18, color: AppColors.ratingGold),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text('See ratings, reviews and photos with Voyager',
+                        style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                  ),
+                  Icon(Icons.chevron_right_rounded, color: AppColors.brandGreen),
+                ],
+              ),
+            ),
+          ),
+          if (_phone != null && _phone!.isNotEmpty)
+            row(Icons.call_rounded, _phone!, () => launchUrl(Uri.parse('tel:${_phone!.replaceAll(' ', '')}'))),
+          if (_website != null && _website!.isNotEmpty)
+            row(Icons.language_rounded, _website!.replaceFirst(RegExp(r'^https?://(www\.)?'), ''),
+                () => launchUrl(Uri.parse(_website!), mode: LaunchMode.externalApplication)),
+          if (_credit != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text('Place info: $_credit',
+                  style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+            ),
+        ],
+      ),
+    );
   }
 
   Future<void> _launchNavigation(BuildContext context) async {
@@ -370,9 +450,16 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
                         ),
                       ),
                       const SizedBox(width: 10),
-                      const Icon(Icons.star_rounded, size: 18, color: AppColors.ratingGold),
-                      const SizedBox(width: 4),
-                      Text('${widget.rating}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                      if (!_isFreeData) ...[
+                        const Icon(Icons.star_rounded, size: 18, color: AppColors.ratingGold),
+                        const SizedBox(width: 4),
+                        Text('${widget.rating}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                      ] else if (_popLabel != null) ...[
+                        Icon(_popLabel == 'Famous' ? Icons.workspace_premium_rounded : Icons.favorite_rounded,
+                            size: 16, color: AppColors.brandGreen),
+                        const SizedBox(width: 4),
+                        Text(_popLabel!, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                      ],
                     ],
                   ),
 
@@ -383,6 +470,7 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
                     widget.name,
                     style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w800, color: AppColors.textPrimary, letterSpacing: -1, height: 1.1),
                   ),
+                  if (_isFreeData) _buildFreeDataInfo(),
 
                   if (_openNowText != null && _openNowText!.isNotEmpty) ...[
                     const SizedBox(height: 12),

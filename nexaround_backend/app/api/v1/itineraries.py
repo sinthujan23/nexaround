@@ -250,6 +250,8 @@ async def generate_odyssey(
         # Explorer's Lite plan: the app shows "upgrade to see ratings and
         # hours" instead of empty fields.
         "lite": grant.lite,
+        # Explorer: estimated flight and hotel prices instead of live ones.
+        "live_prices": grant.live_prices,
     }
     meta = odyssey_ai_service.build_meta_item(
         destination=data.destination,
@@ -322,6 +324,7 @@ async def generate_odyssey(
             data.preset_route.model_dump() if data.preset_route is not None else None
         ),
         lite=grant.lite,
+        live_prices=grant.live_prices,
         priority=grant.priority,
     )
     return saved
@@ -577,6 +580,7 @@ async def retry_odyssey_generation(
         current_user.id, days, new_plan=(itin.status == "failed"),
     )
     gen_params["lite"] = grant.lite
+    gen_params["live_prices"] = grant.live_prices
     meta["generation_params"] = gen_params
 
     meta.pop("failure_reason", None)
@@ -621,6 +625,7 @@ async def retry_odyssey_generation(
         departure_longitude=departure_longitude,
         departure_airport=departure_airport,
         lite=grant.lite,
+        live_prices=grant.live_prices,
         priority=grant.priority,
     )
     return saved

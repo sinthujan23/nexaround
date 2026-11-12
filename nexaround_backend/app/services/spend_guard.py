@@ -153,6 +153,11 @@ def _in_odyssey() -> bool:
     return (request_context.route_var.get() or "").startswith("/api/v1/itineraries")
 
 
+def _map_exempt() -> bool:
+    from app.core import request_context
+    return bool(request_context.map_cap_exempt_var.get())
+
+
 async def _check_plan_map_cap(user_id) -> None:
     """The plan's live map data limit (Explorer $0.15/day + $0.50/month, ...)."""
     from app.services import plan_service
@@ -203,7 +208,7 @@ async def check(user_id=None, *, map_data: bool = True) -> None:
     if user_id is None:
         from app.core import request_context
         user_id = request_context.current_user_id()
-    if map_data and user_id and not _in_odyssey():
+    if map_data and user_id and not _in_odyssey() and not _map_exempt():
         await _check_plan_map_cap(user_id)
 
     cfg = await _load_config()

@@ -1736,6 +1736,10 @@ async def _warm_hero_photo(details: dict) -> None:
     if not ok:
         print(f"skipping hero photo warm: {reason}")
         return
+    from app.core import request_context
+    from app.services import plan_service
+    if not await plan_service.google_photos_allowed(request_context.current_user_id()):
+        return  # Explorer: photos already on disk only
 
     try:
         await photo_cache_service.get_or_fetch(ref, maxwidth=800)
@@ -1759,6 +1763,11 @@ async def get_place_details(
     `name`/`latitude`/`longitude` are resolution hints for callers holding an
     identifier that is not a Google Place ID and not one of our rows either.
     """
+    from app.services import open_places_service
+    if open_places_service.is_open_id(place_id):
+        # Free map data: answered from our copy, never from Google.
+        return await open_places_service.details(place_id)
+
     clean_id = place_id.replace("places/", "")
 
     # A place an admin took out of the app is not reachable by id either. The

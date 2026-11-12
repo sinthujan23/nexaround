@@ -17,6 +17,8 @@ from app.schemas.place import (
     PlacesNearbyResponse,
     TrendingExperiencesResponse,
 )
+from app.core import request_context
+from app.services import open_places_service
 from app.services import (
     banded_places_service,
     google_places_client,
@@ -28,6 +30,12 @@ from app.services import (
 )
 
 router = APIRouter(prefix="/places", tags=["places"])
+
+
+def _exempt_medical(category: Optional[str]) -> None:
+    """Hospitals and clinics are never stopped by a plan's live map limit."""
+    if category in plan_service.UNCAPPED_CATEGORIES:
+        request_context.map_cap_exempt_var.set(True)
 
 
 @router.get("/nearby", response_model=PlacesNearbyResponse)
@@ -56,6 +64,17 @@ async def get_nearby_places(
     )
     if cap is not None and radius > cap:
         radius = cap
+    canonical = google_places_client.canonical_category(category)
+    _exempt_medical(canonical)
+    # Free users get free map data (Food, Shopping, Hotels, Medical, Hospital).
+    # None back means too few free places here: today's Google method below.
+    if await plan_service.places_source_for(current_user.id, canonical) == "open":
+        free = await open_places_service.nearby(
+            user_id=current_user.id, latitude=lat, longitude=lng, category=canonical,
+            radius=radius, limit=limit, offset=offset, max_photos=max_photos,
+        )
+        if free is not None:
+            return free
     result = await places_service.get_nearby(
         latitude=lat,
         longitude=lng,
@@ -105,9 +124,16 @@ async def get_nearby_places_banded(
     semantics or the extra Google requests that filling an outer band can cost.
     """
     # Explorer sees the nearest two distance bands (Medical / Hospital: all).
-    max_bands = await plan_service.max_bands_for(
-        current_user.id, google_places_client.canonical_category(category),
-    )
+    canonical = google_places_client.canonical_category(category)
+    max_bands = await plan_service.max_bands_for(current_user.id, canonical)
+    _exempt_medical(canonical)
+    if await plan_service.places_source_for(current_user.id, canonical) == "open":
+        free = await open_places_service.banded(
+            user_id=current_user.id, latitude=lat, longitude=lng, category=canonical,
+            max_bands=max_bands, per_band=per_band, max_photos=max_photos,
+        )
+        if free is not None:
+            return free
     result = await banded_places_service.get_nearby_banded(
         latitude=lat,
         longitude=lng,
@@ -216,6 +242,9 @@ async def get_place_photo(
         # Google. Leaving it ungated would have meant the ceiling covered every
         # paid call except the most frequent one.
         allowed, reason = await spend_guard.allowed(current_user.id)
+        if allowed and not await plan_service.google_photos_allowed(current_user.id):
+            # Explorer gets the photos we already hold; new ones are not bought.
+            allowed, reason = False, "plan: saved photos only"
         if not allowed:
             # Degrade the way every other guarded path does: serve what is
             # already on disk, and otherwise let the client fall back to its

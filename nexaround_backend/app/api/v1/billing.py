@@ -535,6 +535,10 @@ class PlanSettings(BaseModel):
     revenuecat_api_key_set: bool = False
     revenuecat_ios_key: str = ""
     revenuecat_android_key: str = ""
+    # Free map data for free users: off | test | on, and the oldest app build
+    # that gets it (older builds show "0.0" for places without ratings).
+    free_data_layer: str = "off"
+    free_data_min_app_version: str = ""
 
 
 class PlanSettingsUpdate(BaseModel):
@@ -546,6 +550,8 @@ class PlanSettingsUpdate(BaseModel):
     revenuecat_api_key: Optional[str] = Field(None, max_length=200)
     revenuecat_ios_key: Optional[str] = Field(None, max_length=200)
     revenuecat_android_key: Optional[str] = Field(None, max_length=200)
+    free_data_layer: Optional[str] = Field(None, pattern=r"^(off|test|on)$")
+    free_data_min_app_version: Optional[str] = Field(None, max_length=20, pattern=r"^(\d+(\.\d+){0,3})?$")
 
 
 async def _read_settings(svc: SettingsService) -> PlanSettings:
@@ -559,6 +565,8 @@ async def _read_settings(svc: SettingsService) -> PlanSettings:
         revenuecat_api_key_set=bool((await svc.get_setting_fresh(K_API_KEY, "")).strip()),
         revenuecat_ios_key=await svc.get_setting_fresh(K_IOS_KEY, ""),
         revenuecat_android_key=await svc.get_setting_fresh(K_ANDROID_KEY, ""),
+        free_data_layer=cfg.get("free_data", "off"),
+        free_data_min_app_version=cfg.get("free_data_min_version", ""),
     )
 
 
@@ -586,12 +594,18 @@ async def update_plan_settings(
         await svc.set_setting(plan_service.K_ENFORCE_USERS, data.plans_enforce_users.strip(),
                               "Emails that get plan limits before they are on for everyone")
     if data.plan_limits is not None:
-        merged = plan_service.merge_limits(data.plan_limits)
-        await svc.set_setting(plan_service.K_LIMITS, json.dumps(merged),
+        await svc.set_setting(plan_service.K_LIMITS, plan_service.overrides_json(data.plan_limits),
                               "Per-plan limits (JSON over the defaults)")
     if data.min_app_version is not None:
         await svc.set_setting(plan_service.K_MIN_APP_VERSION, data.min_app_version.strip(),
                               "Oldest app version allowed; older builds are asked to update")
+    if data.free_data_layer is not None:
+        await svc.set_setting(plan_service.K_FREE_DATA, data.free_data_layer,
+                              "Free map data for free users: off / test / on")
+    if data.free_data_min_app_version is not None:
+        await svc.set_setting(plan_service.K_FREE_DATA_MIN_VERSION,
+                              data.free_data_min_app_version.strip(),
+                              "Oldest app build that gets free map data")
     if data.revenuecat_webhook_secret is not None:
         await svc.set_setting(K_WEBHOOK_SECRET, data.revenuecat_webhook_secret.strip(),
                               "RevenueCat webhook Authorization header value")
@@ -605,6 +619,40 @@ async def update_plan_settings(
         await svc.set_setting(K_ANDROID_KEY, data.revenuecat_android_key.strip(),
                               "RevenueCat public Google Play SDK key (goog_…)")
     return await _read_settings(svc)
+
+
+@admin_router.get("/free-data")
+async def free_data_status(db: AsyncSession = Depends(get_db), _=Depends(verify_admin_token)):
+    """Where the free map data stands: areas, places, size, Geoapify use."""
+    from sqlalchemy import text as _text
+    from app.services.open_data import geoapify_places
+
+    areas = {r[0]: int(r[1]) for r in (await db.execute(_text(
+        "SELECT status, count(*) FROM open_areas GROUP BY status"
+    ))).all()}
+    places = int((await db.execute(_text("SELECT count(*) FROM open_places"))).scalar() or 0)
+    size = int((await db.execute(_text("SELECT pg_total_relation_size('open_places')"))).scalar() or 0)
+    by_section = {r[0]: int(r[1]) for r in (await db.execute(_text(
+        "SELECT section, count(*) FROM open_places GROUP BY section"
+    ))).all()}
+    recent = [
+        {"tile": r[0], "status": r[1], "places": int(r[2] or 0), "seconds": r[3],
+         "error": r[4], "at": (r[5] or r[6]).isoformat() if (r[5] or r[6]) else None}
+        for r in (await db.execute(_text(
+            "SELECT tile, status, places_count, seconds, error, imported_at, requested_at "
+            "FROM open_areas ORDER BY coalesce(imported_at, requested_at) DESC LIMIT 8"
+        ))).all()
+    ]
+    return {
+        "mode": await plan_service.free_data_mode(),
+        "areas": {k: areas.get(k, 0) for k in ("queued", "importing", "done", "failed")},
+        "places": places,
+        "by_section": by_section,
+        "size_mb": round(size / 1024 ** 2, 1),
+        "geoapify_credits_today": await geoapify_places.credits_used_today(),
+        "geoapify_daily_cap": geoapify_places.GEOAPIFY_DAILY_CAP,
+        "recent": recent,
+    }
 
 
 async def plans_for_users(db: AsyncSession, user_ids: list) -> dict:

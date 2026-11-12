@@ -36,8 +36,17 @@ class AttractionEntity {
   final bool isActive;
   final DateTime createdAt;
   final bool excludedByKeyword;
+  // Free map data (free users): our 0..100 score instead of a Google rating,
+  // an optional chip ("Famous" / "Popular with travellers") and 'open' as the
+  // source. Google places leave these at their defaults.
+  final int popularity;
+  final String? popularityLabel;
+  final String? dataSource;
 
   String? get category => categoryName;
+
+  /// True for free-map-data places: no stars, show [popularityLabel] instead.
+  bool get isFreeData => dataSource == 'open';
 
   const AttractionEntity({
     required this.id,
@@ -61,5 +70,8 @@ class AttractionEntity {
     this.isActive = true,
     required this.createdAt,
     this.excludedByKeyword = false,
+    this.popularity = 0,
+    this.popularityLabel,
+    this.dataSource,
   });
 }

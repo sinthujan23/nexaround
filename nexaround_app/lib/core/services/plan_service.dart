@@ -81,7 +81,7 @@ class PlanStatus {
 
 /// A plan limit the server refused a request for (HTTP 429, code=plan_limit).
 class PlanLimitEvent {
-  final String feature; // odyssey | odyssey_days | neva | ar_range | live_map | bands
+  final String feature; // odyssey | odyssey_days | neva | ar_range | live_map | bands | discover
   final String message;
   final int? limit;
   final DateTime? resetsAt;

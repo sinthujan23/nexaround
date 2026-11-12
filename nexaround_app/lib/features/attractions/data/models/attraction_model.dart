@@ -53,6 +53,9 @@ class AttractionModel extends AttractionEntity {
     super.isActive,
     required super.createdAt,
     super.excludedByKeyword,
+    super.popularity,
+    super.popularityLabel,
+    super.dataSource,
   });
 
   factory AttractionModel.fromJson(Map<String, dynamic> json) {
@@ -84,6 +87,9 @@ class AttractionModel extends AttractionEntity {
       isActive: json['is_active'] as bool? ?? true,
       createdAt: DateTime.parse(json['created_at'] as String),
       excludedByKeyword: json['excluded_by_keyword'] as bool? ?? false,
+      popularity: (json['popularity'] as num?)?.toInt() ?? 0,
+      popularityLabel: json['popularity_label'] as String?,
+      dataSource: json['data_source'] as String?,
     );
   }
 
@@ -108,6 +114,9 @@ class AttractionModel extends AttractionEntity {
       'geofence_radius_m': geofenceRadiusM,
       'distance_m': distanceM,
       'is_active': isActive,
+      'popularity': popularity,
+      'popularity_label': popularityLabel,
+      'data_source': dataSource,
       'created_at': createdAt.toIso8601String(),
       'excluded_by_keyword': excludedByKeyword,
     };

@@ -1132,7 +1132,7 @@ class GooglePlacesService {
             geofenceRadiusM: m.geofenceRadiusM,
             distanceM: distM,
             isActive: m.isActive,
-            createdAt: m.createdAt,
+            createdAt: m.createdAt, popularity: m.popularity, popularityLabel: m.popularityLabel, dataSource: m.dataSource,
           );
         }).toList();
       }
