@@ -2,13 +2,16 @@ import { useState } from 'react';
 import { apiFetch, useApi } from '../api';
 import { useToast } from '../hooks';
 import { PageError, PageLoading, SecretField, Toast } from '../components/Kit';
-import { AlertTriangleIcon, CheckIcon, CreditCardIcon, CrossIcon, RefreshIcon } from '../components/Icons';
+import {
+  AlertTriangleIcon, CheckIcon, CreditCardIcon, CrossIcon, EditIcon, MapPinIcon, RefreshIcon, ShieldIcon,
+} from '../components/Icons';
 import './Payments.css';
 
 /**
- * Payments & Plans. Payment happens in the app (Apple / Google, through
- * RevenueCat); this page shows who pays, lets the team test any plan on their
- * own account, and holds the plan settings — in plain words, one job per tab.
+ * Payments & Plans, redesigned 2026-11-12 (layout "A"): the two go-live
+ * switches sit on top and look the same; below them four tabs, one job each —
+ * Money (who pays), Plans (what each plan allows), Testing (try a plan on your
+ * own account), Store setup (RevenueCat keys and app versions).
  */
 
 const PLAN = {
@@ -18,7 +21,7 @@ const PLAN = {
 };
 const PLANS = ['explorer', 'voyager', 'globetrotter'];
 
-// The packages document (2026-11-10); "Reset" puts these back.
+// The packages document (2026-11-12); "Reset" puts these back.
 const DOC_LIMITS = {
   explorer: { odyssey_per_period: 1, odyssey_max_days: 5, odyssey_lite: true, odyssey_live_prices: false, neva_per_day: 5, ar_radius_m: 2000, nearby_max_radius_m: 25000, banded_max_bands: 2, map_day_usd: 0.05, map_month_usd: 0.05, google_photos: false, discover_per_month: 3, places_source: 'open', priority_queue: false },
   voyager: { odyssey_per_period: 8, odyssey_max_days: 10, odyssey_lite: false, odyssey_live_prices: true, neva_per_day: 100, ar_radius_m: 10000, nearby_max_radius_m: 50000, banded_max_bands: 3, map_day_usd: 0, map_month_usd: 2, google_photos: true, discover_per_month: 0, places_source: 'google', priority_queue: false },
@@ -37,9 +40,23 @@ function PlanPill({ plan, suffix }) {
   return <span className="pp-pill" style={{ background: p.color }}>{p.name}{suffix ? ` · ${suffix}` : ''}</span>;
 }
 
+/** The same Off / Test / Everyone control for both switches. */
+function Choice({ value, options, onChange }) {
+  return (
+    <div className="pp-seg" role="radiogroup">
+      {options.map(([k, label]) => (
+        <button key={k} role="radio" aria-checked={value === k}
+          className={`pp-seg-btn ${value === k ? `active ${k}` : ''}`} onClick={() => value !== k && onChange(k)}>
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export default function Payments() {
   const [toast, notify] = useToast();
-  const [tab, setTab] = useState('overview');
+  const [tab, setTab] = useState('money');
   const overview = useApi('/admin/billing/overview');
   const settings = useApi('/admin/billing/settings');
 
@@ -62,55 +79,109 @@ export default function Payments() {
     }
   };
 
-  const toggleEveryone = () => {
-    const turningOn = !s.plans_enforce;
-    const ok = window.confirm(turningOn
-      ? 'Turn plan limits ON for everyone?\n\nFree users will get Explorer limits right away. Do this on the day the new app (with the plans screen) is released.'
-      : 'Turn plan limits OFF for everyone?\n\nEveryone gets unlimited use again. Test accounts keep their limits.');
-    if (ok) save({ plans_enforce: turningOn }, turningOn ? 'Plan limits are now ON for everyone' : 'Plan limits are now OFF');
-  };
-
   const tabs = [
-    ['overview', 'Overview'],
-    ['subscribers', 'Subscribers'],
-    ['test', 'Test a plan'],
-    ['limits', 'Limits'],
+    ['money', 'Money', o.subscribers ?? 0],
+    ['plans', 'Plans'],
+    ['testing', 'Testing'],
     ['setup', 'Store setup'],
   ];
 
   return (
     <div>
       <Toast toast={toast} />
-      <div className="pp-hero">
-        <div>
-          <h2>Payments &amp; Plans</h2>
-          <p>Explorer (free) · Voyager · Globetrotter. People pay in the app through Apple or Google.</p>
-        </div>
-        <span className="pp-status">
-          <span className={`pp-dot ${s.plans_enforce ? 'on' : ''}`} />
-          {s.plans_enforce ? 'Limits ON for everyone' : 'Limits OFF (testing only)'}
-        </span>
+      <div className="pp-head">
+        <h2>Payments &amp; Plans</h2>
+        <p>Explorer (free) · Voyager $4.59 · Globetrotter $6.89 a month. People pay in the app through Apple or Google.</p>
       </div>
 
+      <Switches s={s} save={save} />
+
       <div className="segmented-tabs pp-tabs" role="tablist">
-        {tabs.map(([key, label]) => (
+        {tabs.map(([key, label, count]) => (
           <button key={key} role="tab" className={`segmented-tab ${tab === key ? 'active' : ''}`} onClick={() => setTab(key)}>
             {label}
-            {key === 'subscribers' && <span className="tab-count">{o.subscribers ?? 0}</span>}
+            {count !== undefined && <span className="tab-count">{count}</span>}
           </button>
         ))}
       </div>
 
-      {tab === 'overview' && <OverviewTab o={o} s={s} onToggle={toggleEveryone} save={save} />}
-      {tab === 'subscribers' && <SubscribersTab notify={notify} onChanged={overview.refetch} />}
-      {tab === 'test' && <TestTab s={s} save={save} notify={notify} onChanged={overview.refetch} />}
-      {tab === 'limits' && <LimitsTab s={s} save={save} />}
+      {tab === 'money' && <MoneyTab o={o} notify={notify} onChanged={overview.refetch} />}
+      {tab === 'plans' && <PlansTab o={o} s={s} save={save} />}
+      {tab === 'testing' && <TestTab s={s} save={save} notify={notify} onChanged={overview.refetch} />}
       {tab === 'setup' && <SetupTab s={s} save={save} notify={notify} />}
     </div>
   );
 }
 
-/* ── Overview ─────────────────────────────────────────────────────────── */
+/* ── Go-live switches ─────────────────────────────────────────────────── */
+
+function Switches({ s, save }) {
+  const fd = useApi('/admin/billing/free-data');
+  const d = fd.data || {};
+  const areas = d.areas || {};
+  const totalAreas = (areas.done || 0) + (areas.queued || 0) + (areas.importing || 0) + (areas.failed || 0);
+
+  const limitsMode = s.plans_enforce ? 'on' : 'test';
+  const freeMode = s.free_data_layer || 'off';
+
+  const setLimits = (m) => {
+    const on = m === 'on';
+    const ok = window.confirm(on
+      ? 'Plan limits for EVERYONE?\n\nFree users get Explorer limits right away; subscribers get their plan. Do this on the day the new app is released.'
+      : 'Plan limits for TEST ACCOUNTS ONLY?\n\nEveryone else gets unlimited use again.');
+    if (ok) save({ plans_enforce: on }, on ? 'Plan limits: everyone' : 'Plan limits: test accounts only');
+  };
+
+  const setFree = async (m) => {
+    if (m === 'on' && !window.confirm('Free map data for ALL free users?\n\nFree users on the new app get food, shop, hotel and medical places from free map data, without Google ratings. Paid users and older app versions keep Google. You can switch it back at any time.')) return;
+    const label = { off: 'off', test: 'test accounts only', on: 'everyone' }[m];
+    if (await save({ free_data_layer: m }, `Free map data: ${label}`)) fd.refetch();
+  };
+
+  return (
+    <div className="pp-card pp-switches">
+      <div className="pp-switches-title">Go-live switches</div>
+
+      <div className="pp-switch-row">
+        <div className={`pp-switch-icon ${limitsMode}`}><ShieldIcon size={18} /></div>
+        <div className="pp-switch-text">
+          <b>Plan limits</b>
+          <span>
+            {limitsMode === 'on'
+              ? 'Everyone has plan limits: free users get Explorer, subscribers get their plan.'
+              : 'Only test accounts have limits. Everyone else has unlimited use.'}
+          </span>
+        </div>
+        <Choice value={limitsMode} onChange={setLimits}
+          options={[['test', 'Test accounts only'], ['on', 'Everyone']]} />
+      </div>
+
+      <div className="pp-switch-row">
+        <div className={`pp-switch-icon ${freeMode}`}><MapPinIcon size={18} /></div>
+        <div className="pp-switch-text">
+          <b>Free map data</b>
+          <span>
+            {freeMode === 'off' && 'Everyone gets places from Google, as before.'}
+            {freeMode === 'test' && 'Test accounts on the new app get food, shop, hotel and medical places from free map data.'}
+            {freeMode === 'on' && 'Free users on the new app get food, shop, hotel and medical places from free map data. Paid users keep Google.'}
+          </span>
+          <span className="pp-switch-meta">
+            {areas.done ?? 0} of {totalAreas} cities ready · {(d.places ?? 0).toLocaleString()} places
+            {' · '}Geoapify {d.geoapify_credits_today ?? 0} of {d.geoapify_daily_cap ?? 2700} today
+            {' · '}app {s.free_data_min_app_version || '1.0.18'}+
+            {areas.failed ? ` · ${areas.failed} failed` : ''}
+          </span>
+        </div>
+        <Choice value={freeMode} onChange={setFree}
+          options={[['off', 'Off'], ['test', 'Test accounts only'], ['on', 'Everyone']]} />
+      </div>
+
+      <div className="pp-switches-foot">Test accounts are set in the <b>Testing</b> tab.</div>
+    </div>
+  );
+}
+
+/* ── Money ────────────────────────────────────────────────────────────── */
 
 const EVENT = {
   INITIAL_PURCHASE: ['New subscription', CheckIcon],
@@ -123,29 +194,10 @@ const EVENT = {
   TEST: ['Test message from RevenueCat', CheckIcon],
 };
 
-function OverviewTab({ o, s, onToggle, save }) {
-  const events = useApi('/admin/billing/events?limit=12');
-  const limits = s.plan_limits || DOC_LIMITS;
-  const byPlan = o.by_plan || {};
-
+function MoneyTab({ o, notify, onChanged }) {
+  const events = useApi('/admin/billing/events?limit=10');
   return (
     <div className="pp-section">
-      <div className={`pp-card pp-switch-card ${s.plans_enforce ? 'on' : 'off'}`}>
-        <div>
-          <h3>{s.plans_enforce ? 'Plan limits are ON for everyone' : 'Plan limits are OFF — everyone has unlimited use'}</h3>
-          <p className="pp-sub" style={{ margin: 0 }}>
-            {s.plans_enforce
-              ? 'Free users get Explorer limits; subscribers get their plan.'
-              : 'Only your test accounts (Test a plan tab) get limits. Turn this on the day the new app is released.'}
-          </p>
-        </div>
-        <button className={`btn ${s.plans_enforce ? 'btn-ghost' : 'btn-primary'}`} onClick={onToggle}>
-          {s.plans_enforce ? 'Turn off' : 'Turn on for everyone'}
-        </button>
-      </div>
-
-      <FreeDataCard s={s} save={save} />
-
       <div className="pp-grid-4">
         <Kpi value={o.subscribers ?? 0} label="Paying subscribers" />
         <Kpi value={usd(o.mrr_usd)} label="Monthly revenue (estimate)" />
@@ -153,36 +205,11 @@ function OverviewTab({ o, s, onToggle, save }) {
         <Kpi value={o.cancellations_30d ?? 0} label="Cancelled in the last 30 days" />
       </div>
 
-      <div className="pp-grid-3">
-        {PLANS.map((p) => {
-          const l = limits[p] || DOC_LIMITS[p];
-          const b = byPlan[p] || {};
-          return (
-            <div key={p} className="pp-plan">
-              <div className={`pp-plan-head ${PLAN[p].cls}`}>
-                <div className="name">{PLAN[p].name}</div>
-                <div className="price">{PLAN[p].price}</div>
-                {p === 'explorer'
-                  ? <div className="count" style={{ fontSize: 16, marginTop: 14 }}>Everyone who hasn't paid</div>
-                  : <div className="count">{b.total ?? 0}<small>{(b.total ?? 0) === 1 ? 'subscriber' : 'subscribers'}</small></div>}
-              </div>
-              <div className="pp-plan-body">
-                <div className="pp-row"><span>Odyssey plans a month</span><span>{l.odyssey_per_period}{l.odyssey_lite ? ' Lite' : ''}</span></div>
-                <div className="pp-row"><span>Longest trip</span><span>{l.odyssey_max_days} days</span></div>
-                <div className="pp-row"><span>Neva messages a day</span><span>{l.neva_per_day}</span></div>
-                <div className="pp-row"><span>Where Should I Go</span><span>{l.discover_per_month > 0 ? `${l.discover_per_month} a month` : 'Unlimited'}</span></div>
-                <div className="pp-row"><span>AR range</span><span>{Math.round(l.ar_radius_m / 1000)} km</span></div>
-                <div className="pp-row"><span>Around You</span><span>{l.banded_max_bands >= 3 ? 'All 3 bands' : `Nearest ${l.banded_max_bands} bands`}</span></div>
-                <div className="pp-row"><span>Priority queue</span><span>{l.priority_queue ? 'Yes' : 'No'}</span></div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+      <SubscribersCard notify={notify} onChanged={onChanged} />
 
       <div className="pp-card">
         <h3>Latest activity</h3>
-        <p className="pp-sub">Every purchase, renewal and cancellation from the App Store and Google Play. “Test” = a test purchase, not real money.</p>
+        <p className="pp-sub">Purchases, renewals and cancellations from the App Store and Google Play. “Test” = no real money.</p>
         {(events.data || []).length === 0 ? (
           <div className="pp-empty">Nothing yet. Purchases show here within seconds.</div>
         ) : (
@@ -220,8 +247,6 @@ function Kpi({ value, label }) {
   );
 }
 
-/* ── Subscribers ──────────────────────────────────────────────────────── */
-
 const STATUS = {
   active: ['Active', 'green'],
   cancelled: ['Cancelled — ends on its date', 'yellow'],
@@ -229,7 +254,7 @@ const STATUS = {
   expired: ['Ended', ''],
 };
 
-function SubscribersTab({ notify, onChanged }) {
+function SubscribersCard({ notify, onChanged }) {
   const [status, setStatus] = useState('active');
   const [plan, setPlan] = useState('');
   const [search, setSearch] = useState('');
@@ -250,20 +275,23 @@ function SubscribersTab({ notify, onChanged }) {
 
   return (
     <div className="pp-card">
+      <div className="pp-card-head">
+        <h3>Subscribers</h3>
+        <input className="form-input" placeholder="Search name or email" value={search}
+          onChange={(e) => setSearch(e.target.value)} style={{ width: 220 }} />
+      </div>
       <div className="pp-filters">
         {[['active', 'Active'], ['ended', 'Ended'], ['all', 'All']].map(([k, l]) => (
           <button key={k} className={`pp-chip ${status === k ? 'active' : ''}`} onClick={() => setStatus(k)}>{l}</button>
         ))}
-        <span style={{ width: 8 }} />
+        <span className="pp-divider" />
         {[['', 'All plans'], ['voyager', 'Voyager'], ['globetrotter', 'Globetrotter']].map(([k, l]) => (
           <button key={k || 'all'} className={`pp-chip ${plan === k ? 'active' : ''}`} onClick={() => setPlan(k)}>{l}</button>
         ))}
-        <input className="form-input" placeholder="Search name or email" value={search}
-          onChange={(e) => setSearch(e.target.value)} style={{ width: 220, marginLeft: 'auto' }} />
       </div>
 
       {subs.loading && !subs.data ? <div className="pp-empty">Loading…</div> : items.length === 0 ? (
-        <div className="pp-empty">No one here yet. People who subscribe in the app, or get a plan from the Test a plan tab, appear here.</div>
+        <div className="pp-empty">No one here yet. People who subscribe in the app, or get a plan in the Testing tab, appear here.</div>
       ) : (
         <div className="table-wrap">
           <table>
@@ -288,7 +316,7 @@ function SubscribersTab({ notify, onChanged }) {
                     <td>{r.source === 'admin' ? `Given here by ${r.granted_by || 'admin'}` : r.store === 'app_store' ? 'Bought on App Store' : r.store === 'play_store' ? 'Bought on Google Play' : 'Bought in the app'}</td>
                     <td style={{ textAlign: 'right' }}>
                       {r.source === 'admin' && r.status !== 'expired' && (
-                        <button className="btn btn-ghost" style={{ padding: '6px 12px', fontSize: 12 }} onClick={() => backToExplorer(r)}>Back to Explorer</button>
+                        <button className="btn btn-ghost pp-btn-sm" onClick={() => backToExplorer(r)}>Back to Explorer</button>
                       )}
                     </td>
                   </tr>
@@ -302,7 +330,156 @@ function SubscribersTab({ notify, onChanged }) {
   );
 }
 
-/* ── Test a plan ──────────────────────────────────────────────────────── */
+/* ── Plans ────────────────────────────────────────────────────────────── */
+
+// [key, label, hint, kind]; kind: num | days | km | bands | usd | a key of TOGGLES
+const LIMIT_GROUPS = [
+  ['Odyssey trip planner', [
+    ['odyssey_per_period', 'Plans a month', 'Free: resets on the 1st. Paid: on their billing day.', 'num'],
+    ['odyssey_max_days', 'Longest trip', '', 'days'],
+    ['odyssey_lite', 'Ratings & opening hours', '“Hidden” = Lite plan', 'lite'],
+    ['odyssey_live_prices', 'Flight & hotel prices', '“Estimated” = no live price search', 'live'],
+    ['priority_queue', 'Priority queue', 'Plans start first when it is busy', 'yesno'],
+  ]],
+  ['Neva & Where Should I Go', [
+    ['neva_per_day', 'Neva messages a day', 'Resets at midnight UTC', 'num'],
+    ['discover_per_month', 'Where Should I Go a month', '0 = unlimited', 'num'],
+  ]],
+  ['Map, Around You & AR', [
+    ['ar_radius_m', 'AR range', 'Hospitals are never limited', 'km'],
+    ['nearby_max_radius_m', 'Around You reach', 'Medical / Hospital always full range', 'km'],
+    ['banded_max_bands', 'Around You distance bands', '3 = all bands', 'bands'],
+    ['google_photos', 'Place photos', '“Saved only” = photos we already hold', 'photos'],
+    ['map_day_usd', 'Google map data a day', '0 = no daily limit', 'usd'],
+    ['map_month_usd', 'Google map data a month', '0 = no monthly limit', 'usd'],
+  ]],
+];
+
+// Boolean limits: [label when true, label when false, true is the "good" state]
+const TOGGLES = {
+  lite: ['Hidden', 'Shown', false],
+  yesno: ['Yes', 'No', true],
+  live: ['Live', 'Estimated', true],
+  photos: ['All photos', 'Saved only', true],
+};
+
+function PlansTab({ o, s, save }) {
+  const limits = s.plan_limits || DOC_LIMITS;
+  const byPlan = o.by_plan || {};
+  const [editing, setEditing] = useState(null);
+
+  const resetAll = async () => {
+    if (!window.confirm('Put every plan back to the packages document?\n\nThis also switches on the new free limits (saved photos only, estimated Odyssey prices, Where Should I Go 3 a month, $0.05 Google map data).')) return;
+    await save({ plan_limits: DOC_LIMITS }, 'All plans match the packages document');
+  };
+
+  return (
+    <div className="pp-section">
+      <div className="pp-grid-3">
+        {PLANS.map((p) => {
+          const l = { ...DOC_LIMITS[p], ...(limits[p] || {}) };
+          const b = byPlan[p] || {};
+          return (
+            <div key={p} className="pp-plan">
+              <div className={`pp-plan-head ${PLAN[p].cls}`}>
+                <div className="name">{PLAN[p].name}</div>
+                <div className="price">{PLAN[p].price}</div>
+                <div className="who">
+                  {p === 'explorer' ? 'Everyone who hasn’t paid' : `${b.total ?? 0} ${(b.total ?? 0) === 1 ? 'subscriber' : 'subscribers'}`}
+                </div>
+              </div>
+              <div className="pp-plan-body">
+                <div className="pp-row"><span>Odyssey plans</span><span>{l.odyssey_per_period} a month{l.odyssey_lite ? ' (Lite)' : ''}</span></div>
+                <div className="pp-row"><span>Longest trip</span><span>{l.odyssey_max_days} days</span></div>
+                <div className="pp-row"><span>Neva</span><span>{l.neva_per_day} a day</span></div>
+                <div className="pp-row"><span>Where Should I Go</span><span>{l.discover_per_month > 0 ? `${l.discover_per_month} a month` : 'Unlimited'}</span></div>
+                <div className="pp-row"><span>AR range</span><span>{Math.round(l.ar_radius_m / 1000)} km</span></div>
+                <div className="pp-row"><span>Photos</span><span>{l.google_photos ? 'All' : 'Saved only'}</span></div>
+                <button className="btn btn-ghost pp-edit" onClick={() => setEditing(p)}>
+                  <EditIcon size={14} /> Edit {PLAN[p].name}
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div className="pp-muted pp-center">
+        Changes reach the app within a minute, no app update needed.{' '}
+        <button className="pp-link" onClick={resetAll}>Reset all plans to the packages document</button>
+      </div>
+
+      {editing && (
+        <PlanEditor plan={editing} limits={limits} onClose={() => setEditing(null)}
+          onSave={async (values) => {
+            if (await save({ plan_limits: { ...limits, [editing]: values } }, `${PLAN[editing].name} saved`)) setEditing(null);
+          }} />
+      )}
+    </div>
+  );
+}
+
+function PlanEditor({ plan, limits, onClose, onSave }) {
+  const [form, setForm] = useState(() => ({ ...DOC_LIMITS[plan], ...(limits[plan] || {}) }));
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  const control = (k, kind) => {
+    const v = form[k];
+    if (TOGGLES[kind]) {
+      const [onLabel, offLabel] = TOGGLES[kind];
+      return <Choice value={v ? 'y' : 'n'} onChange={(x) => set(k, x === 'y')} options={[['y', onLabel], ['n', offLabel]]} />;
+    }
+    const unit = { days: 'days', km: 'km', bands: 'bands', num: '' }[kind];
+    const val = kind === 'km' ? (v || 0) / 1000 : v;
+    return (
+      <span className="pp-num">
+        {kind === 'usd' && <em>$</em>}
+        <input className="form-input" type="number" min="0" step={kind === 'usd' ? '0.01' : kind === 'km' ? '0.5' : '1'}
+          value={val ?? ''} onChange={(e) => {
+            const n = e.target.value === '' ? 0 : Number(e.target.value);
+            set(k, kind === 'km' ? Math.round(n * 1000) : n);
+          }} />
+        {unit && <em>{unit}</em>}
+      </span>
+    );
+  };
+
+  return (
+    <>
+      <div className="pp-backdrop" onClick={onClose} />
+      <aside className="pp-drawer" role="dialog" aria-label={`Edit ${PLAN[plan].name}`}>
+        <div className={`pp-drawer-head ${PLAN[plan].cls}`}>
+          <div>
+            <div className="name">{PLAN[plan].name}</div>
+            <div className="price">{PLAN[plan].price}</div>
+          </div>
+          <button className="pp-close" onClick={onClose} aria-label="Close">×</button>
+        </div>
+        <div className="pp-drawer-body">
+          {LIMIT_GROUPS.map(([group, rows]) => (
+            <div key={group} className="pp-drawer-group">
+              <div className="pp-label">{group}</div>
+              {rows.map(([k, label, hint, kind]) => (
+                <div key={k} className="pp-field">
+                  <div>
+                    <div className="t">{label}</div>
+                    {hint && <div className="h">{hint}</div>}
+                  </div>
+                  {control(k, kind)}
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+        <div className="pp-drawer-foot">
+          <button className="btn btn-ghost" onClick={() => setForm({ ...DOC_LIMITS[plan] })}>Use the packages document</button>
+          <button className="btn btn-primary" onClick={() => onSave(form)}>Save {PLAN[plan].name}</button>
+        </div>
+      </aside>
+    </>
+  );
+}
+
+/* ── Testing ──────────────────────────────────────────────────────────── */
 
 const DURATIONS = [['1', '1 day'], ['7', '7 days'], ['30', '30 days'], ['', 'No end']];
 
@@ -322,10 +499,19 @@ function TestTab({ s, save, notify, onChanged }) {
     const e = newEmail.trim().toLowerCase();
     if (!e || !e.includes('@')) return notify('Type a full email address', 'error');
     if (testers.map((t) => t.toLowerCase()).includes(e)) return notify('Already a test account', 'error');
-    if (await setTesters([...testers, e], `${e} added — plan limits now apply to this account`)) {
+    if (await setTesters([...testers, e], `${e} added as a test account`)) {
       setNewEmail('');
       if (!email) setEmail(e);
     }
+  };
+
+  const removeGrant = async (g) => {
+    try {
+      await apiFetch(`/admin/billing/grant/${g.user_id}`, { method: 'DELETE' });
+      notify(`${g.email} is back on Explorer`);
+      given.refetch();
+      onChanged();
+    } catch (e) { notify(e.message, 'error'); }
   };
 
   const apply = async () => {
@@ -359,20 +545,10 @@ function TestTab({ s, save, notify, onChanged }) {
   };
 
   return (
-    <div className="pp-section">
+    <div className="pp-section pp-grid-2">
       <div className="pp-card">
-        <h3>How to test a plan</h3>
-        <p className="pp-sub">Try every plan on your own account in the TestFlight / test app — nobody pays, and normal users are not affected.</p>
-        <div className="pp-steps">
-          <div className="pp-step"><div className="pp-step-num">1</div><div><b>Add your email below</b><span>Plan limits switch on for that account only.</span></div></div>
-          <div className="pp-step"><div className="pp-step-num">2</div><div><b>Pick a plan for it</b><span>Explorer, Voyager or Globetrotter — it changes straight away.</span></div></div>
-          <div className="pp-step"><div className="pp-step-num">3</div><div><b>Reopen the app</b><span>Profile shows the plan; try Odyssey, Neva, AR and Around You.</span></div></div>
-        </div>
-      </div>
-
-      <div className="pp-card">
-        <h3>1 · Test accounts</h3>
-        <p className="pp-sub">These accounts get plan limits now, before they are on for everyone.</p>
+        <h3>Test accounts</h3>
+        <p className="pp-sub">These accounts get plan limits and free map data when a switch is set to “Test accounts only”. Nobody pays.</p>
         <div className="pp-emails">
           {testers.length === 0 && <span className="pp-muted">No test accounts yet.</span>}
           {testers.map((t) => (
@@ -384,18 +560,34 @@ function TestTab({ s, save, notify, onChanged }) {
         </div>
         <div className="pp-inline">
           <input className="form-input" type="email" placeholder="name@example.com" value={newEmail}
-            onChange={(e) => setNewEmail(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addTester()} style={{ width: 280 }} />
-          <button className="btn btn-primary" onClick={addTester}>Add test account</button>
+            onChange={(e) => setNewEmail(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addTester()} style={{ flex: '1 1 200px' }} />
+          <button className="btn btn-primary" onClick={addTester}>Add</button>
         </div>
+
+        <div className="pp-label" style={{ marginTop: 22 }}>Plans given by hand</div>
+        {grants.length === 0 ? <div className="pp-muted">None right now.</div> : (
+          <div className="pp-activity">
+            {grants.map((g) => (
+              <div key={g.user_id} className="pp-activity-item" style={{ alignItems: 'center' }}>
+                <div className="pp-avatar">{(g.name || g.email || '?')[0].toUpperCase()}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="pp-activity-text"><strong>{g.email}</strong> <PlanPill plan={g.plan} /></div>
+                  <div className="pp-activity-meta">{g.period_end ? `Ends ${when(g.period_end)}` : 'No end date'}</div>
+                </div>
+                <button className="btn btn-ghost pp-btn-sm" onClick={() => removeGrant(g)}>Back to Explorer</button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="pp-card">
-        <h3>2 · Give a plan</h3>
-        <p className="pp-sub">Works for any account. A plan bought in the app is never touched — the better of the two applies.</p>
+        <h3>Give a plan</h3>
+        <p className="pp-sub">Try any plan on any account, then reopen the app. A plan bought in the app is never touched.</p>
 
         <div className="pp-label">Account</div>
         <input className="form-input" list="pp-testers" type="email" placeholder="Email of the account" value={email}
-          onChange={(e) => setEmail(e.target.value)} style={{ width: 320 }} />
+          onChange={(e) => setEmail(e.target.value)} style={{ width: '100%' }} />
         <datalist id="pp-testers">{testers.map((t) => <option key={t} value={t} />)}</datalist>
 
         <div className="pp-label">Plan</div>
@@ -403,7 +595,7 @@ function TestTab({ s, save, notify, onChanged }) {
           {PLANS.map((p) => (
             <button key={p} className={`pp-choice ${plan === p ? 'active' : ''}`} onClick={() => setPlan(p)}>
               <div className="t"><span className="pp-swatch" style={{ background: PLAN[p].color }} />{PLAN[p].name}</div>
-              <div className="d">{p === 'explorer' ? 'Free plan — takes away a hand-given plan' : PLAN[p].price}</div>
+              <div className="d">{p === 'explorer' ? 'Back to free' : PLAN[p].price}</div>
             </button>
           ))}
         </div>
@@ -425,191 +617,6 @@ function TestTab({ s, save, notify, onChanged }) {
           </button>
         </div>
       </div>
-
-      <div className="pp-card">
-        <h3>Plans given by hand</h3>
-        {grants.length === 0 ? <div className="pp-empty">None right now.</div> : (
-          <div className="pp-activity">
-            {grants.map((g) => (
-              <div key={g.user_id} className="pp-activity-item" style={{ alignItems: 'center' }}>
-                <div className="pp-avatar">{(g.name || g.email || '?')[0].toUpperCase()}</div>
-                <div style={{ flex: 1 }}>
-                  <div className="pp-activity-text"><strong>{g.email}</strong> <PlanPill plan={g.plan} /></div>
-                  <div className="pp-activity-meta">{g.period_end ? `Ends ${when(g.period_end)}` : 'No end date'}</div>
-                </div>
-                <button className="btn btn-ghost" style={{ padding: '6px 12px', fontSize: 12 }}
-                  onClick={async () => {
-                    try {
-                      await apiFetch(`/admin/billing/grant/${g.user_id}`, { method: 'DELETE' });
-                      notify(`${g.email} is back on Explorer`);
-                      given.refetch();
-                      onChanged();
-                    } catch (e) { notify(e.message, 'error'); }
-                  }}>
-                  Back to Explorer
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/* ── Free map data ────────────────────────────────────────────────────── */
-
-const FREE_MODES = [
-  ['off', 'Off', 'Everyone uses Google, as before'],
-  ['test', 'Test accounts', 'Only the emails in “Test a plan”'],
-  ['on', 'On', 'All free users on the new app'],
-];
-
-function FreeDataCard({ s, save }) {
-  const st = useApi('/admin/billing/free-data');
-  const [version, setVersion] = useState(null);
-  const mode = s.free_data_layer || 'off';
-  const d = st.data || {};
-  const areas = d.areas || {};
-
-  const choose = async (m) => {
-    if (m === mode) return;
-    if (m === 'on' && !window.confirm('Turn free map data ON for all free users?\n\nFree users on the new app get Food, Shopping, Hotels, Medical and Hospital places from free map data, with no Google ratings. Paid users and older app versions are not affected. You can switch it Off at any time.')) return;
-    if (await save({ free_data_layer: m }, `Free map data: ${FREE_MODES.find(([k]) => k === m)[1]}`)) st.refetch();
-  };
-
-  return (
-    <div className={`pp-card pp-switch-card ${mode === 'off' ? 'off' : 'on'}`} style={{ alignItems: 'flex-start' }}>
-      <div style={{ flex: '1 1 320px' }}>
-        <h3>Free map data for free users</h3>
-        <p className="pp-sub" style={{ margin: '4px 0 10px' }}>
-          Food, Shopping, Hotels, Medical and Hospital places come from free map data (Overture, OpenStreetMap) instead of Google.
-          Sights stay on Google. Paid users and older app versions always use Google.
-        </p>
-        <div className="pp-row"><span>Areas downloaded</span><span>{areas.done ?? 0} ready · {areas.queued ?? 0} waiting{areas.importing ? ` · ${areas.importing} downloading` : ''}{areas.failed ? ` · ${areas.failed} failed` : ''}</span></div>
-        <div className="pp-row"><span>Places</span><span>{(d.places ?? 0).toLocaleString()} · {d.size_mb ?? 0} MB</span></div>
-        <div className="pp-row"><span>Geoapify today</span><span>{d.geoapify_credits_today ?? 0} of {d.geoapify_daily_cap ?? 2700} free requests</span></div>
-        <div className="pp-row" style={{ alignItems: 'center' }}>
-          <span>Oldest app version that gets it</span>
-          <span className="pp-num">
-            <input className="form-input" style={{ width: 90 }} value={version ?? s.free_data_min_app_version ?? ''}
-              onChange={(e) => setVersion(e.target.value)} />
-            {version !== null && version !== s.free_data_min_app_version && (
-              <button className="btn btn-ghost" onClick={async () => { if (await save({ free_data_min_app_version: version }, 'Version saved')) setVersion(null); }}>Save</button>
-            )}
-          </span>
-        </div>
-      </div>
-      <div className="segmented-tabs" role="radiogroup" aria-label="Free map data">
-        {FREE_MODES.map(([k, label, hint]) => (
-          <button key={k} role="radio" aria-checked={mode === k} title={hint}
-            className={`segmented-tab ${mode === k ? 'active' : ''}`} onClick={() => choose(k)}>
-            {label}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-/* ── Limits ───────────────────────────────────────────────────────────── */
-
-// [key, label, hint, kind]; kind: num | days | km | bands | usd | a key of TOGGLES
-const LIMIT_GROUPS = [
-  ['Odyssey trip planner', [
-    ['odyssey_per_period', 'Plans a month', 'Free plans reset on the 1st; paid on their billing day', 'num'],
-    ['odyssey_max_days', 'Longest trip', '', 'days'],
-    ['odyssey_lite', 'Ratings & opening hours', '“Hidden” = Lite plan', 'lite'],
-    ['odyssey_live_prices', 'Flight & hotel prices', '“Estimated” = no live price search', 'live'],
-    ['priority_queue', 'Priority queue', 'Plans start before others when it is busy', 'yesno'],
-  ]],
-  ['Neva', [
-    ['neva_per_day', 'Messages a day', 'Resets at midnight UTC', 'num'],
-  ]],
-  ['Where Should I Go', [
-    ['discover_per_month', 'Suggestions a month', '0 = unlimited; resets on the 1st', 'num'],
-  ]],
-  ['Map, Around You & AR', [
-    ['ar_radius_m', 'AR view range', 'Medical is never limited', 'km'],
-    ['nearby_max_radius_m', 'Around You / Discover reach', 'Medical / Hospital always full range', 'km'],
-    ['banded_max_bands', 'Around You distance bands', '3 = all bands', 'bands'],
-    ['map_day_usd', 'Live map data — per day', '0 = no daily limit', 'usd'],
-    ['map_month_usd', 'Live map data — per month', '0 = no monthly limit', 'usd'],
-    ['google_photos', 'Place photos', '“Saved only” = photos we already hold', 'photos'],
-  ]],
-];
-
-// Boolean limits: [label when true, label when false, true is the "good" state]
-const TOGGLES = {
-  lite: ['Hidden', 'Shown', false],
-  yesno: ['Yes', 'No', true],
-  live: ['Live', 'Estimated', true],
-  photos: ['All photos', 'Saved only', true],
-};
-
-function LimitsTab({ s, save }) {
-  const [form, setForm] = useState(null);
-  const [seen, setSeen] = useState(null);
-  if (s && s !== seen) {
-    setSeen(s);
-    setForm(JSON.parse(JSON.stringify(s.plan_limits || DOC_LIMITS)));
-  }
-  if (!form) return null;
-
-  const set = (p, k, v) => setForm((f) => ({ ...f, [p]: { ...f[p], [k]: v } }));
-
-  const cell = (p, k, kind) => {
-    const v = form[p]?.[k];
-    if (TOGGLES[kind]) {
-      const [onLabel, offLabel, onIsGood] = TOGGLES[kind];
-      const good = onIsGood ? !!v : !v;
-      return (
-        <button className={`pp-toggle ${good ? 'yes' : ''}`} onClick={() => set(p, k, !v)}>
-          {v ? onLabel : offLabel}
-        </button>
-      );
-    }
-    const unit = { days: 'days', km: 'km', bands: 'bands', usd: '$', num: '' }[kind];
-    const shown = kind === 'km' ? (v || 0) / 1000 : v;
-    return (
-      <span className="pp-num">
-        {kind === 'usd' && <em>$</em>}
-        <input className="form-input" type="number" min="0" step={kind === 'usd' ? '0.01' : kind === 'km' ? '0.5' : '1'}
-          value={shown ?? ''} onChange={(e) => {
-            const n = e.target.value === '' ? 0 : Number(e.target.value);
-            set(p, k, kind === 'km' ? Math.round(n * 1000) : n);
-          }} />
-        {unit && kind !== 'usd' && <em>{unit}</em>}
-      </span>
-    );
-  };
-
-  return (
-    <div className="pp-card">
-      <h3>What each plan allows</h3>
-      <p className="pp-sub">Change a number and press Save — the app follows within a minute, no app update needed.</p>
-      <div className="table-wrap">
-        <table className="pp-limits">
-          <thead>
-            <tr><th style={{ width: '34%' }} />{PLANS.map((p) => <th key={p}><PlanPill plan={p} /></th>)}</tr>
-          </thead>
-          <tbody>
-            {LIMIT_GROUPS.map(([group, rows]) => [
-              <tr key={group} className="group"><td colSpan={4}>{group}</td></tr>,
-              ...rows.map(([k, label, hint, kind]) => (
-                <tr key={k}>
-                  <td>{label}{hint && <span className="hint">{hint}</span>}</td>
-                  {PLANS.map((p) => <td key={p}>{cell(p, k, kind)}</td>)}
-                </tr>
-              )),
-            ])}
-          </tbody>
-        </table>
-      </div>
-      <div className="pp-actions">
-        <button className="btn btn-ghost" onClick={() => setForm(JSON.parse(JSON.stringify(DOC_LIMITS)))}>Reset to the packages document</button>
-        <button className="btn btn-primary" onClick={() => save({ plan_limits: form }, 'Limits saved')}>Save limits</button>
-      </div>
     </div>
   );
 }
@@ -622,6 +629,7 @@ function SetupTab({ s, save, notify }) {
   const [secret, setSecret] = useState('');
   const [hook, setHook] = useState('');
   const [minVersion, setMinVersion] = useState(s.min_app_version || '');
+  const [freeVersion, setFreeVersion] = useState(s.free_data_min_app_version || '');
 
   const checks = [
     ['App Store key (appl_…)', !!s.revenuecat_ios_key],
@@ -631,11 +639,11 @@ function SetupTab({ s, save, notify }) {
   ];
   const done = checks.filter(([, ok]) => ok).length;
 
-  const submit = async () => {
-    const body = { revenuecat_ios_key: ios.trim(), revenuecat_android_key: android.trim(), min_app_version: minVersion.trim() };
+  const saveKeys = async () => {
+    const body = { revenuecat_ios_key: ios.trim(), revenuecat_android_key: android.trim() };
     if (secret.trim()) body.revenuecat_api_key = secret.trim();
     if (hook.trim()) body.revenuecat_webhook_secret = hook.trim();
-    if (await save(body, 'Store setup saved')) {
+    if (await save(body, 'Store keys saved')) {
       setSecret('');
       setHook('');
     }
@@ -653,50 +661,66 @@ function SetupTab({ s, save, notify }) {
   return (
     <div className="pp-section">
       <div className="pp-card">
-        <h3>Connection to the stores · {done} of {checks.length} done</h3>
+        <div className="pp-card-head">
+          <h3>Connection to the stores</h3>
+          <span className={`pp-tag ${done === checks.length ? 'green' : 'yellow'}`}>{done} of {checks.length} done</span>
+        </div>
         <p className="pp-sub">Values come from RevenueCat (Project settings → API keys). Purchases work once all four are done.</p>
-        {checks.map(([label, ok]) => (
-          <div key={label} className="pp-check">
-            <div className="lbl"><span className={`pp-tick ${ok ? 'ok' : 'no'}`}>{ok ? '✓' : ''}</span>{label}</div>
-            <span className={`pp-tag ${ok ? 'green' : ''}`}>{ok ? 'Connected' : 'Not set'}</span>
-          </div>
-        ))}
-      </div>
+        <div className="pp-checks">
+          {checks.map(([label, ok]) => (
+            <div key={label} className="pp-check">
+              <div className="lbl"><span className={`pp-tick ${ok ? 'ok' : 'no'}`}>{ok ? '✓' : ''}</span>{label}</div>
+              <span className={`pp-tag ${ok ? 'green' : ''}`}>{ok ? 'Connected' : 'Not set'}</span>
+            </div>
+          ))}
+        </div>
 
-      <div className="pp-card">
-        <h3>Webhook address for RevenueCat</h3>
-        <p className="pp-sub">RevenueCat → Integrations → Webhooks: paste this address, and use the same password as below in “Authorization header”.</p>
+        <div className="pp-label">Webhook address (RevenueCat → Integrations → Webhooks)</div>
         <div className="pp-code">
           {WEBHOOK_URL}
-          <button className="btn btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }} onClick={copy}>Copy</button>
+          <button className="btn btn-ghost pp-btn-sm" onClick={copy}>Copy</button>
         </div>
-      </div>
 
-      <div className="pp-card">
-        <h3>Keys</h3>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '0 16px' }}>
-          <div className="form-group" style={{ marginBottom: 16 }}>
+        <div className="pp-label">Keys</div>
+        <div className="pp-form-grid">
+          <div className="form-group">
             <label className="form-label">App Store key (appl_…)</label>
             <input className="form-input" value={ios} onChange={(e) => setIos(e.target.value)} placeholder="appl_…" />
           </div>
-          <div className="form-group" style={{ marginBottom: 16 }}>
+          <div className="form-group">
             <label className="form-label">Google Play key (goog_…)</label>
             <input className="form-input" value={android} onChange={(e) => setAndroid(e.target.value)} placeholder="goog_…" />
           </div>
           <SecretField label="RevenueCat secret key (sk_…)" tag={s.revenuecat_api_key_set ? 'SET — leave empty to keep' : 'NOT SET'}
             value={secret} onChange={setSecret} placeholder="sk_…" />
           <SecretField label="Webhook password" tag={s.revenuecat_webhook_secret_set ? 'SET — leave empty to keep' : 'NOT SET'}
-            value={hook} onChange={setHook} placeholder="A long random password" />
+            value={hook} onChange={setHook} placeholder="Same as RevenueCat's Authorization header" />
         </div>
-
-        <div className="form-group" style={{ maxWidth: 340 }}>
-          <label className="form-label">Oldest app version allowed</label>
-          <input className="form-input" value={minVersion} onChange={(e) => setMinVersion(e.target.value)} placeholder="e.g. 1.0.18 — empty = no minimum" />
-          <span className="pp-muted">Older versions are asked to update. Set it on release day.</span>
-        </div>
-
         <div className="pp-actions">
-          <button className="btn btn-primary" onClick={submit}>Save store setup</button>
+          <button className="btn btn-primary" onClick={saveKeys}>Save keys</button>
+        </div>
+      </div>
+
+      <div className="pp-card">
+        <h3>App versions</h3>
+        <p className="pp-sub">Set these on release day.</p>
+        <div className="pp-form-grid">
+          <div className="form-group">
+            <label className="form-label">Oldest app version allowed</label>
+            <input className="form-input" value={minVersion} onChange={(e) => setMinVersion(e.target.value)} placeholder="e.g. 1.0.18 — empty = no minimum" />
+            <span className="pp-muted">Older versions are asked to update.</span>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Free map data needs version</label>
+            <input className="form-input" value={freeVersion} onChange={(e) => setFreeVersion(e.target.value)} placeholder="1.0.18" />
+            <span className="pp-muted">Older versions keep Google places.</span>
+          </div>
+        </div>
+        <div className="pp-actions">
+          <button className="btn btn-primary"
+            onClick={() => save({ min_app_version: minVersion.trim(), free_data_min_app_version: freeVersion.trim() }, 'App versions saved')}>
+            Save versions
+          </button>
         </div>
       </div>
     </div>
