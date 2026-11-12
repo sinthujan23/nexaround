@@ -41,6 +41,11 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
+          # Pinned 2026-11-12: Flutter 3.50.0 (new stable) pins test packages that
+          # clash with freezed 3.2.5 / bloc_test 10.0.0, so `pub get` fails.
+          # 3.47.9 built every release up to run #704. Raise it together with
+          # freezed, json_serializable, build_runner and bloc_test.
+          flutter-version: '3.47.9'
           cache: true
 
       - name: Install dependencies
