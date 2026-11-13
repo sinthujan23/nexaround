@@ -173,7 +173,13 @@ class _PlansPageState extends State<PlansPage> {
     ];
   }
 
-  /// Every row of the packages document, in its order and wording.
+  /// Every row of the packages document, in its order, plus two it leaves out:
+  /// museum guides and city guides. Neither has a limit on any plan, so both
+  /// read "Yes" everywhere; they are listed so a traveller comparing plans can
+  /// see they are not lost on the free one.
+  ///
+  /// The mood-based planner is the document's "Where Should I Go": one
+  /// feature, so one row carrying both names.
   List<(String, String)> _rows(String plan, Map<String, dynamic> l) {
     final explorer = plan == 'explorer';
     final odyssey = _n(l, 'odyssey_per_period', explorer ? 1 : (plan == 'voyager' ? 8 : 15));
@@ -195,9 +201,11 @@ class _PlansPageState extends State<PlansPage> {
       ('AR view range', explorer ? '$arKm km' : 'Up to $arKm km'),
       ('Around You / Discover distance',
           explorer ? 'Nearest 2 bands (up to 25 km)\nMedical / Hospital: full range' : 'All 3 bands (up to 50 km)'),
-      ('Where Should I Go suggestions', discover > 0 ? '$discover per month' : 'Unlimited'),
+      ('Mood-based planner (Where Should I Go)', discover > 0 ? '$discover per month' : 'Unlimited'),
       ('Place photos', photos ? 'All photos' : 'Saved photos only'),
       ('Live map data', explorer ? 'Small limit' : (plan == 'voyager' ? 'Higher limit' : 'Highest limit')),
+      ('Museum guides', 'Yes'),
+      ('City and region guides', 'Yes'),
       ('Journal, stories, forum, Experiences', 'Yes'),
       ('Plan queue (Odyssey)', l['priority_queue'] == true ? 'Priority' : 'Standard'),
     ];
@@ -507,7 +515,9 @@ class _PlansPageState extends State<PlansPage> {
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
       builder: (sheetContext) => SafeArea(
         top: false,
-        child: Padding(
+        // Scrolls, so the list still fits a short phone or large text now
+        // that it is two rows longer.
+        child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(22, 0, 22, 18),
           child: Column(
             mainAxisSize: MainAxisSize.min,
