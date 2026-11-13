@@ -31,6 +31,7 @@ import 'package:nexaround_app/features/notifications/presentation/pages/notifica
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
 import 'package:nexaround_app/features/living_map/presentation/pages/smart_tourism_map_page.dart';
+import 'package:nexaround_app/features/living_map/presentation/pages/explore_pin_page.dart';
 import 'package:nexaround_app/features/ar_mode/presentation/pages/ar_camera_page.dart';
 import 'package:nexaround_app/features/food_radar/presentation/pages/discover_page.dart';
 import 'package:nexaround_app/core/services/permission_service.dart';
@@ -1567,14 +1568,58 @@ class _LivingMapPageState extends State<LivingMapPage>
       );
   }
 
+  /// Shows, on a map, the point the nearby search will use, and lets the
+  /// traveller move it. [picked] is the search result to start from, or null
+  /// for "Choose on map", which starts from the centre already in use.
+  ///
+  /// Returns `{latitude, longitude, name, district}` once "Explore here" is
+  /// tapped, or null when the traveller backs out. Nothing is fetched here.
+  Future<Map<String, dynamic>?> _confirmCentreOnMap(Map? picked) async {
+    double? lat = (picked?['latitude'] as num?)?.toDouble();
+    double? lng = (picked?['longitude'] as num?)?.toDouble();
+    String? name = picked?['name'] as String?;
+    // A result whose coordinates never arrived comes back as 0,0. Start from
+    // the current centre instead, and drop the name: it belongs to a place the
+    // pin is not on.
+    if (lat == null || lng == null || (lat == 0.0 && lng == 0.0)) {
+      lat = _userLatitude;
+      lng = _userLongitude;
+      name = null;
+    }
+    if (!mounted) return null;
+    return Navigator.push<Map<String, dynamic>>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ExplorePinPage(
+          initialLatitude: lat,
+          initialLongitude: lng,
+          placeName: name,
+          district: name == null ? null : picked?['district'] as String?,
+        ),
+      ),
+    );
+  }
+
   void _showLocationSearchModal(BuildContext context) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       showDragHandle: false,
       backgroundColor: Colors.transparent,
-      builder: (context) => const LocationSearchModal(),
+      builder: (context) => const LocationSearchModal(offerChooseOnMap: true),
     ).then((result) async {
+      // A searched place, or "Choose on map": show the centre on a map first,
+      // where it can be moved. The phone's own position needs no confirming.
+      if (result == LocationSearchModal.chooseOnMap ||
+          (result is Map && result['from_gps'] != true)) {
+        result = await _confirmCentreOnMap(result is Map ? result : null);
+        if (result == null) {
+          // Backed out of the map: return to the search, not to a Home screen
+          // where the tap seemed to do nothing.
+          if (mounted) _showLocationSearchModal(this.context);
+          return;
+        }
+      }
       if (result != null && result is Map) {
         final double lat = result['latitude'];
         final double lng = result['longitude'];

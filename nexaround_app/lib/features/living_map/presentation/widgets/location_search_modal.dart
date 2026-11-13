@@ -46,6 +46,14 @@ class LocationSearchModal extends StatefulWidget {
   final String? title;
   final String? hintText;
 
+  /// Offer a "Choose on map" row, which closes the sheet with [chooseOnMap]
+  /// instead of a place. Only for a caller that can open a map to pick a
+  /// point on: the Home chip can, the Odyssey planner needs a city and cannot.
+  final bool offerChooseOnMap;
+
+  /// What the sheet closes with when "Choose on map" is tapped.
+  static const String chooseOnMap = 'choose_on_map';
+
   const LocationSearchModal({
     super.key,
     this.currentLatitude,
@@ -56,6 +64,7 @@ class LocationSearchModal extends StatefulWidget {
     this.countryOffersCities = false,
     this.title,
     this.hintText,
+    this.offerChooseOnMap = false,
   });
 
   @override
@@ -312,7 +321,9 @@ class _LocationSearchModalState extends State<LocationSearchModal> {
       await _saveRecentSearch(result);
 
       if (mounted) {
-        Navigator.pop(context, result);
+        // Marked as the phone's own position: it is exact already, so the
+        // Home chip does not ask for it to be confirmed on a map.
+        Navigator.pop(context, {...result, 'from_gps': true});
       }
     } catch (e) {
       debugPrint('Error getting current location: $e');
@@ -689,6 +700,33 @@ class _LocationSearchModalState extends State<LocationSearchModal> {
           ),
           onTap: _fetchAndSelectCurrentLocation,
         ),
+
+        if (widget.offerChooseOnMap)
+          ListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
+            leading: Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: AppColors.brandGreen.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.pin_drop_rounded, color: AppColors.brandGreen, size: 20),
+            ),
+            title: const Text(
+              'Choose on map',
+              style: TextStyle(
+                fontSize: 14.5,
+                fontWeight: FontWeight.w700,
+                color: AppColors.brandGreen,
+              ),
+            ),
+            subtitle: const Text(
+              'Move a pin to the exact spot you want to explore',
+              style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+            ),
+            onTap: () => Navigator.pop(context, LocationSearchModal.chooseOnMap),
+          ),
 
         if (_recentSearches.isNotEmpty) ...[
           const SizedBox(height: 8),

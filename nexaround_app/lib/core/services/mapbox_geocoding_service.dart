@@ -37,6 +37,61 @@ class MapboxGeocodingService {
     }
   }
 
+  /// The town or city at a point: `{name, region?}`, or null when Mapbox has
+  /// no answer.
+  ///
+  /// [reverseGeocode] names the smallest thing it can, a neighbourhood or a
+  /// street. This one names the city, for the Home chip after the traveller
+  /// has moved the pin away from the place they searched for.
+  static Future<Map<String, String>?> reverseCity(double lat, double lng) async {
+    if (_accessToken.isEmpty) return null;
+    try {
+      final response = await _dio.get(
+        '$_baseUrl/$lng,$lat.json',
+        queryParameters: {
+          'access_token': _accessToken,
+          'types': 'place,locality,district,region',
+          'language': 'en',
+        },
+      );
+
+      final features = (response.data['features'] as List?) ?? const [];
+      if (features.isEmpty) return null;
+
+      // A level is either a feature of its own or a line in the first
+      // feature's context ("place.123", "region.45").
+      String? textOf(String type) {
+        for (final f in features) {
+          final types = (f['place_type'] as List?) ?? const [];
+          final text = (f['text'] ?? '').toString().trim();
+          if (types.contains(type) && text.isNotEmpty) return text;
+        }
+        final context = (features.first['context'] as List?) ?? const [];
+        for (final c in context) {
+          final id = (c['id'] ?? '').toString();
+          final text = (c['text'] ?? '').toString().trim();
+          if (id.startsWith('$type.') && text.isNotEmpty) return text;
+        }
+        return null;
+      }
+
+      final name = textOf('place') ??
+          textOf('locality') ??
+          textOf('district') ??
+          textOf('region');
+      if (name == null) return null;
+
+      final region = textOf('region') ?? textOf('district');
+      return {
+        'name': name,
+        if (region != null && region != name) 'region': region,
+      };
+    } catch (e) {
+      debugPrint('Mapbox reverse city error: $e');
+      return null;
+    }
+  }
+
   /// Fetch nearby places from Mapbox (using Geocoding API as a discovery tool)
   /// Note: Mapbox doesn't have a direct "Nearby Search" like Google, 
   /// so we use category-based geocoding.
