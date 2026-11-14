@@ -105,9 +105,9 @@ class _ProfilePageState extends State<ProfilePage> {
                     _buildProfileHeader(context, user),
                     const SizedBox(height: 20),
 
-                    // Subscription plan (Explorer / Voyager / Globetrotter)
+                    // Subscription plan (Explorer / Voyager / Globetrotter).
+                    // Hidden while plan limits are off; it owns its own gap.
                     const MyPlanCard(),
-                    const SizedBox(height: 20),
 
                     // Stats row (Trips Completed & Favourite Places)
                     _buildStatsRow(),

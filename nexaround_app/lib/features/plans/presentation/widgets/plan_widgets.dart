@@ -189,22 +189,29 @@ class _MyPlanCardState extends State<MyPlanCard> {
     return ValueListenableBuilder<PlanStatus?>(
       valueListenable: PlanService.status,
       builder: (context, s, _) {
-        final name = s?.planName ?? 'Explorer';
-        final paid = s?.isPaid ?? false;
+        // Plans are only shown while plan limits apply to this user (Plan
+        // limits = Everyone, or a test account) or they already pay. In the
+        // temporary no-limit mode everyone else sees no packages at all, and
+        // switching limits on in the admin panel brings this card back
+        // without an app release. Owns its gap below, so a hidden card
+        // leaves none in Profile.
+        if (s == null || !(s.enforced || s.isPaid)) return const SizedBox.shrink();
+        final name = s.planName;
+        final paid = s.isPaid;
         String detail;
-        if (s == null) {
-          detail = 'See what each plan includes';
-        } else if (!s.enforced) {
+        if (!s.enforced) {
           detail = paid ? 'Thank you for subscribing' : 'Free plan';
         } else {
           detail = '${s.odysseyLeft} of ${s.odysseyPerPeriod} Odyssey plan'
               '${s.odysseyPerPeriod == 1 ? '' : 's'} left\n'
               '${s.nevaLeft} Neva messages today';
         }
-        if (s?.status == 'billing_issue') {
+        if (s.status == 'billing_issue') {
           detail = 'Payment problem: please update your payment method in the store';
         }
-        return GestureDetector(
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 20),
+          child: GestureDetector(
           onTap: () => PlansPage.open(context),
           child: Container(
             padding: const EdgeInsets.all(16),
@@ -239,6 +246,7 @@ class _MyPlanCardState extends State<MyPlanCard> {
                 Icon(Icons.chevron_right_rounded, color: paid ? Colors.white : AppColors.brandGreen),
               ],
             ),
+          ),
           ),
         );
       },

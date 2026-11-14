@@ -19,6 +19,7 @@ import 'package:nexaround_app/features/living_map/presentation/pages/google_maps
 import 'package:nexaround_app/features/ar_mode/presentation/pages/ar_camera_page.dart';
 import 'package:nexaround_app/core/services/google_places_service.dart';
 import 'package:nexaround_app/core/services/permission_service.dart';
+import 'package:nexaround_app/core/services/plan_service.dart';
 import 'package:nexaround_app/features/plans/presentation/pages/plans_page.dart';
 
 class AttractionDetailPage extends StatefulWidget {
@@ -249,6 +250,9 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Only while plan limits apply to this user; hidden in the
+          // temporary no-limit mode, like every other plan prompt.
+          if (PlanService.status.value?.enforced == true)
           GestureDetector(
             onTap: () => PlansPage.open(context),
             child: Container(

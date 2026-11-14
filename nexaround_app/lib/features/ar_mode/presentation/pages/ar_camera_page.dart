@@ -5843,20 +5843,22 @@ class _ArCameraPageState extends State<ArCameraPage>
                               children: [
                                 Row(
                                   children: [
-                                    const Icon(
-                                      Icons.star_rounded,
-                                      color: Colors.amber,
-                                      size: 13,
-                                    ),
-                                    const SizedBox(width: 3),
-                                    Text(
-                                      '${landmark.rating}',
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w800,
+                                    if (landmark.rating > 0) ...[
+                                      const Icon(
+                                        Icons.star_rounded,
+                                        color: Colors.amber,
+                                        size: 13,
                                       ),
-                                    ),
+                                      const SizedBox(width: 3),
+                                      Text(
+                                        '${landmark.rating}',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                    ],
                                   ],
                                 ),
                                 const SizedBox(height: 2),
@@ -6243,20 +6245,22 @@ class _ArCameraPageState extends State<ArCameraPage>
                                   const SizedBox(height: 6),
                                   Row(
                                     children: [
-                                      const Icon(
-                                        Icons.star_rounded,
-                                        color: Colors.amber,
-                                        size: 13,
-                                      ),
-                                      const SizedBox(width: 3),
-                                      Text(
-                                        '${pointedLandmark.rating}',
-                                        style: const TextStyle(
-                                          color: Colors.white60,
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w600,
+                                      if (pointedLandmark.rating > 0) ...[
+                                        const Icon(
+                                          Icons.star_rounded,
+                                          color: Colors.amber,
+                                          size: 13,
                                         ),
-                                      ),
+                                        const SizedBox(width: 3),
+                                        Text(
+                                          '${pointedLandmark.rating}',
+                                          style: const TextStyle(
+                                            color: Colors.white60,
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
                                       const SizedBox(width: 12),
                                       const Icon(
                                         Icons.straighten,
@@ -6754,20 +6758,22 @@ class _ArCameraPageState extends State<ArCameraPage>
                                 const SizedBox(height: 2),
                                 Row(
                                   children: [
-                                    const Icon(
-                                      Icons.star_rounded,
-                                      color: Colors.amber,
-                                      size: 10,
-                                    ),
-                                    const SizedBox(width: 2),
-                                    Text(
-                                      '${lm.rating}',
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 9,
-                                        fontWeight: FontWeight.w700,
+                                    if (lm.rating > 0) ...[
+                                      const Icon(
+                                        Icons.star_rounded,
+                                        color: Colors.amber,
+                                        size: 10,
                                       ),
-                                    ),
+                                      const SizedBox(width: 2),
+                                      Text(
+                                        '${lm.rating}',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 9,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ],
                                     Text(
                                       ' · ${lm.distance}',
                                       style: TextStyle(
@@ -8960,20 +8966,22 @@ HOW TO FORMAT EVERY REPLY:
                               const SizedBox(height: 10),
                               Row(
                                 children: [
-                                  const Icon(
-                                    Icons.star_rounded,
-                                    color: Colors.amber,
-                                    size: 14,
-                                  ),
-                                  const SizedBox(width: 3),
-                                  Text(
-                                    '${landmark.rating}',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w800,
+                                  if (landmark.rating > 0) ...[
+                                    const Icon(
+                                      Icons.star_rounded,
+                                      color: Colors.amber,
+                                      size: 14,
                                     ),
-                                  ),
+                                    const SizedBox(width: 3),
+                                    Text(
+                                      '${landmark.rating}',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ],
                                   const SizedBox(width: 4),
                                   Text(
                                     '($reviewCount)',
@@ -11549,20 +11557,22 @@ extension _ArCameraNavigation on _ArCameraPageState {
                             const SizedBox(height: 2),
                             Row(
                               children: [
-                                const Icon(
-                                  Icons.star_rounded,
-                                  color: Colors.amber,
-                                  size: 11,
-                                ),
-                                const SizedBox(width: 2),
-                                Text(
-                                  '${lm.rating}',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 9.5,
-                                    fontWeight: FontWeight.w800,
+                                if (lm.rating > 0) ...[
+                                  const Icon(
+                                    Icons.star_rounded,
+                                    color: Colors.amber,
+                                    size: 11,
                                   ),
-                                ),
+                                  const SizedBox(width: 2),
+                                  Text(
+                                    '${lm.rating}',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 9.5,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ],
                                 const SizedBox(width: 4),
                                 Text(
                                   '• ${lm.distance}',

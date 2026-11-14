@@ -540,8 +540,9 @@ class _ArViewState extends State<ArView> with TickerProviderStateMixin {
     final distance = state.detectedDistance;
 
     final pills = <_InfoPill>[
-      _InfoPill(Icons.star_rounded, 'Rating', '${place.rating}/5'),
-      _InfoPill(Icons.reviews_outlined, 'Reviews', '${place.reviewCount}'),
+      // A place nobody has rated yet (e.g. free map data) shows no "0/5".
+      if (place.rating > 0) _InfoPill(Icons.star_rounded, 'Rating', '${place.rating}/5'),
+      if (place.reviewCount > 0) _InfoPill(Icons.reviews_outlined, 'Reviews', '${place.reviewCount}'),
       _InfoPill(Icons.straighten_rounded, 'Distance', '${(distance / 1000).toStringAsFixed(1)} km'),
       if (place.categoryName != null)
         _InfoPill(Icons.category_outlined, 'Type', place.categoryName!),
@@ -1053,7 +1054,7 @@ class _ArViewState extends State<ArView> with TickerProviderStateMixin {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            '${point.rating} ⭐  ·  ${point.categoryName ?? 'Attraction'}',
+                            '${point.rating > 0 ? '${point.rating} ⭐  ·  ' : ''}${point.categoryName ?? 'Attraction'}',
                             style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
                           ),
                         ],

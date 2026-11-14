@@ -35,6 +35,8 @@ class PlaceRating extends StatelessWidget {
         ],
       );
     }
+    // A place nobody has rated yet shows nothing rather than "0.0".
+    if (place.rating <= 0) return const SizedBox.shrink();
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [

@@ -7487,21 +7487,15 @@ class _LivingMapPageState extends State<LivingMapPage>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    // Rating
-                    Row(
-                      children: [
-                        const Icon(Icons.star_rounded, color: AppColors.ratingGold, size: 12),
-                        const SizedBox(width: 2),
-                        Text(
-                          '${place.rating ?? 4.0}',
-                          style: const TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                          ),
-                        ),
-
-                      ],
+                    // Rating (none for places without one, e.g. free map data)
+                    PlaceRating(
+                      place: place,
+                      iconSize: 12,
+                      textStyle: const TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                      ),
                     ),
                     const SizedBox(height: 4),
                     // Title
