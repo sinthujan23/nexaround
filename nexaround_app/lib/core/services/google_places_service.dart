@@ -562,15 +562,42 @@ class GooglePlacesService {
           ? _decodePolyline(encoded)
           : <LatLng>[];
 
+      // Turn-by-turn steps (Google sends them with every route; no extra
+      // cost). Each step's instruction is the action at its start.
+      final steps = <Map<String, dynamic>>[];
+      for (final st in (leg['steps'] as List? ?? const [])) {
+        if (st is! Map) continue;
+        steps.add({
+          'instruction': _plainInstruction((st['html_instructions'] ?? '').toString()),
+          'maneuver': (st['maneuver'] ?? '').toString(),
+          'distance_m': ((st['distance'] as Map?)?['value'] as num?)?.toDouble() ?? 0.0,
+        });
+      }
+
       return {
         'polyline': points,
         'duration_seconds': durationSec,
         'distance_meters': distanceM,
+        'steps': steps,
       };
     } catch (e) {
       debugPrint('getDirections error: $e');
       return null;
     }
+  }
+
+  /// Google's step text without its HTML: "Turn <b>left</b> onto <b>X</b>
+  /// <div>Destination will be on the right</div>" → "Turn left onto X ·
+  /// Destination will be on the right".
+  static String _plainInstruction(String html) {
+    var t = html.replaceAll(RegExp(r'<div[^>]*>'), ' · ');
+    t = t.replaceAll(RegExp(r'<[^>]+>'), '');
+    t = t
+        .replaceAll('&nbsp;', ' ')
+        .replaceAll('&amp;', '&')
+        .replaceAll('&#39;', "'")
+        .replaceAll('&quot;', '"');
+    return t.replaceAll(RegExp(r'\s+'), ' ').trim();
   }
 
   /// Decodes a Google "encoded polyline" string into LatLng points so the route

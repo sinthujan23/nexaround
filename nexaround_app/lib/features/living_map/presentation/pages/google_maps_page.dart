@@ -10,7 +10,6 @@ import 'package:geolocator/geolocator.dart' as geo;
 import 'package:flutter_compass/flutter_compass.dart';
 import 'package:nexaround_app/core/services/google_places_service.dart';
 import 'package:nexaround_app/features/living_map/presentation/pages/smart_tourism_map_page.dart';
-import 'package:nexaround_app/core/services/cache_service.dart';
 
 class GoogleMapsPage extends StatefulWidget {
   final double initialLat;
@@ -66,6 +65,21 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
 
   // Current location label shown in the top bar.
   String _currentLocationName = 'Locating...';
+
+  // A steadier map (client report 2026-11-14: "the pin is elsewhere and the
+  // map keeps jumping, it doesn't stay still").
+  bool _didInitialFit = false; // the route is fitted to the screen only once
+  bool _followUser = true; // navigation camera follows until the user drags
+  DateTime _lastCameraMove = DateTime.fromMillisecondsSinceEpoch(0);
+
+  // Navigation along the drawn route (client video 2026-11-14).
+  List<Map<String, dynamic>> _steps = []; // Google's turn-by-turn steps
+  List<double> _routeCum = []; // metres from the route start to each point
+  double _routeLengthM = 0; // length of the drawn line
+  double _progressM = 0; // how far along the line the user is
+  LatLng? _snapped; // the user drawn on the line when within 30 m of it
+  int _offRouteCount = 0;
+  DateTime _lastReroute = DateTime.fromMillisecondsSinceEpoch(0);
 
   // Destination
   late double _destLat;
@@ -131,10 +145,17 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
   static BitmapDescriptor? _cachedWalkIcon;
 
   Future<void> _init() async {
-    // 1. Instantly read last known position (< 5ms)
+    // 1. The phone's last known position, but only when it is fresh and
+    //    precise. An old fix put the route start in the wrong place, and the
+    //    map jumped when the real GPS position arrived a moment later.
     try {
       final lastPos = await geo.Geolocator.getLastKnownPosition();
-      if (lastPos != null && mounted) {
+      final DateTime? fixedAt = lastPos?.timestamp;
+      if (lastPos != null &&
+          mounted &&
+          fixedAt != null &&
+          DateTime.now().difference(fixedAt).inMinutes < 2 &&
+          lastPos.accuracy <= 100) {
         setState(() {
           _userLat = lastPos.latitude;
           _userLng = lastPos.longitude;
@@ -142,23 +163,12 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
       }
     } catch (_) {}
 
-    if (_userLat == null || _userLng == null) {
-      if (widget.initialLat != 0.0 && widget.initialLng != 0.0) {
-        _userLat = widget.initialLat;
-        _userLng = widget.initialLng;
-      } else {
-        // Last place we actually saw the user, or nothing. Leaving these null
-        // is correct: the camera below falls back to a world view rather than
-        // asserting the user is in Colombo.
-        _userLat = CacheService.getLastFetchLat();
-        _userLng = CacheService.getLastFetchLng();
-      }
-    }
-
-    _addUserMarker();
+    // Never stand in for the user with the destination or an old location:
+    // without a fresh fix the route simply waits for the real GPS position
+    // (_refreshHighAccuracyLocation below).
     if (_destLat != 0.0 && _destLng != 0.0) {
       _addDestinationMarker();
-      _fetchRoute();
+      if (_userLat != null && _userLng != null) _fetchRoute();
     }
     _fabAnimController.forward();
 
@@ -168,29 +178,8 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
     });
     _refreshHighAccuracyLocation();
 
-    // Start compass listener to rotate the puck in real-time
-    _compassSub?.cancel();
-    _compassSub = FlutterCompass.events?.listen((event) {
-      final h = event.heading;
-      if (h == null || !mounted) return;
-      if (!_isNavigating) {
-        // Ignore sub-degree compass jitter, the same way the navigating
-        // listener below already does. The sensor fires 20-50x/sec and
-        // _addUserMarker() rebuilds the whole marker set and pushes it across
-        // the platform channel to the native Maps SDK on every event, so
-        // without this the map is doing tens of full marker updates per second
-        // while the user stands still. At 2 degrees the puck's outermost pixel
-        // moves well under 1px, so the rotation looks identical.
-        double d = (h - _navBearing).abs() % 360;
-        if (d > 180) d = 360 - d;
-        if (d < 2) return;
-
-        setState(() {
-          _navBearing = h;
-        });
-        _addUserMarker();
-      }
-    });
+    // No compass before navigation: the phone's own blue dot already shows
+    // where you face, and our pin is only drawn while navigating.
   }
 
   Future<void> _refreshHighAccuracyLocation() async {
@@ -209,21 +198,23 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
         });
         _addUserMarker();
 
+        if (!_isNavigating && !_routeLoaded && _destLat != 0.0 && _destLng != 0.0) {
+          // First real position: draw the route and fit it once.
+          _fetchRoute(fitCamera: !_didInitialFit);
+        }
         // Only reverse geocode if moved > 50m to conserve API costs
         if (distMoved > 50) {
           _resolveCurrentLocationName(pos.latitude, pos.longitude);
-          if (!_isNavigating && _destLat != 0.0 && _destLng != 0.0) {
-            _fetchRoute();
+          if (!_isNavigating && _routeLoaded && _destLat != 0.0 && _destLng != 0.0) {
+            // Redraw the line from the real position, but leave the camera
+            // where it is.
+            _fetchRoute(fitCamera: false);
           }
         }
       }
     } catch (_) {
-      if (_userLat == null && mounted) {
-        setState(() {
-          _userLat = CacheService.getLastFetchLat();
-          _userLng = CacheService.getLastFetchLng();
-        });
-      }
+      // No GPS fix: keep showing the destination rather than pretending the
+      // user is at an old location.
     }
   }
 
@@ -252,6 +243,15 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
   }
 
   void _addUserMarker() {
+    if (!_isNavigating) {
+      // Before navigation the phone's own blue dot shows where you are. A
+      // second pin of ours could sit on an older position ("the pin is
+      // elsewhere"), so none is drawn.
+      if (_markers.any((m) => m.markerId.value == 'user')) {
+        setState(() => _markers.removeWhere((m) => m.markerId.value == 'user'));
+      }
+      return;
+    }
     if (_userLat == null || _userLng == null) return;
     // Show a car (driving) or person (walking) puck that rotates to direction.
     final navIcon = _travelMode == 'walking' ? _walkIcon : _carIcon;
@@ -261,7 +261,8 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
       _markers.add(
         Marker(
           markerId: const MarkerId('user'),
-          position: LatLng(_userLat!, _userLng!),
+          // On the blue line when the GPS fix is within 30 m of it.
+          position: _snapped ?? LatLng(_userLat!, _userLng!),
           icon: navIcon ??
               BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
           rotation: _navBearing,
@@ -421,7 +422,7 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
     });
   }
 
-  Future<void> _fetchRoute() async {
+  Future<void> _fetchRoute({bool fitCamera = true}) async {
     if (_destLat == 0.0 || _destLng == 0.0) return;
     if (_userLat == null || _userLng == null) {
       try {
@@ -442,6 +443,9 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
         destLat: _destLat,
         destLng: _destLng,
         profile: _travelMode,
+        // From this very spot. The shared ~555 m grid could start the blue
+        // line half a kilometre away, so the car never sat on it.
+        exactOrigin: true,
       );
 
       if (result != null && mounted) {
@@ -486,13 +490,21 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
           _duration = _fmtDuration(durationSec);
           _distance = _fmtDistance(distanceM);
           _routeLoaded = true;
+          _steps = ((result['steps'] as List?) ?? const [])
+              .whereType<Map>()
+              .map((m) => Map<String, dynamic>.from(m))
+              .toList();
         });
-        _fitRouteBounds(points);
+        _indexRoute(points);
+        if (fitCamera || !_didInitialFit) {
+          _fitRouteBounds(points);
+          _didInitialFit = true;
+        }
       }
     } catch (e) {
       debugPrint('Google Maps route error: $e');
-      // Still show the map focused on destination
-      _animateCameraToDestination();
+      // Still show the map focused on destination (once; never yank it back)
+      if (!_didInitialFit) _animateCameraToDestination();
     }
   }
 
@@ -508,30 +520,25 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
     await _ensureVehicleIcons(); // car/person puck ready before we show it
     final me = LatLng(_userLat!, _userLng!);
     _navBearing = _bearingTo(me, LatLng(_destLat, _destLng));
+    _recomputeRemaining(me); // snaps to the line and sets the progress
+    if (_snapped != null) _navBearing = _routeBearingAt(_progressM);
     setState(() {
       _isNavigating = true;
       _arrived = false;
+      _followUser = true;
     });
-    _addUserMarker(); // swap blue pin → car/person immediately
-    _recomputeRemaining(me);
-    _updateNavCamera(); // snap into the close 3D follow view
+    _addUserMarker(); // the car/person puck, on the line
+    _updateNavCamera(force: true); // into the follow view
 
-    // Compass → rotate the map (and puck) to where the phone is pointing, even
-    // while standing still. This is the "heading-up" feel of Google Maps nav.
+    // No compass while navigating: the map faces along the route, so it no
+    // longer spins when the phone moves (client video: "this is on
+    // navigating"). The GPS position below moves it forward.
     _compassSub?.cancel();
-    _compassSub = FlutterCompass.events?.listen((event) {
-      final h = event.heading;
-      if (h == null || !mounted || !_isNavigating) return;
-      double d = (h - _navBearing).abs() % 360;
-      if (d > 180) d = 360 - d;
-      if (d < 3) return; // ignore tiny jitters to avoid camera spam
-      _navBearing = h;
-      _addUserMarker();
-      _updateNavCamera();
-    });
+    _compassSub = null;
 
-    // GPS → follow position. When clearly driving, prefer GPS course (smoother
-    // than the compass at speed); otherwise the compass drives the heading.
+    // GPS → follow position. On the route the map faces along it; off the
+    // route and moving, it faces the way we are going; three fixes more than
+    // 60 m off the line ask for a new route (at most every 30 s).
     _navSub?.cancel();
     _navSub = geo.Geolocator.getPositionStream(
       locationSettings: const geo.LocationSettings(
@@ -542,12 +549,16 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
       if (!mounted || !_isNavigating) return;
       _userLat = pos.latitude;
       _userLng = pos.longitude;
-      if (pos.speed > 2.0 && pos.heading >= 0 && !pos.heading.isNaN) {
+      _recomputeRemaining(LatLng(pos.latitude, pos.longitude));
+      if (_snapped != null) {
+        // On the route: face along it, like Google Maps.
+        _navBearing = _routeBearingAt(_progressM);
+      } else if (pos.speed > 2.0 && pos.heading >= 0 && !pos.heading.isNaN) {
+        // Off the route but moving: face the way we are going.
         _navBearing = pos.heading;
       }
       _addUserMarker();
       _updateNavCamera();
-      _recomputeRemaining(LatLng(pos.latitude, pos.longitude));
     });
   }
 
@@ -565,11 +576,16 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
   }
 
   // Re-apply the close follow camera at the user's current position + heading.
-  void _updateNavCamera() {
-    if (_userLat == null || _userLng == null) return;
+  // Not while the user is looking around (dragged the map), and at most a
+  // little over once a second so animations never pile up into a shake.
+  void _updateNavCamera({bool force = false}) {
+    if (_userLat == null || _userLng == null || !_followUser) return;
+    final now = DateTime.now();
+    if (!force && now.difference(_lastCameraMove).inMilliseconds < 800) return;
+    _lastCameraMove = now;
     _controller?.animateCamera(
       CameraUpdate.newCameraPosition(
-        _navCameraPosition(LatLng(_userLat!, _userLng!), _navBearing),
+        _navCameraPosition(_snapped ?? LatLng(_userLat!, _userLng!), _navBearing),
       ),
     );
   }
@@ -577,11 +593,13 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
   // A close, tilted, heading-up camera. The target is pushed ahead of the user
   // so the puck sits low and you see the road ahead — like Google Maps nav.
   CameraPosition _navCameraPosition(LatLng user, double bearing) {
+    // Zoomed out enough to see the next streets and the route ahead (the
+    // old 19.5 / 20 showed a single block, so the line was mostly off screen).
     final ahead =
-        _offsetAhead(user, bearing, _travelMode == 'walking' ? 18 : 45);
+        _offsetAhead(user, bearing, _travelMode == 'walking' ? 50 : 150);
     return CameraPosition(
       target: ahead,
-      zoom: _travelMode == 'walking' ? 20.0 : 19.5,
+      zoom: _travelMode == 'walking' ? 18.5 : 17.5,
       tilt: 0.0,
       bearing: bearing,
     );
@@ -598,33 +616,186 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
     return LatLng(from.latitude + dLat / rad, from.longitude + dLng / rad);
   }
 
-  // Remaining distance/time along the drawn route from the user's position.
+  // Remaining distance/time along the drawn route from the user's position,
+  // plus where the user sits on the line (for the car puck, the camera and the
+  // turn banner). Leaving the line for good asks for a new route.
   void _recomputeRemaining(LatLng user) {
-    final pts = _polylines.isEmpty ? <LatLng>[] : _polylines.first.points;
-    if (pts.isEmpty) return;
-    int nearest = 0;
-    double best = double.infinity;
-    for (int i = 0; i < pts.length; i++) {
-      final d = geo.Geolocator.distanceBetween(
-          user.latitude, user.longitude, pts[i].latitude, pts[i].longitude);
-      if (d < best) {
-        best = d;
-        nearest = i;
-      }
-    }
-    double remain = best;
-    for (int i = nearest; i < pts.length - 1; i++) {
-      remain += geo.Geolocator.distanceBetween(pts[i].latitude,
-          pts[i].longitude, pts[i + 1].latitude, pts[i + 1].longitude);
-    }
+    final snap = _snapToRoute(user);
+    if (snap == null) return;
+    final off = snap.dist;
+    final remain = (_routeLengthM - snap.along).clamp(0.0, double.infinity) +
+        (off > 30 ? off : 0.0);
     final speed = (_routeDurationSec > 0 && _routeDistanceM > 0)
         ? _routeDistanceM / _routeDurationSec
         : (_travelMode == 'walking' ? 1.4 : 11.0); // m/s fallback
     setState(() {
+      _progressM = snap.along;
+      _snapped = off <= 30 ? snap.point : null;
       _remainingDistanceM = remain;
       _remainingDurationSec = remain / (speed <= 0 ? 1 : speed);
       _arrived = remain < 25;
     });
+    _offRouteCount = off > 60 ? _offRouteCount + 1 : 0;
+    final now = DateTime.now();
+    if (_isNavigating &&
+        _offRouteCount >= 3 &&
+        now.difference(_lastReroute).inSeconds >= 30) {
+      _lastReroute = now;
+      _offRouteCount = 0;
+      _fetchRoute(fitCamera: false); // a new line from here, camera untouched
+    }
+  }
+
+  // Metres from the start of [pts] to each point, for projecting onto it.
+  void _indexRoute(List<LatLng> pts) {
+    final cum = <double>[0];
+    for (int i = 0; i < pts.length - 1; i++) {
+      cum.add(cum.last +
+          geo.Geolocator.distanceBetween(pts[i].latitude, pts[i].longitude,
+              pts[i + 1].latitude, pts[i + 1].longitude));
+    }
+    _routeCum = cum;
+    _routeLengthM = cum.isEmpty ? 0 : cum.last;
+  }
+
+  List<LatLng> get _routePoints =>
+      _polylines.isEmpty ? const <LatLng>[] : _polylines.first.points;
+
+  // The closest point on the drawn line to [p]: where it is, how far away,
+  // and how far along the line.
+  ({LatLng point, double dist, double along})? _snapToRoute(LatLng p) {
+    final pts = _routePoints;
+    if (pts.length < 2) return null;
+    if (_routeCum.length != pts.length) _indexRoute(pts);
+    const double r = 6371000.0;
+    final cosLat = math.cos(p.latitude * math.pi / 180);
+    double xOf(LatLng q) => q.longitude * math.pi / 180 * r * cosLat;
+    double yOf(LatLng q) => q.latitude * math.pi / 180 * r;
+    final px = xOf(p), py = yOf(p);
+    double bestD = double.infinity, bestAlong = 0;
+    LatLng bestPt = pts.first;
+    for (int i = 0; i < pts.length - 1; i++) {
+      final ax = xOf(pts[i]), ay = yOf(pts[i]);
+      final bx = xOf(pts[i + 1]), by = yOf(pts[i + 1]);
+      final dx = bx - ax, dy = by - ay;
+      final len2 = dx * dx + dy * dy;
+      double t = len2 == 0 ? 0 : ((px - ax) * dx + (py - ay) * dy) / len2;
+      t = t.clamp(0.0, 1.0);
+      final qx = ax + t * dx, qy = ay + t * dy;
+      final d = math.sqrt((px - qx) * (px - qx) + (py - qy) * (py - qy));
+      if (d < bestD) {
+        bestD = d;
+        bestAlong = _routeCum[i] + t * (_routeCum[i + 1] - _routeCum[i]);
+        bestPt = LatLng(
+          pts[i].latitude + t * (pts[i + 1].latitude - pts[i].latitude),
+          pts[i].longitude + t * (pts[i + 1].longitude - pts[i].longitude),
+        );
+      }
+    }
+    return (point: bestPt, dist: bestD, along: bestAlong);
+  }
+
+  // The point [along] metres from the start of the drawn line.
+  LatLng _pointAlong(double along) {
+    final pts = _routePoints;
+    if (pts.isEmpty) return LatLng(_destLat, _destLng);
+    if (_routeCum.length != pts.length) _indexRoute(pts);
+    if (along <= 0) return pts.first;
+    for (int i = 0; i < pts.length - 1; i++) {
+      if (_routeCum[i + 1] >= along) {
+        final seg = _routeCum[i + 1] - _routeCum[i];
+        final t = seg <= 0 ? 0.0 : (along - _routeCum[i]) / seg;
+        return LatLng(
+          pts[i].latitude + t * (pts[i + 1].latitude - pts[i].latitude),
+          pts[i].longitude + t * (pts[i + 1].longitude - pts[i].longitude),
+        );
+      }
+    }
+    return pts.last;
+  }
+
+  // Which way the route goes from [along]: towards a point 40 m further on.
+  double _routeBearingAt(double along) {
+    final a = _pointAlong(along);
+    final b = _pointAlong(math.min(along + 40, _routeLengthM));
+    final d = geo.Geolocator.distanceBetween(a.latitude, a.longitude, b.latitude, b.longitude);
+    return d < 3 ? _navBearing : _bearingTo(a, b);
+  }
+
+  // The next instruction from Google's steps, and how far until it. Steps are
+  // measured along the road; the drawn line is a little simplified, so the
+  // user's progress is scaled onto the steps' total.
+  ({String text, String maneuver, double inM})? _nextTurn() {
+    if (_steps.isEmpty || _routeLengthM <= 0) return null;
+    double stepM(Map<String, dynamic> st) => (st['distance_m'] as num?)?.toDouble() ?? 0.0;
+    final legTotal = _steps.fold<double>(0, (a, st) => a + stepM(st));
+    if (legTotal <= 0) return null;
+    final at = (_progressM / _routeLengthM).clamp(0.0, 1.0) * legTotal;
+    final arrive = 'Arrive at ${_destName ?? 'your destination'}';
+    double cum = 0;
+    for (int i = 0; i < _steps.length; i++) {
+      cum += stepM(_steps[i]);
+      if (cum > at) {
+        if (i + 1 < _steps.length) {
+          final next = _steps[i + 1];
+          final text = (next['instruction'] ?? '').toString();
+          return (
+            text: text.isEmpty ? 'Continue' : text,
+            maneuver: (next['maneuver'] ?? '').toString(),
+            inM: cum - at,
+          );
+        }
+        return (text: arrive, maneuver: 'arrive', inM: legTotal - at);
+      }
+    }
+    return (text: arrive, maneuver: 'arrive', inM: 0);
+  }
+
+  IconData _maneuverIcon(String m) {
+    switch (m) {
+      case 'turn-left':
+        return Icons.turn_left;
+      case 'turn-right':
+        return Icons.turn_right;
+      case 'turn-slight-left':
+      case 'keep-left':
+        return Icons.turn_slight_left;
+      case 'turn-slight-right':
+      case 'keep-right':
+        return Icons.turn_slight_right;
+      case 'turn-sharp-left':
+        return Icons.turn_sharp_left;
+      case 'turn-sharp-right':
+        return Icons.turn_sharp_right;
+      case 'uturn-left':
+        return Icons.u_turn_left;
+      case 'uturn-right':
+        return Icons.u_turn_right;
+      case 'roundabout-left':
+        return Icons.roundabout_left;
+      case 'roundabout-right':
+        return Icons.roundabout_right;
+      case 'fork-left':
+        return Icons.fork_left;
+      case 'fork-right':
+        return Icons.fork_right;
+      case 'ramp-left':
+        return Icons.ramp_left;
+      case 'ramp-right':
+        return Icons.ramp_right;
+      case 'merge':
+        return Icons.merge;
+      case 'arrive':
+        return Icons.place_rounded;
+      default:
+        return _travelMode == 'walking' ? Icons.directions_walk_rounded : Icons.straight;
+    }
+  }
+
+  // "200 m" / "1.2 km", rounded the way a driver reads it.
+  String _fmtTurnDistance(double m) {
+    if (m < 1000) return '${((m / 10).round() * 10).clamp(10, 990)} m';
+    return '${(m / 1000).toStringAsFixed(1)} km';
   }
 
   double _bearingTo(LatLng a, LatLng b) {
@@ -711,7 +882,13 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
       body: Stack(
         children: [
           // ── Google Map ──
-          GoogleMap(
+          // Dragging the map while navigating stops the follow camera until
+          // the user taps Re-centre.
+          Listener(
+            onPointerMove: (_) {
+              if (_isNavigating && _followUser) setState(() => _followUser = false);
+            },
+            child: GoogleMap(
             onMapCreated: _onMapCreated,
             initialCameraPosition: CameraPosition(
               target: LatLng(
@@ -740,6 +917,7 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
               top: topPad + 80,
               bottom: _isNavigating ? 170 : (_routeLoaded ? 220 : 0),
             ),
+          ),
           ),
 
           // ── Top Bar (search) — replaced by the nav banner while navigating ──
@@ -776,6 +954,48 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
               ),
           ],
 
+          // ── Re-centre (navigation, after the user dragged the map) ──
+          if (_isNavigating && !_followUser && !_searchFocusNode.hasFocus)
+            Positioned(
+              left: 16,
+              bottom: 190 + bottomPad,
+              child: GestureDetector(
+                onTap: () {
+                  setState(() => _followUser = true);
+                  _updateNavCamera(force: true);
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(24),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.18),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.navigation_rounded, size: 18, color: Color(0xFF1A3CD8)),
+                      SizedBox(width: 8),
+                      Text(
+                        'Re-centre',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF1A3CD8),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+
           // ── Right FAB Stack ──
           if (!_searchFocusNode.hasFocus)
             Positioned(
@@ -793,6 +1013,16 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
 
   // Top banner shown during live navigation (next-step style).
   Widget _buildNavBanner() {
+    final turn = _arrived ? null : _nextTurn();
+    final icon = _arrived
+        ? Icons.place_rounded
+        : (turn != null
+            ? _maneuverIcon(turn.maneuver)
+            : (_travelMode == 'walking' ? Icons.directions_walk_rounded : Icons.straight_rounded));
+    final top = _arrived
+        ? 'Arriving'
+        : (turn != null ? 'In ${_fmtTurnDistance(turn.inM)}' : 'Head to');
+    final main = _arrived ? (_destName ?? 'Destination') : (turn?.text ?? (_destName ?? 'Destination'));
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
@@ -808,47 +1038,34 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
       ),
       child: Row(
         children: [
-          Icon(
-            _travelMode == 'walking'
-                ? Icons.directions_walk_rounded
-                : Icons.straight_rounded,
-            color: Colors.white,
-            size: 30,
-          ),
+          Icon(icon, color: Colors.white, size: 34),
           const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  _arrived ? 'Arriving' : 'Head to',
+                  top,
                   style: TextStyle(
                     color: Colors.white.withValues(alpha: 0.85),
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.5,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.3,
                   ),
                 ),
+                const SizedBox(height: 2),
                 Text(
-                  _destName ?? 'Destination',
+                  main,
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 17,
+                    fontSize: 16,
                     fontWeight: FontWeight.w800,
+                    height: 1.25,
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                  maxLines: 3,
+                  softWrap: true,
                 ),
               ],
-            ),
-          ),
-          const SizedBox(width: 10),
-          Text(
-            _fmtDistance(_remainingDistanceM),
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 15,
-              fontWeight: FontWeight.w800,
             ),
           ),
         ],
@@ -1472,6 +1689,11 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
           icon: Icons.my_location_rounded,
           color: const Color(0xFF4285F4),
           onTap: () {
+            if (_isNavigating) {
+              setState(() => _followUser = true);
+              _updateNavCamera(force: true);
+              return;
+            }
             if (_userLat != null && _userLng != null) {
               _controller?.animateCamera(
                 CameraUpdate.newCameraPosition(
