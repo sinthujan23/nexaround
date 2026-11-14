@@ -267,6 +267,69 @@ class AttractionRepository:
         counts.update({status: n for status, n in rows})
         return counts
 
+    def _admin_map_where(
+        self, *, status: str, west: float, south: float, east: float, north: float, **filters
+    ) -> list:
+        """WHERE clauses for places of one status inside a map view."""
+        def inside(w: float, e: float):
+            return Attraction.location.op("&&")(func.ST_MakeEnvelope(w, south, e, north, 4326))
+
+        # A view that crosses the 180° line arrives with west > east.
+        box = inside(west, east) if west <= east else or_(inside(west, 180.0), inside(-180.0, east))
+        return [Attraction.status == status, box, *self._admin_filters(**filters)]
+
+    async def admin_map_count(self, **view) -> int:
+        return await self.db.scalar(
+            select(func.count()).select_from(Attraction).where(*self._admin_map_where(**view))
+        ) or 0
+
+    async def admin_map_points(self, *, limit: int, **view) -> list:
+        """Every place inside a map view: (id, name, address, category, lat, lng)."""
+        return (await self.db.execute(
+            select(
+                Attraction.id,
+                Attraction.name,
+                Attraction.address,
+                Category.name.label("category_name"),
+                func.ST_Y(Attraction.location).label("latitude"),
+                func.ST_X(Attraction.location).label("longitude"),
+            )
+            .select_from(Attraction)
+            .outerjoin(Category, Category.id == Attraction.category_id)
+            .where(*self._admin_map_where(**view))
+            .order_by(Attraction.id)
+            .limit(limit)
+        )).all()
+
+    async def admin_map_cells(self, *, cell_deg: float, limit: int, **view) -> list:
+        """The places inside a map view, grouped into grid cells.
+
+        Each row is one cell: how many places it holds and their average
+        position. The id/name/address/category are only meaningful when the
+        cell holds a single place.
+        """
+        count = func.count().label("count")
+        return (await self.db.execute(
+            select(
+                count,
+                func.avg(func.ST_Y(Attraction.location)).label("latitude"),
+                func.avg(func.ST_X(Attraction.location)).label("longitude"),
+                func.min(cast(Attraction.id, String)).label("id"),
+                func.min(Attraction.name).label("name"),
+                func.min(Attraction.address).label("address"),
+                func.min(Category.name).label("category_name"),
+            )
+            .select_from(Attraction)
+            .outerjoin(Category, Category.id == Attraction.category_id)
+            .where(*self._admin_map_where(**view))
+            .group_by(
+                func.floor(func.ST_X(Attraction.location) / cell_deg),
+                func.floor(func.ST_Y(Attraction.location) / cell_deg),
+            )
+            .order_by(count.desc())
+            .limit(limit)
+        )).all()
+
     async def count_pending_from_users(self) -> int:
         return await self.db.scalar(
             select(func.count()).select_from(Attraction).where(

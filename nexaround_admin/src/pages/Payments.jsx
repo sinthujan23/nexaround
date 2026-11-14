@@ -168,7 +168,7 @@ function Switches({ s, save }) {
           <span className="pp-switch-meta">
             {areas.done ?? 0} of {totalAreas} cities ready · {(d.places ?? 0).toLocaleString()} places
             {' · '}Geoapify {d.geoapify_credits_today ?? 0} of {d.geoapify_daily_cap ?? 2700} today
-            {' · '}app {s.free_data_min_app_version || '1.0.18'}+
+            {' · '}{['0', 'any'].includes(s.free_data_min_app_version) ? 'all app versions' : `app ${s.free_data_min_app_version || '1.0.18'}+`}
             {areas.failed ? ` · ${areas.failed} failed` : ''}
           </span>
         </div>
@@ -713,7 +713,7 @@ function SetupTab({ s, save, notify }) {
           <div className="form-group">
             <label className="form-label">Free map data needs version</label>
             <input className="form-input" value={freeVersion} onChange={(e) => setFreeVersion(e.target.value)} placeholder="1.0.18" />
-            <span className="pp-muted">Older versions keep Google places.</span>
+            <span className="pp-muted">Older versions keep Google places. 0 = every version, including the store app.</span>
           </div>
         </div>
         <div className="pp-actions">

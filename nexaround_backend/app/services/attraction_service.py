@@ -10,10 +10,13 @@ from app.models.analytics import PlaceVisit
 from app.models.attraction import Attraction
 from app.models.user import User
 from app.schemas.attraction import (
+    AdminMapCluster,
+    AdminMapPoint,
     AdminPlace,
     AdminPlaceCreate,
     AdminPlaceDetail,
     AdminPlaceList,
+    AdminPlaceMap,
     AdminPlaceUpdate,
     AdminPlaceUpdateResult,
     AttractionResponse,
@@ -36,6 +39,12 @@ from fastapi import HTTPException, status as http_status
 
 # Pending suggestions one app user may have waiting at once.
 MAX_PENDING_SUGGESTIONS_PER_USER = 20
+
+# Admin map: up to this many places in view are drawn one by one; more are
+# grouped into grid cells about this many screen pixels wide.
+ADMIN_MAP_MAX_PINS = 150
+ADMIN_MAP_CELL_PX = 80
+ADMIN_MAP_MAX_CELLS = 400
 
 
 class AttractionService:
@@ -261,6 +270,40 @@ class AttractionService:
             page=page,
             page_size=page_size,
             counts=PlaceStatusCounts(**counts),
+        )
+
+    async def admin_map(self, *, zoom: int, **view) -> AdminPlaceMap:
+        """The places inside one map view.
+
+        Few enough places are returned one by one. Otherwise they are grouped
+        into grid cells about ADMIN_MAP_CELL_PX wide on screen: a cell holding
+        one place is still a pin, a fuller cell is a count.
+        """
+        total = await self.repo.admin_map_count(**view)
+        if total <= ADMIN_MAP_MAX_PINS:
+            rows = await self.repo.admin_map_points(limit=ADMIN_MAP_MAX_PINS, **view)
+            return AdminPlaceMap(
+                total=total,
+                points=[AdminMapPoint(**r._mapping) for r in rows],
+                clusters=[],
+            )
+        cell_deg = 360.0 / (2 ** zoom) / 256.0 * ADMIN_MAP_CELL_PX
+        rows = await self.repo.admin_map_cells(
+            cell_deg=cell_deg, limit=ADMIN_MAP_MAX_CELLS, **view
+        )
+        return AdminPlaceMap(
+            total=total,
+            points=[
+                AdminMapPoint(
+                    id=r.id, name=r.name, latitude=r.latitude, longitude=r.longitude,
+                    address=r.address, category_name=r.category_name,
+                )
+                for r in rows if r.count == 1
+            ],
+            clusters=[
+                AdminMapCluster(latitude=r.latitude, longitude=r.longitude, count=r.count)
+                for r in rows if r.count > 1
+            ],
         )
 
     async def admin_counts(self) -> PlaceCountsResponse:

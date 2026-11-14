@@ -124,6 +124,30 @@ class AdminPlaceList(BaseModel):
     counts: PlaceStatusCounts
 
 
+class AdminMapPoint(BaseModel):
+    """One place drawn as a pin on the admin map."""
+    id: uuid.UUID
+    name: str
+    latitude: float
+    longitude: float
+    address: Optional[str] = None
+    category_name: Optional[str] = None
+
+
+class AdminMapCluster(BaseModel):
+    """Several places too close together to draw one by one."""
+    latitude: float
+    longitude: float
+    count: int
+
+
+class AdminPlaceMap(BaseModel):
+    """The places inside one map view: pins where they fit, counts where not."""
+    total: int
+    points: list[AdminMapPoint]
+    clusters: list[AdminMapCluster]
+
+
 class PlaceCountsResponse(PlaceStatusCounts):
     pending_user: int = 0
 

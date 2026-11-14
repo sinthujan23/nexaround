@@ -81,6 +81,8 @@ def test_version_gate():
     assert not sections.version_at_least("1.0.17", "1.0.18")
     assert not sections.version_at_least(None, "1.0.18")   # old builds send no version
     assert sections.version_at_least(None, "")             # no minimum set
+    assert sections.version_at_least(None, "0")            # "0" = every build
+    assert sections.version_at_least("1.0.16", "0")
 
 
 # ── Score ───────────────────────────────────────────────────────────────────

@@ -24,6 +24,7 @@ from app.schemas.attraction import (
     AdminPlaceCreate,
     AdminPlaceDetail,
     AdminPlaceList,
+    AdminPlaceMap,
     AdminPlaceUpdate,
     AdminPlaceUpdateResult,
     PlaceCountsResponse,
@@ -48,6 +49,35 @@ async def place_counts(
 ):
     """How many places are in each status — the sidebar badge and tab counts."""
     return await AttractionService(db).admin_counts()
+
+
+@router.get("/map", response_model=AdminPlaceMap)
+async def map_places(
+    west: float = Query(..., ge=-180, le=180),
+    south: float = Query(..., ge=-90, le=90),
+    east: float = Query(..., ge=-180, le=180),
+    north: float = Query(..., ge=-90, le=90),
+    zoom: int = Query(..., ge=0, le=22),
+    status_: StatusName = Query("live", alias="status"),
+    q: Optional[str] = Query(None, max_length=200),
+    source: Optional[SourceName] = None,
+    category_id: Optional[uuid.UUID] = None,
+    possible_duplicate: bool = False,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(verify_admin_token),
+):
+    """The places inside the map area being looked at, under the list's
+    filters — pins when few, counts per area when many. `west` greater than
+    `east` means the view crosses the 180° line."""
+    return await AttractionService(db).admin_map(
+        zoom=zoom,
+        status=status_,
+        west=west, south=south, east=east, north=north,
+        q=q,
+        source=source,
+        category_id=category_id,
+        possible_duplicate=possible_duplicate,
+    )
 
 
 @router.get("", response_model=AdminPlaceList)

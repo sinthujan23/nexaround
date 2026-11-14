@@ -119,8 +119,9 @@ def tiles_for_circle(lat: float, lng: float, radius_m: float) -> list[str]:
 
 
 def version_at_least(version: Optional[str], minimum: Optional[str]) -> bool:
-    """'1.0.18' >= '1.0.18'. No minimum set = everyone; no version = old build."""
-    if not minimum:
+    """'1.0.18' >= '1.0.18'. No minimum, or "0", = every build, including old
+    builds that send no version at all (the store app 1.0.16 sends none)."""
+    if not minimum or minimum.strip() in ("0", "any"):
         return True
     if not version:
         return False

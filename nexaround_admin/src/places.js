@@ -59,13 +59,18 @@ const REASON_TEXT = {
 
 export const reasonText = (code) => (code ? REASON_TEXT[code] || code.replace(/_/g, ' ') : '');
 
-export const listPlaces = (params) => {
+const queryString = (params) => {
   const qs = new URLSearchParams();
   Object.entries(params).forEach(([k, v]) => {
     if (v !== undefined && v !== null && v !== '' && v !== false) qs.set(k, String(v));
   });
-  return `/admin/attractions?${qs.toString()}`;
+  return qs.toString();
 };
+
+export const listPlaces = (params) => `/admin/attractions?${queryString(params)}`;
+
+/** The places inside one map view (`west`/`south`/`east`/`north`/`zoom`), under the list's filters. */
+export const mapPlaces = (params) => apiGet(`/admin/attractions/map?${queryString(params)}`);
 
 export const getPlace = (id) => apiGet(`/admin/attractions/${id}`);
 export const nearbyPlaces = (id, radius = 150) => apiGet(`/admin/attractions/${id}/nearby?radius_m=${radius}`);

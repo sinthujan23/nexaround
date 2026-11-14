@@ -11,7 +11,7 @@ import PlaceStatusDialog from '../components/PlaceStatusDialog';
 import { useToast } from '../hooks';
 import {
   SOURCE_LABELS, STATUS_DOT, STATUS_LABELS, createPlace, deletePlace, escapeHtml,
-  formToBody, formatDate, formatDateTime, formsDiffer, getPlace, listPlaces,
+  formToBody, formatDate, formatDateTime, formsDiffer, getPlace, listPlaces, mapPlaces,
   notifyPlacesChanged, placeToForm, reasonText, setPlaceStatus, updatePlace,
   usePlaceCounts, usePlacesChanged,
 } from '../places';
@@ -32,36 +32,160 @@ export function StatusLabel({ status }) {
   );
 }
 
-/** Leaflet map of the current page's places. */
-function PlacesMap({ places, focusId, onSelect }) {
+const MAP_RELOAD_MS = 250;
+
+const wrapLng = (lng) => ((((lng + 180) % 360) + 360) % 360) - 180;
+
+/** The map's visible area as the API expects it (west > east = across the 180° line). */
+function viewBox(bounds) {
+  const whole = bounds.getEast() - bounds.getWest() >= 360;
+  return {
+    west: whole ? -180 : wrapLng(bounds.getWest()),
+    east: whole ? 180 : wrapLng(bounds.getEast()),
+    south: Math.max(bounds.getSouth(), -90),
+    north: Math.min(bounds.getNorth(), 90),
+  };
+}
+
+const shortCount = (n) => (n < 1000 ? String(n) : `${(n / 1000).toFixed(n < 10000 ? 1 : 0)}k`);
+
+/** What a pin shows; a pin is redrawn when this changes. */
+const pinKey = (p) => `${p.name}|${p.latitude}|${p.longitude}|${p.address || p.category_name || ''}`;
+
+const popupHtml = (p) => (
+  `<strong>${escapeHtml(p.name)}</strong><br/><span style="font-size:11px;color:#5a6070">`
+  + `${escapeHtml(p.address || p.category_name || '')}</span>`
+  + '<br/><button type="button" class="map-popup-edit" data-edit>Edit</button>'
+);
+
+/**
+ * Leaflet map of the places. The current page's places are always pinned;
+ * every other place under the same filters is loaded for the area in view —
+ * as pins where they fit, as count bubbles where there are too many.
+ */
+function PlacesMap({ places, filters, focusId, listLoading, onSelect, onEdit }) {
   const mapRef = useRef(null);
-  const markersRef = useRef({});
+  const markersRef = useRef({});      // this page's pins, by place id
+  const areaPinsRef = useRef({});     // the other pins in view: { marker, key } by place id
+  const bubblesRef = useRef(null);    // layer of count bubbles
+  const areaRef = useRef(null);       // last answer for the area in view
+  const pageIdsRef = useRef('');
+  const requestRef = useRef(0);
+  const [areaLoading, setAreaLoading] = useState(false);
+  const [areaError, setAreaError] = useState(false);
 
   useEffect(() => {
-    if (!window.L) return;
-    if (!mapRef.current) {
-      const map = window.L.map('places-map', { zoomControl: true }).setView([7.8731, 80.7718], 7);
-      window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap contributors',
-      }).addTo(map);
-      mapRef.current = map;
-    }
+    if (!window.L) return undefined;
+    const map = window.L.map('places-map', { zoomControl: true }).setView([7.8731, 80.7718], 7);
+    window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap contributors',
+    }).addTo(map);
+    bubblesRef.current = window.L.layerGroup().addTo(map);
+    mapRef.current = map;
+    return () => {
+      requestRef.current += 1;
+      map.remove();
+      mapRef.current = null;
+      markersRef.current = {};
+      areaPinsRef.current = {};
+    };
+  }, []);
+
+  const addPin = useCallback((p) => {
+    const marker = window.L.marker([p.latitude, p.longitude]).addTo(mapRef.current);
+    marker.bindPopup(popupHtml(p));
+    marker.on('popupopen', (e) => {
+      const button = e.popup.getElement()?.querySelector('[data-edit]');
+      if (button) button.onclick = () => onEdit(p.id);
+    });
+    return marker;
+  }, [onEdit]);
+
+  /**
+   * Draw the last area answer, leaving out places the page already pins.
+   * A pin that left the view keeps its open popup while the map only moved;
+   * `dataChanged` (a place was edited, hidden…) clears those too.
+   */
+  const drawArea = useCallback((dataChanged = false) => {
     const map = mapRef.current;
+    if (!map) return;
+    const area = areaRef.current || { points: [], clusters: [] };
+    const wanted = new Map(
+      area.points.filter((p) => !markersRef.current[p.id]).map((p) => [p.id, p]),
+    );
+    Object.entries(areaPinsRef.current).forEach(([id, pin]) => {
+      const p = wanted.get(id);
+      if (p && pin.key === pinKey(p)) { wanted.delete(id); return; }
+      if (!p && !dataChanged && pin.marker.isPopupOpen()) return;
+      pin.marker.remove();
+      delete areaPinsRef.current[id];
+    });
+    wanted.forEach((p, id) => { areaPinsRef.current[id] = { marker: addPin(p), key: pinKey(p) }; });
+
+    bubblesRef.current.clearLayers();
+    area.clusters.forEach((c) => {
+      const size = c.count < 100 ? 34 : c.count < 1000 ? 40 : 46;
+      window.L.marker([c.latitude, c.longitude], {
+        icon: window.L.divIcon({
+          className: 'map-cluster-icon',
+          html: `<div class="map-cluster" style="width:${size}px;height:${size}px">${shortCount(c.count)}</div>`,
+          iconSize: [size, size],
+        }),
+        title: `${c.count.toLocaleString()} places here — click to zoom in`,
+      })
+        .on('click', () => map.setView([c.latitude, c.longitude], Math.min(map.getZoom() + 2, 18)))
+        .addTo(bubblesRef.current);
+    });
+  }, [addPin]);
+
+  const loadArea = useCallback((dataChanged = false) => {
+    const map = mapRef.current;
+    if (!map) return;
+    const request = ++requestRef.current;
+    setAreaLoading(true);
+    mapPlaces({ ...filters, ...viewBox(map.getBounds()), zoom: Math.round(map.getZoom()) })
+      .then((area) => {
+        if (request !== requestRef.current) return;
+        areaRef.current = area;
+        setAreaError(false);
+        drawArea(dataChanged);
+      })
+      .catch(() => { if (request === requestRef.current) setAreaError(true); })
+      .finally(() => { if (request === requestRef.current) setAreaLoading(false); });
+  }, [filters, drawArea]);
+
+  // Load the area's places when the map stops moving and when a filter changes.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return undefined;
+    let timer = null;
+    const schedule = () => { clearTimeout(timer); timer = setTimeout(() => loadArea(), MAP_RELOAD_MS); };
+    map.on('moveend', schedule);
+    schedule();
+    return () => { clearTimeout(timer); map.off('moveend', schedule); };
+  }, [loadArea]);
+
+  usePlacesChanged(() => loadArea(true));
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
     Object.values(markersRef.current).forEach((m) => m.remove());
     markersRef.current = {};
-    const bounds = [];
     places.forEach((p) => {
-      const marker = window.L.marker([p.latitude, p.longitude]).addTo(map);
-      marker.bindPopup(
-        `<strong>${escapeHtml(p.name)}</strong><br/><span style="font-size:11px;color:#5a6070">`
-        + `${escapeHtml(p.address || p.category_name || '')}</span>`,
-      );
+      const marker = addPin(p);
       marker.on('click', () => onSelect(p));
       markersRef.current[p.id] = marker;
-      bounds.push([p.latitude, p.longitude]);
     });
-    if (bounds.length) map.fitBounds(bounds, { padding: [30, 30], maxZoom: 14 });
-  }, [places, onSelect]);
+    drawArea();
+    // Move to the page's places only when the page itself changed, so a
+    // refresh does not pull the map away from the area being looked at.
+    const pageIds = places.map((p) => p.id).join(',');
+    if (pageIds && pageIds !== pageIdsRef.current) {
+      map.fitBounds(places.map((p) => [p.latitude, p.longitude]), { padding: [30, 30], maxZoom: 14 });
+    }
+    pageIdsRef.current = pageIds;
+  }, [places, onSelect, addPin, drawArea]);
 
   useEffect(() => {
     const marker = focusId && markersRef.current[focusId];
@@ -71,11 +195,22 @@ function PlacesMap({ places, focusId, onSelect }) {
     }
   }, [focusId]);
 
-  useEffect(() => () => {
-    if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; }
-  }, []);
-
-  return <div id="places-map" className="map-container" style={{ height: '520px' }} />;
+  return (
+    <>
+      {(listLoading || areaLoading) && (
+        <div className="map-buffering-badge">
+          <div className="loader loader-sm" />
+          <span>Syncing map pins…</span>
+        </div>
+      )}
+      {areaError && !listLoading && !areaLoading && (
+        <div className="map-buffering-badge" style={{ color: 'var(--danger, #c0392b)' }}>
+          <span>Could not load the pins for this area</span>
+        </div>
+      )}
+      <div id="places-map" className="map-container" style={{ height: '520px' }} />
+    </>
+  );
 }
 
 /** "Possible duplicate" places returned with a 409 or a save warning. */
@@ -349,6 +484,10 @@ export default function Places() {
   const filtered = search || source || categoryId || onlyDuplicates;
 
   const select = useCallback((p) => setFocusId(p.id), []);
+  const edit = useCallback((id) => setDrawer({ id }), []);
+  const mapFilters = useMemo(() => ({
+    status: tab, q: search, source, category_id: categoryId, possible_duplicate: onlyDuplicates,
+  }), [tab, search, source, categoryId, onlyDuplicates]);
 
   const changeTab = (t) => { setTab(t); setPage(1); setFocusId(null); };
   const setFilter = (setter) => (v) => { setter(v); setPage(1); };
@@ -518,13 +657,14 @@ export default function Places() {
 
         <div className="approvals-map-col">
           <div className="map-card" style={{ position: 'relative' }}>
-            {loading && (
-              <div className="map-buffering-badge">
-                <div className="loader loader-sm" />
-                <span>Syncing map pins…</span>
-              </div>
-            )}
-            <PlacesMap places={places} focusId={focusId} onSelect={select} />
+            <PlacesMap
+              places={places}
+              filters={mapFilters}
+              focusId={focusId}
+              listLoading={loading}
+              onSelect={select}
+              onEdit={edit}
+            />
           </div>
         </div>
       </div>
@@ -534,7 +674,7 @@ export default function Places() {
           placeId={drawer.id}
           categories={categories}
           onClose={() => setDrawer(null)}
-          onChanged={refetch}
+          onChanged={notifyPlacesChanged}
           notify={notify}
         />
       )}
