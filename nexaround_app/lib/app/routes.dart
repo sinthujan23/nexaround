@@ -11,6 +11,7 @@ import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
 import 'package:nexaround_app/core/utils/go_router_refresh_stream.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
+import 'package:nexaround_app/core/services/feature_tracker.dart';
 import 'package:nexaround_app/features/experiences/presentation/pages/experience_link_page.dart';
 import 'package:nexaround_app/features/forum/presentation/pages/forum_link_page.dart';
 
@@ -42,6 +43,7 @@ class AppRouter {
   static GoRouter createRouter(AuthBloc authBloc) {
     return GoRouter(
       navigatorKey: rootNavigatorKey,
+      observers: [FeatureTracker.routeObserver],
       initialLocation: '/',
       refreshListenable: GoRouterRefreshStream(authBloc.stream),
       redirect: (context, state) {

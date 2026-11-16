@@ -15,6 +15,7 @@ import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
 import 'package:nexaround_app/core/services/cloud_storage_service.dart';
 import 'package:nexaround_app/core/widgets/country_picker_sheet.dart';
 import 'package:nexaround_app/core/error/user_message.dart';
+import 'package:nexaround_app/core/services/feature_tracker.dart';
 
 class TravelJournalPage extends StatefulWidget {
   const TravelJournalPage({Key? key}) : super(key: key);
@@ -23,7 +24,11 @@ class TravelJournalPage extends StatefulWidget {
   State<TravelJournalPage> createState() => _TravelJournalPageState();
 }
 
-class _TravelJournalPageState extends State<TravelJournalPage> {
+class _TravelJournalPageState extends State<TravelJournalPage>
+    with TracksFeature<TravelJournalPage> {
+  @override
+  String get trackedFeature => AppFeature.travelJournal;
+
   final List<TravelStory> _journalEntries = [];
   bool _isLoading = false;
   String _selectedCountryFilter = 'Global';

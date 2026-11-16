@@ -12,6 +12,7 @@ import 'package:nexaround_app/features/city_tours/domain/city_tour.dart';
 import 'package:nexaround_app/features/city_tours/domain/city_tour_navigation.dart';
 import 'package:nexaround_app/features/city_tours/presentation/widgets/city_tour_widgets.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
+import 'package:nexaround_app/core/services/feature_tracker.dart';
 
 const _navy = Color(0xFF0F172A);
 const _slate = Color(0xFF64748B);
@@ -36,7 +37,11 @@ class CityTourNavigationPage extends StatefulWidget {
   State<CityTourNavigationPage> createState() => _CityTourNavigationPageState();
 }
 
-class _CityTourNavigationPageState extends State<CityTourNavigationPage> {
+class _CityTourNavigationPageState extends State<CityTourNavigationPage>
+    with TracksFeature<CityTourNavigationPage> {
+  @override
+  String get trackedFeature => AppFeature.cityGuides;
+
   // Further than this the traveller isn't on this ride: no route is bought.
   static const double _tooFarMetres = 150000;
   // A GPS fix worse than this moves the dot but decides nothing.

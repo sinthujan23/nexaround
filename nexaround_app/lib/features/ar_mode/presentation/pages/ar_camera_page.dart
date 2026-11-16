@@ -34,6 +34,7 @@ import 'package:nexaround_app/features/living_map/presentation/pages/google_maps
 import 'package:speech_to_text/speech_to_text.dart';
 import 'package:nexaround_app/features/attractions/presentation/pages/attraction_detail_page.dart';
 import 'package:nexaround_app/core/services/plan_service.dart';
+import 'package:nexaround_app/core/services/feature_tracker.dart';
 
 class ArCameraPage extends StatefulWidget {
   final Map<String, dynamic>? initialPlace;
@@ -9599,10 +9600,10 @@ HOW TO FORMAT EVERY REPLY:
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => AiChatPage(
+        builder: (_) => FeatureScreen(feature: AppFeature.neva, child: AiChatPage(
           initialPrompt: _askNevaPromptFor(result),
           placeContext: result,
-        ),
+        )),
       ),
     );
   }
@@ -9613,7 +9614,7 @@ HOW TO FORMAT EVERY REPLY:
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => AiChatPage(
+        builder: (_) => FeatureScreen(feature: AppFeature.neva, child: AiChatPage(
           initialPrompt: _elaboratePrompt(landmark.name, landmark.category),
           placeContext: {
             'name': landmark.name,
@@ -9621,7 +9622,7 @@ HOW TO FORMAT EVERY REPLY:
             'latitude': landmark.lat,
             'longitude': landmark.lng,
           },
-        ),
+        )),
       ),
     );
   }
@@ -9636,7 +9637,7 @@ HOW TO FORMAT EVERY REPLY:
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => AiChatPage(
+        builder: (_) => FeatureScreen(feature: AppFeature.neva, child: AiChatPage(
           placeContext: {
             'name': landmark.name,
             'category': landmark.category,
@@ -9645,7 +9646,7 @@ HOW TO FORMAT EVERY REPLY:
           },
           autoFetchCategoryId: categoryId,
           autoFetchCategoryLabel: prettyLabel,
-        ),
+        )),
       ),
     );
   }

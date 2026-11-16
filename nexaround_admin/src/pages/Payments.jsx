@@ -3,7 +3,7 @@ import { apiFetch, useApi } from '../api';
 import { useToast } from '../hooks';
 import { PageError, PageLoading, SecretField, Toast } from '../components/Kit';
 import {
-  AlertTriangleIcon, CheckIcon, CreditCardIcon, CrossIcon, EditIcon, MapPinIcon, RefreshIcon, ShieldIcon,
+  AlertTriangleIcon, CheckIcon, CreditCardIcon, CrossIcon, EditIcon, ImageIcon, MapPinIcon, RefreshIcon, ShieldIcon,
 } from '../components/Icons';
 import './Payments.css';
 
@@ -122,6 +122,11 @@ function Switches({ s, save }) {
   const totalAreas = (areas.done || 0) + (areas.queued || 0) + (areas.importing || 0) + (areas.failed || 0);
 
   const limitsMode = s.plans_enforce ? 'on' : 'test';
+  const detailsMode = s.free_data_google_details === false ? 'off' : 'on';
+  const perDay = Number(s.free_data_details_per_day ?? 5);
+  const [perDayDraft, setPerDayDraft] = useState(null);
+  const setDetails = (m) => save({ free_data_google_details: m === 'on' },
+    m === 'on' ? 'Google details on for free places' : 'Google details off for free places');
   const freeMode = s.free_data_layer || 'off';
 
   const setLimits = (m) => {
@@ -174,6 +179,32 @@ function Switches({ s, save }) {
         </div>
         <Choice value={freeMode} onChange={setFree}
           options={[['off', 'Off'], ['test', 'Test accounts only'], ['on', 'Everyone']]} />
+      </div>
+
+      <div className="pp-switch-row">
+        <div className={`pp-switch-icon ${detailsMode}`}><ImageIcon size={18} /></div>
+        <div className="pp-switch-text">
+          <b>Google details when a place is opened</b>
+          <span>
+            {detailsMode === 'on'
+              ? `Opening a free-map-data place also shows Google’s photo, opening hours and reviews, for up to ${perDay > 0 ? perDay : 'unlimited'} new places per user a day (about $0.008 each; places saved in the last 14 days and re-opens don’t count). After that: free information plus OpenStreetMap hours.`
+              : 'Free-map-data places show only what the free data has: name, address, phone, website, OpenStreetMap hours.'}
+          </span>
+          {detailsMode === 'on' && (
+            <span className="pp-num" style={{ marginTop: 6 }}>
+              <input className="form-input" type="number" min="0" max="100" style={{ width: 70 }}
+                value={perDayDraft ?? perDay} onChange={(e) => setPerDayDraft(e.target.value)} />
+              <em>new places per user a day (0 = no limit)</em>
+              {perDayDraft !== null && Number(perDayDraft) !== perDay && (
+                <button className="btn btn-ghost pp-btn-sm" onClick={async () => {
+                  if (await save({ free_data_details_per_day: Math.max(0, Math.min(100, Number(perDayDraft) || 0)) }, 'Daily number saved')) setPerDayDraft(null);
+                }}>Save</button>
+              )}
+            </span>
+          )}
+        </div>
+        <Choice value={detailsMode} onChange={setDetails}
+          options={[['off', 'Off'], ['on', 'On']]} />
       </div>
 
       <div className="pp-switches-foot">Test accounts are set in the <b>Testing</b> tab.</div>

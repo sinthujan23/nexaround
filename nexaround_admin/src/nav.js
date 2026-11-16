@@ -22,6 +22,7 @@ import CityTours, { CityTourQueue } from './pages/CityTours';
 import CityTourEditor from './pages/CityTourEditorLazy';
 import CityTourTaps from './pages/CityTourTaps';
 import CityTourCreators from './pages/CityTourCreators';
+import FeatureUsage from './pages/FeatureUsage';
 import { ADMIN, CREATOR } from './session';
 import {
   CompassIcon, UsersIcon, MapPinIcon, CreditCardIcon, MegaphoneIcon, ImageIcon, SettingsIcon,
@@ -44,6 +45,7 @@ export const NAV_SECTIONS = [
     label: 'Main Menu',
     items: [
       { path: '/dashboard', label: 'Dashboard', title: 'Dashboard Overview', icon: CompassIcon, page: Dashboard },
+      { path: '/feature-usage', label: 'Feature usage', title: 'Feature Usage', icon: TrendingUpIcon, page: FeatureUsage },
       { path: '/exclude-keywords', label: 'Exclude Keywords', title: 'Exclude Keywords (Around You)', icon: EyeOffIcon, page: ExcludeKeywords },
       { path: '/media', label: 'Media Library', title: 'Media Library', icon: ImageIcon, page: Media },
       { path: '/stories', label: 'TravelByte Stories', title: 'TravelByte Stories', icon: BookOpenIcon, page: OfficialStories },

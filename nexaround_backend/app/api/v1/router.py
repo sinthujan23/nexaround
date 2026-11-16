@@ -16,6 +16,7 @@ from app.api.v1.proxy import router as proxy_router
 from app.api.v1.notifications import router as notifications_router
 from app.api.v1.travel_stories import router as travel_stories_router
 from app.api.v1.travel_stories_admin import router as travel_stories_admin_router
+from app.api.v1.analytics import router as analytics_router
 from app.api.v1.discovery import router as discovery_router
 from app.api.v1.museums import router as museums_router
 from app.api.v1.experiences import router as experiences_router
@@ -68,5 +69,6 @@ api_router.include_router(fx_router)
 api_router.include_router(fx_admin_router)
 api_router.include_router(billing_router)
 api_router.include_router(billing_admin_router)
+api_router.include_router(analytics_router)
 api_router.include_router(ar_router, prefix="/ar", tags=["AR"])
 

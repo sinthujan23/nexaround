@@ -8,6 +8,7 @@ import 'package:nexaround_app/core/services/plan_service.dart';
 import 'package:nexaround_app/core/services/purchase_service.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:nexaround_app/core/services/feature_tracker.dart';
 
 /// One plan as the screen draws it. Limits come from the server's catalog;
 /// these are the parts that never change: name, label, photo and colour.
@@ -56,7 +57,11 @@ class PlansPage extends StatefulWidget {
   State<PlansPage> createState() => _PlansPageState();
 }
 
-class _PlansPageState extends State<PlansPage> {
+class _PlansPageState extends State<PlansPage>
+    with TracksFeature<PlansPage> {
+  @override
+  String get trackedFeature => AppFeature.subscriptionPlans;
+
   static const _termsUrl = 'https://app.nexaround.com/terms';
   static const _privacyUrl = 'https://app.nexaround.com/privacy';
 

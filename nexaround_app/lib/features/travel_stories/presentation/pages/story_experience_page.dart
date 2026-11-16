@@ -6,6 +6,7 @@ import '../../../experiences/presentation/widgets/experience_description.dart';
 import '../../data/datasources/travel_stories_service.dart';
 import '../../data/models/travel_story.dart';
 import '../widgets/official_story_widgets.dart';
+import 'package:nexaround_app/core/services/feature_tracker.dart';
 
 /// The long read behind an official story: its photos, the place, the intro
 /// from the card, then the sections written in the admin panel (light
@@ -23,7 +24,11 @@ class StoryExperiencePage extends StatefulWidget {
   State<StoryExperiencePage> createState() => _StoryExperiencePageState();
 }
 
-class _StoryExperiencePageState extends State<StoryExperiencePage> {
+class _StoryExperiencePageState extends State<StoryExperiencePage>
+    with TracksFeature<StoryExperiencePage> {
+  @override
+  String get trackedFeature => AppFeature.travelStories;
+
   // The photo header's height, as a share of the screen width.
   static const double _heroFraction = 0.9;
 

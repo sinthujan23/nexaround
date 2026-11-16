@@ -18,6 +18,7 @@ import 'package:nexaround_app/core/widgets/country_picker_sheet.dart';
 import 'package:nexaround_app/core/error/user_message.dart';
 import 'package:nexaround_app/features/planning/presentation/widgets/odyssey_disclaimer_sheet.dart';
 import 'package:nexaround_app/core/services/plan_service.dart';
+import 'package:nexaround_app/core/services/feature_tracker.dart';
 
 class OdysseyPlannerPage extends StatefulWidget {
   const OdysseyPlannerPage({super.key});
@@ -26,7 +27,11 @@ class OdysseyPlannerPage extends StatefulWidget {
   State<OdysseyPlannerPage> createState() => _OdysseyPlannerPageState();
 }
 
-class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
+class _OdysseyPlannerPageState extends State<OdysseyPlannerPage>
+    with TracksFeature<OdysseyPlannerPage> {
+  @override
+  String get trackedFeature => AppFeature.odysseyPlanner;
+
   // The backend generates the whole Odyssey (every day's activities) in one
   // Gemini call capped at 8192 output tokens. Beyond ~14 days that routinely
   // truncates mid-JSON and the Odyssey comes back as "failed", so trip length

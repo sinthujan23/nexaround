@@ -11,6 +11,7 @@ import 'package:nexaround_app/features/travel_stories/data/datasources/travel_st
 import 'package:nexaround_app/core/services/config_key_service.dart';
 import 'package:nexaround_app/core/services/notification_service.dart';
 import 'package:nexaround_app/core/services/session_tracker.dart';
+import 'package:nexaround_app/core/services/feature_tracker.dart';
 import 'package:nexaround_app/app/di/injection.dart';
 import 'package:nexaround_app/core/network/auth_token_cache.dart';
 import 'package:nexaround_app/core/services/meta_events_service.dart';
@@ -84,6 +85,8 @@ void main() async {
 
   // Start session tracking for real engagement metrics (DAU + avg session).
   SessionTracker.instance.start();
+  // Which features explorers look at (admin Feature usage page).
+  FeatureTracker.instance.start();
 
   // Initialize Meta (Facebook) App Events & install tracking.
   MetaEventsService.instance.init();

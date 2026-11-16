@@ -51,6 +51,10 @@ class SessionTracker with WidgetsBindingObserver {
   /// Storage work runs one job at a time, in the order it was asked for.
   Future<void> _queue = Future<void>.value();
 
+  /// The visit on screen now, or null while the app is in the background.
+  /// [FeatureTracker] files the features looked at under it.
+  String? get visitId => _visitId;
+
   /// Call once at startup. A visit starts once the app is on screen, so an
   /// app woken in the background (a push on iOS) records nothing.
   void start() {

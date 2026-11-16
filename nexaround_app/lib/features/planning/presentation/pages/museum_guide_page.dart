@@ -6,6 +6,7 @@ import 'package:nexaround_app/features/planning/domain/museum.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:nexaround_app/core/error/user_message.dart';
+import 'package:nexaround_app/core/services/feature_tracker.dart';
 
 /// Displays a curated, time-filtered itinerary for a single museum.
 ///
@@ -20,7 +21,11 @@ class MuseumGuidePage extends StatefulWidget {
   State<MuseumGuidePage> createState() => _MuseumGuidePageState();
 }
 
-class _MuseumGuidePageState extends State<MuseumGuidePage> {
+class _MuseumGuidePageState extends State<MuseumGuidePage>
+    with TracksFeature<MuseumGuidePage> {
+  @override
+  String get trackedFeature => AppFeature.museums;
+
   final _repo = MuseumRepository();
 
   List<String> _durations = ['3h', '5h', '1d', '2d'];

@@ -709,6 +709,31 @@ async def get_explorer_activity(
     )
 
 
+@router.get("/feature-usage")
+async def get_feature_usage(
+    days: int = Query(30, description="7, 30 or 90"),
+    db: AsyncSession = Depends(get_db),
+    _ = Depends(verify_admin_token)
+):
+    """Which app features explorers use, as unique explorers per Sri Lanka day,
+    for the Feature usage page. Totals only, no names.
+
+    Counts screens the app reported as looked at (feature_opens) and actions
+    explorers finished (plans, searches, messages, requests, posts); never raw
+    API requests. Active explorers follow the Users page's 30-second rule.
+    See app.services.feature_usage.
+    """
+    from app.services import feature_usage
+    if days not in (7, 30, 90):
+        raise HTTPException(status_code=422, detail="days must be 7, 30 or 90")
+    return await feature_usage.report(
+        db, days,
+        tz_name=DASHBOARD_TZ_NAME,
+        min_visit_seconds=ACTIVE_VISIT_SECONDS,
+        excluded_user_id=OFFICIAL_USER_ID,
+    )
+
+
 @router.get("/users")
 async def list_users(
     page: int = Query(1, ge=1),

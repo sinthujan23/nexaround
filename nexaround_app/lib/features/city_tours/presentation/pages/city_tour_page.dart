@@ -17,6 +17,7 @@ import 'package:nexaround_app/features/city_tours/presentation/widgets/city_tour
 import 'package:nexaround_app/features/experiences/presentation/pages/experience_link_page.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_description.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:nexaround_app/core/services/feature_tracker.dart';
 
 /// Opens a guide from its id alone (a trip reminder): from the device's copy
 /// when there is one, else after loading it.
@@ -72,7 +73,11 @@ class CityTourPage extends StatefulWidget {
   State<CityTourPage> createState() => _CityTourPageState();
 }
 
-class _CityTourPageState extends State<CityTourPage> {
+class _CityTourPageState extends State<CityTourPage>
+    with TracksFeature<CityTourPage> {
+  @override
+  String get trackedFeature => AppFeature.cityGuides;
+
   // The cover's height, as a share of the screen width.
   static const double _heroFraction = 0.62;
 

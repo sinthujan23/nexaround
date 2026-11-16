@@ -10,6 +10,7 @@ import 'package:geolocator/geolocator.dart' as geo;
 import 'package:flutter_compass/flutter_compass.dart';
 import 'package:nexaround_app/core/services/google_places_service.dart';
 import 'package:nexaround_app/features/living_map/presentation/pages/smart_tourism_map_page.dart';
+import 'package:nexaround_app/core/services/feature_tracker.dart';
 
 class GoogleMapsPage extends StatefulWidget {
   final double initialLat;
@@ -30,7 +31,10 @@ class GoogleMapsPage extends StatefulWidget {
 }
 
 class _GoogleMapsPageState extends State<GoogleMapsPage>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, TracksFeature<GoogleMapsPage> {
+  @override
+  String get trackedFeature => AppFeature.directions;
+
   GoogleMapController? _controller;
   final Set<Marker> _markers = {};
   final Set<Polyline> _polylines = {};

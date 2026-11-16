@@ -1605,6 +1605,102 @@ async def _google_place_id_for_local(attraction_id: str) -> Optional[str]:
     return resolved
 
 
+async def _free_place_page(place_id: str, free: dict) -> dict:
+    """A free-map-data place's page, with Google's photo, hours and reviews
+    when they are free (already in our 14-day cache) or the user still has
+    one of today's allowance (5 new places a day by default; re-opening one
+    does not count). Otherwise the free copy, with OpenStreetMap opening hours
+    where they exist."""
+    from app.core import request_context
+    from app.services import plan_service
+    try:
+        gid = await _resolve_by_name(
+            free.get("name"), free.get("latitude"), free.get("longitude"),
+        )
+        if gid and (
+            await _details_cached(gid)
+            or await _take_details_slot(
+                request_context.current_user_id(), place_id,
+                await plan_service.free_data_details_per_day(),
+            )
+        ):
+            google = await get_place_details(gid)
+            if google:
+                return _merge_free_and_google(free, google)
+    except Exception as e:
+        print(f"⚠️ Google details for free place {place_id} failed: {e}")
+    return await _with_osm_hours(free)
+
+
+async def _details_cached(google_place_id: str) -> bool:
+    try:
+        return bool(await place_cache_service.get_raw(f"places:details:{google_place_id}"))
+    except Exception:
+        return False
+
+
+async def _take_details_slot(user_id, place_id: str, per_day: int) -> bool:
+    """One of today's Google-details places for this user (UTC day). The
+    same place again is free; 0 = no limit."""
+    if per_day <= 0:
+        return True
+    if not user_id:
+        return False
+    try:
+        r = telemetry._get_redis()
+        key = f"fd:gd:{user_id}:{datetime.now(timezone.utc).strftime('%Y%m%d')}"
+        if await r.sismember(key, place_id):
+            return True
+        if await r.scard(key) >= per_day:
+            return False
+        await r.sadd(key, place_id)
+        await r.expire(key, 2 * 86400)
+        return True
+    except Exception:
+        return False
+
+
+async def _with_osm_hours(free: dict) -> dict:
+    """Opening hours from OpenStreetMap (Geoapify, free) when we have none."""
+    from app.services.open_data import geoapify_places, osm_hours
+    from app.services.settings_service import SettingsService
+    out = dict(free)
+    raw = (out.get("weekday_hours") or [None])[0]
+    if not raw:
+        try:
+            async with async_session() as db:
+                svc = SettingsService(db)
+                await svc.load_settings()
+                key = await svc.get_setting("geoapify_api_key")
+            raw = await geoapify_places.opening_hours(
+                key or "", out.get("name") or "",
+                float(out.get("latitude") or 0), float(out.get("longitude") or 0),
+            )
+        except Exception:
+            raw = None
+    if raw:
+        out["weekday_hours"] = osm_hours.to_weekday_lines(raw) or [raw]
+    return out
+
+
+def _merge_free_and_google(free: dict, google: dict) -> dict:
+    """Google's photo, hours, reviews and rating on our free place: our id stays
+    (favourites, the app's free-place checks), our phone / website / address
+    fill what Google's answer leaves out."""
+    out = dict(google)
+    out["google_place_id"] = google.get("id")
+    out["id"] = free["id"]
+    out["place_id"] = free["id"]
+    for k in ("phone", "website", "category_name", "popularity_label"):
+        if free.get(k) and not out.get(k):
+            out[k] = free[k]
+    if not out.get("address"):
+        out["address"] = free.get("address") or ""
+    out["data_source"] = "open"
+    out["credit"] = None  # the content shown is Google's now
+    return out
+
+
 async def _resolve_by_name(
     name: Optional[str],
     latitude: Optional[float],
@@ -1763,10 +1859,16 @@ async def get_place_details(
     `name`/`latitude`/`longitude` are resolution hints for callers holding an
     identifier that is not a Google Place ID and not one of our rows either.
     """
-    from app.services import open_places_service
+    from app.services import open_places_service, plan_service
     if open_places_service.is_open_id(place_id):
-        # Free map data: answered from our copy, never from Google.
-        return await open_places_service.details(place_id)
+        # Free map data. Temporary (2026-11-16, TL): while the switch is on,
+        # the place page also gets Google's photo, hours and reviews, found by
+        # name within 200 m; our phone / website fill Google's gaps. Not found
+        # on Google, or switched off: our free copy alone.
+        free = await open_places_service.details(place_id)
+        if free is None or not await plan_service.free_data_google_details():
+            return free
+        return await _free_place_page(place_id, free)
 
     clean_id = place_id.replace("places/", "")
 

@@ -18,6 +18,7 @@ import '../widgets/story_photo_preview.dart';
 import '../../../../features/living_map/presentation/pages/smart_tourism_map_page.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/core/error/user_message.dart';
+import 'package:nexaround_app/core/services/feature_tracker.dart';
 
 class TravelStoriesPage extends StatefulWidget {
   final List<TravelStory> stories;
@@ -42,7 +43,11 @@ class TravelStoriesPage extends StatefulWidget {
   State<TravelStoriesPage> createState() => _TravelStoriesPageState();
 }
 
-class _TravelStoriesPageState extends State<TravelStoriesPage> {
+class _TravelStoriesPageState extends State<TravelStoriesPage>
+    with TracksFeature<TravelStoriesPage> {
+  @override
+  String get trackedFeature => AppFeature.travelStories;
+
   late PageController _pageController;
   late int _currentIndex;
   final TextEditingController _commentController = TextEditingController();

@@ -9,6 +9,7 @@ import 'package:nexaround_app/features/planning/presentation/widgets/odyssey_pla
 import 'package:nexaround_app/features/planning/presentation/pages/history_page.dart';
 import 'package:nexaround_app/core/error/user_message.dart';
 import 'package:nexaround_app/core/services/plan_service.dart';
+import 'package:nexaround_app/core/services/feature_tracker.dart';
 
 /// Read-only view of a saved Odyssey, with the option to delete it.
 class OdysseyDetailPage extends StatefulWidget {
@@ -24,7 +25,11 @@ class OdysseyDetailPage extends StatefulWidget {
   State<OdysseyDetailPage> createState() => _OdysseyDetailPageState();
 }
 
-class _OdysseyDetailPageState extends State<OdysseyDetailPage> {
+class _OdysseyDetailPageState extends State<OdysseyDetailPage>
+    with TracksFeature<OdysseyDetailPage> {
+  @override
+  String get trackedFeature => AppFeature.plans;
+
   final _repo = OdysseyRepository();
   bool _deleting = false;
   bool _loadingFresh = false;

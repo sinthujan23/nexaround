@@ -11,6 +11,7 @@ import 'package:nexaround_app/features/city_tours/domain/city_tour.dart';
 import 'package:nexaround_app/features/city_tours/presentation/pages/city_tour_page.dart';
 import 'package:nexaround_app/features/city_tours/presentation/pages/city_tours_classic_page.dart';
 import 'package:nexaround_app/features/city_tours/presentation/widgets/city_tour_widgets.dart';
+import 'package:nexaround_app/core/services/feature_tracker.dart';
 
 /// The City Guides tab's home: "Where to next?", then big photo cards
 /// of the three newest guides that play by themselves (until the traveller
@@ -79,7 +80,15 @@ void _openCityPage(BuildContext context, CityTourCity city) {
   Navigator.push(context, MaterialPageRoute(builder: (_) => CityTourListPage(city: city)));
 }
 
-class _CityToursPageState extends State<CityToursPage> {
+class _CityToursPageState extends State<CityToursPage>
+    with TracksFeature<CityToursPage> {
+  @override
+  String get trackedFeature => AppFeature.cityGuides;
+
+  // As the City Guides tab, the home page reports it.
+  @override
+  bool get featureTracked => !widget.isTab;
+
   final _service = CityToursService();
   final TextEditingController _searchController = TextEditingController();
   final PageController _pages = PageController(initialPage: _loopStart);

@@ -539,6 +539,8 @@ class PlanSettings(BaseModel):
     # that gets it (older builds show "0.0" for places without ratings).
     free_data_layer: str = "off"
     free_data_min_app_version: str = ""
+    free_data_google_details: bool = True
+    free_data_details_per_day: int = 5
 
 
 class PlanSettingsUpdate(BaseModel):
@@ -552,6 +554,8 @@ class PlanSettingsUpdate(BaseModel):
     revenuecat_android_key: Optional[str] = Field(None, max_length=200)
     free_data_layer: Optional[str] = Field(None, pattern=r"^(off|test|on)$")
     free_data_min_app_version: Optional[str] = Field(None, max_length=20, pattern=r"^(\d+(\.\d+){0,3})?$")
+    free_data_google_details: Optional[bool] = None
+    free_data_details_per_day: Optional[int] = Field(None, ge=0, le=100)
 
 
 async def _read_settings(svc: SettingsService) -> PlanSettings:
@@ -567,6 +571,8 @@ async def _read_settings(svc: SettingsService) -> PlanSettings:
         revenuecat_android_key=await svc.get_setting_fresh(K_ANDROID_KEY, ""),
         free_data_layer=cfg.get("free_data", "off"),
         free_data_min_app_version=cfg.get("free_data_min_version", ""),
+        free_data_google_details=bool(cfg.get("free_data_details", True)),
+        free_data_details_per_day=int(cfg.get("free_data_details_per_day", 5)),
     )
 
 
@@ -606,6 +612,14 @@ async def update_plan_settings(
         await svc.set_setting(plan_service.K_FREE_DATA_MIN_VERSION,
                               data.free_data_min_app_version.strip(),
                               "Oldest app build that gets free map data")
+    if data.free_data_details_per_day is not None:
+        await svc.set_setting(plan_service.K_FREE_DATA_DETAILS_PER_DAY,
+                              str(data.free_data_details_per_day),
+                              "New free places a user may open with Google details per day (0 = no limit)")
+    if data.free_data_google_details is not None:
+        await svc.set_setting(plan_service.K_FREE_DATA_DETAILS,
+                              "on" if data.free_data_google_details else "off",
+                              "Google photo / hours / reviews when a free place is opened")
     if data.revenuecat_webhook_secret is not None:
         await svc.set_setting(K_WEBHOOK_SECRET, data.revenuecat_webhook_secret.strip(),
                               "RevenueCat webhook Authorization header value")

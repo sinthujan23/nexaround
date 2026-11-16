@@ -4406,3 +4406,74 @@ a.btn { text-decoration: none; }
   .aud-table tr.aud-detail-row { display: block; }
   .aud-table tr.aud-detail-row td { display: block; padding: 4px 2px 16px; }
 }
+
+/* Feature usage page (pages/FeatureUsage.jsx). Reuses the Users page's
+   .activity-kpi tiles and .activity-chart columns. */
+.fu-toolbar { justify-content: flex-start; }
+.fu-range { font-size: 12px; color: var(--text-secondary); }
+.fu-toolbar-right { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+.fu-error { color: var(--danger); font-size: 12px; }
+.fu-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.fu-notice {
+  display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; margin-bottom: 18px;
+  border-radius: 12px; background: var(--accent-light); color: var(--text-primary); font-size: 13px; line-height: 1.5;
+}
+.fu-notice svg { color: var(--accent); flex-shrink: 0; margin-top: 2px; }
+.fu-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 20px; align-items: start; }
+.fu-card { padding: 20px; min-width: 0; margin-bottom: 20px; }
+/* The trend stays in view beside a long ranking, so picking a lower row shows its chart. */
+.fu-sticky { position: sticky; top: calc(var(--header-h) + 16px); }
+.fu-card-head { margin-bottom: 12px; }
+.fu-card-head h2 { margin: 0; font-size: 16px; font-weight: 800; color: var(--text-primary); }
+.fu-card-head p { margin: 2px 0 0; font-size: 12px; color: var(--text-secondary); }
+
+.fu-rank { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.fu-rank-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "name value" "track track" "meta meta";
+  gap: 5px 12px; width: 100%; padding: 9px 10px; border: 0; border-radius: 10px;
+  background: transparent; text-align: left; cursor: pointer; font: inherit; color: inherit;
+}
+.fu-rank-row:hover { background: rgba(0, 122, 124, 0.05); }
+.fu-rank-row.selected { background: var(--accent-light); box-shadow: inset 3px 0 0 var(--accent); }
+.fu-rank-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.fu-rank-name { grid-area: name; font-size: 13.5px; font-weight: 700; color: var(--text-primary); }
+.fu-rank-value { grid-area: value; display: flex; align-items: baseline; gap: 6px; }
+.fu-rank-value strong { font-size: 15px; font-weight: 800; color: var(--text-primary); }
+.fu-rank-value small { font-size: 11.5px; color: var(--text-secondary); min-width: 34px; text-align: right; }
+.fu-rank-track { grid-area: track; display: block; height: 8px; border-radius: 4px; background: #eef3f3; overflow: hidden; }
+.fu-rank-bar { display: block; height: 100%; background: var(--accent); border-radius: 0 4px 4px 0; }
+.fu-rank-meta { grid-area: meta; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: 11.5px; color: var(--text-secondary); }
+.fu-change { font-size: 11px; font-weight: 700; color: var(--text-secondary); }
+.fu-change.up { color: #00676a; }
+.fu-change.down { color: var(--danger); }
+
+.fu-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.fu-table th {
+  text-align: left; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px;
+  color: var(--text-secondary); padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap;
+}
+.fu-table td { padding: 8px 10px; border-bottom: 1px solid #f1f3f7; color: var(--text-primary); }
+.fu-table tr:last-child td { border-bottom: 0; }
+.fu-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.fu-table .muted { color: var(--text-secondary); font-size: 12px; }
+.fu-table-toggle { margin-top: 14px; }
+.fu-table-toggle summary { cursor: pointer; font-size: 12.5px; font-weight: 700; color: var(--accent); }
+.fu-table-toggle .table-wrap { max-height: 280px; overflow: auto; margin-top: 8px; }
+
+.fu-funnels { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }
+.fu-funnels li { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "text pct" "track track"; gap: 6px 12px; }
+.fu-funnel-text { grid-area: text; display: flex; flex-direction: column; min-width: 0; }
+.fu-funnel-name { font-size: 13.5px; font-weight: 700; color: var(--text-primary); }
+.fu-funnel-detail { font-size: 11.5px; color: var(--text-secondary); }
+.fu-funnel-pct { grid-area: pct; align-self: center; font-size: 16px; font-weight: 800; color: var(--text-primary); }
+.fu-footnote { font-size: 12px; color: var(--text-secondary); line-height: 1.6; max-width: 900px; margin: 4px 0 24px; }
+
+@media (max-width: 1100px) {
+  .fu-grid { grid-template-columns: minmax(0, 1fr); }
+  .fu-sticky { position: static; }
+}
+@media (max-width: 860px) {
+  .fu-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .fu-toolbar-right { margin-left: 0; }
+}

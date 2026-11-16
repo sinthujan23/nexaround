@@ -92,6 +92,14 @@ K_MIN_APP_VERSION = "min_app_version"
 K_FREE_DATA = "free_data_layer"
 K_FREE_DATA_MIN_VERSION = "free_data_min_app_version"
 FREE_DATA_MODES = ("off", "test", "on")
+# Temporary (2026-11-16, TL): a free-map-data place opened on its page also
+# gets Google's photo, opening hours and reviews, as before. "on" | "off".
+K_FREE_DATA_DETAILS = "free_data_google_details"
+# How many NEW free places a user may open with Google details per UTC day
+# (re-opening one, or one already in our 14-day cache, does not count).
+# 0 = no limit.
+K_FREE_DATA_DETAILS_PER_DAY = "free_data_details_per_day"
+DEFAULT_FREE_DATA_DETAILS_PER_DAY = 5
 DEFAULT_FREE_DATA_MIN_VERSION = "1.0.18"
 
 _CONFIG_TTL = 60.0
@@ -289,6 +297,13 @@ async def _load_config(force: bool = False) -> dict:
                 "free_data_min_version": (
                     await svc.get_setting(K_FREE_DATA_MIN_VERSION) or DEFAULT_FREE_DATA_MIN_VERSION
                 ).strip(),
+                "free_data_details": (
+                    await svc.get_setting(K_FREE_DATA_DETAILS) or "on"
+                ).strip().lower() in _TRUE,
+                "free_data_details_per_day": _int_setting(
+                    await svc.get_setting(K_FREE_DATA_DETAILS_PER_DAY),
+                    DEFAULT_FREE_DATA_DETAILS_PER_DAY,
+                ),
             }
             _config_at = now
     except Exception as e:
@@ -297,8 +312,17 @@ async def _load_config(force: bool = False) -> dict:
             "enforce": False, "test_ids": set(),
             "limits": merge_limits(None), "min_app_version": "",
             "free_data": "off", "free_data_min_version": DEFAULT_FREE_DATA_MIN_VERSION,
+            "free_data_details": True,
+            "free_data_details_per_day": DEFAULT_FREE_DATA_DETAILS_PER_DAY,
         }
     return _config
+
+
+def _int_setting(raw, default: int) -> int:
+    try:
+        return max(0, int(str(raw).strip()))
+    except (TypeError, ValueError):
+        return default
 
 
 def _mode(raw) -> str:
@@ -572,6 +596,15 @@ async def places_source_for(user_id, category: Optional[str]) -> str:
     info = await get_plan(user_id)
     limits = cfg["limits"].get(info.plan) or cfg["limits"][EXPLORER]
     return "open" if limits.get("places_source") == "open" else "google"
+
+
+async def free_data_google_details() -> bool:
+    return bool((await _load_config()).get("free_data_details", True))
+
+
+async def free_data_details_per_day() -> int:
+    return int((await _load_config()).get(
+        "free_data_details_per_day", DEFAULT_FREE_DATA_DETAILS_PER_DAY))
 
 
 async def free_data_mode() -> str:

@@ -21,6 +21,7 @@ import 'package:nexaround_app/features/experiences/presentation/widgets/vendor_s
 import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/core/services/google_places_service.dart';
 import 'package:nexaround_app/features/living_map/presentation/pages/smart_tourism_map_page.dart';
+import 'package:nexaround_app/core/services/feature_tracker.dart';
 
 /// Detail for one package.
 ///
@@ -45,8 +46,11 @@ class ExperiencePackageDetailPage extends StatefulWidget {
       _ExperiencePackageDetailPageState();
 }
 
-class _ExperiencePackageDetailPageState
-    extends State<ExperiencePackageDetailPage> {
+class _ExperiencePackageDetailPageState extends State<ExperiencePackageDetailPage>
+    with TracksFeature<ExperiencePackageDetailPage> {
+  @override
+  String get trackedFeature => AppFeature.experiences;
+
   late ExperiencePackageEntity _package;
   final PageController _photoController = PageController();
   final ScrollController _scroll = ScrollController();

@@ -18,6 +18,7 @@ import 'package:nexaround_app/core/constants/api_constants.dart';
 import 'package:nexaround_app/features/living_map/presentation/pages/google_maps_page.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
+import 'package:nexaround_app/core/services/feature_tracker.dart';
 
 class SmartTourismMapPage extends StatefulWidget {
   final double initialLat;
@@ -38,7 +39,10 @@ class SmartTourismMapPage extends StatefulWidget {
 }
 
 class _SmartTourismMapPageState extends State<SmartTourismMapPage>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, TracksFeature<SmartTourismMapPage> {
+  @override
+  String get trackedFeature => AppFeature.fullMap;
+
   mapbox.MapboxMap? _mapboxMap;
   mapbox.PointAnnotationManager? _annotationManager;
   StreamSubscription<CompassEvent>? _compassSub;

@@ -21,6 +21,7 @@ import 'package:nexaround_app/core/services/google_places_service.dart';
 import 'package:nexaround_app/core/services/permission_service.dart';
 import 'package:nexaround_app/core/services/plan_service.dart';
 import 'package:nexaround_app/features/plans/presentation/pages/plans_page.dart';
+import 'package:nexaround_app/core/services/feature_tracker.dart';
 
 class AttractionDetailPage extends StatefulWidget {
   final String? id;
@@ -62,7 +63,11 @@ class AttractionDetailPage extends StatefulWidget {
   State<AttractionDetailPage> createState() => _AttractionDetailPageState();
 }
 
-class _AttractionDetailPageState extends State<AttractionDetailPage> {
+class _AttractionDetailPageState extends State<AttractionDetailPage>
+    with TracksFeature<AttractionDetailPage> {
+  @override
+  String get trackedFeature => AppFeature.placeDetails;
+
   String get _placeId => widget.id ?? widget.name.hashCode.toString();
   String? _resolvedImageUrl;
 
@@ -605,7 +610,7 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => ArCameraPage(
+                  builder: (_) => FeatureScreen(feature: AppFeature.ar, child: ArCameraPage(
                     initialPlace: {
                       'name': widget.name,
                       'category': widget.category,
@@ -617,7 +622,7 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
                       'imageUrl': _resolvedImageUrl ?? widget.imageUrl,
                       'description': widget.aiWhy ?? '',
                     },
-                  ),
+                  )),
                 ),
               ),
               child: Container(

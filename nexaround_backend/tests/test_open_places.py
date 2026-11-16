@@ -281,3 +281,152 @@ def test_geoapify_feature_to_place():
 def test_open_ids():
     assert open_places_service.is_open_id("op_123") and open_places_service.is_open_id("ga_x")
     assert not open_places_service.is_open_id("ChIJabc")
+
+
+# ── Google details on a free place's page (temporary, 2026-11-16) ──────────
+# 5 new places per user per day; re-opens and cached places don't count; then
+# the free copy with OpenStreetMap hours.
+
+class _SetRedis:
+    def __init__(self):
+        self.sets = {}
+
+    async def sismember(self, k, v):
+        return v in self.sets.get(k, set())
+
+    async def scard(self, k):
+        return len(self.sets.get(k, set()))
+
+    async def sadd(self, k, v):
+        self.sets.setdefault(k, set()).add(v)
+
+    async def expire(self, k, ttl):
+        return True
+
+
+@pytest.fixture
+def free_page(monkeypatch):
+    from types import SimpleNamespace
+    from app.services import google_places_client, place_cache_service, place_visibility, places_service, telemetry
+    state = {"switch": True, "per_day": 5, "found": True, "cached": False,
+             "fetched": 0, "osm": 0, "resolved": 0}
+
+    async def _details(pid):
+        return {"id": pid, "place_id": pid, "name": f"Place {pid}", "address": "Aluva",
+                "latitude": 10.12, "longitude": 76.34, "phone": "+91 99", "website": "https://fb.com/x",
+                "rating": 0.0, "reviews": [], "photo_urls": [], "weekday_hours": [],
+                "data_source": "open", "credit": "Overture Maps Foundation"}
+
+    async def _switch():
+        return state["switch"]
+
+    async def _per_day():
+        return state["per_day"]
+
+    async def _resolve(name, lat, lng):
+        state["resolved"] += 1
+        return f"ChIJ{abs(hash(name)) % 10**8}" if state["found"] else None
+
+    async def _cached(gid):
+        return state["cached"]
+
+    async def _fetch(gid):
+        state["fetched"] += 1
+        return {"id": gid, "name": "G", "address": "", "latitude": 10.12, "longitude": 76.34,
+                "rating": 4.1, "user_ratings_total": 50, "reviews": [{"text": "ok"}],
+                "weekday_hours": ["Monday: 9:00 AM – 9:00 PM"], "photo_urls": ["/p"]}
+
+    async def _osm(free):
+        state["osm"] += 1
+        return dict(free, weekday_hours=["Monday: 7:00 AM – 10:00 PM"])
+
+    async def _none(*a, **k):
+        return None
+
+    async def _snap():
+        return SimpleNamespace(ids=set(), gids=set())
+
+    fake = _SetRedis()
+    monkeypatch.setattr(open_places_service, "details", _details)
+    monkeypatch.setattr(plan_service, "free_data_google_details", _switch)
+    monkeypatch.setattr(plan_service, "free_data_details_per_day", _per_day)
+    monkeypatch.setattr(places_service, "_resolve_by_name", _resolve)
+    monkeypatch.setattr(places_service, "_details_cached", _cached)
+    monkeypatch.setattr(places_service, "_with_osm_hours", _osm)
+    monkeypatch.setattr(places_service, "spawn_background", lambda coro: coro.close())
+    monkeypatch.setattr(google_places_client, "fetch_place_details", _fetch)
+    monkeypatch.setattr(place_cache_service, "get_raw", _none)
+    monkeypatch.setattr(place_cache_service, "set_raw", _none)
+    monkeypatch.setattr(place_visibility, "current", _snap)
+    monkeypatch.setattr(telemetry, "_get_redis", lambda: fake)
+    request_context.user_id_var.set(uuid.uuid4())
+    state["svc"] = places_service
+    return state
+
+
+def _open(state, pid):
+    return run(state["svc"].get_place_details(pid))
+
+
+def test_free_place_page_gets_google_details(free_page):
+    d = _open(free_page, "op_1")
+    assert d["id"] == "op_1" and d["google_place_id"].startswith("ChIJ")
+    assert d["reviews"] and d["photo_urls"] and d["weekday_hours"] and d["rating"] == 4.1
+    assert d["phone"] == "+91 99" and d["website"] == "https://fb.com/x" and d["address"] == "Aluva"
+    assert d["credit"] is None
+
+
+def test_five_new_places_a_day_then_free_with_osm_hours(free_page):
+    for i in range(5):
+        assert _open(free_page, f"op_{i}").get("google_place_id")
+    sixth = _open(free_page, "op_6")
+    assert not sixth.get("google_place_id") and free_page["osm"] == 1
+    assert sixth["weekday_hours"] == ["Monday: 7:00 AM – 10:00 PM"]
+    assert free_page["fetched"] == 5
+
+
+def test_reopening_a_place_does_not_count(free_page):
+    for _ in range(4):
+        _open(free_page, "op_same")
+    for i in range(4):
+        assert _open(free_page, f"op_{i}").get("google_place_id")   # 5 distinct places
+    assert _open(free_page, "op_same").get("google_place_id")         # still allowed
+    assert not _open(free_page, "op_new").get("google_place_id")      # the 6th new one is not
+
+
+def test_cached_places_do_not_use_the_allowance(free_page):
+    free_page["cached"] = True
+    for i in range(12):
+        assert _open(free_page, f"op_{i}").get("google_place_id")
+    assert free_page["osm"] == 0
+
+
+def test_not_on_google_keeps_free_data(free_page):
+    free_page["found"] = False
+    d = _open(free_page, "op_1")
+    assert not d.get("google_place_id") and free_page["osm"] == 1 and d["credit"] == "Overture Maps Foundation"
+
+
+def test_switch_off_never_asks_google(free_page):
+    free_page["switch"] = False
+    d = _open(free_page, "op_1")
+    assert free_page["resolved"] == 0 and d["data_source"] == "open"
+
+
+def test_no_limit_when_zero(free_page):
+    free_page["per_day"] = 0
+    for i in range(9):
+        assert _open(free_page, f"op_{i}").get("google_place_id")
+
+
+def test_osm_opening_hours_become_weekday_lines():
+    from app.services.open_data.osm_hours import to_weekday_lines
+    assert to_weekday_lines("Mo-Fr 09:00-18:00; Sa 10:00-14:00; Su off") == [
+        "Monday: 9:00 AM – 6:00 PM", "Tuesday: 9:00 AM – 6:00 PM", "Wednesday: 9:00 AM – 6:00 PM",
+        "Thursday: 9:00 AM – 6:00 PM", "Friday: 9:00 AM – 6:00 PM", "Saturday: 10:00 AM – 2:00 PM",
+        "Sunday: Closed",
+    ]
+    assert to_weekday_lines("24/7")[0] == "Monday: Open 24 hours"
+    assert to_weekday_lines("11:00-15:00,18:00-23:00")[6] == "Sunday: 11:00 AM – 3:00 PM, 6:00 PM – 11:00 PM"
+    assert to_weekday_lines("Mo,We 12:00-22:00")[1] == "Tuesday: Closed"
+    assert to_weekday_lines("sunrise-sunset") is None and to_weekday_lines("") is None

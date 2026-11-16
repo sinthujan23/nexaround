@@ -5,6 +5,7 @@ import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/features/experiences/presentation/pages/my_experience_requests_page.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experiences_tab.dart';
 import 'package:nexaround_app/features/vendor_portal/presentation/widgets/vendor_portal_banner.dart';
+import 'package:nexaround_app/core/services/feature_tracker.dart';
 
 /// Dedicated page for browsing and booking local experiences and tours.
 class ExperiencesPage extends StatefulWidget {
@@ -25,7 +26,11 @@ class ExperiencesPage extends StatefulWidget {
   State<ExperiencesPage> createState() => _ExperiencesPageState();
 }
 
-class _ExperiencesPageState extends State<ExperiencesPage> {
+class _ExperiencesPageState extends State<ExperiencesPage>
+    with TracksFeature<ExperiencesPage> {
+  @override
+  String get trackedFeature => AppFeature.experiences;
+
   double? _lat;
   double? _lng;
 

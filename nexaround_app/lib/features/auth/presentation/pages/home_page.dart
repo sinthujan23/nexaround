@@ -14,6 +14,7 @@ import 'package:nexaround_app/core/services/permission_service.dart';
 import 'package:nexaround_app/core/services/notification_service.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/core/services/discovery_history_service.dart';
+import 'package:nexaround_app/core/services/feature_tracker.dart';
 
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
@@ -39,7 +40,19 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => HomePageState();
 }
 
-class HomePageState extends State<HomePage> with WidgetsBindingObserver {
+class HomePageState extends State<HomePage>
+    with WidgetsBindingObserver
+    implements RouteAware {
+  // What each tab is on the admin's Feature usage page (FeatureTracker).
+  static const _tabFeatures = {
+    0: AppFeature.home,
+    1: AppFeature.ar,
+    2: AppFeature.neva,
+    3: AppFeature.discover,
+    4: AppFeature.plans,
+    5: AppFeature.profile,
+    6: AppFeature.cityGuides,
+  };
   int _selectedIndex = 0;
   String? _pendingPrompt;
   Map<String, dynamic>? _pendingPlaceContext;
@@ -281,7 +294,29 @@ class HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route is PageRoute) FeatureTracker.routeObserver.subscribe(this, route);
+  }
+
+  // A page pushed over Home hides the tab; it shows again when that page closes.
+  @override
+  void didPushNext() => FeatureTracker.instance.setHomeCovered(true);
+
+  @override
+  void didPopNext() => FeatureTracker.instance.setHomeCovered(false);
+
+  @override
+  void didPush() {}
+
+  @override
+  void didPop() {}
+
+  @override
   void dispose() {
+    FeatureTracker.routeObserver.unsubscribe(this);
+    FeatureTracker.instance.setTab(null);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -364,6 +399,8 @@ class HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    // Every change of tab rebuilds this page; repeats are ignored.
+    FeatureTracker.instance.setTab(_tabFeatures[_selectedIndex]);
     final pages = [
       LivingMapPage(isActive: _selectedIndex == 0),
       ArCameraPage(isActive: _selectedIndex == 1),

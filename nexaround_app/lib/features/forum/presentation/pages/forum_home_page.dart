@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 import 'forum_home_view.dart';
+import 'package:nexaround_app/core/services/feature_tracker.dart';
 
 class ForumHomePage extends StatelessWidget {
   const ForumHomePage({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      FeatureScreen(feature: AppFeature.forum, child: _content(context));
+
+  Widget _content(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(

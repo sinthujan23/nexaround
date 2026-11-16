@@ -6,6 +6,7 @@ import '../../data/datasources/travel_stories_service.dart';
 import '../../data/models/travel_story.dart';
 import '../widgets/official_story_widgets.dart';
 import '../widgets/travel_story_card.dart' show storyDistanceLabel;
+import 'package:nexaround_app/core/services/feature_tracker.dart';
 
 /// Exclusive: every TravelByte in one place, in the order the TravelByte card
 /// on the home row shows them (the traveller's own country first, then the
@@ -18,7 +19,11 @@ class ExclusivePage extends StatefulWidget {
   State<ExclusivePage> createState() => _ExclusivePageState();
 }
 
-class _ExclusivePageState extends State<ExclusivePage> {
+class _ExclusivePageState extends State<ExclusivePage>
+    with TracksFeature<ExclusivePage> {
+  @override
+  String get trackedFeature => AppFeature.travelStories;
+
   static const double _headerHeight = 124;
 
   /// Below the status bar, where the header's big text is cut off as the

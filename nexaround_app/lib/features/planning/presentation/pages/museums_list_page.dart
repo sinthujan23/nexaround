@@ -7,6 +7,7 @@ import 'package:nexaround_app/core/constants/api_constants.dart';
 import 'package:video_player/video_player.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:nexaround_app/core/error/user_message.dart';
+import 'package:nexaround_app/core/services/feature_tracker.dart';
 
 /// Lists all 63 top world museums as premium cards. Tapping one opens the
 /// curated guide page where the user picks their available time.
@@ -17,7 +18,11 @@ class MuseumsListPage extends StatefulWidget {
   State<MuseumsListPage> createState() => _MuseumsListPageState();
 }
 
-class _MuseumsListPageState extends State<MuseumsListPage> {
+class _MuseumsListPageState extends State<MuseumsListPage>
+    with TracksFeature<MuseumsListPage> {
+  @override
+  String get trackedFeature => AppFeature.museums;
+
   final _repo = MuseumRepository();
   VideoPlayerController? _videoController;
   final TextEditingController _searchController = TextEditingController();

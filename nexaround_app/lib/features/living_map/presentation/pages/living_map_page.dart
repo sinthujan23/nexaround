@@ -60,6 +60,7 @@ import 'package:nexaround_app/features/forum/presentation/pages/forum_home_page.
 import 'package:nexaround_app/core/services/avatar_service.dart';
 import 'package:nexaround_app/core/services/plan_service.dart';
 import 'package:nexaround_app/features/plans/presentation/widgets/plan_widgets.dart';
+import 'package:nexaround_app/core/services/feature_tracker.dart';
 
 class _LocalEvent {
   final String title;
@@ -2567,7 +2568,7 @@ class _LivingMapPageState extends State<LivingMapPage>
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (_) => const MyOdysseysPage(initialTabIndex: 1),
+              builder: (_) => const FeatureScreen(feature: AppFeature.plans, child: MyOdysseysPage(initialTabIndex: 1)),
             ),
           );
         }
@@ -7196,7 +7197,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                               onPressed: () => Navigator.push(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (_) => ArCameraPage(
+                                  builder: (_) => FeatureScreen(feature: AppFeature.ar, child: ArCameraPage(
                                     initialPlace: {
                                       'name': place.name,
                                       'category':
@@ -7208,7 +7209,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                                       'latitude': place.latitude,
                                       'longitude': place.longitude,
                                     },
-                                  ),
+                                  )),
                                 ),
                               ),
                               child: Text(

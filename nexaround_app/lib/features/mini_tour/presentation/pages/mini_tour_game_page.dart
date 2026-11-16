@@ -14,6 +14,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart' show LatLng;
 import 'package:nexaround_app/features/attractions/domain/entities/attraction.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:nexaround_app/core/error/user_message.dart';
+import 'package:nexaround_app/core/services/feature_tracker.dart';
 
 /// A gamified "Mini Tour": real nearby places are dropped onto a Mapbox map as
 /// flags 🚩 with a checkered finish flag 🏁 on the last stop. The map tracks the
@@ -63,7 +64,11 @@ class _TourStop {
   );
 }
 
-class _MiniTourGamePageState extends State<MiniTourGamePage> {
+class _MiniTourGamePageState extends State<MiniTourGamePage>
+    with TracksFeature<MiniTourGamePage> {
+  @override
+  String get trackedFeature => AppFeature.miniTour;
+
   static const double _checkInRadiusM = 50; // auto check-in distance
   static const int _maxStops = 5;
   static const int _xpPerStop = 20;

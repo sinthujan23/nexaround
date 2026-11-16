@@ -9,6 +9,7 @@ import '../widgets/explore_stories_card.dart';
 import '../widgets/official_story_widgets.dart';
 import '../widgets/story_photo_preview.dart';
 import '../widgets/travel_story_card.dart' show storyDistanceLabel;
+import 'package:nexaround_app/core/services/feature_tracker.dart';
 
 /// Every story of the home Travel Stories row as a photo grid, opened from
 /// the "Explore all stories" card at the row's end. Chips narrow it to the
@@ -39,7 +40,11 @@ class ExploreStoriesPage extends StatefulWidget {
   State<ExploreStoriesPage> createState() => _ExploreStoriesPageState();
 }
 
-class _ExploreStoriesPageState extends State<ExploreStoriesPage> {
+class _ExploreStoriesPageState extends State<ExploreStoriesPage>
+    with TracksFeature<ExploreStoriesPage> {
+  @override
+  String get trackedFeature => AppFeature.travelStories;
+
   static const String _all = 'All';
   static const String _nearYou = 'Near you';
 
