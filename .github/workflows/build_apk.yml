@@ -30,6 +30,13 @@ jobs:
         with:
           distribution: 'zulu'
           java-version: '17'
+          # Keeps Gradle's downloads between runs. Without it every run fetches
+          # all Kotlin/AGP artifacts from Maven Central again, which returned
+          # 429 Too Many Requests to the shared runner IPs (2026-11-17).
+          cache: 'gradle'
+          cache-dependency-path: |
+            nexaround_app/android/*.gradle*
+            nexaround_app/android/gradle/wrapper/gradle-wrapper.properties
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
