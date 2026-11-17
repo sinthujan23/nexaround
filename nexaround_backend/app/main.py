@@ -226,7 +226,7 @@ async def plan_limit_handler(request: Request, exc: PlanLimitExceeded):
 
 # Include routes
 app.include_router(api_router)
-# Public share pages (HTML), reached at nexaround.com/e/<id> and nexaround.com/f/<id> via nginx.
+# Public share pages (HTML), reached at nexaround.com/e/<id>, /f/<id> and /w/<code> via nginx.
 app.include_router(share_router)
 
 
@@ -234,6 +234,12 @@ app.include_router(share_router)
 async def public_topic_share(topic_id: str, db: AsyncSession = Depends(get_db)):
     from app.api.share import share_topic
     return await share_topic(topic_id, db)
+
+
+@app.get("/w/{code}", response_class=HTMLResponse, include_in_schema=False)
+async def public_wallet_invite(code: str, db: AsyncSession = Depends(get_db)):
+    from app.api.share import share_wallet_invite
+    return await share_wallet_invite(code, db)
 
 
 @app.get("/e/{package_id}", response_class=HTMLResponse, include_in_schema=False)

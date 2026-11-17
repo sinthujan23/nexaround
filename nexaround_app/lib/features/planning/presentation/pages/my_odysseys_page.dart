@@ -19,6 +19,7 @@ import 'package:nexaround_app/features/auth/presentation/pages/home_page.dart';
 import 'dart:typed_data';
 import 'dart:ui' show ImageFilter;
 import 'package:nexaround_app/features/planning/presentation/widgets/walking_challenge_asset.dart';
+import 'package:nexaround_app/features/trip_wallet/presentation/pages/trip_wallet_page.dart';
 
 class MyOdysseysPage extends StatefulWidget {
   final int initialTabIndex;
@@ -379,7 +380,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
             _buildBentoExperiencesHero(),
             const SizedBox(height: _hubCardGap),
 
-            // 2 & 3. Museums & Walking Challenge (Bottom Row, 2 side-by-side tall tiles)
+            // 2, 3 & 4. Museums, Trip Wallet & Walking Challenge (Bottom Row, 3 side-by-side tall tiles)
             Row(
               children: [
                 Expanded(
@@ -397,6 +398,27 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
                     onTap: () => Navigator.push(
                       context,
                       MaterialPageRoute(builder: (_) => const MuseumsListPage()),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _buildBentoSquareTile(
+                    height: tileHeight,
+                    tag: 'GROUP TRIP',
+                    tagIcon: Icons.account_balance_wallet_rounded,
+                    accentColor: const Color(0xFF4ADE80),
+                    badge: 'SPLIT & SETTLE',
+                    title: 'Trip Wallet',
+                    featureIcon: Icons.balance_rounded,
+                    featureLabel: 'Fair Split',
+                    imageAsset: 'assets/images/trip_wallet_bg.jpg',
+                    // The signposts are left of centre in the photo.
+                    imageAlignment: const Alignment(-0.45, 0),
+                    ctaText: 'Open',
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const TripWalletPage()),
                     ),
                   ),
                 ),
@@ -474,9 +496,15 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
     required String featureLabel,
     String? imageAsset,
     Uint8List? imageBytes,
+    Alignment imageAlignment = Alignment.center,
     required String ctaText,
     required VoidCallback onTap,
   }) {
+    // Three tiles share the row, so on most phones each is only ~105-125 px
+    // wide: then the corner icon goes, the tag shrinks to fit, and the chip
+    // and button stack instead of sitting side by side.
+    return LayoutBuilder(builder: (context, box) {
+    final compact = box.maxWidth < 140;
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -500,11 +528,13 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
                 Image.memory(
                   imageBytes,
                   fit: BoxFit.cover,
+                  alignment: imageAlignment,
                 )
               else if (imageAsset != null)
                 Image.asset(
                   imageAsset,
                   fit: BoxFit.cover,
+                  alignment: imageAlignment,
                   errorBuilder: (_, __, ___) => const SizedBox.shrink(),
                 ),
               DecoratedBox(
@@ -522,7 +552,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.all(13),
+                padding: EdgeInsets.all(compact ? 10 : 13),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -531,7 +561,11 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Container(
+                        Flexible(
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 7.5, vertical: 3.5),
                           decoration: BoxDecoration(
                             color: Colors.black.withValues(alpha: 0.55),
@@ -558,7 +592,9 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
                             ],
                           ),
                         ),
-                        Container(
+                          ),
+                        ),
+                        if (!compact) Container(
                           width: 28,
                           height: 28,
                           decoration: BoxDecoration(
@@ -580,10 +616,10 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
                       children: [
                         Text(
                           title,
-                          maxLines: 2,
+                          maxLines: compact ? 3 : 2,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            fontSize: height >= 240 ? 18 : 15,
+                            fontSize: compact ? (height >= 240 ? 15 : 13.5) : (height >= 240 ? 18 : 15),
                             fontWeight: FontWeight.w800,
                             height: 1.15,
                             letterSpacing: -0.2,
@@ -591,14 +627,22 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
                           ),
                         ),
                         const SizedBox(height: 7),
-                        Row(
+                        Flex(
+                          direction: compact ? Axis.vertical : Axis.horizontal,
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          crossAxisAlignment: compact ? CrossAxisAlignment.start : CrossAxisAlignment.center,
+                          mainAxisSize: compact ? MainAxisSize.min : MainAxisSize.max,
                           children: [
-                            _buildMicroChip(
-                              icon: featureIcon,
-                              label: featureLabel,
-                              iconColor: accentColor,
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerLeft,
+                              child: _buildMicroChip(
+                                icon: featureIcon,
+                                label: featureLabel,
+                                iconColor: accentColor,
+                              ),
                             ),
+                            if (compact) const SizedBox(height: 6),
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
                               decoration: BoxDecoration(
@@ -640,6 +684,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
         ),
       ),
     );
+    });
   }
 
   Widget _buildBentoExperiencesHero() {

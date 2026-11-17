@@ -31,6 +31,8 @@ import 'package:nexaround_app/features/experiences/presentation/pages/my_experie
 import 'package:nexaround_app/features/vendor_portal/presentation/pages/vendor_portal_page.dart';
 import 'package:nexaround_app/features/city_tours/presentation/pages/city_tour_page.dart';
 import 'package:nexaround_app/features/city_tours/presentation/pages/city_tours_page.dart';
+import 'package:nexaround_app/features/trip_wallet/data/trip_wallet_service.dart';
+import 'package:nexaround_app/features/trip_wallet/presentation/pages/wallet_trip_page.dart';
 
 class HomePage extends StatefulWidget {
   static final GlobalKey<HomePageState> homeKey = GlobalKey<HomePageState>();
@@ -104,6 +106,11 @@ class HomePageState extends State<HomePage>
       if (type == 'city_tour_trip' && mounted) {
         final tourId = data['tour_id']?.toString();
         if (tourId != null && tourId.isNotEmpty) openCityTourById(context, tourId);
+      }
+      // Someone in a Trip Wallet trip added an expense, joined or paid.
+      if (type == TripWalletService.pushType && mounted) {
+        final tripId = data['trip_id']?.toString();
+        if (tripId != null && tripId.isNotEmpty) openWalletTripById(context, tripId);
       }
       if ((type == 'vendor_request' || type == 'vendor_review') && mounted) {
         openVendorPortal(context,

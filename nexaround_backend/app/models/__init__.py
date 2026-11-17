@@ -27,6 +27,9 @@ from app.models.legal import LegalAcceptance, LegalDocument
 from app.models.city_tour import CityTour, CityTourTap, CityTourTrip, ContentCreator
 from app.models.subscription import Subscription, SubscriptionEvent
 from app.models.open_place import OpenPlace, OpenArea
+from app.models.trip_wallet import (
+    WalletTrip, WalletMember, WalletExpense, WalletExpenseShare, WalletSettlement,
+)
 
 from app.models.forum import (
     ForumCategory, ForumTopic, ForumPost, ForumLike, ForumBookmark,
@@ -50,5 +53,7 @@ __all__ = [
     "LegalDocument", "LegalAcceptance",
     "CityTour", "CityTourTap", "CityTourTrip", "ContentCreator",
     "Subscription", "SubscriptionEvent",
+    "WalletTrip", "WalletMember", "WalletExpense", "WalletExpenseShare",
+    "WalletSettlement",
 ]
 

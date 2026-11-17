@@ -372,3 +372,98 @@ async def share_topic(topic_id: str, db: AsyncSession = Depends(get_db)):
         return HTMLResponse(render_topic_not_found_page(), status_code=404, headers=_HEADERS)
 
     return HTMLResponse(render_topic_page(topic), headers=_HEADERS)
+
+
+# ── Trip Wallet invites ────────────────────────────────────────────────────
+#
+# `https://nexaround.com/w/<code>` joins a Trip Wallet trip. With the app
+# installed the OS hands the link to it; otherwise this page shows which trip
+# it is and the store buttons. Only the trip's name and the owner's first
+# name are shown: the code is all a visitor has.
+
+def render_wallet_invite_page(code: str, trip_name: str, owner_name: str, members: int) -> str:
+    url = f"{settings.PUBLIC_SITE_URL.rstrip('/')}/w/{code}"
+    e = lambda s: escape(s or "", quote=True)  # noqa: E731
+    first = (owner_name or "A friend").split()[0]
+    people = f"{members} {'person' if members == 1 else 'people'} in the trip"
+    body = f"""
+    <article class="card">
+      <div class="photo placeholder">👛</div>
+      <div class="body">
+        <span class="pill">Trip Wallet</span>
+        <h1>{e(trip_name)}</h1>
+        <p class="vendor">{e(first)} invited you to split trip expenses</p>
+        <p class="details">Code: {e(code)}</p>
+        <p class="summary">{e(people)}. Add what you paid, see who owes whom,
+        and settle up with the fewest payments.</p>
+      </div>
+    </article>"""
+    return _page(
+        title=f"Join {trip_name} · Trip Wallet",
+        description=f"{first} invited you to split expenses for {trip_name} on nexARound.",
+        url=url,
+        head_extra="",
+        twitter_card="summary",
+        app_argument=url,
+        body=body,
+        open_path=f"w/{code}",
+        note="Get the nexARound app, sign in, then open this link again or enter the code in Trip Wallet.",
+    )
+
+
+def render_wallet_not_found_page() -> str:
+    body = """
+    <article class="card">
+      <div class="photo placeholder">👛</div>
+      <div class="body">
+        <h1>This invite is not valid any more</h1>
+        <p class="summary">The trip may have been deleted, or its owner made a new
+        invite link. Ask them to share it again.</p>
+      </div>
+    </article>"""
+    return _page(
+        title="Invite not valid · Trip Wallet",
+        description="Split group trip expenses with nexARound Trip Wallet.",
+        url=settings.PUBLIC_SITE_URL,
+        head_extra="",
+        twitter_card="summary",
+        app_argument=None,
+        body=body,
+        open_path=None,
+        note="Get the nexARound app to plan trips and split expenses with friends.",
+    )
+
+
+_PRIVATE_HEADERS = {
+    # A reset code must stop showing the trip soon, and the page names a
+    # private group: short, and not kept by shared caches.
+    "Cache-Control": "private, max-age=60",
+    "X-Robots-Tag": "noindex",
+}
+
+
+@router.get("/w/{code}", response_class=HTMLResponse)
+async def share_wallet_invite(code: str, db: AsyncSession = Depends(get_db)):
+    from sqlalchemy import func as sa_func
+    from app.models.trip_wallet import WalletMember, WalletTrip
+    from app.services.trip_wallet import normalise_code
+
+    clean = normalise_code(code)
+    trip = (await db.execute(
+        select(WalletTrip).where(WalletTrip.invite_code == clean, WalletTrip.deleted_at.is_(None))
+    )).scalar_one_or_none() if clean else None
+    if trip is None:
+        return HTMLResponse(render_wallet_not_found_page(), status_code=404, headers=_PRIVATE_HEADERS)
+    owner = (await db.execute(
+        select(WalletMember.display_name).where(
+            WalletMember.trip_id == trip.id, WalletMember.role == "owner",
+        )
+    )).scalar_one_or_none()
+    count = (await db.execute(
+        select(sa_func.count()).select_from(WalletMember).where(
+            WalletMember.trip_id == trip.id, WalletMember.left_at.is_(None),
+        )
+    )).scalar() or 0
+    return HTMLResponse(
+        render_wallet_invite_page(clean, trip.name, owner or "", count), headers=_PRIVATE_HEADERS,
+    )

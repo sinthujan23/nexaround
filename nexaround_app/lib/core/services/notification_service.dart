@@ -9,6 +9,7 @@ import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/core/services/discovery_history_service.dart';
 import 'package:nexaround_app/features/planning/data/odyssey_repository.dart';
 import 'package:nexaround_app/features/travel_stories/data/datasources/travel_stories_service.dart';
+import 'package:nexaround_app/features/trip_wallet/data/trip_wallet_service.dart';
 
 /// Wraps Firebase Cloud Messaging: asks permission, grabs the device token,
 /// registers it with the backend, and funnels incoming messages into the local
@@ -149,6 +150,11 @@ class NotificationService {
       type: (m.data['type'] ?? '').toString(),
       data: m.data.map((k, v) => MapEntry(k, v)),
     );
+
+    // A Trip Wallet change: an open trip or trip list reloads.
+    if (m.data['type'] == TripWalletService.pushType) {
+      TripWalletService.revision.value++;
+    }
 
     // The plan is done: refresh the Plans list now rather than on its next poll.
     if (m.data['type'] == 'odyssey_ready') {

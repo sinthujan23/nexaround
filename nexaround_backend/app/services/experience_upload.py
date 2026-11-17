@@ -21,14 +21,18 @@ MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 UPLOAD_DIR = "app/static/uploads/experiences"
 
 
-async def save_experience_images(files: List[UploadFile]) -> List[str]:
+async def save_experience_images(files: List[UploadFile], subdir: str = "experiences") -> List[str]:
     """Validate and store images, returning their `/static/...` paths.
 
     Three checks, and the third is the one that matters: an extension allowlist,
     a size cap, and a real Pillow decode — so a renamed executable cannot land
     in a directory that is served without authentication.
+
+    `subdir` is the folder under static/uploads (Trip Wallet receipts go in
+    `wallet`).
     """
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    upload_dir = os.path.join(os.path.dirname(UPLOAD_DIR), subdir)
+    os.makedirs(upload_dir, exist_ok=True)
 
     urls: List[str] = []
     for file in files:
@@ -68,9 +72,9 @@ async def save_experience_images(files: List[UploadFile]) -> List[str]:
 
         # A fresh name: the uploader does not get to choose a path.
         unique_filename = f"{uuid.uuid4()}{file_ext}"
-        with open(os.path.join(UPLOAD_DIR, unique_filename), "wb") as buffer:
+        with open(os.path.join(upload_dir, unique_filename), "wb") as buffer:
             buffer.write(content)
-        urls.append(f"/static/uploads/experiences/{unique_filename}")
+        urls.append(f"/static/uploads/{subdir}/{unique_filename}")
 
     return urls
 

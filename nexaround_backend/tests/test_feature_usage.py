@@ -68,63 +68,76 @@ def test_window_is_the_last_days_and_the_same_length_before():
 
 DAYS, PREV = window(date(2026, 11, 16), 7)
 TODAY, YESTERDAY, LAST_WEEK = DAYS[-1], DAYS[-2], PREV[0]
+# Every source counted since long before both windows, unless a test says so.
+LONG_AGO = date(2026, 6, 1)
+ALL_COUNTED = {k: LONG_AGO for k in [*ACTIONS, "opens", "sessions", "signups"]}
 
 
-def report(opens=(), actions=(), active=(), signups=None, since=None):
-    return build_report(DAYS, PREV, opens, actions, active, signups or {}, since)
+def report(opens=(), actions=(), active=(), signups=None, firsts=None):
+    return build_report(DAYS, PREV, opens, actions, active, signups or {}, {**ALL_COUNTED, **(firsts or {})})
 
 
-def feature(rep, key):
-    return next(f for f in rep["features"] if f["key"] == key)
+def row(rows, key):
+    return next(r for r in rows if r["key"] == key)
 
 
-def test_a_feature_counts_each_explorer_once_whether_opened_or_used():
-    rep = report(
-        opens=[("experiences", A, TODAY, 1), ("experiences", A, YESTERDAY, 2), ("experiences", B, TODAY, 1)],
-        actions=[("experience_requests", B, TODAY, 1), ("experience_requests", C, TODAY, 3)],
-    )
-    exp = feature(rep, "experiences")
-    assert (exp["users"], exp["open_users"], exp["opens"], exp["action_users"]) == (3, 2, 4, 2)
-    assert exp["daily"][-2:] == [1, 3]   # yesterday A; today A, B, C
+def test_screens_count_people_once_and_share_is_of_explorers_whose_app_reports():
+    rep = report(opens=[
+        ("experiences", A, TODAY, 1), ("experiences", A, YESTERDAY, 2), ("experiences", B, TODAY, 1),
+        ("home", A, TODAY, 1), ("home", B, TODAY, 1), ("home", C, TODAY, 1), ("home", D, TODAY, 1),
+    ])
+    exp = row(rep["screens"], "experiences")
+    assert (exp["users"], exp["visits"], exp["share"], rep["reporting_explorers"]) == (2, 4, 0.5, 4)
+    assert exp["daily"][-2:] == [1, 2]
+    assert [r["key"] for r in rep["screens"]] == ["home", "experiences"]
 
 
-def test_previous_window_feeds_only_the_comparison():
-    rep = report(
-        opens=[("neva", A, LAST_WEEK, 1), ("neva", B, TODAY, 1)],
-        actions=[("neva_messages", C, LAST_WEEK, 5)],
-    )
-    neva = feature(rep, "neva")
-    assert (neva["users"], neva["prev_users"]) == (1, 2)
-    msgs = next(a for a in rep["actions"] if a["key"] == "neva_messages")
-    assert (msgs["count"], msgs["prev_count"], msgs["prev_users"]) == (0, 5, 1)
-    assert rep["explorers"] == 1
+def test_actions_count_people_and_times_across_all_explorers():
+    rep = report(actions=[("experience_requests", B, TODAY, 1), ("experience_requests", C, YESTERDAY, 3)])
+    req = row(rep["actions"], "experience_requests")
+    assert (req["count"], req["users"], req["feature"], req["feature_label"]) == (4, 2, "experiences", "Experiences")
+    assert req["daily"][-2:] == [1, 1]
+
+
+def test_days_before_a_source_has_data_are_not_counted_rather_than_zero():
+    rep = report(opens=[("ar", A, TODAY, 1)], actions=[("neva_messages", A, TODAY, 1)],
+                 firsts={"opens": YESTERDAY, "neva_messages": DAYS[2]})
+    assert row(rep["screens"], "ar")["daily"] == [None] * 5 + [0, 1]
+    assert rep["reporting_daily"] == [None] * 5 + [0, 1]
+    assert row(rep["actions"], "neva_messages")["daily"] == [None, None, 0, 0, 0, 0, 1]
+    assert row(rep["actions"], "neva_messages")["counted_since"] == DAYS[2].isoformat()
+
+
+def test_comparison_only_when_the_previous_period_was_counted_in_full():
+    opens = [("home", A, LAST_WEEK, 1), ("home", B, TODAY, 1)]
+    actions = [("neva_messages", C, LAST_WEEK, 5), ("neva_messages", A, TODAY, 1)]
+    full = report(opens=opens, actions=actions)
+    assert row(full["screens"], "home")["prev_users"] == 1
+    assert (row(full["actions"], "neva_messages")["prev_count"], row(full["actions"], "neva_messages")["prev_users"]) == (5, 1)
+    # Counting started inside the previous period: no comparison at all.
+    part = report(opens=opens, actions=actions, firsts={"opens": PREV[3], "neva_messages": PREV[1]})
+    assert row(part["screens"], "home")["prev_users"] is None
+    assert row(part["screens"], "home")["prev_share"] is None
+    assert row(part["actions"], "neva_messages")["prev_count"] is None
+
+
+def test_previous_share_is_of_the_explorers_reporting_then():
+    rep = report(opens=[("ar", A, LAST_WEEK, 1), ("home", A, LAST_WEEK, 1), ("home", B, LAST_WEEK, 1), ("ar", C, TODAY, 1)])
+    ar = row(rep["screens"], "ar")
+    assert (ar["users"], ar["share"], ar["prev_users"], ar["prev_share"]) == (1, 1.0, 1, 0.5)
 
 
 def test_rows_outside_both_windows_are_ignored():
     old = PREV[0] - timedelta(days=1)
     rep = report(opens=[("home", A, old, 1)], actions=[("discover_runs", A, old, 1)], active=[(A, old)])
-    assert (rep["features"], rep["explorers"], rep["active_explorers"]) == ([], 0, 0)
+    assert (rep["screens"], rep["actions"], rep["active_explorers"], rep["reporting_explorers"]) == ([], [], 0, 0)
 
 
-def test_features_rank_by_explorers_and_share_is_of_all_explorers():
-    rep = report(
-        opens=[("home", A, TODAY, 1), ("home", B, TODAY, 1), ("ar", A, TODAY, 1)],
-        active=[(A, TODAY), (B, TODAY), (C, TODAY), (D, TODAY)],
-    )
-    assert [f["key"] for f in rep["features"]] == ["home", "ar"]
-    assert (rep["explorers"], feature(rep, "home")["share"], feature(rep, "ar")["share"]) == (4, 0.5, 0.25)
-
-
-def test_an_explorer_seen_only_through_an_action_still_counts():
-    # Old app builds report no opens and some explorers have no 30 s visit,
-    # but a saved plan is still real use.
-    rep = report(actions=[("odyssey_plans", A, TODAY, 1)], active=[(B, TODAY)])
-    assert (rep["explorers"], rep["active_explorers"]) == (2, 1)
-
-
-def test_coverage_counts_explorers_whose_app_reports_opens():
-    rep = report(opens=[("home", A, TODAY, 1)], active=[(A, TODAY), (B, TODAY)], since=TODAY)
-    assert (rep["reporting_explorers"], rep["active_explorers"], rep["opens_since"]) == (1, 2, TODAY.isoformat())
+def test_an_action_with_only_a_previous_period_still_shows_its_drop():
+    rep = report(actions=[("forum_posts", A, LAST_WEEK, 2)])
+    assert (row(rep["actions"], "forum_posts")["count"], row(rep["actions"], "forum_posts")["prev_count"]) == (0, 2)
+    # ...but not when the previous period was not counted in full.
+    assert report(actions=[("forum_posts", A, LAST_WEEK, 2)], firsts={"forum_posts": PREV[2]})["actions"] == []
 
 
 def test_funnel_counts_openers_who_went_on_to_act():
@@ -134,20 +147,22 @@ def test_funnel_counts_openers_who_went_on_to_act():
     )
     assert rep["funnels"] == [{
         "feature": "experiences", "label": "Experiences",
-        "action": "experience_requests", "action_label": "sent a request",
+        "action": "experience_requests", "action_label": "sent a booking request",
         "opened": 2, "acted": 1,
     }]
 
 
-def test_no_funnel_before_any_opens_arrive():
-    rep = report(actions=[("experience_requests", A, TODAY, 1)])
-    assert rep["funnels"] == []
+def test_no_funnel_before_any_screens_arrive():
+    assert report(actions=[("experience_requests", A, TODAY, 1)])["funnels"] == []
 
 
-def test_signups_and_active_per_day():
+def test_signups_and_active_explorers_with_their_comparisons():
     rep = report(
         active=[(A, TODAY), (B, TODAY), (A, YESTERDAY), (C, LAST_WEEK)],
         signups={TODAY: 3, LAST_WEEK: 2},
     )
     assert rep["active_daily"][-2:] == [1, 2]
-    assert (rep["new_signups"], rep["prev_new_signups"], rep["prev_active_explorers"]) == (3, 2, 1)
+    assert (rep["active_explorers"], rep["prev_active_explorers"]) == (2, 1)
+    assert (rep["new_signups"], rep["prev_new_signups"]) == (3, 2)
+    late = report(active=[(A, TODAY)], signups={TODAY: 1}, firsts={"sessions": PREV[1], "signups": PREV[1]})
+    assert (late["prev_active_explorers"], late["prev_new_signups"]) == (None, None)

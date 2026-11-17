@@ -14,6 +14,7 @@ import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/core/services/feature_tracker.dart';
 import 'package:nexaround_app/features/experiences/presentation/pages/experience_link_page.dart';
 import 'package:nexaround_app/features/forum/presentation/pages/forum_link_page.dart';
+import 'package:nexaround_app/features/trip_wallet/presentation/pages/join_trip_page.dart';
 
 class AppRouter {
   /// The app's root navigator: app-wide sheets (the plans sheet when a
@@ -25,6 +26,7 @@ class AppRouter {
   /// app is killed during sign-in, the user lands on Home as usual.
   static String? _pendingPackageId;
   static String? _pendingTopicId;
+  static String? _pendingWalletCode;
 
   /// The package id in /e/<id> or /home/e/<id>.
   static String? _sharedPackageId(GoRouterState state) {
@@ -37,6 +39,13 @@ class AppRouter {
   static String? _sharedTopicId(GoRouterState state) {
     final segments = state.uri.pathSegments;
     final i = segments.indexOf('f');
+    return (i >= 0 && i + 1 < segments.length) ? segments[i + 1] : null;
+  }
+
+  /// The invite code in /w/<code> or /home/w/<code> (Trip Wallet).
+  static String? _sharedWalletCode(GoRouterState state) {
+    final segments = state.uri.pathSegments;
+    final i = segments.indexOf('w');
     return (i >= 0 && i + 1 < segments.length) ? segments[i + 1] : null;
   }
 
@@ -75,6 +84,15 @@ class AppRouter {
           return CacheService.isFirstTime() ? '/onboarding' : '/login';
         }
 
+        // A Trip Wallet invite, https://nexaround.com/w/<code>.
+        if (location.startsWith('/w/')) {
+          if (CacheService.isLoggedIn() && authState is! AuthUnauthenticated) {
+            return '/home$location';
+          }
+          _pendingWalletCode = _sharedWalletCode(state);
+          return CacheService.isFirstTime() ? '/onboarding' : '/login';
+        }
+
         // Just signed in with a shared package waiting: open it over Home.
         // The OTP and social sign-in screens are pushed on top of these
         // routes, so the router still reports login, register or onboarding.
@@ -99,6 +117,17 @@ class AppRouter {
           return '/home/f/$id';
         }
 
+        // Just signed in with a Trip Wallet invite waiting: open it over Home.
+        if (authState is AuthAuthenticated &&
+            _pendingWalletCode != null &&
+            (location == '/login' ||
+                location == '/register' ||
+                location == '/onboarding')) {
+          final code = _pendingWalletCode;
+          _pendingWalletCode = null;
+          return '/home/w/$code';
+        }
+
         // Define public routes that don't require authentication
         final bool isPublicRoute = location == '/login' ||
                                   location == '/register' ||
@@ -115,6 +144,9 @@ class AppRouter {
           }
           if (location.startsWith('/home/f/')) {
             _pendingTopicId = _sharedTopicId(state);
+          }
+          if (location.startsWith('/home/w/')) {
+            _pendingWalletCode = _sharedWalletCode(state);
           }
           return '/login';
         }
@@ -181,6 +213,11 @@ class AppRouter {
               builder: (context, state) =>
                   ForumLinkPage(topicId: state.pathParameters['id']!),
             ),
+            GoRoute(
+              path: 'w/:code',
+              builder: (context, state) =>
+                  JoinTripPage(code: state.pathParameters['code']!, fromLink: true),
+            ),
           ],
         ),
         // Matched so the redirect above can act on /e/<id>; it always sends
@@ -197,6 +234,14 @@ class AppRouter {
           path: '/f/:id',
           builder: (context, state) => ForumLinkPage(
             topicId: state.pathParameters['id']!,
+            standalone: true,
+          ),
+        ),
+        GoRoute(
+          path: '/w/:code',
+          builder: (context, state) => JoinTripPage(
+            code: state.pathParameters['code']!,
+            fromLink: true,
             standalone: true,
           ),
         ),
