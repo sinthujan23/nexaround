@@ -308,16 +308,17 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
   }
 
   // Curated Hubs: the "CURATED PORTALS" row with the space around it, the top
-  // card, the gap between cards, and the least the two tiles under it may be.
+  // card, the gap between cards, and the least the tile area under it may be
+  // (the two stacked tiles on the right are each half of it, less the gap).
   static const double _hubHeaderHeight = 30;
   static const double _hubHeroHeight = 195;
   static const double _hubCardGap = 10;
-  static const double _hubTileMinHeight = 175;
+  static const double _hubTileMinHeight = 226;
 
   Widget _buildCuratedHubsSliver() {
     return SliverLayoutBuilder(
       builder: (context, constraints) {
-        // The two tiles take the height left on the screen, so the cards end
+        // The tile area takes the height left on the screen, so the cards end
         // just above the navbar on any phone (no white gap). The body's bottom
         // padding is the navbar here: the home Scaffold has extendBody. On a
         // short screen they keep their least height and the page scrolls.
@@ -380,66 +381,70 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
             _buildBentoExperiencesHero(),
             const SizedBox(height: _hubCardGap),
 
-            // 2, 3 & 4. Museums, Trip Wallet & Walking Challenge (Bottom Row, 3 side-by-side tall tiles)
-            Row(
-              children: [
-                Expanded(
-                  child: _buildBentoSquareTile(
-                    height: tileHeight,
-                    tag: 'TOP MUSEUMS',
-                    tagIcon: Icons.account_balance_rounded,
-                    accentColor: const Color(0xFF00E5FF),
-                    badge: 'MASTER ROUTES',
-                    title: 'Museum Master Guides',
-                    featureIcon: Icons.bolt_rounded,
-                    featureLabel: 'Skip Lines',
-                    imageAsset: 'assets/images/museum_banner_bg.png',
-                    ctaText: 'Browse',
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const MuseumsListPage()),
+            // 2, 3 & 4. Bento: Trip Wallet tall on the left; Museums and the
+            // Walking Challenge stacked on the right, each half its height.
+            SizedBox(
+              height: tileHeight,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    flex: 105,
+                    child: _buildHubTile(
+                      height: tileHeight,
+                      large: true,
+                      tag: 'GROUP TRIP',
+                      tagIcon: Icons.account_balance_wallet_rounded,
+                      accentColor: const Color(0xFF4ADE80),
+                      title: 'Trip Wallet',
+                      featureIcon: Icons.balance_rounded,
+                      featureLabel: 'Fair Split',
+                      imageAsset: 'assets/images/trip_wallet_bg.jpg',
+                      // Keep the signposts (upper half of the photo) in view.
+                      imageAlignment: const Alignment(0, -0.2),
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const TripWalletPage()),
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _buildBentoSquareTile(
-                    height: tileHeight,
-                    tag: 'GROUP TRIP',
-                    tagIcon: Icons.account_balance_wallet_rounded,
-                    accentColor: const Color(0xFF4ADE80),
-                    badge: 'SPLIT & SETTLE',
-                    title: 'Trip Wallet',
-                    featureIcon: Icons.balance_rounded,
-                    featureLabel: 'Fair Split',
-                    imageAsset: 'assets/images/trip_wallet_bg.jpg',
-                    // The signposts are left of centre in the photo.
-                    imageAlignment: const Alignment(-0.45, 0),
-                    ctaText: 'Open',
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const TripWalletPage()),
+                  const SizedBox(width: _hubCardGap),
+                  Expanded(
+                    flex: 100,
+                    child: Column(
+                      children: [
+                        _buildHubTile(
+                          height: (tileHeight - _hubCardGap) / 2,
+                          tag: 'TOP MUSEUMS',
+                          tagIcon: Icons.account_balance_rounded,
+                          accentColor: const Color(0xFF00E5FF),
+                          title: 'Museum Master Guides',
+                          subtitle: 'Skip the lines',
+                          imageAsset: 'assets/images/museum_banner_bg.png',
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => const MuseumsListPage()),
+                          ),
+                        ),
+                        const SizedBox(height: _hubCardGap),
+                        _buildHubTile(
+                          height: (tileHeight - _hubCardGap) / 2,
+                          tag: 'CHALLENGE',
+                          tagIcon: Icons.directions_walk_rounded,
+                          accentColor: const Color(0xFFFFB800),
+                          title: 'Walking Challenge',
+                          subtitle: 'Earn badges',
+                          imageBytes: walkingChallengeBytes,
+                          imageAsset: 'assets/images/walking_challenge_bg.jpg',
+                          // The walker stands a little right of centre.
+                          imageAlignment: const Alignment(0.2, 0),
+                          onTap: _openMiniTour,
+                        ),
+                      ],
                     ),
                   ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _buildBentoSquareTile(
-                    height: tileHeight,
-                    tag: 'CHALLENGE',
-                    tagIcon: Icons.directions_walk_rounded,
-                    accentColor: const Color(0xFFFFB800),
-                    badge: 'MINI-TOUR',
-                    title: 'Walking Challenge',
-                    featureIcon: Icons.military_tech_rounded,
-                    featureLabel: 'Badges',
-                    imageBytes: walkingChallengeBytes,
-                    imageAsset: 'assets/images/walking_challenge_bg.jpg',
-                    ctaText: 'Start',
-                    onTap: _openMiniTour,
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ],
         ).animate(key: ValueKey('curated_hub_$_selectedTabIndex')).fade(duration: 220.ms).slideX(
@@ -485,32 +490,31 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
     );
   }
 
-  Widget _buildBentoSquareTile({
+  /// One Curated Hubs tile: photo, dark fade, tag pill with a round arrow
+  /// beside it, and the title at the bottom. The tall card ([large]) has a
+  /// bigger title and a feature chip under it; the small stacked ones carry a
+  /// one-line [subtitle] instead. The whole tile is the button.
+  Widget _buildHubTile({
     required double height,
     required String tag,
     required IconData tagIcon,
     required Color accentColor,
-    required String badge,
     required String title,
-    required IconData featureIcon,
-    required String featureLabel,
+    String? subtitle,
+    IconData? featureIcon,
+    String? featureLabel,
     String? imageAsset,
     Uint8List? imageBytes,
     Alignment imageAlignment = Alignment.center,
-    required String ctaText,
+    bool large = false,
     required VoidCallback onTap,
   }) {
-    // Three tiles share the row, so on most phones each is only ~105-125 px
-    // wide: then the corner icon goes, the tag shrinks to fit, and the chip
-    // and button stack instead of sitting side by side.
-    return LayoutBuilder(builder: (context, box) {
-    final compact = box.maxWidth < 140;
     return GestureDetector(
       onTap: onTap,
       child: Container(
         height: height,
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.16),
@@ -520,16 +524,12 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
           ],
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(20),
           child: Stack(
             fit: StackFit.expand,
             children: [
               if (imageBytes != null)
-                Image.memory(
-                  imageBytes,
-                  fit: BoxFit.cover,
-                  alignment: imageAlignment,
-                )
+                Image.memory(imageBytes, fit: BoxFit.cover, alignment: imageAlignment)
               else if (imageAsset != null)
                 Image.asset(
                   imageAsset,
@@ -543,137 +543,118 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
                     begin: Alignment.bottomCenter,
                     end: Alignment.topCenter,
                     colors: [
-                      const Color(0xFF0F172A).withValues(alpha: 0.85),
+                      const Color(0xFF0F172A).withValues(alpha: 0.9),
                       const Color(0xFF0F172A).withValues(alpha: 0.45),
-                      Colors.black.withValues(alpha: 0.15),
+                      Colors.black.withValues(alpha: 0.08),
                     ],
-                    stops: const [0.0, 0.6, 1.0],
+                    stops: const [0.0, 0.55, 1.0],
                   ),
                 ),
               ),
               Padding(
-                padding: EdgeInsets.all(compact ? 10 : 13),
+                padding: EdgeInsets.all(large ? 13 : 11),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    // Top: Tag pill + Modern icon squircle
+                    // Top: tag pill + arrow
                     Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Flexible(
                           child: FittedBox(
                             fit: BoxFit.scaleDown,
                             alignment: Alignment.centerLeft,
                             child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 7.5, vertical: 3.5),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.55),
-                            borderRadius: BorderRadius.circular(7),
-                            border: Border.all(
-                              color: accentColor.withValues(alpha: 0.70),
-                              width: 0.8,
+                              padding: const EdgeInsets.symmetric(horizontal: 7.5, vertical: 3.5),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.55),
+                                borderRadius: BorderRadius.circular(7),
+                                border: Border.all(color: accentColor.withValues(alpha: 0.70), width: 0.8),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(tagIcon, size: 10.5, color: accentColor),
+                                  const SizedBox(width: 3.5),
+                                  Text(
+                                    tag,
+                                    style: TextStyle(
+                                      fontSize: 8.5,
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: 1.0,
+                                      color: accentColor,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(tagIcon, size: 10.5, color: accentColor),
-                              const SizedBox(width: 3.5),
-                              Text(
-                                tag,
-                                style: TextStyle(
-                                  fontSize: 8,
-                                  fontWeight: FontWeight.w900,
-                                  letterSpacing: 1.0,
-                                  color: accentColor,
-                                ),
+                        ),
+                        const SizedBox(width: 6),
+                        Container(
+                          width: large ? 30 : 26,
+                          height: large ? 30 : 26,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.20),
+                                blurRadius: 4,
+                                offset: const Offset(0, 1),
                               ),
                             ],
                           ),
-                        ),
+                          child: Icon(
+                            Icons.arrow_forward_rounded,
+                            size: large ? 16 : 14,
+                            color: const Color(0xFF0F172A),
                           ),
-                        ),
-                        if (!compact) Container(
-                          width: 28,
-                          height: 28,
-                          decoration: BoxDecoration(
-                            color: accentColor.withValues(alpha: 0.18),
-                            borderRadius: BorderRadius.circular(9),
-                            border: Border.all(
-                              color: accentColor.withValues(alpha: 0.40),
-                              width: 0.8,
-                            ),
-                          ),
-                          child: Icon(tagIcon, size: 14, color: Colors.white),
                         ),
                       ],
                     ),
-                    // Bottom: Title, Micro-chip, & CTA
+                    // Bottom: title, then the chip (tall) or a short line (small)
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
                           title,
-                          maxLines: compact ? 3 : 2,
+                          maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            fontSize: compact ? (height >= 240 ? 15 : 13.5) : (height >= 240 ? 18 : 15),
+                            fontSize: large ? (height >= 240 ? 20 : 18) : 15,
                             fontWeight: FontWeight.w800,
-                            height: 1.15,
+                            height: 1.12,
                             letterSpacing: -0.2,
                             color: Colors.white,
                           ),
                         ),
-                        const SizedBox(height: 7),
-                        Flex(
-                          direction: compact ? Axis.vertical : Axis.horizontal,
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          crossAxisAlignment: compact ? CrossAxisAlignment.start : CrossAxisAlignment.center,
-                          mainAxisSize: compact ? MainAxisSize.min : MainAxisSize.max,
-                          children: [
-                            FittedBox(
-                              fit: BoxFit.scaleDown,
-                              alignment: Alignment.centerLeft,
-                              child: _buildMicroChip(
-                                icon: featureIcon,
-                                label: featureLabel,
-                                iconColor: accentColor,
-                              ),
+                        if (large && featureIcon != null && featureLabel != null) ...[
+                          const SizedBox(height: 8),
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: _buildMicroChip(
+                              icon: featureIcon,
+                              label: featureLabel,
+                              iconColor: accentColor,
                             ),
-                            if (compact) const SizedBox(height: 6),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(14),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withValues(alpha: 0.20),
-                                    blurRadius: 4,
-                                    offset: const Offset(0, 1),
-                                  ),
-                                ],
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    ctaText,
-                                    style: const TextStyle(
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w800,
-                                      color: Color(0xFF0F172A),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 2),
-                                  const Icon(Icons.arrow_forward_rounded, size: 10.5, color: Color(0xFF0F172A)),
-                                ],
-                              ),
+                          ),
+                        ],
+                        if (!large && subtitle != null) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            subtitle,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w500,
+                              color: Color(0xFFCBD5E1),
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ],
                     ),
                   ],
@@ -684,7 +665,6 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
         ),
       ),
     );
-    });
   }
 
   Widget _buildBentoExperiencesHero() {
