@@ -179,7 +179,6 @@ class _WalletTripPageState extends State<WalletTripPage> {
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (_) => _PeopleSheet(
         trip: _trip!,
-        onAdd: (name) => _run(() => _service.addMember(_trip!.id, name), 'add the person'),
         onRemove: (m) => _run(() => _service.removeMember(_trip!.id, m.id), 'remove ${m.displayName}'),
         onInvite: _invite,
       ),
@@ -1008,10 +1007,9 @@ class _ExpenseSheet extends StatelessWidget {
 
 class _PeopleSheet extends StatefulWidget {
   final WalletTrip trip;
-  final Future<WalletTrip?> Function(String name) onAdd;
   final Future<WalletTrip?> Function(WalletMember m) onRemove;
   final VoidCallback onInvite;
-  const _PeopleSheet({required this.trip, required this.onAdd, required this.onRemove, required this.onInvite});
+  const _PeopleSheet({required this.trip, required this.onRemove, required this.onInvite});
 
   @override
   State<_PeopleSheet> createState() => _PeopleSheetState();
@@ -1019,37 +1017,6 @@ class _PeopleSheet extends StatefulWidget {
 
 class _PeopleSheetState extends State<_PeopleSheet> {
   late WalletTrip _trip = widget.trip;
-
-  Future<void> _add() async {
-    final ctrl = TextEditingController();
-    final name = await showDialog<String>(
-      context: context,
-      builder: (c) => AlertDialog(
-        title: const Text('Add a person'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('For a friend without the app. They count in splits; you add their expenses for them.',
-                style: TextStyle(fontSize: 13, color: WalletColors.slate)),
-            TextField(
-              controller: ctrl,
-              autofocus: true,
-              maxLength: 100,
-              textCapitalization: TextCapitalization.words,
-              decoration: const InputDecoration(labelText: 'Name'),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(c), child: const Text('Cancel')),
-          TextButton(onPressed: () => Navigator.pop(c, ctrl.text.trim()), child: const Text('Add')),
-        ],
-      ),
-    );
-    if (name == null || name.isEmpty) return;
-    final t = await widget.onAdd(name);
-    if (t != null && mounted) setState(() => _trip = t);
-  }
 
   Future<void> _remove(WalletMember m) async {
     final t = await widget.onRemove(m);
@@ -1093,40 +1060,20 @@ class _PeopleSheetState extends State<_PeopleSheet> {
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _add,
-                      icon: const Icon(Icons.person_outline_rounded, size: 18),
-                      label: const Text('Add by name'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: WalletColors.navy,
-                        side: const BorderSide(color: WalletColors.line),
-                        padding: const EdgeInsets.symmetric(vertical: 13),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: () {
-                        Navigator.pop(context);
-                        widget.onInvite();
-                      },
-                      icon: const Icon(Icons.ios_share_rounded, size: 18),
-                      label: const Text('Invite link'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.brandGreen,
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        padding: const EdgeInsets.symmetric(vertical: 13),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                    ),
-                  ),
-                ],
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.pop(context);
+                  widget.onInvite();
+                },
+                icon: const Icon(Icons.ios_share_rounded, size: 18),
+                label: const Text('Invite link'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.brandGreen,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(vertical: 13),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
               ),
             ),
           ],

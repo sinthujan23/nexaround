@@ -47,9 +47,6 @@ class TripWalletService {
   Future<WalletTrip> join(String code) async =>
       _trip(await _dio.post('$_base/join/${Uri.encodeComponent(code)}'));
 
-  Future<WalletTrip> addMember(String tripId, String name) async =>
-      _trip(await _dio.post('$_base/trips/$tripId/members', data: {'display_name': name}));
-
   Future<WalletTrip> removeMember(String tripId, String memberId) async =>
       _trip(await _dio.delete('$_base/trips/$tripId/members/$memberId'));
 

@@ -390,7 +390,7 @@ def render_wallet_invite_page(code: str, trip_name: str, owner_name: str, member
     <article class="card">
       <div class="photo placeholder">👛</div>
       <div class="body">
-        <span class="pill">Trip Wallet</span>
+        <span class="pill">Trip Split</span>
         <h1>{e(trip_name)}</h1>
         <p class="vendor">{e(first)} invited you to split trip expenses</p>
         <p class="details">Code: {e(code)}</p>
@@ -399,7 +399,7 @@ def render_wallet_invite_page(code: str, trip_name: str, owner_name: str, member
       </div>
     </article>"""
     return _page(
-        title=f"Join {trip_name} · Trip Wallet",
+        title=f"Join {trip_name} · Trip Split",
         description=f"{first} invited you to split expenses for {trip_name} on nexARound.",
         url=url,
         head_extra="",
@@ -407,7 +407,7 @@ def render_wallet_invite_page(code: str, trip_name: str, owner_name: str, member
         app_argument=url,
         body=body,
         open_path=f"w/{code}",
-        note="Get the nexARound app, sign in, then open this link again or enter the code in Trip Wallet.",
+        note="Get the nexARound app, sign in, then open this link again or enter the code in Trip Split.",
     )
 
 
@@ -422,8 +422,8 @@ def render_wallet_not_found_page() -> str:
       </div>
     </article>"""
     return _page(
-        title="Invite not valid · Trip Wallet",
-        description="Split group trip expenses with nexARound Trip Wallet.",
+        title="Invite not valid · Trip Split",
+        description="Split group trip expenses with nexARound Trip Split.",
         url=settings.PUBLIC_SITE_URL,
         head_extra="",
         twitter_card="summary",

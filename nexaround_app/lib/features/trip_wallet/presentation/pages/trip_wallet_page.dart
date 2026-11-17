@@ -109,7 +109,7 @@ class _TripWalletPageState extends State<TripWalletPage> {
               leading: const AppBackButton(onImage: true),
               // Colours set here: the app's AppBar theme would paint the
               // title dark, which is lost on the photo.
-              title: const Text('Trip Wallet', style: TextStyle(fontWeight: FontWeight.w800, color: Colors.white)),
+              title: const Text('Trip Split', style: TextStyle(fontWeight: FontWeight.w800, color: Colors.white)),
               flexibleSpace: FlexibleSpaceBar(
                 background: Stack(
                   fit: StackFit.expand,
@@ -209,7 +209,7 @@ class _TripWalletPageState extends State<TripWalletPage> {
                   icon: Icons.account_balance_wallet_rounded,
                   title: 'No trips yet',
                   text: 'Make a trip, invite your friends with a link, and everyone adds what they paid. '
-                      'Trip Wallet works out who owes whom.',
+                      'Trip Split works out who owes whom.',
                 ),
               )
             else

@@ -381,7 +381,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
             _buildBentoExperiencesHero(),
             const SizedBox(height: _hubCardGap),
 
-            // 2, 3 & 4. Bento: Trip Wallet tall on the left; Museums and the
+            // 2, 3 & 4. Bento: Museums tall on the left; Trip Split and the
             // Walking Challenge stacked on the right, each half its height.
             SizedBox(
               height: tileHeight,
@@ -393,18 +393,16 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
                     child: _buildHubTile(
                       height: tileHeight,
                       large: true,
-                      tag: 'GROUP TRIP',
-                      tagIcon: Icons.account_balance_wallet_rounded,
-                      accentColor: const Color(0xFF4ADE80),
-                      title: 'Trip Wallet',
-                      featureIcon: Icons.balance_rounded,
-                      featureLabel: 'Fair Split',
-                      imageAsset: 'assets/images/trip_wallet_bg.jpg',
-                      // Keep the signposts (upper half of the photo) in view.
-                      imageAlignment: const Alignment(0, -0.2),
+                      tag: 'TOP MUSEUMS',
+                      tagIcon: Icons.account_balance_rounded,
+                      accentColor: const Color(0xFF00E5FF),
+                      title: 'Museum Master Guides',
+                      featureIcon: Icons.bolt_rounded,
+                      featureLabel: 'Skip the lines',
+                      imageAsset: 'assets/images/museum_banner_bg.png',
                       onTap: () => Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (_) => const TripWalletPage()),
+                        MaterialPageRoute(builder: (_) => const MuseumsListPage()),
                       ),
                     ),
                   ),
@@ -415,15 +413,16 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
                       children: [
                         _buildHubTile(
                           height: (tileHeight - _hubCardGap) / 2,
-                          tag: 'TOP MUSEUMS',
-                          tagIcon: Icons.account_balance_rounded,
-                          accentColor: const Color(0xFF00E5FF),
-                          title: 'Museum Master Guides',
-                          subtitle: 'Skip the lines',
-                          imageAsset: 'assets/images/museum_banner_bg.png',
+                          tag: 'GROUP TRIP',
+                          tagIcon: Icons.account_balance_wallet_rounded,
+                          accentColor: const Color(0xFF4ADE80),
+                          title: 'Trip Split',
+                          subtitle: 'Fair Split',
+                          // Same photo as the Trip Split page header.
+                          imageAsset: 'assets/images/trip_wallet_header.jpg',
                           onTap: () => Navigator.push(
                             context,
-                            MaterialPageRoute(builder: (_) => const MuseumsListPage()),
+                            MaterialPageRoute(builder: (_) => const TripWalletPage()),
                           ),
                         ),
                         const SizedBox(height: _hubCardGap),

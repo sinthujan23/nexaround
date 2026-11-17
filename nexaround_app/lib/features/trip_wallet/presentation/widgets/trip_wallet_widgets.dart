@@ -135,16 +135,16 @@ class _InviteSheetState extends State<_InviteSheet> {
   bool _resetting = false;
 
   String get _message =>
-      'Join "${_trip.name}" on nexARound Trip Wallet so we can split our trip expenses.\n'
+      'Join "${_trip.name}" on nexARound Trip Split so we can split our trip expenses.\n'
       '${_trip.inviteUrl}\n'
-      'Or open Trip Wallet and enter code ${_trip.inviteCode}';
+      'Or open Trip Split and enter code ${_trip.inviteCode}';
 
   Future<void> _share() async {
     final box = context.findRenderObject() as RenderBox?;
     try {
       await SharePlus.instance.share(ShareParams(
         text: _message,
-        subject: 'Join ${_trip.name} on Trip Wallet',
+        subject: 'Join ${_trip.name} on Trip Split',
         sharePositionOrigin: box == null ? null : box.localToGlobal(Offset.zero) & box.size,
       ));
     } catch (_) {
@@ -184,19 +184,13 @@ class _InviteSheetState extends State<_InviteSheet> {
   Widget build(BuildContext context) {
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+        // No handle drawn here: the app's sheet theme already shows one
+        // (app_theme.dart showDragHandle), so a second bar appeared.
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(color: WalletColors.line, borderRadius: BorderRadius.circular(2)),
-              ),
-            ),
-            const SizedBox(height: 18),
             const Text('Invite friends',
                 style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: WalletColors.navy)),
             const SizedBox(height: 4),

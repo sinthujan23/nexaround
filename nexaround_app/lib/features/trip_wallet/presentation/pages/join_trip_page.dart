@@ -114,7 +114,7 @@ class _JoinTripPageState extends State<JoinTripPage> {
         foregroundColor: WalletColors.navy,
         elevation: 0,
         leading: AppBackButton(onPressed: _leave),
-        title: const Text('Trip Wallet', style: TextStyle(fontWeight: FontWeight.w800)),
+        title: const Text('Trip Split', style: TextStyle(fontWeight: FontWeight.w800)),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator(color: AppColors.brandGreen))
