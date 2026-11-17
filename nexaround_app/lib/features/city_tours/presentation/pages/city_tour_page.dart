@@ -1196,6 +1196,7 @@ class _CityTourPageState extends State<CityTourPage>
                 from: _stopNear(day, i, -1),
                 to: _stopNear(day, i, 1),
                 onOpenMap: (stops, route) => _openLegMap(step, stops, route),
+                last: i == day.steps.length - 1,
               ));
       }
     }

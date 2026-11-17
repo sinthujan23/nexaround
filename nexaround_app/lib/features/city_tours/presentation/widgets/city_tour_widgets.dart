@@ -1195,6 +1195,10 @@ class CityTourLegPill extends StatelessWidget {
   /// Opens the ride's map full screen.
   final void Function(List<CityTourStep> stops, List<ll.LatLng>? route)? onOpenMap;
 
+  /// The day's last step: no dashed line below it, as nothing follows
+  /// (client: a dangling line made the route look unfinished).
+  final bool last;
+
   const CityTourLegPill({
     super.key,
     required this.step,
@@ -1204,6 +1208,7 @@ class CityTourLegPill extends StatelessWidget {
     this.from,
     this.to,
     this.onOpenMap,
+    this.last = false,
   });
 
   bool get _hasMap => step.isMove && (to?.hasPin ?? false);
@@ -1292,7 +1297,7 @@ class CityTourLegPill extends StatelessWidget {
                 )
               : const SizedBox(width: double.infinity),
         ),
-        const _Dash(height: 12),
+        if (last) const SizedBox(height: 12) else const _Dash(height: 12),
       ],
     );
   }
