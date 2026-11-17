@@ -10,6 +10,7 @@ import 'package:nexaround_app/core/error/user_message.dart';
 import 'package:nexaround_app/features/trip_wallet/data/trip_wallet_service.dart';
 import 'package:nexaround_app/features/trip_wallet/domain/trip_wallet_models.dart';
 import 'package:nexaround_app/features/trip_wallet/presentation/widgets/trip_wallet_widgets.dart';
+import 'package:nexaround_app/core/widgets/app_back_button.dart';
 
 /// Add or edit one expense: what, how much, who paid, who it was for, and a
 /// receipt photo. Pops with the trip as the server answers it.
@@ -131,7 +132,10 @@ class _AddExpensePageState extends State<AddExpensePage> {
     return null;
   }
 
+  void _hideKeyboard() => FocusManager.instance.primaryFocus?.unfocus();
+
   Future<void> _pickDate() async {
+    _hideKeyboard();
     final d = await showDatePicker(
       context: context,
       initialDate: _date,
@@ -142,6 +146,7 @@ class _AddExpensePageState extends State<AddExpensePage> {
   }
 
   Future<void> _pickReceipt() async {
+    _hideKeyboard();
     final source = await showModalBottomSheet<ImageSource>(
       context: context,
       backgroundColor: Colors.white,
@@ -199,6 +204,7 @@ class _AddExpensePageState extends State<AddExpensePage> {
   void _snack(String text) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
 
   Future<void> _save() async {
+    _hideKeyboard();
     final problem = _problem;
     if (problem != null) {
       _snack(problem);
@@ -240,6 +246,7 @@ class _AddExpensePageState extends State<AddExpensePage> {
         backgroundColor: Colors.white,
         foregroundColor: WalletColors.navy,
         elevation: 0,
+        leading: const AppBackButton(),
         title: Text(widget.editing == null ? 'Add expense' : 'Edit expense',
             style: const TextStyle(fontWeight: FontWeight.w800)),
       ),
@@ -277,6 +284,11 @@ class _AddExpensePageState extends State<AddExpensePage> {
         ),
       ),
       body: ListView(
+        // Scrolling the form closes the keyboard. A tap on empty space does too
+        // (the app-wide handler in app.dart); the pickers, the split switch
+        // and Save close it themselves. No per-field onTapOutside: moving from
+        // one field to the next would make the keyboard flicker.
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
         children: [
           // Amount
@@ -358,6 +370,7 @@ class _AddExpensePageState extends State<AddExpensePage> {
                   child: DropdownButtonHideUnderline(
                     child: DropdownButton<String>(
                       value: _paidBy,
+                      onTap: _hideKeyboard,
                       isDense: true,
                       isExpanded: true,
                       items: [
@@ -390,7 +403,10 @@ class _AddExpensePageState extends State<AddExpensePage> {
                   selectedForegroundColor: Colors.white,
                   visualDensity: VisualDensity.compact,
                 ),
-                onSelectionChanged: (s) => setState(() => _exactMode = s.first),
+                onSelectionChanged: (s) {
+                  _hideKeyboard();
+                  setState(() => _exactMode = s.first);
+                },
               ),
             ],
           ),

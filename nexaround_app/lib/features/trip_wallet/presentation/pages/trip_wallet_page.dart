@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/error/user_message.dart';
@@ -10,6 +11,7 @@ import 'package:nexaround_app/features/trip_wallet/domain/trip_wallet_models.dar
 import 'package:nexaround_app/features/trip_wallet/presentation/pages/join_trip_page.dart';
 import 'package:nexaround_app/features/trip_wallet/presentation/pages/wallet_trip_page.dart';
 import 'package:nexaround_app/features/trip_wallet/presentation/widgets/trip_wallet_widgets.dart';
+import 'package:nexaround_app/core/widgets/app_back_button.dart';
 
 /// Trip Wallet's home, opened from the Curated Hubs tile: the traveller's
 /// trips with their own balance in each, "New trip" and "Join with code".
@@ -72,7 +74,13 @@ class _TripWalletPageState extends State<TripWalletPage> {
   }
 
   Future<void> _joinWithCode() async {
-    final code = await showDialog<String>(context: context, builder: (_) => const _CodeDialog());
+    final code = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (_) => const _JoinCodeSheet(),
+    );
     if (code == null || code.trim().isEmpty || !mounted) return;
     final tripId = await Navigator.push<String>(
       context,
@@ -98,7 +106,10 @@ class _TripWalletPageState extends State<TripWalletPage> {
               pinned: true,
               backgroundColor: WalletColors.navy,
               foregroundColor: Colors.white,
-              title: const Text('Trip Wallet', style: TextStyle(fontWeight: FontWeight.w800)),
+              leading: const AppBackButton(onImage: true),
+              // Colours set here: the app's AppBar theme would paint the
+              // title dark, which is lost on the photo.
+              title: const Text('Trip Wallet', style: TextStyle(fontWeight: FontWeight.w800, color: Colors.white)),
               flexibleSpace: FlexibleSpaceBar(
                 background: Stack(
                   fit: StackFit.expand,
@@ -319,6 +330,7 @@ class _NewTripSheetState extends State<_NewTripSheet> {
   Future<void> _create() async {
     final name = _name.text.trim();
     if (name.isEmpty) return;
+    _hideKeyboard();
     setState(() => _saving = true);
     try {
       final trip = await TripWalletService().createTrip(name: name, currency: _currency);
@@ -331,7 +343,12 @@ class _NewTripSheetState extends State<_NewTripSheet> {
     }
   }
 
+  void _hideKeyboard() => FocusManager.instance.primaryFocus?.unfocus();
+
   Future<void> _pickCurrency() async {
+    // Close the keyboard first, or it pops back up over the sheet after a
+    // currency is picked.
+    _hideKeyboard();
     final code = await pickWalletCurrency(context, _currency);
     if (code != null) setState(() => _currency = code);
   }
@@ -346,7 +363,11 @@ class _NewTripSheetState extends State<_NewTripSheet> {
       padding: EdgeInsets.fromLTRB(20, 16, 20, 20 + MediaQuery.viewInsetsOf(context).bottom),
       child: SafeArea(
         top: false,
-        child: Column(
+        child: GestureDetector(
+          // A tap anywhere on the sheet that is not a field closes the keyboard.
+          behavior: HitTestBehavior.opaque,
+          onTap: _hideKeyboard,
+          child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -357,11 +378,20 @@ class _NewTripSheetState extends State<_NewTripSheet> {
               autofocus: true,
               maxLength: 80,
               textCapitalization: TextCapitalization.sentences,
+              textInputAction: TextInputAction.done,
               decoration: _fieldDecoration('Trip name', hint: 'e.g. Munnar trip'),
               onChanged: (_) => setState(() {}),
-              onSubmitted: (_) => _create(),
+              // "Done" closes the keyboard; with a name typed it also creates.
+              onSubmitted: (_) {
+                if (_name.text.trim().isEmpty) {
+                  _hideKeyboard();
+                } else {
+                  _create();
+                }
+              },
+              onTapOutside: (_) => _hideKeyboard(),
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 18),
             InkWell(
               borderRadius: BorderRadius.circular(14),
               onTap: _pickCurrency,
@@ -396,6 +426,7 @@ class _NewTripSheetState extends State<_NewTripSheet> {
                   : const Text('Create trip'),
             ),
           ],
+          ),
         ),
       ),
     );
@@ -483,39 +514,188 @@ class _CurrencyPickerState extends State<_CurrencyPicker> {
   }
 }
 
-class _CodeDialog extends StatefulWidget {
-  const _CodeDialog();
+/// "Join a trip": the 6-character invite code in six boxes, like the app's
+/// sign-in code screen. One hidden field takes the typing (so backspace and
+/// paste just work); the boxes show it. Pops with the code.
+class _JoinCodeSheet extends StatefulWidget {
+  const _JoinCodeSheet();
 
   @override
-  State<_CodeDialog> createState() => _CodeDialogState();
+  State<_JoinCodeSheet> createState() => _JoinCodeSheetState();
 }
 
-class _CodeDialogState extends State<_CodeDialog> {
+class _JoinCodeSheetState extends State<_JoinCodeSheet> {
+  static const _length = 6;
+
   final _code = TextEditingController();
+  final _focus = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _focus.addListener(() => setState(() {}));
+  }
 
   @override
   void dispose() {
     _code.dispose();
+    _focus.dispose();
     super.dispose();
+  }
+
+  bool get _complete => _code.text.length == _length;
+
+  void _hideKeyboard() => FocusManager.instance.primaryFocus?.unfocus();
+
+  void _submit() {
+    if (!_complete) return;
+    _hideKeyboard();
+    Navigator.pop(context, _code.text);
+  }
+
+  /// Fills the boxes from a copied invite: the whole WhatsApp message, the
+  /// link (nexaround.com/w/CODE) or just the code.
+  Future<void> _paste() async {
+    final text = (await Clipboard.getData(Clipboard.kTextPlain))?.text ?? '';
+    final link = RegExp(r'/w/([A-Za-z0-9]{6})').firstMatch(text);
+    final code = link?.group(1) ??
+        RegExp(r'\b[A-Za-z0-9]{6}\b').allMatches(text).map((m) => m.group(0)!).firstWhere(
+              (c) => RegExp(r'\d').hasMatch(c) || text.trim().length == _length,
+              orElse: () => '',
+            );
+    if (!mounted) return;
+    if (code.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No trip code found in what you copied')),
+      );
+      return;
+    }
+    _code.value = TextEditingValue(
+      text: code.toUpperCase(),
+      selection: const TextSelection.collapsed(offset: _length),
+    );
+    setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Join a trip'),
-      content: TextField(
-        controller: _code,
-        autofocus: true,
-        textCapitalization: TextCapitalization.characters,
-        maxLength: 8,
-        style: const TextStyle(fontSize: 22, letterSpacing: 4, fontWeight: FontWeight.w800),
-        decoration: const InputDecoration(hintText: 'CODE', counterText: ''),
-        onSubmitted: (v) => Navigator.pop(context, v),
+    final text = _code.text;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(20, 16, 20, 20 + MediaQuery.viewInsetsOf(context).bottom),
+      child: SafeArea(
+        top: false,
+        child: GestureDetector(
+          // A tap on the sheet outside the boxes closes the keyboard.
+          behavior: HitTestBehavior.opaque,
+          onTap: _hideKeyboard,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text('Join a trip',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: WalletColors.navy)),
+              const SizedBox(height: 6),
+              const Text(
+                'Enter the 6-character code from the invite the trip owner shared with you.',
+                style: TextStyle(fontSize: 14, height: 1.4, color: WalletColors.slate),
+              ),
+              const SizedBox(height: 20),
+              // The boxes, with the real (invisible) field on top of them.
+              SizedBox(
+                height: 58,
+                child: Stack(
+                  children: [
+                    Row(
+                      children: [
+                        for (var i = 0; i < _length; i++) ...[
+                          if (i > 0) const SizedBox(width: 8),
+                          Expanded(child: _box(i < text.length ? text[i] : '', _isActive(i, text))),
+                        ],
+                      ],
+                    ),
+                    Positioned.fill(
+                      child: Opacity(
+                        opacity: 0,
+                        child: TextField(
+                          controller: _code,
+                          focusNode: _focus,
+                          autofocus: true,
+                          maxLength: _length,
+                          showCursor: false,
+                          enableInteractiveSelection: false,
+                          autocorrect: false,
+                          enableSuggestions: false,
+                          keyboardType: TextInputType.visiblePassword,
+                          textCapitalization: TextCapitalization.characters,
+                          textInputAction: TextInputAction.go,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.allow(RegExp('[A-Za-z0-9]')),
+                            _UpperCase(),
+                          ],
+                          decoration: const InputDecoration(counterText: '', border: InputBorder.none),
+                          onChanged: (_) => setState(() {}),
+                          onSubmitted: (_) => _complete ? _submit() : _hideKeyboard(),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  onPressed: _paste,
+                  icon: const Icon(Icons.content_paste_rounded, size: 16),
+                  label: const Text('Paste invite'),
+                  style: TextButton.styleFrom(foregroundColor: AppColors.brandGreen),
+                ),
+              ),
+              const SizedBox(height: 6),
+              ElevatedButton(
+                onPressed: _complete ? _submit : null,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.brandGreen,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 15),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                ),
+                child: const Text('Continue'),
+              ),
+            ],
+          ),
+        ),
       ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-        TextButton(onPressed: () => Navigator.pop(context, _code.text), child: const Text('Next')),
-      ],
     );
   }
+
+  /// The box the next character goes in (the last one once all are filled).
+  bool _isActive(int i, String text) =>
+      _focus.hasFocus && (i == text.length || (text.length == _length && i == _length - 1));
+
+  Widget _box(String char, bool active) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 120),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: char.isEmpty ? WalletColors.card : Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: active ? AppColors.brandGreen : (char.isEmpty ? WalletColors.line : WalletColors.slate.withValues(alpha: 0.5)),
+          width: active ? 1.8 : 1,
+        ),
+      ),
+      child: Text(
+        char,
+        style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: WalletColors.navy),
+      ),
+    );
+  }
+}
+
+/// Typed letters show as capitals, as the codes are written.
+class _UpperCase extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) =>
+      newValue.copyWith(text: newValue.text.toUpperCase());
 }

@@ -8,6 +8,7 @@ import 'package:nexaround_app/features/trip_wallet/data/trip_wallet_service.dart
 import 'package:nexaround_app/features/trip_wallet/domain/trip_wallet_models.dart';
 import 'package:nexaround_app/features/trip_wallet/presentation/pages/add_expense_page.dart';
 import 'package:nexaround_app/features/trip_wallet/presentation/widgets/trip_wallet_widgets.dart';
+import 'package:nexaround_app/core/widgets/app_back_button.dart';
 
 /// Opens a trip from a push or a link; a trip the traveller is no longer in
 /// shows the page's own "not found" state.
@@ -191,7 +192,12 @@ class _WalletTripPageState extends State<WalletTripPage> {
     if (trip == null) {
       return Scaffold(
         backgroundColor: Colors.white,
-        appBar: AppBar(backgroundColor: Colors.white, foregroundColor: WalletColors.navy, elevation: 0),
+        appBar: AppBar(
+          backgroundColor: Colors.white,
+          foregroundColor: WalletColors.navy,
+          elevation: 0,
+          leading: const AppBackButton(),
+        ),
         body: Center(
           child: _error == null
               ? const CircularProgressIndicator(color: AppColors.brandGreen)
@@ -212,6 +218,7 @@ class _WalletTripPageState extends State<WalletTripPage> {
           backgroundColor: Colors.white,
           foregroundColor: WalletColors.navy,
           elevation: 0,
+          leading: const AppBackButton(),
           title: Text(trip.name, style: const TextStyle(fontWeight: FontWeight.w800)),
           actions: [
             IconButton(tooltip: 'Invite', icon: const Icon(Icons.person_add_alt_1_rounded), onPressed: _invite),

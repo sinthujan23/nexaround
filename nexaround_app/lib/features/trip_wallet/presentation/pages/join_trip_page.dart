@@ -6,6 +6,7 @@ import 'package:nexaround_app/features/trip_wallet/data/trip_wallet_service.dart
 import 'package:nexaround_app/features/trip_wallet/domain/trip_wallet_models.dart';
 import 'package:nexaround_app/features/trip_wallet/presentation/pages/wallet_trip_page.dart';
 import 'package:nexaround_app/features/trip_wallet/presentation/widgets/trip_wallet_widgets.dart';
+import 'package:nexaround_app/core/widgets/app_back_button.dart';
 
 /// "Join <trip>?": what an invite link (`https://nexaround.com/w/<code>`) or a
 /// typed code opens.
@@ -112,7 +113,7 @@ class _JoinTripPageState extends State<JoinTripPage> {
         backgroundColor: Colors.white,
         foregroundColor: WalletColors.navy,
         elevation: 0,
-        leading: IconButton(icon: const Icon(Icons.close_rounded), onPressed: _leave),
+        leading: AppBackButton(onPressed: _leave),
         title: const Text('Trip Wallet', style: TextStyle(fontWeight: FontWeight.w800)),
       ),
       body: _loading
