@@ -115,19 +115,24 @@ class _TripWalletPageState extends State<TripWalletPage> {
                   fit: StackFit.expand,
                   children: [
                     Image.asset(
-                      'assets/images/trip_wallet_bg.jpg',
+                      'assets/images/trip_wallet_header.jpg',
                       fit: BoxFit.cover,
-                      alignment: const Alignment(0, -0.2),
+                      alignment: const Alignment(0, 0.1),
                       errorBuilder: (_, __, ___) => const ColoredBox(color: WalletColors.navy),
                     ),
+                    // Dark at the bottom for the line of text, light over the
+                    // faces, a little dark at the top so the white title and
+                    // status bar stay readable on the bright sky.
                     DecoratedBox(
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
                           begin: Alignment.bottomCenter,
                           end: Alignment.topCenter,
+                          stops: const [0, 0.45, 1],
                           colors: [
                             WalletColors.navy.withValues(alpha: 0.9),
-                            WalletColors.navy.withValues(alpha: 0.2),
+                            WalletColors.navy.withValues(alpha: 0.1),
+                            WalletColors.navy.withValues(alpha: 0.45),
                           ],
                         ),
                       ),
