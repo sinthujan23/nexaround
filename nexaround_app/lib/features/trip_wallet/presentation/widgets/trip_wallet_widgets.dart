@@ -13,6 +13,10 @@ class WalletColors {
   static const green = Color(0xFF16A34A);
   static const red = Color(0xFFDC2626);
   static const card = Color(0xFFF8FAFC);
+
+  /// The app's text-field grey (inputDecorationTheme: surfaceVariant at 60%),
+  /// for anything the user fills in or picks.
+  static const field = Color(0x99E8E8E8);
 }
 
 String walletCategoryLabel(String c) => switch (c) {

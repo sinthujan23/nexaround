@@ -406,6 +406,8 @@ class _AddExpensePageState extends State<AddExpensePage> {
                 selected: {_exactMode},
                 showSelectedIcon: false,
                 style: SegmentedButton.styleFrom(
+                  backgroundColor: WalletColors.field,
+                  side: const BorderSide(color: WalletColors.line),
                   selectedBackgroundColor: AppColors.brandGreen,
                   selectedForegroundColor: Colors.white,
                   visualDensity: VisualDensity.compact,
@@ -445,17 +447,26 @@ class _AddExpensePageState extends State<AddExpensePage> {
         ),
       ),
       for (final m in _people)
-        CheckboxListTile(
-          value: _inSplit.contains(m.id),
-          onChanged: (v) => setState(() => v == true ? _inSplit.add(m.id) : _inSplit.remove(m.id)),
-          activeColor: AppColors.brandGreen,
-          contentPadding: EdgeInsets.zero,
-          controlAffinity: ListTileControlAffinity.trailing,
-          secondary: WalletAvatar(m, size: 34),
-          title: Text(m.isMe ? 'You' : m.displayName, style: const TextStyle(fontWeight: FontWeight.w600)),
-          subtitle: _inSplit.contains(m.id) && (_total ?? 0) > 0
-              ? Text(_money.format(parts[m.id] ?? 0))
-              : null,
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          // Grey like the other fields, so each person reads as something to tick.
+          child: CheckboxListTile(
+            value: _inSplit.contains(m.id),
+            onChanged: (v) => setState(() => v == true ? _inSplit.add(m.id) : _inSplit.remove(m.id)),
+            activeColor: AppColors.brandGreen,
+            tileColor: WalletColors.field,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+              side: const BorderSide(color: WalletColors.line),
+            ),
+            contentPadding: const EdgeInsets.only(left: 12, right: 6),
+            controlAffinity: ListTileControlAffinity.trailing,
+            secondary: WalletAvatar(m, size: 34),
+            title: Text(m.isMe ? 'You' : m.displayName, style: const TextStyle(fontWeight: FontWeight.w600)),
+            subtitle: _inSplit.contains(m.id) && (_total ?? 0) > 0
+                ? Text(_money.format(parts[m.id] ?? 0))
+                : null,
+          ),
         ),
     ];
   }
@@ -577,7 +588,7 @@ class _AddExpensePageState extends State<AddExpensePage> {
         labelText: label.isEmpty ? null : label,
         hintText: hint,
         filled: true,
-        fillColor: WalletColors.card,
+        fillColor: WalletColors.field,
         counterText: '',
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
