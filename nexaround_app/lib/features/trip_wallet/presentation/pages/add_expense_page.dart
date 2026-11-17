@@ -311,7 +311,14 @@ class _AddExpensePageState extends State<AddExpensePage> {
                     keyboardType: TextInputType.numberWithOptions(decimal: _money.decimals > 0),
                     inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]'))],
                     style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w900, color: WalletColors.navy),
-                    decoration: const InputDecoration(border: InputBorder.none, hintText: '0', isDense: true),
+                    // The hint must match the typed size, or the theme's small
+                    // hint style shows a tiny "0".
+                    decoration: const InputDecoration(
+                      border: InputBorder.none,
+                      hintText: '0',
+                      hintStyle: TextStyle(fontSize: 30, fontWeight: FontWeight.w900, color: Color(0xFFCBD5E1)),
+                      isDense: true,
+                    ),
                     onChanged: (_) => setState(() {}),
                   ),
                 ),
