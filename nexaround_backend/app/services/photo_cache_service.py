@@ -57,6 +57,87 @@ def cached_path(photo_reference: str, maxwidth: int, index: int = 0) -> Path:
     return _CACHE_DIR / _safe_name(photo_reference, maxwidth, index)
 
 
+# Saved photos are 800 px (the app's default), some 1080 px (trip covers).
+# A smaller copy for list cards is made from them, never bought from Google.
+_SOURCE_WIDTHS = (800, 1080, 1600)
+CARD_WIDTH = 640
+
+
+def _has(path: Path) -> bool:
+    try:
+        return path.exists() and path.stat().st_size > 0
+    except OSError:
+        return False
+
+
+def is_saved(photo_reference: str, maxwidth: int, index: int = 0) -> bool:
+    """We can serve this photo at this width without Google: the file itself,
+    or a larger saved copy to shrink it from."""
+    if _has(cached_path(photo_reference, maxwidth, index)):
+        return True
+    return any(
+        _has(cached_path(photo_reference, w, index))
+        for w in _SOURCE_WIDTHS if w > maxwidth
+    )
+
+
+def saved_or_smaller(photo_reference: str, maxwidth: int, index: int = 0) -> Optional[Path]:
+    """The saved file at this width, or a smaller copy made now from a larger
+    saved one (WebP, quality 75, kept next to it). None when we hold neither.
+    Blocking (Pillow): call through asyncio.to_thread."""
+    path = cached_path(photo_reference, maxwidth, index)
+    if _has(path):
+        return path
+    for w in _SOURCE_WIDTHS:
+        if w <= maxwidth:
+            continue
+        source = cached_path(photo_reference, w, index)
+        if not _has(source):
+            continue
+        from PIL import Image
+        try:
+            with Image.open(source) as img:
+                img = img.convert("RGB")
+                img.thumbnail((maxwidth, maxwidth))
+                tmp = path.with_suffix(f".{os.getpid()}.{time.monotonic_ns()}.tmp")
+                img.save(tmp, format="WEBP", quality=75, method=4)
+            os.replace(tmp, path)
+            return path
+        except Exception:
+            return None
+    return None
+
+
+def media_type_of(path: Path) -> str:
+    """Saved files are JPEG; the smaller copies are WebP under the same name."""
+    try:
+        with open(path, "rb") as f:
+            head = f.read(12)
+    except OSError:
+        return "image/jpeg"
+    if head[:4] == b"RIFF" and head[8:12] == b"WEBP":
+        return "image/webp"
+    if head[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    return "image/jpeg"
+
+
+def stable_url(photo_reference: str, index: int, maxwidth: Optional[int] = None) -> str:
+    """One link per saved photo. Google gives the same photo a new code on
+    every answer, and the phone took each new code for a new image (a spinner
+    and a second download for ~7% of photo views on 2026-11-17). The file is
+    keyed on the place and the photo's position, so the code in the link is
+    irrelevant to us: it is fixed to "saved"."""
+    from urllib.parse import quote
+    ref = photo_reference
+    if ref.startswith("places/") and "/photos/" in ref:
+        ref = f"places/{ref.split('/', 2)[1]}/photos/saved"
+    url = f"/api/v1/places/photo?ref={quote(ref, safe='/')}&i={index}"
+    if maxwidth and maxwidth != 800:
+        url += f"&maxwidth={maxwidth}"
+    return url
+
+
 # Lock per filename so a thundering herd doesn't fetch the same photo twice.
 _locks: dict[str, asyncio.Lock] = {}
 

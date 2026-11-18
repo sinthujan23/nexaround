@@ -74,6 +74,10 @@ class _AttractionDetailPageState extends State<AttractionDetailPage>
 
   String get _placeId => widget.id ?? widget.name.hashCode.toString();
   String? _resolvedImageUrl;
+  // The full-size photo from the place details, faded in over the card-sized
+  // one the list gave (same photo, smaller), so the page sharpens without a
+  // spinner.
+  String? _sharperImageUrl;
 
   // ── Google Places data ──
   bool _isLoadingPlaces = true;
@@ -321,10 +325,15 @@ class _AttractionDetailPageState extends State<AttractionDetailPage>
           final reviews = rawReviews.map((r) => Map<String, dynamic>.from(r)).toList();
           final photoUrls = (data['photo_urls'] as List?)?.cast<String>() ?? [];
           final String? firstPhoto = photoUrls.isNotEmpty ? photoUrls[0] : null;
-          // A Google photo link from the list that the server no longer
-          // offers (photos switched off and never saved) would only 404.
+          // The list's Google photo link stays when the server still has a
+          // Google photo for this place: it is the same saved photo under
+          // another code, and swapping links would only reload it (a spinner
+          // over a photo already on screen). It is replaced only when the
+          // server has no Google photo: none at all (it would 404), or a
+          // Wikipedia / Unsplash / traveller photo instead.
           final current = _resolvedImageUrl ?? '';
-          final staleGoogle = current.contains('/places/photo?') && !photoUrls.contains(current);
+          final staleGoogle = current.contains('/places/photo?') &&
+              !photoUrls.any((u) => u.contains('/places/photo?'));
 
           if (mounted) {
             setState(() {
@@ -349,6 +358,8 @@ class _AttractionDetailPageState extends State<AttractionDetailPage>
                 _resolvedImageUrl = firstPhoto;
               } else if (staleGoogle) {
                 _resolvedImageUrl = null;
+              } else if (firstPhoto != null && firstPhoto != _resolvedImageUrl) {
+                _sharperImageUrl = firstPhoto;
               }
             });
           }
@@ -552,6 +563,13 @@ class _AttractionDetailPageState extends State<AttractionDetailPage>
                     category: widget.category,
                     name: widget.name,
                   ),
+                  if (_sharperImageUrl != null)
+                    PlaceImageHelper.buildPlaceImage(
+                      imagePath: _sharperImageUrl,
+                      category: widget.category,
+                      name: widget.name,
+                      quiet: true,
+                    ),
                   // Gradient overlay
                   Container(
                     decoration: BoxDecoration(

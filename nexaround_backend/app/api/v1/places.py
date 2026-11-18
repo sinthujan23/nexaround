@@ -4,6 +4,7 @@ Replaces the direct Google calls the mobile client was making, cutting
 per-user API spend by ~90% via cache reuse across all users in the same
 ~500m tile, and removes the Google API key from the mobile binary.
 """
+import asyncio
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Query, Depends
 from fastapi.responses import FileResponse
@@ -207,9 +208,12 @@ async def get_place_photo(
     can reach Google, so an unauthenticated request can never cost money. A
     signed-in caller may trigger the first fetch for a photo we do not hold yet.
     """
+    # A saved photo, or a smaller copy made from a larger saved one (list
+    # cards ask for 640 px), is served for everyone without asking Google.
+    saved = await asyncio.to_thread(photo_cache_service.saved_or_smaller, ref, maxwidth, i)
     if current_user is None:
-        path = photo_cache_service.cached_path(ref, maxwidth, i)
-        cached = path.exists() and path.stat().st_size > 0
+        path = saved
+        cached = path is not None
         # Recorded here rather than left to get_or_fetch, which this branch
         # deliberately skips. Anonymous image loads are the bulk of photo
         # traffic, so omitting them would make the cache look far less
@@ -239,6 +243,9 @@ async def get_place_photo(
                 detail="Photo not cached",
                 headers={"Cache-Control": "public, max-age=3600"},
             )
+    elif saved is not None:
+        # Saved (or shrunk from a saved copy): nothing to buy, no checks.
+        path = saved
     else:
         # The budget applies here too.
         #
@@ -250,39 +257,35 @@ async def get_place_photo(
         # paid call except the most frequent one.
         allowed, reason = await spend_guard.allowed(current_user.id)
         if allowed and not await plan_service.google_photos_allowed(current_user.id):
-            # Explorer gets the photos we already hold; new ones are not bought.
+            # Saved photos only; new ones are not bought.
             allowed, reason = False, "plan: saved photos only"
         if not allowed:
-            # Degrade the way every other guarded path does: serve what is
-            # already on disk, and otherwise let the client fall back to its
+            # Not saved and not to be bought: the client falls back to its
             # category icon. A budget being spent is not this user's error.
-            path = photo_cache_service.cached_path(ref, maxwidth, i)
-            if not (path.exists() and path.stat().st_size > 0):
+            raise HTTPException(
+                status_code=404,
+                detail=f"Photo not cached ({reason})",
+                headers={"Cache-Control": "public, max-age=3600"},
+            )
+        path = await photo_cache_service.get_or_fetch(
+            ref, maxwidth=maxwidth, index=i
+        )
+        if path is None:
+            if photo_cache_service.is_known_bad(ref, maxwidth, i):
+                # Google rejected the reference. Tell the device so, with
+                # the same hour-long Cache-Control the anonymous miss
+                # carries — an uncacheable 502 had image loaders retrying
+                # the same dead reference on every rebuild.
                 raise HTTPException(
                     status_code=404,
-                    detail=f"Photo not cached ({reason})",
+                    detail="Photo reference rejected",
                     headers={"Cache-Control": "public, max-age=3600"},
                 )
-        else:
-            path = await photo_cache_service.get_or_fetch(
-                ref, maxwidth=maxwidth, index=i
-            )
-            if path is None:
-                if photo_cache_service.is_known_bad(ref, maxwidth, i):
-                    # Google rejected the reference. Tell the device so, with
-                    # the same hour-long Cache-Control the anonymous miss
-                    # carries — an uncacheable 502 had image loaders retrying
-                    # the same dead reference on every rebuild.
-                    raise HTTPException(
-                        status_code=404,
-                        detail="Photo reference rejected",
-                        headers={"Cache-Control": "public, max-age=3600"},
-                    )
-                raise HTTPException(status_code=502, detail="Photo unavailable")
+            raise HTTPException(status_code=502, detail="Photo unavailable")
 
     return FileResponse(
         path,
-        media_type="image/jpeg",
+        media_type=photo_cache_service.media_type_of(path),
         headers={"Cache-Control": "public, max-age=2592000"},  # 30d on client
     )
 

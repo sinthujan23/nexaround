@@ -104,7 +104,9 @@ def test_saved_google_photo_comes_first(monkeypatch):
     monkeypatch.setattr(place_photos, "_google_photo_saved", lambda url: True)
     places = [_place("g1", [GOOGLE])]
     asyncio.run(place_photos.attach(places))
-    assert places[0]["photo_urls"] == [GOOGLE] and places[0]["photo_credit"] is None
+    # The saved photo, as one fixed card-sized link.
+    assert places[0]["photo_urls"] == ["/api/v1/places/photo?ref=places/ABC/photos/saved&i=0&maxwidth=640"]
+    assert places[0]["photo_credit"] is None
 
 
 def test_wikipedia_beats_an_approved_photo(monkeypatch):
@@ -157,8 +159,12 @@ def test_upload_is_shrunk_to_webp_without_exif(monkeypatch, tmp_path):
     stored = Image.open(tmp_path / os.path.basename(url))
     assert stored.format == "WEBP"
     assert not stored.getexif()
+    card = tmp_path / os.path.basename(url).replace(".webp", "_640.webp")
+    assert max(Image.open(card).size) == 640
+    assert place_photos.sized_url(url, card=True, google_on=False).endswith("_640.webp")
+    assert place_photos.sized_url(url, card=False, google_on=False) == url
     place_photos.delete_file(url)
-    assert not (tmp_path / os.path.basename(url)).exists()
+    assert not (tmp_path / os.path.basename(url)).exists() and not card.exists()
 
 
 @pytest.mark.parametrize("content", [b"not an image", _jpeg(120, 90)])
@@ -177,3 +183,41 @@ def test_delete_file_only_touches_our_folder(monkeypatch, tmp_path):
     place_photos.delete_file("/static/uploads/experiences/keep.txt")
     place_photos.delete_file(None)
     assert victim.exists()
+
+
+# ── Card-sized, fixed links ─────────────────────────────────────────────────
+
+def test_google_links_are_fixed_and_card_sized():
+    url = "/api/v1/places/photo?ref=places/PID/photos/TOKEN123&i=1"
+    assert place_photos.sized_url(url, card=True, google_on=False) == \
+        "/api/v1/places/photo?ref=places/PID/photos/saved&i=1&maxwidth=640"
+    assert place_photos.sized_url(url, card=False, google_on=False) == \
+        "/api/v1/places/photo?ref=places/PID/photos/saved&i=1"
+    # Same photo under another code: the very same link, so the phone reuses it.
+    other = "/api/v1/places/photo?ref=places/PID/photos/OTHER999&i=1"
+    assert place_photos.sized_url(other, card=True, google_on=False) == \
+        place_photos.sized_url(url, card=True, google_on=False)
+    # Untouched while Google photos are on.
+    assert place_photos.sized_url(url, card=True, google_on=True) == url
+
+
+def test_wikipedia_and_unsplash_card_sizes():
+    wiki = "https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/X.jpg/960px-X.jpg?utm=1"
+    assert place_photos.sized_url(wiki, card=True, google_on=False) == wiki.replace("/960px-", "/500px-")
+    assert place_photos.sized_url(wiki, card=False, google_on=False) == wiki
+    uns = "https://images.unsplash.com/photo-1?ixid=abc&q=80&w=1080"
+    small = place_photos.sized_url(uns, card=True, google_on=False)
+    assert "w=640" in small and "ixid=abc" in small and "w=1080" not in small
+
+
+def test_small_copy_is_made_from_the_saved_photo(monkeypatch, tmp_path):
+    from app.services import photo_cache_service as pcs
+    monkeypatch.setattr(pcs, "_CACHE_DIR", tmp_path)
+    ref = "places/PID/photos/TOKEN"
+    Image.new("RGB", (800, 600), (10, 80, 160)).save(pcs.cached_path(ref, 800, 0), format="JPEG")
+    assert pcs.is_saved(ref, 640, 0) and not pcs.is_saved(ref, 640, 1)
+    path = pcs.saved_or_smaller("places/PID/photos/saved", 640, 0)
+    assert path is not None and max(Image.open(path).size) == 640
+    assert pcs.media_type_of(path) == "image/webp"
+    assert pcs.media_type_of(pcs.cached_path(ref, 800, 0)) == "image/jpeg"
+    assert pcs.saved_or_smaller(ref, 640, 1) is None       # never asks Google

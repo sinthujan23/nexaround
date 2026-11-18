@@ -21,7 +21,7 @@ import os
 import time
 import uuid
 from typing import Optional
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, urlencode, urlsplit
 
 from fastapi import HTTPException, status
 from PIL import Image, ImageOps
@@ -43,6 +43,11 @@ UPLOAD_DIR = "app/static/uploads/place_photos"
 PUBLIC_PREFIX = "/static/uploads/place_photos"
 
 _GOOGLE_PHOTO_PREFIX = "/api/v1/places/photo?"
+# Photos in lists are card-sized (TL, 2026-11-18: lists loaded slowly): about
+# 38 KB instead of 156 KB for a saved Google photo, 56 KB instead of 175 KB
+# for a Wikipedia one. The place page keeps the full size.
+CARD_SIDE_PX = 640
+WIKI_CARD_PX = 500           # one of Wikimedia's ready-made thumbnail sizes
 
 
 def credit_for(uploader_name: str) -> str:
@@ -78,9 +83,15 @@ def save_upload(content: bytes) -> tuple[str, int, int, int]:
     img.save(out, format="WEBP", quality=WEBP_QUALITY, method=4)
     data = out.getvalue()
     os.makedirs(UPLOAD_DIR, exist_ok=True)
-    name = f"{uuid.uuid4()}.webp"
+    stem = str(uuid.uuid4())
+    name = f"{stem}.webp"
     with open(os.path.join(UPLOAD_DIR, name), "wb") as f:
         f.write(data)
+    # The card copy lists use (sized_url): a fraction of the bytes.
+    card = img.copy()
+    card.thumbnail((CARD_SIDE_PX, CARD_SIDE_PX))
+    card.save(os.path.join(UPLOAD_DIR, f"{stem}_{CARD_SIDE_PX}.webp"),
+              format="WEBP", quality=75, method=4)
     return f"{PUBLIC_PREFIX}/{name}", img.size[0], img.size[1], len(data)
 
 
@@ -89,10 +100,12 @@ def delete_file(url: Optional[str]) -> None:
     if not url or not url.startswith(PUBLIC_PREFIX + "/"):
         return
     name = os.path.basename(url)
-    try:
-        os.remove(os.path.join(UPLOAD_DIR, name))
-    except FileNotFoundError:
-        pass
+    stem = name[:-5] if name.endswith(".webp") else name
+    for each in (name, f"{stem}_{CARD_SIDE_PX}.webp"):
+        try:
+            os.remove(os.path.join(UPLOAD_DIR, each))
+        except FileNotFoundError:
+            pass
 
 
 # ── Google photo links ──────────────────────────────────────────────────────
@@ -107,8 +120,7 @@ def _google_photo_saved(url: str) -> bool:
             return False
         index = int((q.get("i") or ["0"])[0] or 0)
         width = int((q.get("maxwidth") or ["800"])[0] or 800)
-        path = photo_cache_service.cached_path(ref, width, index)
-        return path.exists() and path.stat().st_size > 0
+        return photo_cache_service.is_saved(ref, width, index)
     except Exception:
         return False
 
@@ -118,6 +130,49 @@ def usable_photo_urls(urls: list[str], google_on: bool) -> list[str]:
     if google_on or not urls:
         return list(urls or [])
     return [u for u in urls if not u.startswith(_GOOGLE_PHOTO_PREFIX) or _google_photo_saved(u)]
+
+
+def sized_url(url: str, *, card: bool, google_on: bool) -> str:
+    """The link to send: card-sized in lists, full-sized on the place page,
+    and one fixed link per saved Google photo (photo_cache_service.stable_url)
+    so the phone recognises a photo it already holds."""
+    from app.services import photo_cache_service
+    if url.startswith(_GOOGLE_PHOTO_PREFIX):
+        if google_on:
+            return url               # unchanged while Google photos are on
+        try:
+            q = parse_qs(urlsplit(url).query)
+            ref = (q.get("ref") or [""])[0]
+            index = int((q.get("i") or ["0"])[0] or 0)
+            width = int((q.get("maxwidth") or ["800"])[0] or 800)
+        except Exception:
+            return url
+        if not ref:
+            return url
+        if card:
+            width = min(width, photo_cache_service.CARD_WIDTH)
+        return photo_cache_service.stable_url(ref, index, width)
+    if not card:
+        return url
+    if "wikimedia.org" in url and "/960px-" in url:
+        return url.replace("/960px-", f"/{WIKI_CARD_PX}px-")
+    if "images.unsplash.com" in url:
+        parts = urlsplit(url)
+        q = parse_qs(parts.query, keep_blank_values=True)
+        q["w"] = [str(CARD_SIDE_PX)]
+        return parts._replace(query=urlencode(q, doseq=True)).geturl()
+    if url.startswith(PUBLIC_PREFIX + "/") and url.endswith(".webp"):
+        small = f"{url[:-5]}_{CARD_SIDE_PX}.webp"
+        if os.path.exists(os.path.join(UPLOAD_DIR, os.path.basename(small))):
+            return small
+    return url
+
+
+async def _size_links(items: list[dict], *, card: bool) -> None:
+    google_on = await _google_on()
+    for it in items:
+        it["photo_urls"] = [sized_url(u, card=card, google_on=google_on)
+                            for u in it.get("photo_urls") or []]
 
 
 # ── Approved photos ─────────────────────────────────────────────────────────
@@ -281,6 +336,7 @@ async def attach(places: list[dict]) -> None:
         for p in places
     ]
     await _fill(items)
+    await _size_links(items, card=True)
     for p, it in zip(places, items):
         p["photo_urls"] = it["photo_urls"]
         p["photo_credit"] = it.get("photo_credit")
@@ -294,6 +350,7 @@ async def attach_responses(places: list) -> None:
         for p in places
     ]
     await _fill(items)
+    await _size_links(items, card=True)
     for p, it in zip(places, items):
         p.photo_urls = it["photo_urls"]
         p.photo_credit = it.get("photo_credit")
@@ -309,5 +366,6 @@ async def attach_details(place_id: str, details: dict, *, name=None, lat=None, l
         details.get("photo_urls"),
     )
     await _fill([it])
+    await _size_links([it], card=False)
     details["photo_urls"] = it["photo_urls"]
     details["photo_credit"] = it.get("photo_credit")

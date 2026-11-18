@@ -47,6 +47,10 @@ class PlaceImageHelper {
     double? width,
     double? height,
     BorderRadius? borderRadius,
+    // For an image laid over a smaller copy of itself: nothing while it loads
+    // (no grey box, no spinner) and nothing if it fails, so the copy beneath
+    // stays on screen until the sharp one is ready.
+    bool quiet = false,
   }) {
     Widget imageWidget;
 
@@ -67,16 +71,20 @@ class PlaceImageHelper {
         // actually be drawn. When width is null the layout decides the size,
         // so we leave the decode alone rather than guess and risk softening it.
         memCacheWidth: width != null ? (width! * 3).round() : null,
-        placeholder: (context, url) => Container(
-          color: Colors.grey.shade900,
-          child: const Center(
-            child: SizedBox(
-              width: 20, height: 20,
-              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white24),
-            ),
-          ),
-        ),
-        errorWidget: (context, url, error) => _buildFallbackAsset(category, name, fit, width, height),
+        placeholder: (context, url) => quiet
+            ? const SizedBox.shrink()
+            : Container(
+                color: Colors.grey.shade900,
+                child: const Center(
+                  child: SizedBox(
+                    width: 20, height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white24),
+                  ),
+                ),
+              ),
+        errorWidget: (context, url, error) => quiet
+            ? const SizedBox.shrink()
+            : _buildFallbackAsset(category, name, fit, width, height),
       );
     } else {
       imageWidget = _buildFallbackAsset(category, name, fit, width, height);
