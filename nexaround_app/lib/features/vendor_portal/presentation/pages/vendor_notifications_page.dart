@@ -191,14 +191,12 @@ class _VendorNotificationsPageState extends State<VendorNotificationsPage> {
             ],
           ),
         );
-        // A request's line opens the request (the portal does, on return).
-        final tappable = item.enquiryId == null
-            ? card
-            : GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => Navigator.pop(context, item.enquiryId),
-                child: card,
-              );
+        // A line opens what it is about: the portal does, on return.
+        final tappable = GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => Navigator.pop(context, item),
+          child: card,
+        );
         if (!isNew) return tappable;
         // New lines get a teal edge, like an unread message.
         return DecoratedBox(

@@ -13,19 +13,23 @@ import 'package:nexaround_app/features/vendor_portal/data/vendor_portal_models.d
 
 import '../vendor_ui.dart';
 import 'vendor_home_tabs.dart';
+import 'package_editor_page.dart';
 import 'vendor_notifications_page.dart';
 import 'vendor_profile_tab.dart';
 import 'vendor_requests_tab.dart';
 import 'vendor_reviews_tab.dart';
 
 /// Opens the vendor screens for one of the businesses the traveller was
-/// given; with several, asks which first. [requestId] opens that request (a
-/// push about it was tapped); [toNotifications] lands on the notifications.
+/// given; with several, asks which first. A tapped push says where to land:
+/// [requestId] opens that request, [packageId] that package, [toProfile] the
+/// Profile tab, [toNotifications] the notifications.
 Future<void> openVendorPortal(
   BuildContext context, {
   List<VendorAccess>? access,
   String? vendorId,
   String? requestId,
+  String? packageId,
+  bool toProfile = false,
   bool toNotifications = false,
 }) async {
   var list = access;
@@ -100,6 +104,8 @@ Future<void> openVendorPortal(
       builder: (_) => VendorPortalPage(
         access: chosen!,
         requestId: requestId,
+        packageId: packageId,
+        toProfile: toProfile,
         toNotifications: toNotifications,
       ),
     ),
@@ -144,6 +150,12 @@ class VendorPortalPage extends StatefulWidget {
   /// A request to open over the Requests tab.
   final String? requestId;
 
+  /// A package to open over the Packages tab.
+  final String? packageId;
+
+  /// Lands on the Profile tab (NexAround checked the profile's changes).
+  final bool toProfile;
+
   /// For tests: an API whose answers they control.
   final VendorPortalApi? api;
 
@@ -152,6 +164,8 @@ class VendorPortalPage extends StatefulWidget {
     required this.access,
     this.toNotifications = false,
     this.requestId,
+    this.packageId,
+    this.toProfile = false,
     this.api,
   });
 
@@ -230,6 +244,8 @@ class _VendorPortalPageState extends State<VendorPortalPage> {
       vendorName: _api.me?.vendorName ?? widget.access.vendorName,
       toNotifications: widget.toNotifications,
       requestId: widget.requestId,
+      packageId: widget.packageId,
+      toProfile: widget.toProfile,
     );
   }
 
@@ -360,6 +376,8 @@ class VendorShell extends StatefulWidget {
   final String vendorName;
   final bool toNotifications;
   final String? requestId;
+  final String? packageId;
+  final bool toProfile;
 
   const VendorShell({
     super.key,
@@ -367,6 +385,8 @@ class VendorShell extends StatefulWidget {
     required this.vendorName,
     this.toNotifications = false,
     this.requestId,
+    this.packageId,
+    this.toProfile = false,
   });
 
   @override
@@ -409,6 +429,10 @@ class _VendorShellState extends State<VendorShell> {
     _poll = Timer.periodic(const Duration(minutes: 1), (_) => _checkForNew());
     if (widget.requestId != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _openRequest(widget.requestId!));
+    } else if (widget.packageId != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _openPackage(widget.packageId!));
+    } else if (widget.toProfile) {
+      _tab = 4;
     } else if (widget.toNotifications) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _openNotifications());
     }
@@ -449,6 +473,32 @@ class _VendorShellState extends State<VendorShell> {
     _requestsTab.currentState?.openRequest(id);
   }
 
+  /// The Packages tab, with that package open over it.
+  Future<void> _openPackage(String id) async {
+    _goTo(2);
+    final saved = await openPackageEditor(context, widget.api, packageId: id);
+    if (saved == true && mounted) _packagesChanged.value++;
+  }
+
+  /// What a notification line is about, as the web portal's bell opens it:
+  /// the request, the reviews, the package (the list for a deleted one), or
+  /// else the profile.
+  void _openActivity(VendorActivityItem item) {
+    final enquiryId = item.enquiryId;
+    final packageId = item.packageId;
+    if (enquiryId != null) {
+      _openRequest(enquiryId);
+    } else if (item.kind == 'review.created') {
+      _goTo(3);
+    } else if (packageId != null && item.kind != 'package.deleted') {
+      _openPackage(packageId);
+    } else if (item.kind.startsWith('package.')) {
+      _goTo(2);
+    } else {
+      _goTo(4);
+    }
+  }
+
   Future<void> _refreshUnread() async {
     try {
       final n = await widget.api.unread();
@@ -457,13 +507,13 @@ class _VendorShellState extends State<VendorShell> {
   }
 
   Future<void> _openNotifications() async {
-    // A tap on a request's line comes back as its id.
-    final requestId = await Navigator.push<String>(
+    // A tapped line comes back, to open what it is about.
+    final item = await Navigator.push<VendorActivityItem>(
       context,
       MaterialPageRoute(builder: (_) => VendorNotificationsPage(api: widget.api)),
     );
     _refreshUnread();
-    if (requestId != null && mounted) _openRequest(requestId);
+    if (item != null && mounted) _openActivity(item);
   }
 
   void _goTo(int tab) => setState(() => _tab = tab);

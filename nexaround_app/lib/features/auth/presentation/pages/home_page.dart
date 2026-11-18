@@ -15,6 +15,7 @@ import 'package:nexaround_app/core/services/notification_service.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/core/services/discovery_history_service.dart';
 import 'package:nexaround_app/core/services/feature_tracker.dart';
+import 'package:nexaround_app/features/notifications/notification_router.dart';
 
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
@@ -27,12 +28,7 @@ import 'package:nexaround_app/features/planning/presentation/pages/odyssey_detai
 import 'package:nexaround_app/features/living_map/presentation/widgets/discovery_engine_sheet.dart';
 import 'package:nexaround_app/core/services/google_places_service.dart';
 import 'package:nexaround_app/features/living_map/presentation/pages/smart_tourism_map_page.dart';
-import 'package:nexaround_app/features/experiences/presentation/pages/my_experience_requests_page.dart';
-import 'package:nexaround_app/features/vendor_portal/presentation/pages/vendor_portal_page.dart';
-import 'package:nexaround_app/features/city_tours/presentation/pages/city_tour_page.dart';
 import 'package:nexaround_app/features/city_tours/presentation/pages/city_tours_page.dart';
-import 'package:nexaround_app/features/trip_wallet/data/trip_wallet_service.dart';
-import 'package:nexaround_app/features/trip_wallet/presentation/pages/wallet_trip_page.dart';
 
 class HomePage extends StatefulWidget {
   static final GlobalKey<HomePageState> homeKey = GlobalKey<HomePageState>();
@@ -72,82 +68,9 @@ class HomePageState extends State<HomePage>
     _checkLocationService();
 
     // Now that we're in the authenticated shell, register the device for push
-    // and route notification taps to the right tab / exact plan.
-    NotificationService.instance.onOpen = (data) async {
-      final type = (data['type'] ?? '').toString();
-      final odysseyId = (data['odyssey_id'] ?? data['itinerary_id'] ?? data['id'] ?? data['odysseyId'])?.toString();
-
-      if (type == 'odyssey_ready' || type == 'odyssey_generated' || type == 'plan_ready' || (odysseyId != null && odysseyId.isNotEmpty && type.contains('odyssey'))) {
-        if (odysseyId != null && odysseyId.isNotEmpty) {
-          await openOdysseyById(odysseyId);
-        } else {
-          try {
-            final repo = OdysseyRepository();
-            final list = await repo.getMyOdysseys();
-            if (list.isNotEmpty && mounted) {
-              openOdysseyDetail(list.first);
-            } else {
-              switchToPlans();
-            }
-          } catch (_) {
-            switchToPlans();
-          }
-        }
-      }
-      if (data['type'] == 'story_comment') switchToExplore();
-      // A provider confirmed or cancelled an experience request.
-      if (type == 'experience_request' && mounted) {
-        showMyExperienceRequests(context,
-            openRequestId: data['enquiry_id']?.toString());
-      }
-      // A request for a business this traveller manages, or NexAround's
-      // check of its changes: its notifications.
-      // A City Guides trip step ran past its time: back to the guide.
-      if (type == 'city_tour_trip' && mounted) {
-        final tourId = data['tour_id']?.toString();
-        if (tourId != null && tourId.isNotEmpty) openCityTourById(context, tourId);
-      }
-      // Someone in a Trip Wallet trip added an expense, joined or paid.
-      if (type == TripWalletService.pushType && mounted) {
-        final tripId = data['trip_id']?.toString();
-        if (tripId != null && tripId.isNotEmpty) openWalletTripById(context, tripId);
-      }
-      if ((type == 'vendor_request' || type == 'vendor_review') && mounted) {
-        openVendorPortal(context,
-            vendorId: data['vendor_id']?.toString(),
-            requestId: data['enquiry_id']?.toString(),
-            toNotifications: true);
-      }
-      if (type == 'discovery_ready' || data['type'] == 'discovery_ready') {
-        final discoveryId = (data['discovery_id'] ?? data['id'])?.toString();
-        switchToExplore();
-        CacheService.isDiscoveringNotifier.value = false;
-        try {
-          final history = await DiscoveryHistoryService.fetchHistory();
-          Map<String, dynamic>? target;
-          if (discoveryId != null && discoveryId.isNotEmpty) {
-            for (final item in history) {
-              if (item['id']?.toString() == discoveryId) {
-                target = item;
-                break;
-              }
-            }
-          }
-          target ??= history.isNotEmpty ? history.first : null;
-          if (target != null && mounted) {
-            final res = target['result'] as String?;
-            final loc = target['location'] as String?;
-            final mode = target['mode'] as String?;
-            final mood = target['mood'] as String?;
-            if (res != null && res.isNotEmpty) {
-              openDiscoveryPlan(res, location: loc, mode: mode, mood: mood);
-            }
-          }
-        } catch (e) {
-          debugPrint('Error opening discovery plan from push: $e');
-        }
-      }
-    };
+    // and route notification taps to what each one is about: the same
+    // router as a tap on the line in the bell.
+    NotificationService.instance.onOpen = (data) => NotificationRouter.open(data);
     NotificationService.instance.syncToken();
   }
 

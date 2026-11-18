@@ -1,109 +1,61 @@
 import 'package:flutter/material.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
-import 'package:nexaround_app/features/auth/presentation/pages/home_page.dart';
-import 'package:nexaround_app/features/experiences/presentation/pages/my_experience_requests_page.dart';
-import 'package:nexaround_app/features/vendor_portal/presentation/pages/vendor_portal_page.dart';
-import 'package:nexaround_app/core/services/discovery_history_service.dart';
+import 'package:nexaround_app/features/notifications/notification_router.dart';
 
-import 'package:nexaround_app/features/planning/data/odyssey_repository.dart';
-import 'package:nexaround_app/features/city_tours/presentation/pages/city_tour_page.dart';
-
-/// The bell inbox: lists notifications received via FCM. Tapping an
-/// "odyssey_ready" or "discovery_ready" item jumps directly to the exact plan. Opening the page marks
-/// everything read.
+/// The bell inbox: lists notifications received via FCM. Tapping one opens
+/// what it is about, exactly as tapping its push does ([NotificationRouter]).
+/// Leaving the page marks everything read.
 class NotificationsPage extends StatefulWidget {
   const NotificationsPage({super.key});
+
+  /// Whether the bell is open, so a push for an announcement doesn't open a
+  /// second one over it.
+  static bool get isShowing => _NotificationsPageState._showing > 0;
 
   @override
   State<NotificationsPage> createState() => _NotificationsPageState();
 }
 
 class _NotificationsPageState extends State<NotificationsPage> {
+  static int _showing = 0;
+
   @override
   void initState() {
     super.initState();
+    _showing++;
+    // A push that arrives (or is tapped) while the bell is open shows here.
+    CacheService.notificationsNotifier.addListener(_onChanged);
     _refresh();
   }
 
-  Future<void> _refresh() async {
-    // Pull in notifications saved by the FCM background isolate, then show them
-    // and clear the unread badge.
-    await CacheService.reload();
-    if (!mounted) return;
-    setState(() {});
-    await CacheService.markNotificationsRead();
+  @override
+  void dispose() {
+    _showing--;
+    CacheService.notificationsNotifier.removeListener(_onChanged);
+    // Read once seen: on leaving, so the new ones keep their dot meanwhile.
+    CacheService.markNotificationsRead();
+    super.dispose();
   }
 
-  bool _isHandlingTap = false;
+  void _onChanged() {
+    if (mounted) setState(() {});
+  }
 
-  void _onTap(Map<String, dynamic> n) async {
-    if (_isHandlingTap) return;
-    _isHandlingTap = true;
-    Future.delayed(const Duration(milliseconds: 1000), () {
-      if (mounted) _isHandlingTap = false;
-    });
+  Future<void> _refresh() async {
+    // Pull in notifications saved by the FCM background isolate.
+    await CacheService.reload();
+    if (mounted) setState(() {});
+  }
 
+  void _onTap(Map<String, dynamic> n) {
+    // The push's data as it came, with its type (also kept on the line).
+    final data = <String, dynamic>{
+      ...?(n['data'] as Map?)?.cast<String, dynamic>(),
+    };
     final type = (n['type'] ?? '').toString();
-    final data = (n['data'] as Map?)?.cast<String, dynamic>() ?? n;
-    final odysseyId = (data['odyssey_id'] ?? data['itinerary_id'] ?? data['id'] ?? data['odysseyId'] ?? n['odyssey_id'] ?? n['id'])?.toString();
-
-    if (type == 'odyssey_ready' || type == 'odyssey_generated' || type == 'plan_ready' || (odysseyId != null && odysseyId.isNotEmpty && type.contains('odyssey'))) {
-      Navigator.pop(context);
-      if (odysseyId != null && odysseyId.isNotEmpty) {
-        await HomePage.homeKey.currentState?.openOdysseyById(odysseyId);
-      } else {
-        try {
-          final repo = OdysseyRepository();
-          final list = await repo.getMyOdysseys();
-          if (list.isNotEmpty) {
-            HomePage.homeKey.currentState?.openOdysseyDetail(list.first);
-          } else {
-            HomePage.homeKey.currentState?.switchToPlans();
-          }
-        } catch (_) {
-          HomePage.homeKey.currentState?.switchToPlans();
-        }
-      }
-    } else if (type == 'experience_request') {
-      final requestId = (data['enquiry_id'] ?? n['enquiry_id'])?.toString();
-      await showMyExperienceRequests(context, openRequestId: requestId);
-    } else if (type == 'city_tour_trip') {
-      final tourId = (data['tour_id'] ?? n['tour_id'])?.toString();
-      if (tourId != null && tourId.isNotEmpty) await openCityTourById(context, tourId);
-    } else if (type == 'vendor_request' || type == 'vendor_review') {
-      await openVendorPortal(context,
-          vendorId: (data['vendor_id'] ?? n['vendor_id'])?.toString(),
-          requestId: (data['enquiry_id'] ?? n['enquiry_id'])?.toString(),
-          toNotifications: true);
-    } else if (type == 'discovery_ready' || type.contains('discovery')) {
-      Navigator.pop(context);
-      final discoveryId = (data['discovery_id'] ?? data['id'] ?? n['discovery_id'] ?? n['id'])?.toString();
-      try {
-        final history = await DiscoveryHistoryService.fetchHistory();
-        Map<String, dynamic>? target;
-        if (discoveryId != null && discoveryId.isNotEmpty) {
-          for (final item in history) {
-            if (item['id']?.toString() == discoveryId) {
-              target = item;
-              break;
-            }
-          }
-        }
-        target ??= history.isNotEmpty ? history.first : null;
-        if (target != null) {
-          final res = target['result'] as String?;
-          final loc = target['location'] as String?;
-          final mode = target['mode'] as String?;
-          final mood = target['mood'] as String?;
-          if (res != null && res.isNotEmpty) {
-            HomePage.homeKey.currentState?.openDiscoveryPlan(res, location: loc, mode: mode, mood: mood);
-          }
-        }
-      } catch (e) {
-        debugPrint('Error opening discovery plan from inbox notification: $e');
-      }
-    }
+    if (type.isNotEmpty) data['type'] = type;
+    NotificationRouter.open(data, fromInbox: true);
   }
 
   String _fmt(String iso) {

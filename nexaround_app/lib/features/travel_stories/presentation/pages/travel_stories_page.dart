@@ -20,11 +20,48 @@ import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/core/error/user_message.dart';
 import 'package:nexaround_app/core/services/feature_tracker.dart';
 
+/// The story a "New comment" notification is about, with its comments open.
+/// Found in the feed (it is the traveller's own, which the feed always
+/// carries); one that has been deleted since says so.
+Future<void> openStoryComments(BuildContext context, String storyId) async {
+  final messenger = ScaffoldMessenger.of(context);
+  List<TravelStory> feed;
+  try {
+    feed = await TravelStoriesService().getStories(
+      lat: CacheService.getLastFetchLat(),
+      lng: CacheService.getLastFetchLng(),
+    );
+  } catch (e) {
+    messenger.showSnackBar(SnackBar(content: Text(userMessageFor(e, action: 'open this story'))));
+    return;
+  }
+  final story = feed.where((s) => s.id == storyId).firstOrNull;
+  if (story == null) {
+    messenger.showSnackBar(const SnackBar(content: Text('This story is no longer available.')));
+    return;
+  }
+  if (!context.mounted) return;
+  await Navigator.of(context).push(
+    MaterialPageRoute(
+      builder: (_) => TravelStoriesPage(
+        stories: [story],
+        initialIndex: 0,
+        openComments: true,
+        // The Home row reloads without it.
+        onStoryDeleted: (_) => TravelStoriesService.feedChanged.value++,
+      ),
+    ),
+  );
+}
+
 class TravelStoriesPage extends StatefulWidget {
   final List<TravelStory> stories;
   final int initialIndex;
   final int initialImageIndex;
   final Function(String storyId)? onStoryDeleted;
+
+  /// Opens the first story's comments at once (a comment notification).
+  final bool openComments;
 
   /// How many TravelBytes the feed has, for the "See more" page: the viewer
   /// is given only the first of them. Null counts the ones in [stories].
@@ -37,6 +74,7 @@ class TravelStoriesPage extends StatefulWidget {
     this.initialImageIndex = 0,
     this.onStoryDeleted,
     this.travelByteCount,
+    this.openComments = false,
   });
 
   @override
@@ -97,6 +135,11 @@ class _TravelStoriesPageState extends State<TravelStoriesPage>
     }
     _pageController = PageController(initialPage: widget.initialIndex);
     _startStoryTimer();
+    if (widget.openComments && widget.stories.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _showCommentsDialog(widget.stories[_currentIndex]);
+      });
+    }
   }
 
   void _startStoryTimer() {
