@@ -472,6 +472,7 @@ class _Summary extends StatelessWidget {
               ),
             ],
           ),
+          if (trip.expenses.isNotEmpty) _EveryoneBalances(trip: trip),
           const SizedBox(height: 14),
           InkWell(
             onTap: onPeople,
@@ -501,6 +502,135 @@ class _Summary extends StatelessWidget {
                 Text('${active.length} ${active.length == 1 ? 'person' : 'people'}',
                     style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
                 const Icon(Icons.chevron_right_rounded, color: Colors.white60, size: 20),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Each person's balance inside the summary card: a bar out from the middle
+/// (left red = owes, right green = gets back, scaled to the biggest balance)
+/// and the amount. More than six people: the rest are on the Balances tab.
+class _EveryoneBalances extends StatelessWidget {
+  final WalletTrip trip;
+  const _EveryoneBalances({required this.trip});
+
+  static const _gets = Color(0xFF4ADE80);
+  static const _owes = Color(0xFFFCA5A5);
+  static const _maxRows = 6;
+
+  @override
+  Widget build(BuildContext context) {
+    final money = trip.money;
+    final rows = [
+      for (final m in trip.members)
+        if (!m.left || (trip.balanceOf(m.id)?.net ?? 0) != 0) (m, trip.balanceOf(m.id)?.net ?? 0),
+    ]..sort((a, b) => b.$2.compareTo(a.$2));
+    if (rows.isEmpty) return const SizedBox.shrink();
+    final biggest = rows.fold<int>(0, (a, r) => r.$2.abs() > a ? r.$2.abs() : a);
+    final shown = rows.take(_maxRows).toList();
+    return Padding(
+      padding: const EdgeInsets.only(top: 14),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Column(
+          children: [
+            for (final (m, net) in shown) _personLine(m, net, biggest, money),
+            if (rows.length > shown.length)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton(
+                  onPressed: () => DefaultTabController.of(context).animateTo(1),
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.white70,
+                    padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 4),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: Text('+${rows.length - shown.length} more in Balances',
+                      style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _personLine(WalletMember m, int net, int biggest, WalletMoney money) {
+    final name = m.isMe ? 'You' : m.displayName + (m.left ? ' (left)' : '');
+    final (text, color) = net > 0
+        ? ('${m.isMe ? 'get back' : 'gets back'} ${money.format(net)}', _gets)
+        : net < 0
+            ? ('${m.isMe ? 'owe' : 'owes'} ${money.format(-net)}', _owes)
+            : ('settled', Colors.white54);
+    final part = biggest == 0 ? 0.0 : net.abs() / biggest;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        children: [
+          WalletAvatar(m, size: 24),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(text, style: TextStyle(color: color, fontSize: 12.5, fontWeight: FontWeight.w800)),
+                  ],
+                ),
+                const SizedBox(height: 5),
+                SizedBox(
+                  height: 6,
+                  child: LayoutBuilder(builder: (_, box) {
+                    final half = box.maxWidth / 2;
+                    final w = half * part;
+                    return Stack(
+                      children: [
+                        Positioned.fill(
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.10),
+                              borderRadius: BorderRadius.circular(3),
+                            ),
+                          ),
+                        ),
+                        if (w > 0)
+                          Positioned(
+                            left: net > 0 ? half : half - w,
+                            width: w,
+                            top: 0,
+                            bottom: 0,
+                            child: Container(
+                              decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(3)),
+                            ),
+                          ),
+                        Positioned(
+                          left: half - 0.5,
+                          width: 1,
+                          top: 0,
+                          bottom: 0,
+                          child: Container(color: Colors.white38),
+                        ),
+                      ],
+                    );
+                  }),
+                ),
               ],
             ),
           ),
