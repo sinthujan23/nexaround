@@ -584,6 +584,13 @@ class AuthService:
 
         # 4. Reviews, notifications, discovery history, sessions, analytics
         await self.db.execute(delete(Review).where(Review.user_id == user_id))
+        from app.models.place_review import PlaceReview
+        await self.db.execute(delete(PlaceReview).where(PlaceReview.user_id == user_id))
+        from app.models.place_photo import PlacePhoto
+        from app.services import place_photos
+        for (url,) in (await self.db.execute(select(PlacePhoto.url).where(PlacePhoto.user_id == user_id))).all():
+            place_photos.delete_file(url)
+        await self.db.execute(delete(PlacePhoto).where(PlacePhoto.user_id == user_id))
         await self.db.execute(delete(Notification).where(Notification.user_id == user_id))
         await self.db.execute(delete(DiscoveryHistory).where(DiscoveryHistory.user_id == user_id))
         await self.db.execute(delete(UserSession).where(UserSession.user_id == user_id))

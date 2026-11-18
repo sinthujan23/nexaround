@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Literal, Optional
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
 class CityTourSaveIn(BaseModel):
@@ -86,16 +86,36 @@ class CityTourDetail(CityTourListItem):
     link_taps: Optional[dict[str, int]] = None
 
 
+# Team members (admin/team): the admin-panel areas a login opens.
+TeamSection = Literal["city_tours", "experiences", "travel_bytes"]
+
+
+def _sections(value: Optional[list]) -> Optional[list]:
+    if value is None:
+        return None
+    if not value:
+        raise ValueError("Pick at least one area.")
+    return list(dict.fromkeys(value))  # in order, no repeats
+
+
 class ContentCreatorIn(BaseModel):
     name: str = Field(..., min_length=1, max_length=120)
     email: EmailStr
     password: str = Field(..., min_length=10, max_length=128)
+    sections: list[TeamSection] = Field(default_factory=lambda: ["city_tours"])
+    can_publish_guides: bool = False
+
+    _check_sections = field_validator("sections")(_sections)
 
 
 class ContentCreatorPatch(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=120)
     is_active: Optional[bool] = None
     password: Optional[str] = Field(None, min_length=10, max_length=128)
+    sections: Optional[list[TeamSection]] = None
+    can_publish_guides: Optional[bool] = None
+
+    _check_sections = field_validator("sections")(_sections)
 
 
 class ContentCreatorOut(BaseModel):
@@ -103,6 +123,8 @@ class ContentCreatorOut(BaseModel):
     name: str
     email: str
     is_active: bool
+    sections: list[str] = []
+    can_publish_guides: bool = False
     created_at: datetime
     last_login_at: Optional[datetime] = None
     tour_count: int = 0

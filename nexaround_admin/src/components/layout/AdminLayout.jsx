@@ -69,7 +69,7 @@ function AdminChrome({ onLogout }) {
   );
 }
 
-/** A content creator's panel: City Tours only, so no enquiry alerts either. */
+/** A team member's panel: only their areas, so no enquiry alerts either. */
 export default function AdminLayout({ onLogout }) {
   if (isCreator()) {
     return (

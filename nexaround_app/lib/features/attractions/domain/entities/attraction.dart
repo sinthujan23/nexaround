@@ -42,6 +42,13 @@ class AttractionEntity {
   final int popularity;
   final String? popularityLabel;
   final String? dataSource;
+  // Our travellers' own ratings (server: services/place_reviews). The server
+  // decides which stars a card shows: 'google', 'nexaround' (no Google rating
+  // and at least 3 of ours) or 'none'. Null means an answer from before the
+  // server sent it (an old cached list): the old rules apply.
+  final double? ourRating;
+  final int ourReviewCount;
+  final String? ratingSource;
 
   String? get category => categoryName;
 
@@ -73,5 +80,8 @@ class AttractionEntity {
     this.popularity = 0,
     this.popularityLabel,
     this.dataSource,
+    this.ourRating,
+    this.ourReviewCount = 0,
+    this.ratingSource,
   });
 }

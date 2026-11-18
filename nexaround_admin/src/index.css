@@ -633,6 +633,10 @@ td { padding: 14px 16px; color: var(--text-primary); vertical-align: middle; }
 
 .form-input:focus, .form-textarea:focus, .form-select:focus { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-glow); }
 .form-textarea { resize: vertical; min-height: 90px; }
+/* A field the form refused: red edge, and the reason under it (.form-field-error). */
+.form-input[aria-invalid="true"], .form-textarea[aria-invalid="true"], .form-select[aria-invalid="true"] { border-color: var(--danger); }
+.form-input[aria-invalid="true"]:focus, .form-textarea[aria-invalid="true"]:focus, .form-select[aria-invalid="true"]:focus { box-shadow: 0 0 0 4px rgba(229, 57, 53, 0.12); }
+.form-field-error { margin-top: 6px; font-size: 12.5px; color: var(--danger); }
 
 /* ===== LOGIN (OPTION 1: SPLIT-SCREEN SPATIAL COMMAND) ===== */
 .login-page {

@@ -14,7 +14,7 @@ import {
   MODES, dayPlan, emptyGuide, formatClock, modeOf, newBreak, newDay, newMove, newStop,
   notifyCityToursChanged, stopNumbers, tourBadges, withDays,
 } from '../cityTours';
-import { isCreator } from '../session';
+import { canPublishGuides, isCreator } from '../session';
 import { useToast } from '../hooks';
 
 const formatDate = (value) => (value
@@ -266,7 +266,9 @@ export default function CityTourEditor() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const id = params.get('id');
-  const admin = !isCreator();
+  const isAdmin = !isCreator();
+  // Puts guides live itself: the admin, and team members allowed to.
+  const publisher = canPublishGuides();
 
   const [detail, setDetail] = useState(null);
   const [form, setForm] = useState(() => (id ? null : emptyGuide()));
@@ -453,7 +455,7 @@ export default function CityTourEditor() {
   };
 
   const status = detail?.review_status || 'draft';
-  const taps = admin ? detail?.link_taps || {} : undefined;
+  const taps = isAdmin ? detail?.link_taps || {} : undefined;
   const severalDays = form.days.length > 1;
   // The pin a new stop's map opens at: the stop before it, on this day or an earlier one.
   const lastPin = (dayIndex, index) => {
@@ -478,8 +480,8 @@ export default function CityTourEditor() {
       nextStop: stopName(day.steps.slice(index + 1).find((s) => s.type === 'stop')).trim(),
     };
   };
-  const canSend = !admin && (dirty || status === 'draft' || status === 'changes_requested');
-  const canApprove = admin && (dirty || status !== 'approved');
+  const canSend = !publisher && (dirty || status === 'draft' || status === 'changes_requested');
+  const canApprove = publisher && (dirty || status !== 'approved');
 
   return (
     <div className="cte">
@@ -493,7 +495,7 @@ export default function CityTourEditor() {
           <div className="xp-detail-sub">
             By {detail.author_name} · saved {formatDate(detail.updated_at)}
             {detail.published_at && ` · first live ${formatDate(detail.published_at)}`}
-            {admin && detail.is_live && ` · ${detail.taps || 0} partner taps`}
+            {isAdmin && detail.is_live && ` · ${detail.taps || 0} partner taps`}
           </div>
         )}
       </div>
@@ -506,7 +508,7 @@ export default function CityTourEditor() {
       )}
       {status === 'pending' && (
         <div className="cte-banner">
-          {admin
+          {publisher
             ? 'Waiting for your review. Check it in the preview, then put it live or send it back with a note.'
             : 'Waiting for review. If you change it now, send it again afterwards.'}
         </div>
@@ -514,7 +516,9 @@ export default function CityTourEditor() {
       {detail?.is_live && status !== 'approved' && (
         <div className="cte-banner">
           The app still shows the version approved on {formatDate(detail.reviewed_at || detail.published_at)}.
-          These changes reach travellers once an admin approves them.
+          {publisher
+            ? 'These changes reach travellers once you put them live.'
+            : 'These changes reach travellers once an admin approves them.'}
         </div>
       )}
 
@@ -735,7 +739,7 @@ export default function CityTourEditor() {
           </section>
 
           <section className="cte-card">
-            <div className="xp-section-title">{admin ? 'Before it goes live' : 'Before you send it'}</div>
+            <div className="xp-section-title">{publisher ? 'Before it goes live' : 'Before you send it'}</div>
             {!detail || dirty ? (
               <div className="xp-section-hint" style={{ margin: 0 }}>Save to check what is still missing.</div>
             ) : detail.problems.length ? (
@@ -745,9 +749,9 @@ export default function CityTourEditor() {
             )}
           </section>
 
-          {detail && (admin || !detail.is_live) && (
+          {detail && ((publisher && detail.is_live) || detail.can_delete) && (
             <section className="cte-card cte-danger">
-              {admin && detail.is_live && (
+              {publisher && detail.is_live && (
                 <div className="cte-danger-row">
                   <div>
                     <strong>{detail.is_hidden ? 'Hidden from the app' : 'Shown in the app'}</strong>
@@ -758,15 +762,17 @@ export default function CityTourEditor() {
                   </button>
                 </div>
               )}
-              <div className="cte-danger-row">
-                <div>
-                  <strong>Delete this guide</strong>
-                  <span>{detail.is_live ? 'It leaves the app at once, with its tap counts.' : 'It has never been live.'}</span>
+              {detail.can_delete && (
+                <div className="cte-danger-row">
+                  <div>
+                    <strong>Delete this guide</strong>
+                    <span>{detail.is_live ? 'It leaves the app at once, with its tap counts.' : 'It has never been live.'}</span>
+                  </div>
+                  <button type="button" className="btn btn-danger-ghost btn-sm" disabled={!!busy} onClick={remove}>
+                    <TrashIcon size={14} /> Delete
+                  </button>
                 </div>
-                <button type="button" className="btn btn-danger-ghost btn-sm" disabled={!!busy} onClick={remove}>
-                  <TrashIcon size={14} /> Delete
-                </button>
-              </div>
+              )}
             </section>
           )}
 
@@ -781,17 +787,17 @@ export default function CityTourEditor() {
               <button type="button" className="btn btn-ghost btn-sm" disabled={!dirty || !!busy || uploads > 0} onClick={save}>
                 {uploads > 0 ? 'Uploading…' : busy === 'save' ? 'Saving…' : 'Save draft'}
               </button>
-              {!admin && (
+              {!publisher && (
                 <button type="button" className="btn btn-primary btn-sm" disabled={!canSend || !!busy || uploads > 0} onClick={submit}>
                   {busy === 'submit' ? 'Sending…' : status === 'pending' && !dirty ? 'Waiting for review' : status === 'approved' && !dirty ? 'Live' : 'Send for review'}
                 </button>
               )}
-              {admin && status === 'pending' && !dirty && (
+              {publisher && status === 'pending' && !dirty && (
                 <button type="button" className="btn btn-ghost btn-sm" disabled={!!busy} onClick={() => setSendingBack(true)}>
                   Send back
                 </button>
               )}
-              {admin && (
+              {publisher && (
                 <button type="button" className="btn btn-primary btn-sm" disabled={!canApprove || !!busy || uploads > 0} onClick={approve}>
                   {busy === 'approve' ? 'Publishing…' : canApprove ? 'Approve & put live' : 'Live'}
                 </button>

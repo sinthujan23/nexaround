@@ -56,6 +56,9 @@ class AttractionModel extends AttractionEntity {
     super.popularity,
     super.popularityLabel,
     super.dataSource,
+    super.ourRating,
+    super.ourReviewCount,
+    super.ratingSource,
   });
 
   factory AttractionModel.fromJson(Map<String, dynamic> json) {
@@ -90,6 +93,13 @@ class AttractionModel extends AttractionEntity {
       popularity: (json['popularity'] as num?)?.toInt() ?? 0,
       popularityLabel: json['popularity_label'] as String?,
       dataSource: json['data_source'] as String?,
+      ourRating: (json['our_rating'] as num?)?.toDouble(),
+      ourReviewCount: (json['our_review_count'] as num?)?.toInt() ?? 0,
+      // Present-but-null is the server saying "no stars"; absent is an answer
+      // from before the server sent this field.
+      ratingSource: json.containsKey('rating_source')
+          ? (json['rating_source'] as String? ?? 'none')
+          : null,
     );
   }
 
@@ -117,6 +127,10 @@ class AttractionModel extends AttractionEntity {
       'popularity': popularity,
       'popularity_label': popularityLabel,
       'data_source': dataSource,
+      'our_rating': ourRating,
+      'our_review_count': ourReviewCount,
+      if (ratingSource != null)
+        'rating_source': ratingSource == 'none' ? null : ratingSource,
       'created_at': createdAt.toIso8601String(),
       'excluded_by_keyword': excludedByKeyword,
     };

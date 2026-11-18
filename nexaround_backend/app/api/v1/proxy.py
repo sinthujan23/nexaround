@@ -7,7 +7,6 @@ from typing import Literal, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -763,6 +762,31 @@ async def proxy_mapbox_directions(
         except Exception as e:
             raise HTTPException(status_code=500, detail="Proxy request failed. Please try again.")
 
+# Legacy Places API paths are retired (TL, 2026-11-18: Places API (New) only).
+# Autocomplete and details are translated to New above. The rest get an
+# answer from us without any Google call:
+#   place/nearbysearch      the app's home-map "top-up" after its New search
+#                           (backend /places/nearby) found under 15 places. It
+#                           asked the same question again, and the app replaces
+#                           a place it already has with the top-up's copy, which
+#                           carries no popularity, so "nothing extra" is both
+#                           free and safe.
+#   place/findplacefromtext only unused app code calls it.
+#   place/photo             no app version uses the proxy for photos.
+# Any other place/* path is refused rather than forwarded to legacy.
+_RETIRED_PLACES_ANSWERS = {
+    "place/nearbysearch": {"status": "ZERO_RESULTS", "results": []},
+    "place/findplacefromtext": {"status": "ZERO_RESULTS", "candidates": []},
+}
+
+
+def _retired_places_answer(path: str) -> dict | None:
+    for prefix, answer in _RETIRED_PLACES_ANSWERS.items():
+        if path.startswith(prefix):
+            return answer
+    return None
+
+
 @router.get("/proxy/google-maps/{path:path}")
 async def proxy_google_maps(
     path: str,
@@ -788,6 +812,23 @@ async def proxy_google_maps(
 
     operation, sku = _classify_google_maps_path(path)
 
+    retired = _retired_places_answer(path)
+    if retired is not None:
+        # Recorded (no cost, a fixed answer from memory) so we can see old
+        # apps still asking.
+        async with telemetry.track("internal", f"{operation}_retired") as t:
+            t.hit("memory")
+        return Response(content=json.dumps(retired), status_code=200,
+                        media_type="application/json")
+    if path.startswith("place/") and not path.startswith(
+            ("place/autocomplete", "place/details")):
+        # place/photo and any other legacy Places path: never forwarded.
+        raise HTTPException(
+            status_code=404,
+            detail="Not available",
+            headers={"Cache-Control": "public, max-age=3600"},
+        )
+
     # Degrade rather than spend. Past the budget or the caller's daily cap we
     # return 429 with an explanation instead of buying another call — the app
     # already treats a non-200 here as "show what you have".
@@ -802,72 +843,54 @@ async def proxy_google_maps(
 
     async with httpx.AsyncClient() as client:
         try:
-            if "place/photo" in path:
-                async with telemetry.track(
-                    "google_maps", operation, sku=sku, params=params,
-                    cache_key=_google_maps_cache_key(path, params),
-                ) as t:
-                    # Stream image bytes to avoid loading entire binary in memory
-                    req = client.build_request("GET", url, params=params)
-                    resp = await client.send(req, stream=True)
-                    t.upstream(resp)
-                    return StreamingResponse(
-                        resp.aiter_bytes(),
-                        status_code=resp.status_code,
-                        headers={
-                            "Content-Type": resp.headers.get("Content-Type", "image/jpeg"),
-                            "Cache-Control": resp.headers.get("Cache-Control", "public, max-age=86400")
-                        }
-                    )
-            else:
-                cache_key = _google_maps_cache_key(path, params, exact_origin=exact_origin)
-                ttl = _CACHE_TTL.get(operation)
-                redis_key = f"proxy:gmaps:v1:{cache_key}" if (cache_key and ttl) else None
+            cache_key = _google_maps_cache_key(path, params, exact_origin=exact_origin)
+            ttl = _CACHE_TTL.get(operation)
+            redis_key = f"proxy:gmaps:v1:{cache_key}" if (cache_key and ttl) else None
 
-                async with telemetry.track(
-                    "google_maps", operation, sku=sku, params=params,
-                    cache_key=cache_key,
-                ) as t:
-                    if redis_key:
-                        hit = await place_cache_service.get_raw(redis_key)
-                        if hit is not None:
-                            # Served without paying. In the last half hour this
-                            # path bought the same six lookups 19-29 times each.
-                            t.hit("redis")
-                            return Response(content=hit,
-                                            status_code=200,
-                                            media_type="application/json")
+            async with telemetry.track(
+                "google_maps", operation, sku=sku, params=params,
+                cache_key=cache_key,
+            ) as t:
+                if redis_key:
+                    hit = await place_cache_service.get_raw(redis_key)
+                    if hit is not None:
+                        # Served without paying. In the last half hour this
+                        # path bought the same six lookups 19-29 times each.
+                        t.hit("redis")
+                        return Response(content=hit,
+                                        status_code=200,
+                                        media_type="application/json")
 
-                    # Autocomplete and details are answered by Places API (New)
-                    # and translated back; everything else still goes to the
-                    # legacy endpoint it was written against.
+                # Autocomplete and details are answered by Places API (New)
+                # and translated back. What else reaches here is Directions
+                # and Geocoding, which are not Places APIs.
+                if path.startswith(("place/autocomplete", "place/details")):
+                    resp, body = await _google_places_new(
+                        client, path, params, api_key)
+                else:
+                    resp = await client.get(url, params=params, timeout=30.0)
+                    body = resp.text
+                t.upstream(resp)
+
+                if redis_key and resp.status_code == 200:
+                    # For the translated paths the verdict lives in the
+                    # reshaped body: Places API (New) reports "found
+                    # nothing" as an empty result set with no status field
+                    # at all, which read off the raw response would look
+                    # like success and get cached for the full day instead
+                    # of the minute a negative answer is worth.
                     if path.startswith(("place/autocomplete", "place/details")):
-                        resp, body = await _google_places_new(
-                            client, path, params, api_key)
+                        status = json.loads(body).get("status")
                     else:
-                        resp = await client.get(url, params=params, timeout=30.0)
-                        body = resp.text
-                    t.upstream(resp)
-
-                    if redis_key and resp.status_code == 200:
-                        # For the translated paths the verdict lives in the
-                        # reshaped body: Places API (New) reports "found
-                        # nothing" as an empty result set with no status field
-                        # at all, which read off the raw response would look
-                        # like success and get cached for the full day instead
-                        # of the minute a negative answer is worth.
-                        if path.startswith(("place/autocomplete", "place/details")):
-                            status = json.loads(body).get("status")
-                        else:
-                            status = telemetry._extract_provider_status(resp)
-                        if status in (None, "OK"):
-                            await place_cache_service.set_raw(redis_key, body, ttl=ttl)
-                        elif status == "ZERO_RESULTS":
-                            # Worth remembering briefly: a query that matches
-                            # nothing is still billed, and the app retries it.
-                            await place_cache_service.set_raw(
-                                redis_key, body, ttl=_NEGATIVE_TTL)
-                    return Response(content=body, status_code=resp.status_code, media_type="application/json")
+                        status = telemetry._extract_provider_status(resp)
+                    if status in (None, "OK"):
+                        await place_cache_service.set_raw(redis_key, body, ttl=ttl)
+                    elif status == "ZERO_RESULTS":
+                        # Worth remembering briefly: a query that matches
+                        # nothing is still billed, and the app retries it.
+                        await place_cache_service.set_raw(
+                            redis_key, body, ttl=_NEGATIVE_TTL)
+                return Response(content=body, status_code=resp.status_code, media_type="application/json")
         except HTTPException:
             raise
         except Exception as e:

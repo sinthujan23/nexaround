@@ -13,7 +13,7 @@ the document's shape and the review rules.
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Index, Integer, String, Text, false
+from sqlalchemy import ARRAY, BigInteger, Boolean, DateTime, ForeignKey, Index, Integer, String, Text, false
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -25,8 +25,17 @@ def _now() -> datetime:
 
 
 class ContentCreator(Base):
-    """Someone who writes City Tours. Signs in to the admin panel with their
-    email and sees only City Tours there.
+    """A team member: someone who signs in to the admin panel with their email
+    and sees only the areas the admin ticked for them (`sections`: City
+    Guides, Experiences, TravelBytes). The panel calls them "team members";
+    the table, the token role and the audit actor keep the older name
+    "creator", from when the only kind was a City Tours writer.
+
+    In City Guides a member either writes their own guides and sends each
+    version for an admin's review (the original creator), or, with
+    `can_publish_guides`, sees and edits every guide and puts them live
+    themselves. Elsewhere members add and edit only; deleting, approvals,
+    money and travellers' details stay with the admin.
 
     Kept out of `users` for the reason vendors are (see partner.py): traveller
     endpoints accept any `users` row's token. Admin-created only; the admin
@@ -43,6 +52,15 @@ class ContentCreator(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
     last_login_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
     password_changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Admin-panel areas this login opens; see creator_auth.SECTIONS.
+    sections: Mapped[list] = mapped_column(
+        ARRAY(String(20)), nullable=False, default=lambda: ["city_tours"],
+        server_default="{city_tours}",
+    )
+    # City Guides: puts guides live without an admin's review.
+    can_publish_guides: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=false(), nullable=False,
+    )
 
     def __repr__(self) -> str:
         return f"<ContentCreator {self.email}>"

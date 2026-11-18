@@ -1,11 +1,14 @@
-"""Sign-in for City Tours content creators.
+"""Sign-in for team members (the `content_creators` table).
 
-Creators use the admin panel's own sign-in form: /admin/login tries the admin
-credential first, then a creator's email and password. Their token says
-`role: "creator"`, which every admin endpoint refuses (verify_admin_token
-wants "admin"); only the City Tours endpoints take it, through
-city_tours_admin.require_editor. Sessions are the audit trail's, so an admin
-sees and signs out creators' devices in Devices & Sessions like any other.
+Members use the admin panel's own sign-in form: /admin/login tries the admin
+credential first, then a member's email and password. Their token says
+`role: "creator"` (the name from when members only wrote City Tours). Admin
+endpoints refuse it with 403 (verify_admin_token); the endpoints of the areas
+a member may open take it: City Tours through city_tours_admin.require_editor,
+Experiences and TravelBytes through admin.allow_team. Which areas is the
+member's `sections`, read from the database on every request, so the admin's
+changes apply at once. Sessions are the audit trail's, so an admin sees and
+signs out members' devices in Devices & Sessions like any other.
 """
 from __future__ import annotations
 
@@ -24,6 +27,12 @@ from app.services import audit
 
 ACTOR = "creator"
 ROLE = "creator"
+
+# Admin-panel areas a member can be given.
+CITY_TOURS = "city_tours"
+EXPERIENCES = "experiences"
+TRAVEL_BYTES = "travel_bytes"
+SECTIONS = (CITY_TOURS, EXPERIENCES, TRAVEL_BYTES)
 
 
 def normalize_email(value: str) -> str:

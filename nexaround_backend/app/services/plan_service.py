@@ -95,6 +95,14 @@ FREE_DATA_MODES = ("off", "test", "on")
 # Temporary (2026-11-16, TL): a free-map-data place opened on its page also
 # gets Google's photo, opening hours and reviews, as before. "on" | "off".
 K_FREE_DATA_DETAILS = "free_data_google_details"
+# Emergency switch (2026-11-18, TL: "the API price is going up quickly, disable
+# the image API"): "off" = no new Google place photos for anyone. Photos we
+# already saved keep showing; everything else falls back to the category icon.
+K_GOOGLE_PHOTOS = "google_photos_enabled"
+# Builds from this version print the photo credit under a place photo, so
+# Wikipedia (CC BY-SA) and Unsplash photos may show on them (open_photos).
+K_PHOTO_CREDIT_MIN_VERSION = "photo_credit_min_app_version"
+DEFAULT_PHOTO_CREDIT_MIN_VERSION = "1.0.22"
 # How many NEW free places a user may open with Google details per UTC day
 # (re-opening one, or one already in our 14-day cache, does not count).
 # 0 = no limit.
@@ -300,6 +308,13 @@ async def _load_config(force: bool = False) -> dict:
                 "free_data_details": (
                     await svc.get_setting(K_FREE_DATA_DETAILS) or "on"
                 ).strip().lower() in _TRUE,
+                "google_photos_enabled": (
+                    await svc.get_setting(K_GOOGLE_PHOTOS) or "on"
+                ).strip().lower() in _TRUE,
+                "photo_credit_min_version": (
+                    await svc.get_setting(K_PHOTO_CREDIT_MIN_VERSION)
+                    or DEFAULT_PHOTO_CREDIT_MIN_VERSION
+                ).strip(),
                 "free_data_details_per_day": _int_setting(
                     await svc.get_setting(K_FREE_DATA_DETAILS_PER_DAY),
                     DEFAULT_FREE_DATA_DETAILS_PER_DAY,
@@ -314,6 +329,7 @@ async def _load_config(force: bool = False) -> dict:
             "free_data": "off", "free_data_min_version": DEFAULT_FREE_DATA_MIN_VERSION,
             "free_data_details": True,
             "free_data_details_per_day": DEFAULT_FREE_DATA_DETAILS_PER_DAY,
+            "google_photos_enabled": True,
         }
     return _config
 
@@ -547,8 +563,21 @@ async def check_discover(user_id) -> None:
 
 # ── Photos ──────────────────────────────────────────────────────────────────
 
+async def photo_credit_min_version() -> str:
+    return (await _load_config()).get(
+        "photo_credit_min_version", DEFAULT_PHOTO_CREDIT_MIN_VERSION)
+
+
+async def google_photos_enabled() -> bool:
+    """False while the emergency switch stops all new Google photos."""
+    return bool((await _load_config()).get("google_photos_enabled", True))
+
+
 async def google_photos_allowed(user_id) -> bool:
-    """False when this user's plan only gets photos we already hold."""
+    """False when no new Google photo may be bought for this user: the
+    emergency switch is off, or their plan only gets photos we already hold."""
+    if not await google_photos_enabled():
+        return False
     if not user_id or not await enforced_for(user_id):
         return True
     info = await get_plan(user_id)

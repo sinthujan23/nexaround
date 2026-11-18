@@ -33,10 +33,10 @@ FEATURES = {
     "home": "Home",
     "ar": "AR camera",
     "neva": "NEVA assistant",
-    "discover": "Discover",
+    "discover": "Discover (browse places)",
     "plans": "My plans",
     "odyssey_planner": "Odyssey trip planner",
-    "mini_tour": "Mini tours",
+    "mini_tour": "Walking Challenge",
     "city_guides": "City Guides",
     "experiences": "Experiences",
     "museums": "Museums",
@@ -48,13 +48,16 @@ FEATURES = {
     "directions": "Directions",
     "profile": "Profile",
     "subscription_plans": "Subscription plans",
+    # The "Where should I go?" banner on Home opens a sheet over it, so the app
+    # reports Home for it; its plans are counted as an action instead.
+    "where_should_i_go": "Where Should I Go?",
 }
 
 # Saved actions, key -> (label, the screen it belongs to).
 ACTIONS = {
     "odyssey_plans": ("Odyssey trip plans requested", "odyssey_planner"),
-    "mini_tours": ("Mini tours created", "mini_tour"),
-    "discover_runs": ("Discover searches", "discover"),
+    "mini_tours": ("Walking Challenges started", "mini_tour"),
+    "discover_runs": ("Where Should I Go? plans", "where_should_i_go"),
     "neva_messages": ("Messages to NEVA", "neva"),
     "neva_voice": ("Voice questions to NEVA", "neva"),
     "city_guide_trips": ("City Guide trips started", "city_guides"),
@@ -71,7 +74,6 @@ ACTIONS = {
 # how the page words it after a number: "14 sent a message").
 FUNNELS = {
     "neva": ("neva_messages", "sent a message"),
-    "discover": ("discover_runs", "ran a search"),
     "odyssey_planner": ("odyssey_plans", "requested a plan"),
     "city_guides": ("city_guide_trips", "started a trip"),
     "experiences": ("experience_requests", "sent a booking request"),

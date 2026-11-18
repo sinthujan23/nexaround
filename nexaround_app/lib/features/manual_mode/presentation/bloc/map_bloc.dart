@@ -127,7 +127,7 @@ class MapBloc extends Bloc<MapEvent, MapState> {
             geofenceRadiusM: model.geofenceRadiusM,
             distanceM: distM,
             isActive: model.isActive,
-            createdAt: model.createdAt, popularity: model.popularity, popularityLabel: model.popularityLabel, dataSource: model.dataSource,
+            createdAt: model.createdAt, popularity: model.popularity, popularityLabel: model.popularityLabel, dataSource: model.dataSource, ourRating: model.ourRating, ourReviewCount: model.ourReviewCount, ratingSource: model.ratingSource,
           ));
         }
       }
@@ -448,7 +448,7 @@ class MapBloc extends Bloc<MapEvent, MapState> {
 
       try {
         // ── PHASE A — fast layer only, all 7 categories in parallel ────────
-        // Just the database/cache step (plus its useLegacy retry) that used to
+        // Just the database/cache step that used to
         // be "step 1" of a 4-step chain. No Google calls here, so this is
         // quick even on a cold location — the map/Around You/Discover paint
         // with whatever the database already has while Phase B (below)
@@ -468,20 +468,8 @@ class MapBloc extends Bloc<MapEvent, MapState> {
               longitude: event.longitude,
               radius: radius,
               categoryName: cat,
-              useLegacy: event.useLegacy,
             );
-            var repoList = repoRes.fold((_) => <AttractionEntity>[], (r) => r);
-
-            if (repoList.isEmpty && !event.useLegacy) {
-              repoRes = await _repository.getNearbyAttractions(
-                latitude: event.latitude,
-                longitude: event.longitude,
-                radius: radius,
-                categoryName: cat,
-                useLegacy: true,
-              );
-              repoList = repoRes.fold((_) => <AttractionEntity>[], (r) => r);
-            }
+            final repoList = repoRes.fold((_) => <AttractionEntity>[], (r) => r);
 
             final Map<String, AttractionEntity> mergedMap = {};
             void addPlaceToMerged(AttractionEntity p) {
@@ -519,27 +507,13 @@ class MapBloc extends Bloc<MapEvent, MapState> {
 
             return mergedList.isNotEmpty ? mergedList : <AttractionEntity>[];
           } else {
-            var repoRes = await _repository.getNearbyAttractions(
+            final repoRes = await _repository.getNearbyAttractions(
               latitude: event.latitude,
               longitude: event.longitude,
               radius: 15000.0,
               categoryName: cat,
-              useLegacy: event.useLegacy,
             );
-            var list = repoRes.fold((_) => <AttractionEntity>[], (r) => r);
-
-            if (list.isEmpty && !event.useLegacy) {
-              print('⚠️ Fallback list empty for $cat. Retrying with useLegacy=true');
-              repoRes = await _repository.getNearbyAttractions(
-                latitude: event.latitude,
-                longitude: event.longitude,
-                radius: 15000.0,
-                categoryName: cat,
-                useLegacy: true,
-              );
-              list = repoRes.fold((_) => <AttractionEntity>[], (r) => r);
-            }
-            return list;
+            return repoRes.fold((_) => <AttractionEntity>[], (r) => r);
           }
         }).toList();
 
@@ -587,7 +561,7 @@ class MapBloc extends Bloc<MapEvent, MapState> {
               geofenceRadiusM: a.geofenceRadiusM,
               distanceM: distM,
               isActive: a.isActive,
-              createdAt: a.createdAt, popularity: a.popularity, popularityLabel: a.popularityLabel, dataSource: a.dataSource,
+              createdAt: a.createdAt, popularity: a.popularity, popularityLabel: a.popularityLabel, dataSource: a.dataSource, ourRating: a.ourRating, ourReviewCount: a.ourReviewCount, ratingSource: a.ratingSource,
             ));
           }
         }
@@ -664,7 +638,7 @@ class MapBloc extends Bloc<MapEvent, MapState> {
                   categoryName: cat, address: p.address, openingHours: p.openingHours,
                   entryFee: p.entryFee, currency: p.currency, rating: p.rating, reviewCount: p.reviewCount,
                   photoUrls: p.photoUrls, tags: p.tags, geofenceRadiusM: p.geofenceRadiusM,
-                  distanceM: p.distanceM, isActive: p.isActive, createdAt: p.createdAt, popularity: p.popularity, popularityLabel: p.popularityLabel, dataSource: p.dataSource,
+                  distanceM: p.distanceM, isActive: p.isActive, createdAt: p.createdAt, popularity: p.popularity, popularityLabel: p.popularityLabel, dataSource: p.dataSource, ourRating: p.ourRating, ourReviewCount: p.ourReviewCount, ratingSource: p.ratingSource,
                 );
                 addPlaceToMerged(correctedP);
               }
@@ -672,34 +646,6 @@ class MapBloc extends Bloc<MapEvent, MapState> {
               print('📊 After fetchNearbyPlaces fallback: ${mergedList.length} results for $cat');
             } catch (e) {
               print('⚠️ fetchNearbyPlaces fallback failed for $cat: $e');
-            }
-
-            // Fallback 2: Direct Google Nearby Search legacy API if still under 15
-            if (mergedList.length < 15) {
-              try {
-                print('🔄 Still only ${mergedList.length} results for $cat. Falling back to Google legacy Nearby Search...');
-                final legacyFallback = await GooglePlacesService.fetchNearbyPlacesLegacy(
-                  latitude: event.latitude,
-                  longitude: event.longitude,
-                  categoryName: discoveryCategory,
-                  radius: discoveryRadius,
-                );
-                for (final p in legacyFallback) {
-                  final correctedP = AttractionModel(
-                    id: p.id, name: p.name, description: p.description, history: p.history,
-                    latitude: p.latitude, longitude: p.longitude, categoryId: p.categoryId,
-                    categoryName: cat, address: p.address, openingHours: p.openingHours,
-                    entryFee: p.entryFee, currency: p.currency, rating: p.rating, reviewCount: p.reviewCount,
-                    photoUrls: p.photoUrls, tags: p.tags, geofenceRadiusM: p.geofenceRadiusM,
-                    distanceM: p.distanceM, isActive: p.isActive, createdAt: p.createdAt, popularity: p.popularity, popularityLabel: p.popularityLabel, dataSource: p.dataSource,
-                  );
-                  addPlaceToMerged(correctedP);
-                }
-                mergedList = mergedMap.values.toList();
-                print('📊 After Google legacy fallback: ${mergedList.length} results for $cat');
-              } catch (e) {
-                print('⚠️ Google legacy fallback also failed for $cat: $e');
-              }
             }
 
             // Recalculate distances and sort by proximity
@@ -714,7 +660,7 @@ class MapBloc extends Bloc<MapEvent, MapState> {
                 categoryName: p.categoryName, address: p.address, openingHours: p.openingHours,
                 entryFee: p.entryFee, currency: p.currency, rating: p.rating, reviewCount: p.reviewCount,
                 photoUrls: p.photoUrls, tags: p.tags, geofenceRadiusM: p.geofenceRadiusM,
-                distanceM: distM, isActive: p.isActive, createdAt: p.createdAt, popularity: p.popularity, popularityLabel: p.popularityLabel, dataSource: p.dataSource,
+                distanceM: distM, isActive: p.isActive, createdAt: p.createdAt, popularity: p.popularity, popularityLabel: p.popularityLabel, dataSource: p.dataSource, ourRating: p.ourRating, ourReviewCount: p.ourReviewCount, ratingSource: p.ratingSource,
               );
             }).toList();
             mergedList.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));

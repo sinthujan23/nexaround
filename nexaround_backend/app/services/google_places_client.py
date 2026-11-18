@@ -12,7 +12,6 @@ from app.services.settings_service import SettingsService
 from app.services import google_dedupe, telemetry
 
 
-_BASE = "https://maps.googleapis.com/maps/api"
 
 # Shared, connection-pooled client reused by every call in this module instead
 # of each one opening (and TLS-handshaking) a brand new connection. Created
@@ -443,7 +442,7 @@ async def nearby_search(
     headers = {
         "Content-Type": "application/json",
         "X-Goog-Api-Key": google_maps_key,
-        "X-Goog-FieldMask": "places.id,places.displayName,places.location,places.types,places.photos,places.rating,places.userRatingCount"
+        "X-Goog-FieldMask": "places.id,places.displayName,places.location,places.types,places.photos"
     }
     # Nearby Search (New) hard-caps maxResultCount at 20 — requesting more (this
     # used to ask for 40 on radius > 10km) makes Google reject the WHOLE request
@@ -568,7 +567,7 @@ async def text_search(
     headers = {
         "Content-Type": "application/json",
         "X-Goog-Api-Key": google_maps_key,
-        "X-Goog-FieldMask": "places.id,places.displayName,places.location,places.types,places.formattedAddress,places.photos,places.rating,places.userRatingCount,places.addressComponents"
+        "X-Goog-FieldMask": "places.id,places.displayName,places.location,places.types,places.formattedAddress,places.photos,places.addressComponents"
     }
 
     bias_radius = float(min(max(radius_m, 500.0), 50000.0)) if radius_m else 50000.0
@@ -696,7 +695,7 @@ async def nearby_search_typed(
     headers = {
         "Content-Type": "application/json",
         "X-Goog-Api-Key": google_maps_key,
-        "X-Goog-FieldMask": "places.id,places.displayName,places.location,places.types,places.photos,places.rating,places.userRatingCount"
+        "X-Goog-FieldMask": "places.id,places.displayName,places.location,places.types,places.photos"
     }
     body = {
         "maxResultCount": 20,
@@ -821,7 +820,7 @@ def to_place_dict(
         "opening_hours": {},
         "entry_fee": 0.0,
         "currency": "USD",
-        "rating": float(place.get("rating") or 4.0),
+        "rating": float(place.get("rating") or 0.0),
         "review_count": int(place.get("userRatingCount") or 0),
         "photo_urls": photo_urls,
         "tags": types,
@@ -872,118 +871,6 @@ def _resolve_category_from_types(types: list[str]) -> str:
 
 
 
-async def nearby_search_legacy(
-    *,
-    latitude: float,
-    longitude: float,
-    category: Optional[str],
-    radius: int,
-) -> list[dict]:
-    """Call Google Nearby Search (Legacy). Returns the raw places list (unfiltered)."""
-    # Cap radius between 1 and 50000 meters for legacy Places API
-    eff_radius = float(min(max(radius, 1), 50000))
-
-    # Normalize category name to a canonical key so the type filter is mapped correctly
-    category = canonical_category(category)
-    legacy_type = CATEGORY_LEGACY_TYPE_MAP.get(category) if category else None
-
-    async with async_session() as db:
-        settings_service = SettingsService(db)
-        google_maps_key = await settings_service.get_setting("google_maps_api_key")
-
-    if not google_maps_key:
-        print("⚠️ google_maps_api_key not set in admin settings — returning no places")
-        return []
-
-    params = {
-        "location": f"{latitude},{longitude}",
-        "radius": eff_radius,
-        "key": google_maps_key,
-        "language": "en",
-    }
-
-    if legacy_type:
-        params["type"] = legacy_type
-
-    client = await _get_http_client()
-    async with _google_call_semaphore:
-        async with telemetry.track(
-            "google_maps", "nearby_search_legacy",
-            sku="nearby_search_legacy",
-            cache_key=f"nbl:{latitude:.4f}:{longitude:.4f}:{legacy_type or 'all'}:{eff_radius}",
-            params=params,
-        ) as t:
-            resp = await client.get("https://maps.googleapis.com/maps/api/place/nearbysearch/json", params=params)
-            t.upstream(resp)
-    if resp.status_code != 200:
-        print(f"❌ Google nearbysearch legacy HTTP {resp.status_code}: {resp.text[:600]}")
-        resp.raise_for_status()
-    data = resp.json()
-
-    return data.get("results", [])
-
-
-def to_place_dict_legacy(
-    place: dict,
-    origin_lat: float,
-    origin_lng: float,
-    category_name: Optional[str],
-    photo_url_builder,
-) -> dict:
-    """Convert a raw Google place (Legacy API format) into the dict that matches PlaceResponse.
-
-    See `to_place_dict`'s docstring — same reasoning: `category_name` is only
-    trusted when this specific place's types actually support it.
-    """
-    from datetime import datetime, timezone
-
-    geom = place.get("geometry") or {}
-    loc = geom.get("location") or {}
-    plat = float(loc.get("lat", 0.0))
-    plng = float(loc.get("lng", 0.0))
-
-    display_name = place.get("name") or "Unknown"
-    types = list(place.get("types") or [])
-
-    resolved_category = category_name
-    if resolved_category:
-        from app.services import place_bands
-        if not place_bands.is_relevant(resolved_category, types, display_name):
-            resolved_category = None
-    if not resolved_category:
-        resolved_category = _resolve_category_from_types(types)
-
-    photos = place.get("photos") or []
-    photo_urls = []
-    if photos and photo_url_builder:
-        for idx, ph in enumerate(photos[:2]):
-            ref = ph.get("photo_reference")
-            if ref:
-                photo_urls.append(photo_url_builder(ref, idx))
-
-    return {
-        "id": place.get("place_id") or "",
-        "name": display_name,
-        "description": place.get("vicinity") or "",
-        "latitude": plat,
-        "longitude": plng,
-        "category_id": None,
-        "category_name": resolved_category,
-        "address": place.get("vicinity") or "",
-        "opening_hours": {},
-        "entry_fee": 0.0,
-        "currency": "USD",
-        "rating": float(place.get("rating") or 4.0),
-        "review_count": int(place.get("user_ratings_total") or 0),
-        "photo_urls": photo_urls,
-        "tags": types,
-        "geofence_radius_m": 100,
-        "distance_m": _haversine_m(origin_lat, origin_lng, plat, plng),
-        "is_active": True,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }
-
-
 async def fetch_photo_bytes(photo_reference: str, maxwidth: int = 800) -> tuple[bytes, str]:
     """Download a Place Photo. Returns (bytes, content_type).
 
@@ -1006,27 +893,22 @@ async def fetch_photo_bytes(photo_reference: str, maxwidth: int = 800) -> tuple[
     except Exception as e:
         print(f"⚠️ Photo cache GET error: {e}")
 
-    # 2. Cache miss — fetch from Google
+    # 2. Cache miss — fetch from Google, Places API (New) only. A legacy-style
+    # reference (from the old Places API, not used since 2026-11-18) is shown
+    # only if it is already saved, never bought; the caller treats this as
+    # "no photo".
+    if not photo_reference.startswith("places/"):
+        raise ValueError("legacy photo references are not fetched")
     async with async_session() as db:
         settings_service = SettingsService(db)
         google_maps_key = await settings_service.get_setting("google_maps_api_key")
 
     client = await _get_http_client()
-    if photo_reference.startswith("places/"):
-        # New Places API Photo endpoint
-        url = f"https://places.googleapis.com/v1/{photo_reference}/media"
-        params = {
-            "key": google_maps_key,
-            "maxWidthPx": maxwidth,
-        }
-    else:
-        # Legacy Places API Photo endpoint
-        url = f"{_BASE}/place/photo"
-        params = {
-            "maxwidth": maxwidth,
-            "photo_reference": photo_reference,
-            "key": google_maps_key,
-        }
+    url = f"https://places.googleapis.com/v1/{photo_reference}/media"
+    params = {
+        "key": google_maps_key,
+        "maxWidthPx": maxwidth,
+    }
 
     # Reaching here always means a disk-cache miss — photo_cache_service
     # only calls this when it has nothing to serve.
@@ -1057,12 +939,12 @@ async def fetch_photo_bytes(photo_reference: str, maxwidth: int = 800) -> tuple[
     return photo_bytes, ctype
 
 
-async def find_place_id_legacy(
+async def find_place_id(
     name: str,
     latitude: Optional[float] = None,
     longitude: Optional[float] = None,
 ) -> Optional[str]:
-    """Resolve a place name to a Google Place ID via Find Place From Text (Legacy).
+    """Resolve a place name to a Google Place ID via Text Search (New), IDs only.
 
     Requests `place_id` and nothing else. That is deliberate: legacy Find Place
     bills by data tier, and asking for only the ID keeps the call in the IDs-Only
@@ -1213,7 +1095,7 @@ async def resolve_place_geo(
     One Text Search call. Returns None rather than raising, so a caller can
     always fall back to whatever it does today.
 
-    Unlike `find_place_id_legacy`, the location bias here is optional and wide.
+    Unlike `find_place_id`, the location bias here is optional and wide.
     That function biases to 200 m because it is disambiguating one clinic branch
     from another; this one is identifying a *destination*, where a tight circle
     around a rough coordinate would exclude the very city being named.
@@ -1382,13 +1264,12 @@ async def find_place_candidates(
 
 
 # Fields the detail page renders, named as Places API (New) names them. New
-# bills by the tier the mask reaches into, so this is the same bargain the
-# legacy `fields` list struck: Essentials/Pro for identity and geometry,
-# Enterprise for opening hours, Enterprise+Atmosphere for rating, reviews and
-# price. Nothing here is fetched that the page does not draw.
+# bills by the tier the mask reaches into: Enterprise for opening hours and
+# price. No rating, rating count or reviews since 2026-11-18 (TL: no more
+# rating and review requests to Google): the page shows the rating we saved
+# for the place, and our travellers' reviews (services/place_reviews).
 _DETAILS_FIELD_MASK_NEW = (
-    "id,displayName,formattedAddress,location,rating,userRatingCount,"
-    "reviews,regularOpeningHours,priceLevel,photos"
+    "id,displayName,formattedAddress,location,regularOpeningHours,priceLevel,photos"
 )
 
 _PRICE_LEVEL_TO_LEGACY = {
@@ -1548,7 +1429,7 @@ async def fetch_place_details(place_id: str) -> Optional[dict]:
         loc_data = geom.get("location") or {}
         latitude = float(loc_data.get("lat") or 0.0)
         longitude = float(loc_data.get("lng") or 0.0)
-        rating = float(result.get("rating") or 4.0)
+        rating = float(result.get("rating") or 0.0)
         user_ratings_total = int(result.get("user_ratings_total") or 0)
         
         # Reviews (top 5)

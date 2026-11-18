@@ -5,7 +5,9 @@ import { compactCount, usePlaceCounts } from '../../places';
 import { useVendorChangeCount } from '../../vendorChanges';
 import { useProviderApplicationCount } from '../../providerApplications';
 import { useCityTourCount } from '../../cityTours';
-import { ADMIN, CREATOR, isCreator, sessionName } from '../../session';
+import {
+  ADMIN, CREATOR, canPublishGuides, isCreator, sessionName, sessionSections,
+} from '../../session';
 import { CrossIcon, LogOutIcon, MenuIcon } from '../Icons';
 
 /** The admin's sidebar, with the live counts its badges show. */
@@ -27,15 +29,16 @@ function AdminSidebar({ onLogout, extraCounts }) {
 }
 
 /**
- * A content creator sees City Tours only, and no counts: those come from
- * admin endpoints, which refuse a creator's token (and a refusal signs out).
+ * A team member sees only their areas, and no counts: those come from
+ * admin-only endpoints, which refuse a member's token.
  */
 export default function Sidebar(props) {
   if (isCreator()) {
     return (
       <SidebarView
-        onLogout={props.onLogout} sections={navSectionsFor(CREATOR)} counts={{}} creator
-        user={{ name: sessionName(), role: 'Content creator' }}
+        onLogout={props.onLogout} sections={navSectionsFor(CREATOR, sessionSections())} counts={{}}
+        creator={!canPublishGuides()}
+        user={{ name: sessionName(), role: 'Team member' }}
       />
     );
   }

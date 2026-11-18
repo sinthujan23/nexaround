@@ -432,6 +432,43 @@ def quality_score(rating: Optional[float], review_count: Optional[int]) -> float
     return (v * r + prior_weight * prior_mean) / (v + prior_weight)
 
 
+def combined_score(
+    rating: Optional[float],
+    review_count: Optional[int],
+    our_rating: Optional[float] = None,
+    our_count: Optional[int] = None,
+    popularity: Optional[int] = None,
+) -> float:
+    """One ranking score for any place, whatever it is rated by (TL, 2026-11-18).
+
+    - Google rating: that rating, with our travellers' ratings counted in like
+      extra Google reviews, shrunk by `quality_score`. Our popularity score,
+      when the place has one too, adds at most 0.2 on top.
+    - No Google rating but ratings from our travellers: their rating, blended
+      with the popularity score while there are only a few of them (5 ratings
+      = half each), so one enthusiastic review cannot leapfrog a whole area.
+    - Neither: the popularity score (0..100) on the 0..4 scale, as before.
+
+    With no ratings of ours this is exactly the old order.
+    """
+    g = float(rating or 0.0)
+    gv = int(review_count or 0)
+    o = float(our_rating or 0.0)
+    ov = int(our_count or 0) if o > 0 else 0
+    pop = float(popularity or 0)
+    if g > 0:
+        total = gv + ov
+        mixed = (g * gv + o * ov) / total if total else g
+        return quality_score(mixed, total) + (pop / 100.0) * 0.2
+    if ov:
+        ours = quality_score(o, ov)
+        if pop:
+            weight = ov / (ov + 5.0)
+            return weight * ours + (1.0 - weight) * (pop / 25.0)
+        return ours
+    return pop / 25.0
+
+
 # A place with genuinely this many reviews is prominent regardless of how its
 # average rating shook out — accumulating that much engagement takes real
 # footfall. Without an absolute floor, "most-reviewed in a sparse area" would

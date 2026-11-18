@@ -4,7 +4,7 @@ import { mediaUrl, useApi } from '../api';
 import { Badge, EmptyState, PageError, PageLoading, SearchBar } from '../components/Kit';
 import { PlusIcon, RefreshIcon, RouteIcon } from '../components/Icons';
 import { tourBadges } from '../cityTours';
-import { isCreator } from '../session';
+import { canPublishGuides, isCreator } from '../session';
 
 const FILTERS = [
   { key: '', label: 'All' },
@@ -19,12 +19,15 @@ const formatDate = (value) => (value
   : '');
 
 /**
- * City Tours guides. Admins see every guide, creators their own. With `queue`
- * it is the review queue: guides sent for review, the oldest first.
+ * City Tours guides. Admins and team members who put guides live see every
+ * guide, the other members their own. With `queue` it is the review
+ * queue: guides sent for review, the oldest first.
  */
 export default function CityTours({ queue = false }) {
   const navigate = useNavigate();
-  const admin = !isCreator();
+  const isAdmin = !isCreator();
+  // Sees other people's guides, so the author is worth showing.
+  const publisher = canPublishGuides();
   const [filter, setFilter] = useState('');
   const [query, setQuery] = useState('');
   const status = queue ? 'pending' : filter;
@@ -87,7 +90,7 @@ export default function CityTours({ queue = false }) {
                 <span>
                   {[[t.city, t.country].filter(Boolean).join(', '),
                     t.day_count > 1 ? `${t.day_count} days` : '', `${t.stop_count} stop${t.stop_count === 1 ? '' : 's'}`,
-                    admin ? `by ${t.author_name}` : ''].filter(Boolean).join(' · ')}
+                    publisher ? `by ${t.author_name}` : ''].filter(Boolean).join(' · ')}
                 </span>
                 {t.review_status === 'changes_requested' && t.review_note && (
                   <span className="ctg-note">“{t.review_note}”</span>
@@ -98,8 +101,8 @@ export default function CityTours({ queue = false }) {
               </span>
               <span className="ctg-side">
                 {queue ? `Sent ${formatDate(t.submitted_at)}` : `Saved ${formatDate(t.updated_at)}`}
-                {admin && t.is_live && <span>{t.taps || 0} partner taps</span>}
-                {admin && t.is_live && (
+                {isAdmin && t.is_live && <span>{t.taps || 0} partner taps</span>}
+                {isAdmin && t.is_live && (
                   <span>{t.trips_started || 0} started · {t.trips_finished || 0} finished</span>
                 )}
               </span>

@@ -133,6 +133,11 @@ async def get_or_fetch(
             t.hit("disk")
         return path
 
+    # Emergency switch: no new Google photos while it is off.
+    from app.services import plan_service
+    if not await plan_service.google_photos_enabled():
+        return None
+
     name = path.name
     async with _lock_for(name):
         # Re-check inside the lock — another coroutine may have just written it.

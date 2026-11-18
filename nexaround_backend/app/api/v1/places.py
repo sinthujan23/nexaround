@@ -19,6 +19,7 @@ from app.schemas.place import (
 )
 from app.core import request_context
 from app.services import open_places_service
+from app.services import place_photos, place_reviews
 from app.services import (
     banded_places_service,
     google_places_client,
@@ -44,7 +45,9 @@ async def get_nearby_places(
     lng: float = Query(..., ge=-180.0, le=180.0),
     category: Optional[str] = Query(None, description="App-side category name"),
     radius: int = Query(5000, ge=100, le=50000),
-    use_legacy: bool = Query(False, description="Whether to use legacy Google Places API"),
+    # Still accepted because older apps send it; ignored, as the legacy
+    # Places API is no longer used anywhere (2026-11-18).
+    use_legacy: bool = Query(False, description="Ignored: Places API (New) only"),
     max_photos: int = Query(1, ge=1, le=10, description="Max photos per place to return"),
     limit: int = Query(20, ge=1, le=100, description="Max places to return (pagination)"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
@@ -74,17 +77,19 @@ async def get_nearby_places(
             radius=radius, limit=limit, offset=offset, max_photos=max_photos,
         )
         if free is not None:
+            await place_reviews.attach_responses(free.places)
             return free
     result = await places_service.get_nearby(
         latitude=lat,
         longitude=lng,
         category=category,
         radius=radius,
-        use_legacy=use_legacy,
         max_photos=max_photos,
         limit=limit,
         offset=offset,
     )
+    # Our travellers' ratings and which stars the card shows.
+    await place_reviews.attach_responses(result.places)
     return result
 
 
@@ -167,13 +172,15 @@ async def search_places(
     current_user: User = Depends(get_current_user),
 ):
     """Search Google Places near a coordinate by text query. Cached server-side for 7 days. Requires authentication."""
-    return await places_service.search(
+    result = await places_service.search(
         query=query,
         latitude=lat,
         longitude=lng,
         radius_m=radius_m,
         near_me=near_me,
     )
+    await place_reviews.attach_responses(result.places)
+    return result
 
 
 @router.get("/photo")
@@ -329,5 +336,25 @@ async def get_place_details_endpoint(
     )
     if details is None:
         raise HTTPException(status_code=404, detail="Place details not found")
+    # Our travellers' average for the page header; the reviews themselves come
+    # from /places/{id}/reviews.
+    if isinstance(details, dict):
+        details = dict(details)
+        # Google is not asked for ratings or reviews any more: the rating we
+        # saved for the place, when the answer has none.
+        if place_reviews._unrated(details.get("rating"), details.get("user_ratings_total")):
+            hit = (await place_reviews.stored_ratings([place_id])).get(place_id)
+            if hit:
+                details["rating"], details["user_ratings_total"] = hit
+        avg, count = (await place_reviews.summaries([place_id])).get(place_id, (None, 0))
+        details["our_rating"] = avg
+        details["our_review_count"] = count
+        details["rating_source"] = place_reviews.rating_source(
+            details.get("rating"),
+            details.get("user_ratings_total") or details.get("review_count"),
+            count,
+        )
+        # Unsaved Google photo links out, an approved traveller photo in.
+        await place_photos.attach_details(place_id, details, name=name, lat=lat, lng=lng)
     return details
 

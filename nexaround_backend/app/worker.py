@@ -50,6 +50,7 @@ async def main() -> None:
         google_places_client,
         ip_country,
         odyssey_jobs,
+        open_photos,
         telemetry,
         telemetry_alerts,
         telemetry_rollup,
@@ -85,6 +86,9 @@ async def main() -> None:
             # DB-IP's country list behind the admin Explorers page's
             # countries, re-downloaded once a month.
             asyncio.create_task(ip_country.refresh_loop()),
+            # Wikipedia / Unsplash photos for places without one, about one
+            # request a second (services/open_photos).
+            asyncio.create_task(open_photos.lookup_loop()),
         ])
         logger.info("telemetry singleton loops started")
     else:

@@ -8,6 +8,12 @@ from app.api.v1.reviews import router as reviews_router
 from app.api.v1.ar import router as ar_router
 from app.api.v1.budget import router as budget_router
 from app.api.v1.places import router as places_router
+from app.api.v1.place_reviews import (
+    router as place_reviews_router, admin_router as place_reviews_admin_router,
+)
+from app.api.v1.place_photos import (
+    router as place_photos_router, admin_router as place_photos_admin_router,
+)
 from app.api.v1.neva import router as neva_router
 from app.api.v1.admin import router as admin_router
 from app.api.v1.attractions_admin import router as attractions_admin_router
@@ -26,6 +32,7 @@ from app.api.v1.forum import router as forum_router
 from app.api.v1.go import router as go_router
 from app.api.v1.city_tours import router as city_tours_router
 from app.api.v1.city_tours_admin import router as city_tours_admin_router
+from app.api.v1.team_admin import router as team_admin_router
 from app.api.v1.trip_wallet import router as trip_wallet_router
 from app.api.v1.legal import (
     admin_router as legal_admin_router,
@@ -46,6 +53,10 @@ api_router.include_router(itineraries_router)
 api_router.include_router(reviews_router)
 api_router.include_router(budget_router)
 api_router.include_router(places_router)
+api_router.include_router(place_reviews_router)
+api_router.include_router(place_reviews_admin_router)
+api_router.include_router(place_photos_router)
+api_router.include_router(place_photos_admin_router)
 api_router.include_router(neva_router)
 api_router.include_router(admin_router)
 api_router.include_router(attractions_admin_router)
@@ -63,6 +74,7 @@ api_router.include_router(forum_router)
 api_router.include_router(go_router)
 api_router.include_router(city_tours_router)
 api_router.include_router(city_tours_admin_router)
+api_router.include_router(team_admin_router)
 api_router.include_router(trip_wallet_router)
 api_router.include_router(legal_router)
 api_router.include_router(legal_partner_router)

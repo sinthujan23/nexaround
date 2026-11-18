@@ -74,7 +74,7 @@ export default function Sessions() {
             <option value="">Admin and partners</option>
             <option value="admin">Admin only</option>
             <option value="vendor">Partners only</option>
-            <option value="creator">Content creators only</option>
+            <option value="creator">Team members only</option>
           </select>
         </div>
 

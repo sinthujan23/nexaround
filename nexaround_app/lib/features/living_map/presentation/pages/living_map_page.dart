@@ -16,6 +16,7 @@ import 'package:nexaround_app/features/manual_mode/presentation/bloc/map_state.d
 import 'package:nexaround_app/features/manual_mode/presentation/bloc/map_event.dart';
 import 'package:nexaround_app/features/attractions/domain/entities/attraction.dart';
 import 'package:nexaround_app/features/attractions/presentation/widgets/place_rating.dart';
+import 'package:nexaround_app/features/attractions/domain/place_score.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:nexaround_app/core/utils/place_image_helper.dart';
@@ -674,7 +675,6 @@ class _LivingMapPageState extends State<LivingMapPage>
         FetchNearbyAttractions(
           latitude: position.latitude,
           longitude: position.longitude,
-          useLegacy: false,
         ),
       );
       context.read<MapBloc>().add(const FetchCategories());
@@ -746,7 +746,6 @@ class _LivingMapPageState extends State<LivingMapPage>
       FetchNearbyAttractions(
         latitude: lastLat,
         longitude: lastLng,
-        useLegacy: false,
       ),
     );
     context.read<MapBloc>().add(const FetchCategories());
@@ -926,7 +925,6 @@ class _LivingMapPageState extends State<LivingMapPage>
         longitude: lng,
         radius: 3000,
         categoryName: 'Attractions',
-        useLegacy: false,
       );
 
       final List<AttractionEntity> uniquePlaces = [];
@@ -943,8 +941,9 @@ class _LivingMapPageState extends State<LivingMapPage>
         }
       }
 
-      // Free-map-data places have no rating: our popularity score stands in.
-      double rank(AttractionEntity p) => p.isFreeData ? p.popularity / 25.0 : p.rating;
+      // Google rating, our travellers' ratings mixed in, or our popularity
+      // score when there is no rating at all (same rule as the server).
+      double rank(AttractionEntity p) => PlaceScore.combined(p);
       uniquePlaces.sort((a, b) {
         if (rank(b) != rank(a)) return rank(b).compareTo(rank(a));
         final da = a.distanceM ?? 0;
@@ -2936,7 +2935,6 @@ class _LivingMapPageState extends State<LivingMapPage>
                     longitude: lng,
                     categoryId: catId,
                     categoryName: catName == 'All' ? null : catName,
-                    useLegacy: false,
                   ),
                 );
               }
@@ -3795,17 +3793,24 @@ class _LivingMapPageState extends State<LivingMapPage>
   /// already-loaded data — no network calls, so this is instant and free.
   double _trendingScore(AttractionEntity place) {
     // Quality: rating (0–5) → 0–1.
-    // Free-map-data places: our popularity score stands in for rating and buzz.
+    // Free-map-data places: our popularity score stands in for rating and buzz,
+    // blended with our travellers' ratings once they have some.
     if (place.isFreeData) {
-      final double pop = (place.popularity / 100.0).clamp(0.0, 1.0);
+      final double pop = (PlaceScore.combined(place) / 4.0).clamp(0.0, 1.0);
       final double near = (1.0 - (place.distanceM ?? 0).toDouble() / 5000.0).clamp(0.0, 1.0);
       return pop * 0.7 + near * 0.15 + (_hasEventOpportunity(place) ? 0.35 : 0.0);
     }
-    final double quality = place.rating.clamp(0.0, 5.0) / 5.0;
+    // Our travellers' ratings count like extra Google reviews.
+    final int ourCount = (place.ourRating ?? 0.0) > 0 ? place.ourReviewCount : 0;
+    final int allReviews = place.reviewCount + ourCount;
+    final double mixedRating = allReviews > 0 && place.rating > 0
+        ? (place.rating * place.reviewCount + (place.ourRating ?? 0.0) * ourCount) / allReviews
+        : place.rating;
+    final double quality = mixedRating.clamp(0.0, 5.0) / 5.0;
 
     // Buzz: review count, log-scaled so 500 reviews ≫ 5 reviews but doesn't
     // 100× dominate. log10(reviews + 1) / 3 ≈ 1.0 around 1000 reviews.
-    final double buzz = (log(place.reviewCount + 1) / ln10 / 3.0).clamp(
+    final double buzz = (log(allReviews + 1) / ln10 / 3.0).clamp(
       0.0,
       1.0,
     );
@@ -6391,11 +6396,13 @@ class _LivingMapPageState extends State<LivingMapPage>
     // (73 reviews, 0.7km) went unused.
     const int minReviewsForBandSlot = 10;
 
+    // Reviews from Google and from our travellers together; then the combined
+    // score, which also orders free-map-data places by popularity.
     int byPopularity(AttractionEntity a, AttractionEntity b) {
-      final byReviews = b.reviewCount.compareTo(a.reviewCount);
+      final byReviews = PlaceScore.reviews(b).compareTo(PlaceScore.reviews(a));
       if (byReviews != 0) return byReviews;
-      final byRating = b.rating.compareTo(a.rating);
-      if (byRating != 0) return byRating;
+      final byScore = PlaceScore.combined(b).compareTo(PlaceScore.combined(a));
+      if (byScore != 0) return byScore;
       return _getAccurateDistanceM(a).compareTo(_getAccurateDistanceM(b));
     }
 
@@ -6433,7 +6440,7 @@ class _LivingMapPageState extends State<LivingMapPage>
           var taken = 0;
           for (final p in ranked[i]) {
             if (taken >= quota) break;
-            if (p.reviewCount < minReviewsForBandSlot) continue;
+            if (PlaceScore.reviews(p) < minReviewsForBandSlot) continue;
             if (!claim(p)) continue;
             trimmed.add(p);
             taken++;
@@ -6446,7 +6453,7 @@ class _LivingMapPageState extends State<LivingMapPage>
         for (var i = 0; i < ranked.length && spareSlots > 0; i++) {
           for (final p in ranked[i]) {
             if (spareSlots <= 0) break;
-            if (p.reviewCount < minReviewsForBandSlot) continue;
+            if (PlaceScore.reviews(p) < minReviewsForBandSlot) continue;
             if (!claim(p)) continue;
             trimmed.add(p);
             spareSlots--;

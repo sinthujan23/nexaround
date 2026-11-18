@@ -27,6 +27,8 @@ from app.models.legal import LegalAcceptance, LegalDocument
 from app.models.city_tour import CityTour, CityTourTap, CityTourTrip, ContentCreator
 from app.models.subscription import Subscription, SubscriptionEvent
 from app.models.open_place import OpenPlace, OpenArea
+from app.models.place_review import PlaceReview
+from app.models.place_photo import PlacePhoto
 from app.models.trip_wallet import (
     WalletTrip, WalletMember, WalletExpense, WalletExpenseShare, WalletSettlement,
 )
@@ -46,6 +48,8 @@ __all__ = [
     "ExcludedKeyword", "CountryCity",
     "ExperienceVendor", "ExperiencePackage", "ExperienceEnquiry", "VendorUser",
     "ExperienceReview",
+    "PlaceReview",
+    "PlacePhoto",
     "VendorActivity",
     "ForumCategory", "ForumTopic", "ForumPost", "ForumLike", "ForumBookmark",
     "ForumTopicView",

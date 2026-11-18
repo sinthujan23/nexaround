@@ -3,7 +3,7 @@ import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-
 import './index.css';
 import { apiGet, apiPost } from './api';
 import { NAV_ITEMS, NAV_REDIRECTS, LOGIN_PATH, canSee, homePathFor } from './nav';
-import { sessionRole, tokenExpired } from './session';
+import { sessionRole, sessionSections, tokenExpired } from './session';
 import Login from './pages/Login';
 import AdminLayout from './components/layout/AdminLayout';
 import NetworkStatusBar from './components/NetworkStatusBar';
@@ -26,7 +26,7 @@ function App() {
   const [token, setToken] = useState(start.token);
   const [error, setError] = useState(start.error);
   // A token that hasn't run out can still be dead (signed out from Devices &
-  // Sessions, a creator's login switched off), so the server confirms it
+  // Sessions, a team member's login switched off), so the server confirms it
   // before any page shows. A token fresh from the sign-in form needs no check.
   const [checking, setChecking] = useState(start.token !== null);
 
@@ -108,9 +108,11 @@ function App() {
     );
   }
 
-  // A content creator's token opens City Tours only; any other address lands there.
+  // A team member's token opens only their areas; any other address lands on
+  // their first page.
   const role = sessionRole();
-  const home = homePathFor(role);
+  const sections = sessionSections();
+  const home = homePathFor(role, sections);
 
   return (
     <>
@@ -118,7 +120,7 @@ function App() {
       <Routes>
         <Route path={LOGIN_PATH} element={<Navigate to={location.state?.from || home} replace />} />
         <Route element={<AdminLayout onLogout={handleLogout} />}>
-          {NAV_ITEMS.filter((item) => canSee(item, role)).map(({ path, page: Page }) => (
+          {NAV_ITEMS.filter((item) => canSee(item, role, sections)).map(({ path, page: Page }) => (
             <Route key={path} path={path} element={<Page />} />
           ))}
           {NAV_REDIRECTS.map(([from, to]) => (

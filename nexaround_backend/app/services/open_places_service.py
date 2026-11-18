@@ -223,6 +223,9 @@ async def banded(
         logger.warning("open data banded failed, using Google method: %s", e)
         return None
     await _record(f"open:band:{latitude:.3f}:{longitude:.3f}:{category}", len(pool))
+    # Our travellers' ratings: they feed the order and the card's stars.
+    from app.services import place_reviews
+    await place_reviews.attach(pool)
     return banded_places_service._assemble(
         latitude, longitude, category, visible, pool, max_photos,
         cached_flag=False, source="open", per_band=per_band,

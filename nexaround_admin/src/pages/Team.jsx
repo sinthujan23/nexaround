@@ -23,11 +23,11 @@ function suggestPassword() {
   return [...bytes].map((b) => letters[b % letters.length]).join('');
 }
 
-function PasswordInput({ value, onChange }) {
+function PasswordInput({ id, value, onChange, invalid }) {
   return (
     <div style={{ display: 'flex', gap: 8 }}>
       <input
-        className="form-input" type="text" minLength={10} maxLength={128} value={value}
+        id={id} className="form-input" type="text" maxLength={128} value={value} aria-invalid={invalid || undefined}
         autoComplete="new-password" onChange={(e) => onChange(e.target.value)}
       />
       <button type="button" className="btn btn-ghost btn-sm" onClick={() => onChange(suggestPassword())}>Suggest</button>
@@ -36,7 +36,7 @@ function PasswordInput({ value, onChange }) {
 }
 
 /** Which areas the login opens and, for City Guides, who puts guides live. */
-function AccessFields({ value, onChange }) {
+function AccessFields({ value, onChange, error }) {
   const toggle = (area, on) => onChange({
     ...value,
     sections: on
@@ -52,6 +52,7 @@ function AccessFields({ value, onChange }) {
             <Switch key={key} checked={value.sections.includes(key)} label={label} onChange={(on) => toggle(key, on)} />
           ))}
         </div>
+        <FieldError message={error} />
       </div>
       {value.sections.includes(CITY_TOURS) && (
         <div className="form-group">
@@ -61,7 +62,7 @@ function AccessFields({ value, onChange }) {
             onChange={(e) => onChange({ ...value, can_publish_guides: e.target.value === 'publish' })}
           >
             <option value="review">Own guides only, each sent for admin approval</option>
-            <option value="publish">Company guides, puts them live themselves</option>
+            <option value="publish">All guides, puts them live themselves</option>
           </select>
         </div>
       )}
@@ -70,6 +71,44 @@ function AccessFields({ value, onChange }) {
       </div>
     </>
   );
+}
+
+// The form's fields, in the order they show: the first one wrong gets focus.
+const FIELD_IDS = { name: 'team-name', email: 'team-email', password: 'team-password', sections: null };
+
+/** What is wrong with each field, by field; empty when the form can be saved.
+ * `adding` is the new-login form (the edit form has no email, and an empty
+ * password there keeps the current one). */
+function fieldErrors(form, adding) {
+  const errors = {};
+  if (!form.name.trim()) errors.name = 'Add their name.';
+  const email = (form.email || '').trim().toLowerCase();
+  if (adding && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    errors.email = 'Type their full email address, e.g. name@nexaround.com.';
+  } else if (adding && form.takenEmail === email) {
+    errors.email = 'There is already a team login with this email.';
+  }
+  if ((adding || form.password) && form.password.length < 10) {
+    errors.password = `Use 10 characters or more (now ${form.password.length}).`;
+  }
+  if (!form.sections.length) errors.sections = 'Switch on at least one area.';
+  return errors;
+}
+
+/** Red line under a field. */
+function FieldError({ message }) {
+  return message ? <div className="form-field-error" role="alert">{message}</div> : null;
+}
+
+/** Shows the form's problems and puts the cursor in the first wrong field.
+ * True when there were none and saving can go ahead. */
+function checkForm(form, setForm, adding) {
+  const errors = fieldErrors(form, adding);
+  const first = Object.keys(FIELD_IDS).find((key) => errors[key]);
+  if (!first) return true;
+  setForm({ ...form, checked: true });
+  if (FIELD_IDS[first]) document.getElementById(FIELD_IDS[first])?.focus();
+  return false;
 }
 
 const sameAccess = (a, b) => a.can_publish_guides === b.can_publish_guides
@@ -90,14 +129,24 @@ export default function Team() {
   const [toast, notify] = useToast(5000);
 
   const create = async () => {
+    if (!checkForm(adding, setAdding, true)) return;
+    const email = adding.email.trim();
     setSaving(true);
     try {
-      await apiPost('/admin/team', adding);
-      notify(`Added. Send ${adding.email} the password; they sign in at ${window.location.origin}.`);
+      await apiPost('/admin/team', {
+        name: adding.name.trim(), email, password: adding.password,
+        sections: adding.sections, can_publish_guides: adding.can_publish_guides,
+      });
+      notify(`Added. Send ${email} the password; they sign in at ${window.location.origin}.`);
       setAdding(null);
       refetch();
     } catch (err) {
-      notify(err.message || 'Could not add the login.', 'error');
+      if (err.status === 409) {
+        setAdding((form) => ({ ...form, checked: true, takenEmail: email.toLowerCase() }));
+        document.getElementById(FIELD_IDS.email)?.focus();
+      } else {
+        notify(err.message || 'Could not add the login.', 'error');
+      }
     } finally {
       setSaving(false);
     }
@@ -129,6 +178,7 @@ export default function Team() {
   };
 
   const saveEdit = () => {
+    if (!checkForm(editing, setEditing, false)) return;
     const original = data.find((m) => m.id === editing.id);
     const accessChanged = !sameAccess(editing, original);
     update(
@@ -143,6 +193,11 @@ export default function Team() {
   };
 
   if (error && !data) return <PageError error={error} onRetry={refetch} />;
+
+  // Field problems show only once Add / Save has been pressed, then follow
+  // the typing, so an empty form never opens in red.
+  const addErrors = adding?.checked ? fieldErrors(adding, true) : {};
+  const editErrors = editing?.checked ? fieldErrors(editing, false) : {};
 
   return (
     <div>
@@ -224,24 +279,35 @@ export default function Team() {
       {adding && (
         <Modal title="Add a team login" onClose={() => setAdding(null)} maxWidth="480px">
           <div className="form-group">
-            <label className="form-label">Name *</label>
-            <input className="form-input" maxLength={120} value={adding.name} onChange={(e) => setAdding({ ...adding, name: e.target.value })} />
+            <label className="form-label" htmlFor={FIELD_IDS.name}>Name *</label>
+            <input
+              id={FIELD_IDS.name} className="form-input" maxLength={120} value={adding.name}
+              aria-invalid={!!addErrors.name || undefined}
+              onChange={(e) => setAdding({ ...adding, name: e.target.value })}
+            />
+            <FieldError message={addErrors.name} />
           </div>
           <div className="form-group">
-            <label className="form-label">Email (their sign-in name) *</label>
-            <input className="form-input" type="email" maxLength={255} value={adding.email} onChange={(e) => setAdding({ ...adding, email: e.target.value })} />
+            <label className="form-label" htmlFor={FIELD_IDS.email}>Email (their sign-in name) *</label>
+            <input
+              id={FIELD_IDS.email} className="form-input" type="email" maxLength={255} value={adding.email}
+              aria-invalid={!!addErrors.email || undefined}
+              onChange={(e) => setAdding({ ...adding, email: e.target.value })}
+            />
+            <FieldError message={addErrors.email} />
           </div>
           <div className="form-group">
-            <label className="form-label">Password * <span className="muted">(10 characters or more)</span></label>
-            <PasswordInput value={adding.password} onChange={(password) => setAdding({ ...adding, password })} />
+            <label className="form-label" htmlFor={FIELD_IDS.password}>Password * <span className="muted">(10 characters or more)</span></label>
+            <PasswordInput
+              id={FIELD_IDS.password} value={adding.password} invalid={!!addErrors.password}
+              onChange={(password) => setAdding({ ...adding, password })}
+            />
+            <FieldError message={addErrors.password} />
           </div>
-          <AccessFields value={adding} onChange={setAdding} />
+          <AccessFields value={adding} onChange={setAdding} error={addErrors.sections} />
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => setAdding(null)}>Cancel</button>
-            <button
-              type="button" className="btn btn-primary btn-sm" onClick={create}
-              disabled={saving || !adding.name.trim() || !adding.email.trim() || adding.password.length < 10 || !adding.sections.length}
-            >
+            <button type="button" className="btn btn-primary btn-sm" onClick={create} disabled={saving}>
               {saving ? 'Adding…' : 'Add login'}
             </button>
           </div>
@@ -251,21 +317,26 @@ export default function Team() {
       {editing && (
         <Modal title={`Edit ${editing.name}`} onClose={() => setEditing(null)} maxWidth="480px">
           <div className="form-group">
-            <label className="form-label">Name</label>
-            <input className="form-input" maxLength={120} value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} />
+            <label className="form-label" htmlFor={FIELD_IDS.name}>Name</label>
+            <input
+              id={FIELD_IDS.name} className="form-input" maxLength={120} value={editing.name}
+              aria-invalid={!!editErrors.name || undefined}
+              onChange={(e) => setEditing({ ...editing, name: e.target.value })}
+            />
+            <FieldError message={editErrors.name} />
           </div>
-          <AccessFields value={editing} onChange={setEditing} />
+          <AccessFields value={editing} onChange={setEditing} error={editErrors.sections} />
           <div className="form-group">
-            <label className="form-label">New password <span className="muted">(leave empty to keep the current one)</span></label>
-            <PasswordInput value={editing.password} onChange={(password) => setEditing({ ...editing, password })} />
+            <label className="form-label" htmlFor={FIELD_IDS.password}>New password <span className="muted">(leave empty to keep the current one)</span></label>
+            <PasswordInput
+              id={FIELD_IDS.password} value={editing.password} invalid={!!editErrors.password}
+              onChange={(password) => setEditing({ ...editing, password })}
+            />
+            <FieldError message={editErrors.password} />
           </div>
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing(null)}>Cancel</button>
-            <button
-              type="button" className="btn btn-primary btn-sm"
-              disabled={saving || !editing.name.trim() || !editing.sections.length || (editing.password && editing.password.length < 10)}
-              onClick={saveEdit}
-            >
+            <button type="button" className="btn btn-primary btn-sm" disabled={saving} onClick={saveEdit}>
               {saving ? 'Saving…' : 'Save'}
             </button>
           </div>

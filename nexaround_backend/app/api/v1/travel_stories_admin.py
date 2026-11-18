@@ -14,7 +14,8 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.admin import verify_admin_token
+from app.api.v1.admin import allow_team, verify_admin_token
+from app.services.creator_auth import TRAVEL_BYTES
 from app.core.database import get_db
 from app.models.travel_story import TravelStory
 from app.schemas.travel_story import OfficialStoryAdminOut, OfficialStoryIn
@@ -82,7 +83,7 @@ async def _get_official(db: AsyncSession, story_id: uuid.UUID) -> TravelStory:
 @router.get("", response_model=List[OfficialStoryAdminOut])
 async def list_official_stories(
     db: AsyncSession = Depends(get_db),
-    _=Depends(verify_admin_token),
+    _=Depends(allow_team(TRAVEL_BYTES)),
 ):
     """Every official story, hidden ones included, newest first."""
     stories = (
@@ -100,7 +101,7 @@ async def create_official_story(
     data: OfficialStoryIn,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
-    _=Depends(verify_admin_token),
+    _=Depends(allow_team(TRAVEL_BYTES)),
 ):
     owner_id = await ensure_official_user(db)
     story = TravelStory(id=uuid.uuid4(), user_id=owner_id, is_official=True, is_journal=False)
@@ -119,7 +120,7 @@ async def update_official_story(
     data: OfficialStoryIn,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
-    _=Depends(verify_admin_token),
+    _=Depends(allow_team(TRAVEL_BYTES)),
 ):
     story = await _get_official(db, story_id)
     was_public = story.is_public

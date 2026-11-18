@@ -14,7 +14,6 @@ class FetchNearbyAttractions extends MapEvent {
   final double radius;
   final String? categoryId;
   final String? categoryName;
-  final bool useLegacy;
   final bool forceRefresh;
 
   const FetchNearbyAttractions({
@@ -23,12 +22,11 @@ class FetchNearbyAttractions extends MapEvent {
     this.radius = 50000.0,
     this.categoryId,
     this.categoryName,
-    this.useLegacy = false,
     this.forceRefresh = false,
   });
 
   @override
-  List<Object?> get props => [latitude, longitude, radius, categoryId, categoryName, useLegacy, forceRefresh];
+  List<Object?> get props => [latitude, longitude, radius, categoryId, categoryName, forceRefresh];
 }
 
 /// Load the six Around You / Discovery sections, each already split into

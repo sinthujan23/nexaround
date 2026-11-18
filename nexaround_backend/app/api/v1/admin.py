@@ -1,5 +1,6 @@
 import uuid
 import secrets
+from dataclasses import dataclass
 from typing import List, Literal, Optional
 from datetime import datetime, timezone, date, time, timedelta
 from zoneinfo import ZoneInfo
@@ -47,8 +48,8 @@ class AdminLoginRequest(BaseModel):
 
 class AdminLoginResponse(BaseModel):
     token: str
-    # "admin", or "creator" for a City Tours writer (creator_auth), whose
-    # panel shows City Tours only.
+    # "admin", or "creator" for a team member (creator_auth), whose panel
+    # shows only the areas the admin gave them.
     role: str = "admin"
 
 class MonthlySignups(BaseModel):
@@ -201,6 +202,22 @@ class SettingsUpdateRequest(BaseModel):
 
 # --- Dependency to protect admin routes ---
 
+async def live_member(payload: dict, request: Request):
+    """The team member a decoded creator-role token stands for, recorded as
+    the caller for the audit trail; 401 when the sign-in no longer works."""
+    member = await creator_auth.from_token(payload, request)
+    if member is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Access Denied: Invalid or expired credentials.",
+        )
+    audit.set_actor(
+        request, actor_type=creator_auth.ACTOR, actor_id=str(member.id),
+        actor_label=member.name, session_id=payload["sid"],
+    )
+    return member
+
+
 async def verify_admin_token(request: Request, authorization: str = Header(...)):
     if not authorization.startswith("Bearer "):
         raise HTTPException(
@@ -213,6 +230,11 @@ async def verify_admin_token(request: Request, authorization: str = Header(...))
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Access Denied: Invalid or expired admin credentials."
     )
+    if payload and payload.get("role") == creator_auth.ROLE:
+        # A team member who is still signed in is refused, not signed out:
+        # the panel drops to the sign-in form on any 401.
+        await live_member(payload, request)
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only an admin can do that.")
     if not payload or payload.get("role") != "admin":
         raise denied
 
@@ -235,6 +257,36 @@ async def require_admin(token: str = Depends(verify_admin_token)) -> str:
     """The signed-in admin's login name, for "reviewed by" trails. Admins are
     not rows in `users`, so the name is all there is."""
     return (decode_token(token) or {}).get("sub") or "admin"
+
+
+@dataclass
+class PanelUser:
+    """Who is calling an endpoint team members may use too."""
+    name: str
+    member_id: Optional[uuid.UUID] = None  # None for the admin
+
+    @property
+    def is_admin(self) -> bool:
+        return self.member_id is None
+
+
+def allow_team(*sections: str):
+    """A dependency that lets in the admin, and team members given any of
+    `sections` (creator_auth.SECTIONS). Other members get 403."""
+    async def dependency(request: Request, authorization: str = Header(...)) -> PanelUser:
+        token = authorization.split(" ")[1] if authorization.startswith("Bearer ") else ""
+        payload = decode_token(token) or {}
+        if payload.get("role") == creator_auth.ROLE:
+            member = await live_member(payload, request)
+            if not set(sections) & set(member.sections or []):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Your login doesn't include this area.",
+                )
+            return PanelUser(name=member.name, member_id=member.id)
+        await verify_admin_token(request, authorization)
+        return PanelUser(name=payload.get("sub") or "admin")
+    return dependency
 
 
 # --- Endpoints ---
@@ -264,7 +316,7 @@ async def admin_login(
         )
         return AdminLoginResponse(token=token)
 
-    # Not the admin: a City Tours content creator signs in with their email.
+    # Not the admin: a team member signs in with their email.
     creator, reason = (None, "wrong password") if username_valid else await creator_auth.sign_in(
         data.username, data.password,
     )
@@ -280,8 +332,11 @@ async def admin_login(
             summary=f"Signed in from {audit.describe_device(meta['browser'], meta['os'])}",
             method="POST", route="/api/v1/admin/login", status_code=200, meta=meta,
         )
+        # `sections` and `publish` only pick what the panel shows; every
+        # endpoint reads them from the member's row.
         token = create_access_token({
             "sub": str(creator.id), "role": creator_auth.ROLE, "sid": str(sid), "name": label,
+            "sections": list(creator.sections or []), "publish": bool(creator.can_publish_guides),
         })
         return AdminLoginResponse(token=token, role=creator_auth.ROLE)
 

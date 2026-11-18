@@ -1,33 +1,34 @@
-"""City Tours in the admin panel: writing guides, reviewing them, creator logins.
+"""City Tours in the admin panel: writing guides and reviewing them.
 
-Two kinds of people use these endpoints. Admins see every guide, approve or
-send back what creators send, hide live guides and manage creator logins.
-Content creators (creator_auth) see and edit only their own guides and send
-them for review; nothing they write reaches the app until an admin approves
-that exact version. Everything here sits under /admin, so the audit
-middleware records every write with who made it.
+Admins and team members given City Guides (creator_auth) use these endpoints.
+Admins see every guide, approve or send back what members send, and hide live
+guides. A member either sees and edits only their own guides and sends them
+for review (nothing they write reaches the app until an admin approves that
+exact version), or, with `can_publish_guides`, sees and edits every guide
+and puts them live or hides them like an admin. Member logins are managed in team_admin. Everything here sits under /admin,
+so the audit middleware records every write with who made it.
 """
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, Request, UploadFile
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.api.v1.admin import verify_admin_token
+from app.api.v1.admin import live_member, verify_admin_token
 from app.api.v1.experiences_admin import admin_place_search
 from app.core.database import get_db
-from app.core.security import decode_token, get_password_hash
-from app.models.city_tour import CityTour, CityTourTap, CityTourTrip, ContentCreator
+from app.core.security import decode_token
+from app.models.city_tour import CityTour, CityTourTap, CityTourTrip
 from app.models.experience import ExperiencePackage, ExperienceVendor
 from app.schemas.city_tour import (
     CityTourDetail, CityTourListItem, CityTourReviewIn, CityTourSaveIn, CityTourVersionIn,
-    CityTourVisibilityIn, ContentCreatorIn, ContentCreatorOut, ContentCreatorPatch,
+    CityTourVisibilityIn,
 )
-from app.services import audit, city_tours, creator_auth, legal_service
+from app.services import city_tours, creator_auth, legal_service
 from app.services.experience_service import package_to_card
 from app.services.experience_upload import save_experience_images
 from app.services.providers import gocity, radicalstorage, wegotrip
@@ -39,9 +40,11 @@ router = APIRouter(prefix="/admin/city-tours", tags=["Admin City Tours"])
 
 @dataclass
 class Editor:
-    role: str  # "admin" | "creator"
+    role: str  # "admin" | "creator" (a team member)
     name: str
     creator_id: Optional[uuid.UUID] = None
+    # Puts guides live and hides them: the admin, and members allowed to.
+    can_publish: bool = False
 
     @property
     def is_admin(self) -> bool:
@@ -49,29 +52,39 @@ class Editor:
 
 
 async def require_editor(request: Request, authorization: str = Header(...)) -> Editor:
-    """An admin, or a signed-in content creator."""
+    """An admin, or a signed-in team member given City Guides."""
     token = authorization.split(" ")[1] if authorization.startswith("Bearer ") else ""
     payload = decode_token(token) or {}
     if payload.get("role") == creator_auth.ROLE:
-        creator = await creator_auth.from_token(payload, request)
-        if creator is None:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Access Denied: Invalid or expired credentials.",
-            )
-        audit.set_actor(
-            request, actor_type=creator_auth.ACTOR, actor_id=str(creator.id),
-            actor_label=creator.name, session_id=payload["sid"],
+        member = await live_member(payload, request)
+        if creator_auth.CITY_TOURS not in (member.sections or []):
+            raise HTTPException(status_code=403, detail="Your login doesn't include City Guides.")
+        return Editor(
+            role=creator_auth.ROLE, name=member.name, creator_id=member.id,
+            can_publish=bool(member.can_publish_guides),
         )
-        return Editor(role=creator_auth.ROLE, name=creator.name, creator_id=creator.id)
     await verify_admin_token(request, authorization)
-    return Editor(role="admin", name=payload.get("sub") or "admin")
+    return Editor(role="admin", name=payload.get("sub") or "admin", can_publish=True)
 
 
 async def require_admin_editor(editor: Editor = Depends(require_editor)) -> Editor:
     if not editor.is_admin:
         raise HTTPException(status_code=403, detail="Only an admin can do that.")
     return editor
+
+
+async def require_publisher(editor: Editor = Depends(require_editor)) -> Editor:
+    if not editor.can_publish:
+        raise HTTPException(status_code=403, detail="Only an admin can do that.")
+    return editor
+
+
+def _scope(editor: Editor) -> list:
+    """The guides this editor may see, as WHERE conditions: all of them for
+    an admin or a publishing member; otherwise the member's own."""
+    if editor.can_publish:
+        return []
+    return [CityTour.creator_id == editor.creator_id]
 
 
 def _content_error(e: city_tours.ContentError) -> HTTPException:
@@ -184,10 +197,12 @@ async def _detail(db: AsyncSession, tour: CityTour, editor: Editor) -> CityTourD
 
 
 async def _get_tour(db: AsyncSession, tour_id: uuid.UUID, editor: Editor) -> CityTour:
-    """The guide, if this editor may see it. A creator asking for someone
-    else's gets the same 404 as for one that does not exist."""
-    tour = await db.get(CityTour, tour_id)
-    if tour is None or (not editor.is_admin and tour.creator_id != editor.creator_id):
+    """The guide, if this editor may see it (_scope). A member asking for one
+    they may not see gets the same 404 as for one that does not exist."""
+    tour = (
+        await db.execute(select(CityTour).where(CityTour.id == tour_id, *_scope(editor)))
+    ).scalar_one_or_none()
+    if tour is None:
         raise HTTPException(status_code=404, detail="Guide not found")
     return tour
 
@@ -395,106 +410,6 @@ async def tap_report(
     return {"days": days, "rows": out, "total": sum(r["taps"] for r in out)}
 
 
-# ── Content creators (admin only) ────────────────────────────────────────────
-
-async def _creator_out(db: AsyncSession, creator: ContentCreator) -> ContentCreatorOut:
-    counts = (
-        await db.execute(
-            select(func.count(CityTour.id), func.count(CityTour.live_content))
-            .where(CityTour.creator_id == creator.id)
-        )
-    ).one()
-    return ContentCreatorOut(
-        id=creator.id, name=creator.name, email=creator.email, is_active=creator.is_active,
-        created_at=creator.created_at, last_login_at=creator.last_login_at,
-        tour_count=counts[0], live_count=counts[1],
-    )
-
-
-@router.get("/creators", response_model=list[ContentCreatorOut])
-async def list_creators(
-    db: AsyncSession = Depends(get_db), _: Editor = Depends(require_admin_editor),
-):
-    creators = (
-        await db.execute(select(ContentCreator).order_by(ContentCreator.created_at))
-    ).scalars().all()
-    return [await _creator_out(db, c) for c in creators]
-
-
-@router.post("/creators", response_model=ContentCreatorOut, status_code=201)
-async def create_creator(
-    data: ContentCreatorIn,
-    db: AsyncSession = Depends(get_db),
-    _: Editor = Depends(require_admin_editor),
-):
-    email = creator_auth.normalize_email(str(data.email))
-    exists = (
-        await db.execute(select(ContentCreator.id).where(ContentCreator.email == email))
-    ).scalar_one_or_none()
-    if exists:
-        raise HTTPException(status_code=409, detail="There is already a creator with that email.")
-    now = datetime.now(timezone.utc)
-    creator = ContentCreator(
-        name=data.name.strip(), email=email, password_hash=get_password_hash(data.password),
-        is_active=True, created_at=now, password_changed_at=now,
-    )
-    db.add(creator)
-    await db.commit()
-    await db.refresh(creator)
-    return await _creator_out(db, creator)
-
-
-@router.patch("/creators/{creator_id}", response_model=ContentCreatorOut)
-async def update_creator(
-    creator_id: uuid.UUID,
-    data: ContentCreatorPatch,
-    db: AsyncSession = Depends(get_db),
-    editor: Editor = Depends(require_admin_editor),
-):
-    """Rename, switch the login off or on, or set a new password. Switching
-    off or a new password signs the creator out everywhere at once."""
-    creator = await db.get(ContentCreator, creator_id)
-    if creator is None:
-        raise HTTPException(status_code=404, detail="Creator not found")
-    sign_out = False
-    if data.name is not None:
-        creator.name = data.name.strip()
-    if data.is_active is not None:
-        sign_out = sign_out or (creator.is_active and not data.is_active)
-        creator.is_active = data.is_active
-    if data.password is not None:
-        creator.password_hash = get_password_hash(data.password)
-        creator.password_changed_at = datetime.now(timezone.utc)
-        sign_out = True
-    await db.commit()
-    await db.refresh(creator)
-    if sign_out:
-        await audit.revoke_sessions_for(
-            actor_type=creator_auth.ACTOR, actor_id=str(creator.id),
-            reason="admin", by=editor.name,
-        )
-    return await _creator_out(db, creator)
-
-
-@router.delete("/creators/{creator_id}")
-async def delete_creator(
-    creator_id: uuid.UUID,
-    db: AsyncSession = Depends(get_db),
-    editor: Editor = Depends(require_admin_editor),
-):
-    """Remove a login. Their guides stay, under their name, for admins to keep
-    or delete."""
-    creator = await db.get(ContentCreator, creator_id)
-    if creator is None:
-        raise HTTPException(status_code=404, detail="Creator not found")
-    await db.delete(creator)
-    await db.commit()
-    await audit.revoke_sessions_for(
-        actor_type=creator_auth.ACTOR, actor_id=str(creator_id), reason="admin", by=editor.name,
-    )
-    return {"status": "deleted"}
-
-
 # ── Guides ───────────────────────────────────────────────────────────────────
 
 @router.get("", response_model=list[CityTourListItem])
@@ -503,11 +418,9 @@ async def list_tours(
     db: AsyncSession = Depends(get_db),
     editor: Editor = Depends(require_editor),
 ):
-    """Every guide for an admin, a creator's own for a creator. `status`
-    narrows to one review status, or "live" / "hidden"."""
-    query = select(CityTour)
-    if not editor.is_admin:
-        query = query.where(CityTour.creator_id == editor.creator_id)
+    """The guides this editor may see (_scope). `status` narrows to one
+    review status, or "live" / "hidden"."""
+    query = select(CityTour).where(*_scope(editor))
     if review_status in city_tours.STATUSES:
         query = query.where(CityTour.review_status == review_status)
     elif review_status == "live":
@@ -605,7 +518,7 @@ async def save_tour(
             tour.review_status = city_tours.APPROVED
             tour.review_note = None
             tour.live_version = tour.version
-        elif not (editor.is_admin and tour.review_status == city_tours.PENDING):
+        elif not (editor.can_publish and tour.review_status == city_tours.PENDING):
             # An admin tidying a guide in the queue keeps it there.
             tour.review_status = city_tours.status_after_edit(tour.review_status)
         await db.commit()
@@ -645,10 +558,10 @@ async def review_tour(
     tour_id: uuid.UUID,
     data: CityTourReviewIn,
     db: AsyncSession = Depends(get_db),
-    editor: Editor = Depends(require_admin_editor),
+    editor: Editor = Depends(require_publisher),
 ):
-    """Approve the version the admin looked at (it goes live in the app as it
-    is), or send it back to its creator with a note."""
+    """Approve the version the admin (or a publishing member) looked at: it
+    goes live in the app as it is. Or send it back to its creator with a note."""
     tour = await _get_tour(db, tour_id, editor)
     _check_version(tour, data.version)
     now = datetime.now(timezone.utc)
@@ -686,7 +599,7 @@ async def set_visibility(
     tour_id: uuid.UUID,
     data: CityTourVisibilityIn,
     db: AsyncSession = Depends(get_db),
-    editor: Editor = Depends(require_admin_editor),
+    editor: Editor = Depends(require_publisher),
 ):
     """Take a live guide off the app, or put it back."""
     tour = await _get_tour(db, tour_id, editor)

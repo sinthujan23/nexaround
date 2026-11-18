@@ -19,7 +19,8 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.admin import verify_admin_token
+from app.api.v1.admin import PanelUser, allow_team, verify_admin_token
+from app.services.creator_auth import EXPERIENCES, TRAVEL_BYTES
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.experience import ExperiencePackage, ExperienceVendor, VendorUser
@@ -77,6 +78,13 @@ from app.services.experience_format import (
 from app.utils.geo_utils import get_lat_lng, point_or_none
 
 router = APIRouter(prefix="/admin/experiences", tags=["Admin Experiences"])
+
+# Team members given Experiences add and edit vendors and packages; deleting,
+# approvals, enquiries, reviews, commission and partner logins stay the
+# admin's (verify_admin_token, which refuses members with 403). Uploads and
+# place search serve TravelBytes too.
+allow_experiences = allow_team(EXPERIENCES)
+allow_media = allow_team(EXPERIENCES, TRAVEL_BYTES)
 
 ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
@@ -194,7 +202,7 @@ async def list_vendors(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
-    _=Depends(verify_admin_token),
+    _=Depends(allow_experiences),
 ):
     repo = ExperienceRepository(db)
     vendors, total = await repo.list_vendors(
@@ -214,7 +222,7 @@ async def list_vendors(
 async def get_vendor(
     vendor_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    _=Depends(verify_admin_token),
+    _=Depends(allow_experiences),
 ):
     repo = ExperienceRepository(db)
     vendor = await repo.get_vendor(vendor_id)
@@ -240,7 +248,7 @@ def _require_findable(data) -> None:
 async def create_vendor(
     data: ExperienceVendorCreate,
     db: AsyncSession = Depends(get_db),
-    _=Depends(verify_admin_token),
+    _=Depends(allow_experiences),
 ):
     _require_findable(data)
     vendor = ExperienceVendor(
@@ -258,7 +266,7 @@ async def update_vendor(
     vendor_id: uuid.UUID,
     data: ExperienceVendorUpdate,
     db: AsyncSession = Depends(get_db),
-    _=Depends(verify_admin_token),
+    _=Depends(allow_experiences),
 ):
     repo = ExperienceRepository(db)
     vendor = await repo.get_vendor(vendor_id)
@@ -316,7 +324,7 @@ async def delete_vendor(
 async def list_vendor_packages(
     vendor_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    _=Depends(verify_admin_token),
+    _=Depends(allow_experiences),
 ):
     repo = ExperienceRepository(db)
     packages = await repo.list_packages_for_vendor(vendor_id)
@@ -336,12 +344,14 @@ async def create_package(
     vendor_id: uuid.UUID,
     data: ExperiencePackageCreate,
     db: AsyncSession = Depends(get_db),
-    _=Depends(verify_admin_token),
+    user: PanelUser = Depends(allow_experiences),
 ):
     repo = ExperienceRepository(db)
     vendor = await repo.get_vendor(vendor_id)
     if not vendor:
         raise HTTPException(status_code=404, detail="Vendor not found")
+    if not user.is_admin:
+        data.commission_percent = None  # the commission is the admin's to set
 
     package = ExperiencePackage(
         vendor_id=vendor.id,
@@ -369,7 +379,7 @@ async def update_package(
     package_id: uuid.UUID,
     data: ExperiencePackageUpdate,
     db: AsyncSession = Depends(get_db),
-    _=Depends(verify_admin_token),
+    user: PanelUser = Depends(allow_experiences),
 ):
     repo = ExperienceRepository(db)
     package = await repo.get_package(package_id, published_only=False)
@@ -378,6 +388,8 @@ async def update_package(
     vendor = await repo.get_vendor(package.vendor_id)
     if not vendor:
         raise HTTPException(status_code=404, detail="Vendor not found")
+    if not user.is_admin:
+        data.commission_percent = None  # keeps the admin's commission
 
     before = partner_activity.snapshot(
         package, _PARTNER_PACKAGE_SCALARS + _ADMIN_ONLY_PACKAGE_PLACE + ("vendor_price_options",)
@@ -893,7 +905,7 @@ async def update_review(
 @router.post("/upload")
 async def upload_experience_images(
     files: List[UploadFile] = File(...),
-    _=Depends(verify_admin_token),
+    _=Depends(allow_media),
 ):
     """Multi-image upload for vendor and package galleries.
 
@@ -907,7 +919,7 @@ async def upload_experience_images(
 @router.post("/upload-video")
 async def upload_experience_video(
     file: UploadFile = File(...),
-    _=Depends(verify_admin_token),
+    _=Depends(allow_media),
 ):
     """One video for a package. Sent one per request so the panel can show
     progress per file and each stays under the proxy's body-size cap."""
@@ -920,7 +932,7 @@ async def admin_place_search(
     lat: float = Query(..., ge=-90.0, le=90.0),
     lng: float = Query(..., ge=-180.0, le=180.0),
     db: AsyncSession = Depends(get_db),
-    _=Depends(verify_admin_token),
+    _=Depends(allow_media),
 ):
     """Google text search for positioning a vendor.
 

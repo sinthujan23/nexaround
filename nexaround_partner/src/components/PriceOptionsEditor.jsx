@@ -4,7 +4,8 @@
 // withUsd={false}: only NexAround sets the dollar price and the commission.
 // In both, a row's amount is what the vendor gets; the admin panel shows the
 // traveller's price beside it, worked out with `commission` (a percentage),
-// as the server's experience_format.with_commission does.
+// as the server's experience_format.with_commission does. commission={null}
+// leaves that line out (admin-panel team members don't see the commission).
 
 // The server's experience_format.OPTION_BASES and MAX_PRICE_OPTIONS.
 const OPTION_BASES = [
@@ -106,7 +107,7 @@ export default function PriceOptionsEditor({ rows, onChange, currency, withUsd, 
               />
             </div>
           </div>
-          {withUsd && row.amount !== '' && row.amount != null && (
+          {withUsd && commission !== null && row.amount !== '' && row.amount != null && (
             <div className="price-option-split">
               Traveller pays <strong>{money(withCommission(row.amount, commission))}</strong>
               {' · '}commission {money(withCommission(row.amount, commission) - Number(row.amount))}

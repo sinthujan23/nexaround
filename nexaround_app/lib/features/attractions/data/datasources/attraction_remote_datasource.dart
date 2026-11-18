@@ -15,7 +15,6 @@ class AttractionRemoteDatasource {
     String? categoryName,
     int limit = 50,
     String sort = 'proximity',
-    bool useLegacy = false,
   }) async {
     // If categoryName is provided directly, use it. Otherwise fallback to heuristic.
     String? resolvedCategoryName = categoryName;
@@ -34,7 +33,6 @@ class AttractionRemoteDatasource {
         longitude: longitude,
         categoryName: resolvedCategoryName,
         radius: radius.toInt(),
-        useLegacy: useLegacy,
       );
       
       final models = entities.map((e) => e as AttractionModel).toList();

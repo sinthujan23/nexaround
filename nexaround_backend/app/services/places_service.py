@@ -325,7 +325,6 @@ async def seed_places_from_google_bg(
     longitude: float,
     category: Optional[str],
     radius: int,
-    use_legacy: bool,
     category_id: Optional[int],
     key: str,
 ):
@@ -368,20 +367,12 @@ async def seed_places_from_google_bg(
         # 2. Call Google API outside the database session context (no connection held!)
         min_radius = get_min_radius(radius)
         if min_radius == 0:
-            if use_legacy:
-                raw_places = await google_places_client.nearby_search_legacy(
-                    latitude=latitude,
-                    longitude=longitude,
-                    category=category,
-                    radius=radius,
-                )
-            else:
-                raw_places = await google_places_client.nearby_search(
-                    latitude=latitude,
-                    longitude=longitude,
-                    category=category,
-                    radius=radius,
-                )
+            raw_places = await google_places_client.nearby_search(
+                latitude=latitude,
+                longitude=longitude,
+                category=category,
+                radius=radius,
+            )
         else:
             mid = (min_radius + radius) / 2.0
             sample_radius = int((radius - min_radius) / 2.0)
@@ -394,20 +385,12 @@ async def seed_places_from_google_bg(
             
             async def fetch_one(lat: float, lng: float, rad: int) -> list:
                 try:
-                    if use_legacy:
-                        return await google_places_client.nearby_search_legacy(
-                            latitude=lat,
-                            longitude=lng,
-                            category=category,
-                            radius=rad,
-                        )
-                    else:
-                        return await google_places_client.nearby_search(
-                            latitude=lat,
-                            longitude=lng,
-                            category=category,
-                            radius=rad,
-                        )
+                    return await google_places_client.nearby_search(
+                        latitude=lat,
+                        longitude=lng,
+                        category=category,
+                        radius=rad,
+                    )
                 except Exception as e:
                     print(f"⚠️ Error fetching offset nearby search in get_nearby background: {e}")
                     return []
@@ -428,22 +411,14 @@ async def seed_places_from_google_bg(
         if not raw_places:
             return
 
-        if use_legacy:
-            if category == "Food & Drink":
-                raw_places = google_places_client.filter_food(raw_places)
-            place_dicts = [
-                google_places_client.to_place_dict_legacy(p, latitude, longitude, category, _photo_url)
-                for p in raw_places
-            ]
-        else:
-            if category == "Food & Drink":
-                raw_places = google_places_client.filter_food(raw_places)
-            elif category != "Beach":
-                raw_places = raw_places[:100]
-            place_dicts = [
-                google_places_client.to_place_dict(p, latitude, longitude, category, _photo_url)
-                for p in raw_places
-            ]
+        if category == "Food & Drink":
+            raw_places = google_places_client.filter_food(raw_places)
+        elif category != "Beach":
+            raw_places = raw_places[:100]
+        place_dicts = [
+            google_places_client.to_place_dict(p, latitude, longitude, category, _photo_url)
+            for p in raw_places
+        ]
 
         # 3. Open a new session to write/commit the fetched places
         async with async_session() as session:
@@ -729,7 +704,6 @@ async def get_nearby(
     longitude: float,
     category: Optional[str],
     radius: int,
-    use_legacy: bool = False,
     max_photos: int = 1,
     limit: int = 20,
     offset: int = 0,
@@ -738,8 +712,6 @@ async def get_nearby(
     # and the filter_food decision below all agree on the same category value.
     category = google_places_client.canonical_category(category)
     key = place_cache_service.build_key(latitude, longitude, category, radius)
-    if use_legacy:
-        key = f"{key}:legacy"
 
     cached = await place_cache_service.get_cached(key)
     if cached is not None:
@@ -820,7 +792,6 @@ async def get_nearby(
                     longitude=longitude,
                     category=category,
                     radius=radius,
-                    use_legacy=use_legacy,
                     category_id=category_id,
                     key=key
                 ))
@@ -853,56 +824,36 @@ async def get_nearby(
     # Nearby Search spend in Nov 2026. Their only consumer is the app's
     # background list behind Curated For You and the Discover tabs; Around You
     # runs its own distance bands (banded_places_service) and is unaffected.
+    # Places API (New) only. The legacy Places API is not used anywhere: it
+    # was quota-capped on this project (most calls came back OVER_QUERY_LIMIT
+    # or REQUEST_DENIED) and the TL asked for New only (2026-11-18). A failed
+    # wide search answers with an empty list, a small one raises, as before.
     raw_places = []
-    if not use_legacy:
-        try:
-            raw_places = await google_places_client.nearby_search(
-                latitude=latitude,
-                longitude=longitude,
-                category=category,
-                radius=radius,
-            )
-        except Exception as e:
-            print(f"⚠️ Places API (New) failed with error: {e}. Falling back to Legacy Nearby Search API.")
-            use_legacy = True
-
-    # Execute legacy search if use_legacy is True (either requested or as fallback)
-    if use_legacy:
-        try:
-            raw_places = await google_places_client.nearby_search_legacy(
-                latitude=latitude,
-                longitude=longitude,
-                category=category,
-                radius=radius,
-            )
-        except Exception as e:
-            # Wide searches have always answered a failed legacy call with an
-            # empty list rather than an error; small ones have always raised.
-            if radius < 25000:
-                raise
-            print(f"⚠️ Legacy nearby search failed in get_nearby: {e}")
-            raw_places = []
+    try:
+        raw_places = await google_places_client.nearby_search(
+            latitude=latitude,
+            longitude=longitude,
+            category=category,
+            radius=radius,
+        )
+    except Exception as e:
+        if radius < 25000:
+            raise
+        print(f"⚠️ Places API (New) nearby search failed in get_nearby: {e}")
+        raw_places = []
 
     await _note_asked_google(category, radius, latitude, longitude)
 
     # Convert raw places to PlaceResponses
-    if use_legacy:
-        if category == "Food & Drink":
-            raw_places = google_places_client.filter_food(raw_places)
-        place_dicts = [
-            google_places_client.to_place_dict_legacy(p, latitude, longitude, category, _photo_url)
-            for p in raw_places
-        ]
-    else:
-        if category == "Food & Drink":
-            raw_places = google_places_client.filter_food(raw_places)
-        elif category != "Beach":
-            raw_places = raw_places[:100] # cap merged result
-            
-        place_dicts = [
-            google_places_client.to_place_dict(p, latitude, longitude, category, _photo_url)
-            for p in raw_places
-        ]
+    if category == "Food & Drink":
+        raw_places = google_places_client.filter_food(raw_places)
+    elif category != "Beach":
+        raw_places = raw_places[:100] # cap merged result
+
+    place_dicts = [
+        google_places_client.to_place_dict(p, latitude, longitude, category, _photo_url)
+        for p in raw_places
+    ]
 
     if category == "Attractions":
         exclude_tags = {
@@ -1574,7 +1525,7 @@ async def _google_place_id_for_local(attraction_id: str) -> Optional[str]:
         print(f"skipping place id resolve: {reason}")
         return None
 
-    resolved = await google_places_client.find_place_id_legacy(
+    resolved = await google_places_client.find_place_id(
         name=name, latitude=lat, longitude=lng,
     )
 
@@ -1736,7 +1687,7 @@ async def _resolve_by_name(
         print(f"skipping place id resolve by name: {reason}")
         return None
 
-    resolved = await google_places_client.find_place_id_legacy(
+    resolved = await google_places_client.find_place_id(
         name=clean, latitude=latitude, longitude=longitude,
     )
 

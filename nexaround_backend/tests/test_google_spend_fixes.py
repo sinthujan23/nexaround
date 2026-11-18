@@ -327,19 +327,64 @@ def test_buying_an_area_leaves_the_note_for_the_whole_cell(db_stub):
         places_service._asked_google_recently("Nature", 50000, 6.9271, 79.8612))
 
 
-def test_wide_legacy_failure_still_answers_empty(monkeypatch, db_stub):
+def test_wide_new_failure_answers_empty(monkeypatch, db_stub):
     async def new_fails(**kw):
         raise httpx.HTTPError("403")
 
-    async def legacy_fails(**kw):
-        raise httpx.HTTPError("REQUEST_DENIED")
-
     monkeypatch.setattr(google_places_client, "nearby_search", new_fails)
-    monkeypatch.setattr(google_places_client, "nearby_search_legacy", legacy_fails)
     result = asyncio.run(places_service.get_nearby(
         latitude=6.9271, longitude=79.8612, category="POI", radius=50000,
     ))
     assert result.places == []
+
+
+def test_small_new_failure_raises_with_no_legacy_fallback(monkeypatch, db_stub):
+    async def new_fails(**kw):
+        raise httpx.HTTPError("403")
+
+    monkeypatch.setattr(google_places_client, "nearby_search", new_fails)
+    with pytest.raises(httpx.HTTPError):
+        asyncio.run(places_service.get_nearby(
+            latitude=6.9271, longitude=79.8612, category="POI", radius=5000,
+        ))
+
+
+def test_legacy_places_code_is_gone():
+    # TL 2026-11-18: Places API (New) only.
+    assert not hasattr(google_places_client, "nearby_search_legacy")
+    assert not hasattr(google_places_client, "to_place_dict_legacy")
+    assert not hasattr(google_places_client, "find_place_id_legacy")
+
+
+def test_legacy_photo_reference_is_never_bought(monkeypatch):
+    from app.services import place_cache_service
+
+    async def miss(key):
+        return None
+
+    def no_db():
+        raise AssertionError("must not reach the key lookup")
+
+    monkeypatch.setattr(place_cache_service, "get_raw", miss)
+    monkeypatch.setattr(google_places_client, "async_session", no_db)
+    with pytest.raises(ValueError):
+        asyncio.run(google_places_client.fetch_photo_bytes("CmRaAAAAlegacyref", 400))
+
+
+@pytest.mark.parametrize("path, key", [
+    ("place/nearbysearch/json", "results"),
+    ("place/findplacefromtext/json", "candidates"),
+])
+def test_retired_legacy_paths_answer_without_google(path, key):
+    answer = proxy._retired_places_answer(path)
+    assert answer == {"status": "ZERO_RESULTS", key: []}
+
+
+@pytest.mark.parametrize("path", [
+    "place/autocomplete/json", "place/details/json", "directions/json", "geocode/json",
+])
+def test_live_paths_are_not_retired(path):
+    assert proxy._retired_places_answer(path) is None
 
 
 @pytest.fixture
@@ -426,3 +471,43 @@ def test_details_answer_keeps_the_shape_the_app_reads():
     assert shaped["rating"] is None
     assert shaped["user_ratings_total"] is None
     assert shaped["photos"] == []
+
+
+@pytest.mark.parametrize("path, status", [
+    ("place/nearbysearch/json", 200),
+    ("place/findplacefromtext/json", 200),
+    ("place/photo", 404),
+    ("place/textsearch/json", 404),
+])
+def test_proxy_never_forwards_legacy_places(monkeypatch, path, status):
+    """The route answers retired legacy paths itself: no Google call at all."""
+    import uuid
+    from types import SimpleNamespace
+
+    from fastapi import HTTPException
+    from starlette.requests import Request
+
+    async def key(self, name):
+        return "test-key"
+
+    class NoNetwork:
+        def __init__(self, *a, **kw):
+            raise AssertionError("must not open an HTTP client")
+
+    monkeypatch.setattr(proxy.SettingsService, "get_setting", key)
+    monkeypatch.setattr(proxy.httpx, "AsyncClient", NoNetwork)
+    req = Request({"type": "http", "method": "GET", "path": "/x",
+                   "query_string": b"location=1,2&radius=500", "headers": []})
+
+    async def run():
+        return await proxy.proxy_google_maps(
+            path, req, db=None, current_user=SimpleNamespace(id=uuid.uuid4()))
+
+    if status == 200:
+        resp = asyncio.run(run())
+        assert resp.status_code == 200
+        assert json.loads(resp.body)["status"] == "ZERO_RESULTS"
+    else:
+        with pytest.raises(HTTPException) as e:
+            asyncio.run(run())
+        assert e.value.status_code == 404

@@ -98,3 +98,16 @@ def _place_visibility_offline(monkeypatch):
     monkeypatch.setattr(place_visibility, "_lock", None)
     monkeypatch.setattr(place_visibility, "_refresh_task", None)
     yield
+
+
+@pytest.fixture(autouse=True)
+def _no_photo_lookup_queue(monkeypatch):
+    """Place lists queue photo-less places for the Wikipedia / Unsplash worker
+    in the shared Redis. Tests run against it, so a test place must never land
+    in that queue (2026-11-18: one did, "op_1 Cafe")."""
+    from app.services import open_photos
+
+    async def _drop(places):
+        return None
+
+    monkeypatch.setattr(open_photos, "enqueue", _drop)

@@ -44,13 +44,13 @@ _CACHE_PREFIX = "venue_facts:v1"
 _CACHE_TTL = 30 * 24 * 3600
 _TIMEOUT = 15.0
 
-# `rating`/`userRatingCount` are Enterprise+Atmosphere and
-# `regularOpeningHours` is Enterprise, so this mask is billed at the dearer
-# tier. It is asked for once per venue per month; see the module docstring.
+# `regularOpeningHours` is Enterprise, so this mask is billed at that tier,
+# once per venue per month. No `rating`/`userRatingCount` since 2026-11-18 (TL:
+# no more rating requests to Google): a venue's rating is the one we saved for
+# that Google place, and a venue we hold no rating for gets none.
 _FIELD_MASK = (
     "places.id,places.displayName,places.formattedAddress,places.location,"
-    "places.rating,places.userRatingCount,places.regularOpeningHours,"
-    "places.businessStatus"
+    "places.regularOpeningHours,places.businessStatus"
 )
 
 # How far a venue may sit from the city it was placed in before we treat the
@@ -215,10 +215,16 @@ async def lookup(
                 if None not in (lat, lng) and latitude is not None and longitude is not None:
                     near_enough = _km(latitude, longitude, lat, lng) <= _MAX_KM
                 if got_name and _names_agree(clean, got_name) and near_enough:
+                    rating, review_count = None, None
+                    if place.get("id"):
+                        from app.services import place_reviews
+                        saved = (await place_reviews.stored_ratings([place["id"]])).get(place["id"])
+                        if saved:
+                            rating, review_count = saved
                     found = {
                         "name": got_name,
-                        "rating": place.get("rating"),
-                        "review_count": place.get("userRatingCount"),
+                        "rating": rating,
+                        "review_count": review_count,
                         "hours": _hours_line(place.get("regularOpeningHours")),
                         "latitude": lat,
                         "longitude": lng,

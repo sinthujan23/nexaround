@@ -15,6 +15,7 @@ import DescriptionEditor from '../components/DescriptionEditor';
 import { COUNTRIES, getCountryByCode, normalizeCountryCode } from '../constants/countries';
 import { CURRENCY_OPTIONS } from '../constants/currencies';
 import PriceOptionsEditor, { optionsToRows, rowsToOptions } from '../components/PriceOptionsEditor';
+import { isCreator } from '../session';
 
 const CATEGORIES = [
   { value: 'boat', label: 'Boat ride' },
@@ -93,14 +94,17 @@ const formatPrice = (pkg) => {
     : price) + (more > 0 ? ` +${more} more` : '');
 };
 
-/** A vendor's own edit waiting in Vendor changes, as a link there. */
+/** A vendor's own edit waiting in Vendor changes, as a link there (the
+ * admin's page: team members get the badge alone). */
 function ReviewBadge({ status, isNew, what }) {
   const label = status === 'changes_requested'
     ? 'Sent back'
     : isNew ? 'New · awaiting approval' : `${what ? `${what} edit` : 'Edit'} awaiting approval`;
+  const badge = <Badge tone={status === 'changes_requested' ? 'red' : 'yellow'}>{label}</Badge>;
+  if (isCreator()) return <span style={{ marginLeft: 8 }}>{badge}</span>;
   return (
     <Link to="/experiences/changes" style={{ marginLeft: 8, textDecoration: 'none' }} onClick={(e) => e.stopPropagation()}>
-      <Badge tone={status === 'changes_requested' ? 'red' : 'yellow'}>{label}</Badge>
+      {badge}
     </Link>
   );
 }
@@ -194,6 +198,9 @@ function ContactChips({ vendor }) {
 }
 
 export default function Experiences() {
+  // Team members add and edit; deleting, the commission and partner logins
+  // are the admin's (the server refuses members those too).
+  const isAdmin = !isCreator();
   const [view, setView] = useState('vendors'); // 'vendors' | 'packages'
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'live' | 'hidden'
@@ -320,7 +327,7 @@ export default function Experiences() {
     setPackages([]);
     setLogins([]);
     loadPackages(vendor.id);
-    loadLogins(vendor.id);
+    if (isAdmin) loadLogins(vendor.id);
   };
 
   const closeVendor = () => {
@@ -761,7 +768,7 @@ export default function Experiences() {
                     ['details', 'Details'],
                     ['location', 'Location'],
                     ['contact', 'Contact'],
-                    ['portal', `Partner portal · ${logins.length}`],
+                    ...(isAdmin ? [['portal', `Partner portal · ${logins.length}`]] : []),
                   ].map(([key, label]) => (
                     <button key={key} className={`xp-tab ${tab === key ? 'active' : ''}`} onClick={() => {
                       if (key !== tab && vendorPhotosBusy && !confirm(PHOTOS_LEAVE)) return;
@@ -828,9 +835,11 @@ export default function Experiences() {
                             <button className="icon-btn" title="Edit" onClick={() => openEditPackage(pkg)}>
                               <EditIcon size={15} />
                             </button>
-                            <button className="icon-btn danger" title="Delete" onClick={() => deletePackage(pkg)}>
-                              <TrashIcon size={15} />
-                            </button>
+                            {isAdmin && (
+                              <button className="icon-btn danger" title="Delete" onClick={() => deletePackage(pkg)}>
+                                <TrashIcon size={15} />
+                              </button>
+                            )}
                           </div>
                         </div>
                       ))}
@@ -903,12 +912,14 @@ export default function Experiences() {
                         />
                       </div>
 
-                      <div className="xp-danger">
-                        <span>Deleting removes this vendor and every one of its packages.</span>
-                        <button className="btn btn-danger-ghost btn-sm" onClick={deleteVendor}>
-                          <TrashIcon size={14} /> Delete vendor
-                        </button>
-                      </div>
+                      {isAdmin && (
+                        <div className="xp-danger">
+                          <span>Deleting removes this vendor and every one of its packages.</span>
+                          <button className="btn btn-danger-ghost btn-sm" onClick={deleteVendor}>
+                            <TrashIcon size={14} /> Delete vendor
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -1340,7 +1351,7 @@ export default function Experiences() {
                 label={packageForm.is_active ? 'Live in app' : 'Hidden (draft)'}
               />
               <div className="drawer-foot-actions">
-                {editingPackageId && (
+                {isAdmin && editingPackageId && (
                   <button
                     type="button" className="icon-btn danger" title="Delete package"
                     onClick={() => deletePackage({ ...packageForm, id: editingPackageId, vendor_id: packageVendorId })}
@@ -1412,8 +1423,10 @@ export default function Experiences() {
           <div className="xp-section">
             <div className="xp-section-title">Price & capacity</div>
             <div className="xp-section-hint">
-              Type what the vendor gets for each price and NexAround’s commission: travellers pay the vendor’s
-              amount plus the commission, and the vendor sees only their own amount. The main price shows on the
+              {isAdmin
+                ? 'Type what the vendor gets for each price and NexAround’s commission: travellers pay the vendor’s amount plus the commission, and the vendor sees only their own amount.'
+                : 'Type what the vendor gets for each price; NexAround’s commission is added by the admin.'}
+              {' '}The main price shows on the
               card; travellers choose between all of them when they ask to book. The dollar price is shown as
               typed, never converted: “QAR 499 ($137) / group”. Leave it empty to show no dollars, and remove
               every price to show “On request”. A blank Min people is 1, a blank Max people is Max participants.
@@ -1432,17 +1445,19 @@ export default function Experiences() {
                   {CURRENCY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </div>
-              <div className="form-group">
-                <label className="form-label">Commission (%)</label>
-                <input
-                  type="number" step="0.01" min="0" max="100" className="form-input" placeholder="0"
-                  value={packageForm.commission_percent}
-                  onChange={(e) => patchPackage({ commission_percent: e.target.value })}
-                />
-              </div>
+              {isAdmin && (
+                <div className="form-group">
+                  <label className="form-label">Commission (%)</label>
+                  <input
+                    type="number" step="0.01" min="0" max="100" className="form-input" placeholder="0"
+                    value={packageForm.commission_percent}
+                    onChange={(e) => patchPackage({ commission_percent: e.target.value })}
+                  />
+                </div>
+              )}
             </div>
             <PriceOptionsEditor
-              rows={packageForm.price_rows} withUsd commission={packageForm.commission_percent}
+              rows={packageForm.price_rows} withUsd commission={isAdmin ? packageForm.commission_percent : null}
               currency={packageForm.price_currency || 'LKR'}
               packageMax={packageForm.max_participants === '' ? null : Number(packageForm.max_participants)}
               onChange={(rows) => patchPackage({ price_rows: rows })}

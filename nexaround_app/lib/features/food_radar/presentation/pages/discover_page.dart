@@ -282,7 +282,6 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
         latitude: lat,
         longitude: lng,
         categoryName: category,
-        useLegacy: _tabs[index] == 'POI',
       ));
       // Around You is the quick-access surface for these same tabs, so both
       // read the same band-aware result rather than each deriving its own.

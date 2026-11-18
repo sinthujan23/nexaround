@@ -36,6 +36,15 @@ class PlaceResponse(BaseModel):
     popularity: int = 0
     popularity_label: Optional[str] = None
     data_source: Optional[str] = None
+    # Our travellers' own ratings (services/place_reviews). `rating_source`
+    # says which stars the card shows: "google", "nexaround" (no Google rating
+    # and at least 3 of ours) or null (no stars).
+    our_rating: Optional[float] = None
+    our_review_count: int = 0
+    rating_source: Optional[str] = None
+    # Who took the photo, when it is not Google's (a traveller's approved
+    # photo today; Wikipedia / Unsplash later). Shown under the photo.
+    photo_credit: Optional[str] = None
     excluded_by_keyword: bool = Field(
         False,
         description="Matches an admin-managed exclude keyword. Only the Around "

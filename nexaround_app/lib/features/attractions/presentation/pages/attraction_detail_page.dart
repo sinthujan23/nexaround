@@ -22,6 +22,10 @@ import 'package:nexaround_app/core/services/permission_service.dart';
 import 'package:nexaround_app/core/services/plan_service.dart';
 import 'package:nexaround_app/features/plans/presentation/pages/plans_page.dart';
 import 'package:nexaround_app/core/services/feature_tracker.dart';
+import 'package:nexaround_app/features/attractions/data/place_reviews_service.dart';
+import 'package:nexaround_app/features/attractions/presentation/widgets/place_review_sheet.dart';
+import 'package:nexaround_app/features/attractions/data/place_photos_service.dart';
+import 'package:nexaround_app/features/attractions/presentation/widgets/place_photo_sheet.dart';
 
 class AttractionDetailPage extends StatefulWidget {
   final String? id;
@@ -84,12 +88,33 @@ class _AttractionDetailPageState extends State<AttractionDetailPage>
   String? _credit;
   String? _popLabel;
 
+  bool get _hasRealId => (widget.id ?? '').trim().length >= 3;
+
   bool get _isFreeData {
     final id = widget.id ?? '';
     return id.startsWith('op_') || id.startsWith('ga_');
   }
   List<Map<String, dynamic>> _realReviews = [];
   List<String> _weekdayHours = [];
+
+  // ── Our travellers' ratings ──
+  // Which stars the header shows, as the server decided: 'google',
+  // 'nexaround' or 'none'. Null until the details arrive (or from an older
+  // server that did not send it).
+  String? _ratingSource;
+  double? _googleRating;
+  double? _ourRatingFromDetails;
+  PlaceReviewPage? _ourReviews;
+  MyPlaceReview? _myReview;
+  bool _loadingOurReviews = true;
+
+  // ── Photo ──
+  // Whether the server has a photo for this place (null until the details
+  // arrive), who took it when it is not Google's, and the photo this traveller
+  // sent, if any (waiting for our team, approved or rejected).
+  bool? _serverHasPhoto;
+  String? _photoCredit;
+  MyPlacePhoto? _myPhoto;
 
   // ── Route data ──
   String? _routeDistanceStr;
@@ -106,6 +131,102 @@ class _AttractionDetailPageState extends State<AttractionDetailPage>
     _totalReviews = widget.reviewCount;
     _fetchPlacesDetails();
     _fetchRouteDistance();
+    if (_hasRealId) {
+      _loadOurReviews();
+      _loadMyPhoto();
+    } else {
+      _loadingOurReviews = false;
+    }
+  }
+
+  Future<void> _loadOurReviews() async {
+    final results = await Future.wait([
+      PlaceReviewsService.fetchReviews(_placeId),
+      PlaceReviewsService.fetchMine(_placeId),
+    ]);
+    if (!mounted) return;
+    setState(() {
+      _ourReviews = results[0] as PlaceReviewPage?;
+      _myReview = results[1] as MyPlaceReview?;
+      _loadingOurReviews = false;
+      // The header follows a rating just posted or deleted: our stars from 3
+      // ratings, unless Google's are shown.
+      final count = _ourReviews?.count ?? 0;
+      if (_ratingSource != null && _ratingSource != 'google') {
+        _ratingSource = count >= 3 ? 'nexaround' : 'none';
+      }
+    });
+  }
+
+  Future<void> _loadMyPhoto() async {
+    final mine = await PlacePhotosService.fetchMine(_placeId);
+    if (mounted) setState(() => _myPhoto = mine);
+  }
+
+  Future<void> _openPhotoSheet() async {
+    final sent = await showPlacePhotoSheet(
+      context,
+      placeId: _placeId,
+      placeName: widget.name,
+      latitude: widget.latitude,
+      longitude: widget.longitude,
+    );
+    if (sent == null || !mounted) return;
+    setState(() => _myPhoto = sent);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Thanks! Your photo will show after our team checks it.'),
+        behavior: SnackBarBehavior.floating,
+        duration: Duration(seconds: 3),
+      ),
+    );
+  }
+
+  /// "Add a photo" on a place showing only its category icon, or a note while
+  /// the traveller's photo waits for our team.
+  Widget _buildPhotoAction() {
+    if (!_hasRealId || _serverHasPhoto != false) return const SizedBox.shrink();
+    final pending = _myPhoto?.isPending == true;
+    return GestureDetector(
+      onTap: pending ? null : _openPhotoSheet,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.6),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(pending ? Icons.hourglass_top_rounded : Icons.add_a_photo_rounded,
+                size: 16, color: Colors.white),
+            const SizedBox(width: 6),
+            Text(pending ? 'Your photo is waiting for review' : 'Add a photo',
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openReviewSheet() async {
+    final result = await showPlaceReviewSheet(
+      context,
+      placeId: _placeId,
+      placeName: widget.name,
+      latitude: widget.latitude,
+      longitude: widget.longitude,
+      existing: _myReview,
+    );
+    if (result == null || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(result.isDeleted ? 'Your review was deleted' : 'Thanks! Your review is posted'),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 2),
+      ),
+    );
+    await _loadOurReviews();
   }
 
   Future<void> _fetchRouteDistance() async {
@@ -200,6 +321,10 @@ class _AttractionDetailPageState extends State<AttractionDetailPage>
           final reviews = rawReviews.map((r) => Map<String, dynamic>.from(r)).toList();
           final photoUrls = (data['photo_urls'] as List?)?.cast<String>() ?? [];
           final String? firstPhoto = photoUrls.isNotEmpty ? photoUrls[0] : null;
+          // A Google photo link from the list that the server no longer
+          // offers (photos switched off and never saved) would only 404.
+          final current = _resolvedImageUrl ?? '';
+          final staleGoogle = current.contains('/places/photo?') && !photoUrls.contains(current);
 
           if (mounted) {
             setState(() {
@@ -211,10 +336,19 @@ class _AttractionDetailPageState extends State<AttractionDetailPage>
               _website = data['website'] as String?;
               _credit = data['credit'] as String?;
               _popLabel = data['popularity_label'] as String?;
+              _googleRating = (data['rating'] as num?)?.toDouble();
+              _ourRatingFromDetails = (data['our_rating'] as num?)?.toDouble();
+              if (data.containsKey('rating_source')) {
+                _ratingSource = data['rating_source'] as String? ?? 'none';
+              }
               _realReviews = reviews;
               _weekdayHours = weekday;
-              if ((_resolvedImageUrl == null || _resolvedImageUrl!.isEmpty) && firstPhoto != null) {
+              _serverHasPhoto = photoUrls.isNotEmpty;
+              _photoCredit = data['photo_credit'] as String?;
+              if ((_resolvedImageUrl == null || _resolvedImageUrl!.isEmpty || staleGoogle) && firstPhoto != null) {
                 _resolvedImageUrl = firstPhoto;
+              } else if (staleGoogle) {
+                _resolvedImageUrl = null;
               }
             });
           }
@@ -432,6 +566,11 @@ class _AttractionDetailPageState extends State<AttractionDetailPage>
                       ),
                     ),
                   ),
+                  Positioned(
+                    right: 16,
+                    bottom: 56,
+                    child: _buildPhotoAction(),
+                  ),
                 ],
               ),
             ),
@@ -444,6 +583,12 @@ class _AttractionDetailPageState extends State<AttractionDetailPage>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Who took the photo, when it is not Google's.
+                  if (_photoCredit != null && _photoCredit!.isNotEmpty) ...[
+                    Text(_photoCredit!,
+                        style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+                    const SizedBox(height: 10),
+                  ],
                   // Category tag
                   Row(
                     children: [
@@ -459,10 +604,17 @@ class _AttractionDetailPageState extends State<AttractionDetailPage>
                         ),
                       ),
                       const SizedBox(width: 10),
-                      if (!_isFreeData) ...[
+                      if (_ratingSource == 'google' ||
+                          (_ratingSource == null && !_isFreeData && widget.rating > 0)) ...[
                         const Icon(Icons.star_rounded, size: 18, color: AppColors.ratingGold),
                         const SizedBox(width: 4),
-                        Text('${widget.rating}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                        Text(((_ratingSource == 'google' ? _googleRating : null) ?? widget.rating).toStringAsFixed(1),
+                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                      ] else if (_ratingSource == 'nexaround' && (_ourReviews?.average ?? _ourRatingFromDetails ?? 0) > 0) ...[
+                        const Icon(Icons.star_rounded, size: 18, color: AppColors.brandGreen),
+                        const SizedBox(width: 4),
+                        Text('${(_ourReviews?.average ?? _ourRatingFromDetails)!.toStringAsFixed(1)} · nexAround',
+                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
                       ] else if (_popLabel != null) ...[
                         Icon(_popLabel == 'Famous' ? Icons.workspace_premium_rounded : Icons.favorite_rounded,
                             size: 16, color: AppColors.brandGreen),
@@ -528,14 +680,21 @@ class _AttractionDetailPageState extends State<AttractionDetailPage>
                   ),
                   const SizedBox(height: 16),
 
-                  // Visitor Reviews
+                  // Our travellers' reviews, and the way to add one. Only for a
+                  // place with a real id: reviews are filed under it.
+                  if (_hasRealId) ...[
+                    _buildOurReviewsCard(),
+                    const SizedBox(height: 16),
+                  ],
+
+                  // Google's reviews, when the place has any.
                   AnimatedSwitcher(
                     duration: const Duration(milliseconds: 400),
                     child: _isLoadingPlaces
                         ? _buildSkeletonSection(key: const ValueKey('rev_skel'))
                         : _realReviews.isNotEmpty
                             ? _buildReviewsCard(key: const ValueKey('rev_real'))
-                            : _buildEmptyStateCard('Visitor Reviews', Icons.rate_review_rounded, 'No reviews available yet.', key: const ValueKey('rev_none')),
+                            : const SizedBox.shrink(key: ValueKey('rev_none')),
                   ),
 
                   const SizedBox(height: 32),
@@ -734,7 +893,7 @@ class _AttractionDetailPageState extends State<AttractionDetailPage>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Visitor Reviews', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+          const Text('Google reviews', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
           const SizedBox(height: 14),
           ..._realReviews.asMap().entries.map((e) {
             final r = e.value;
@@ -756,6 +915,100 @@ class _AttractionDetailPageState extends State<AttractionDetailPage>
   }
 
 
+
+  static const _months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+  String _shortDate(DateTime d) {
+    final local = d.toLocal();
+    return '${local.day} ${_months[local.month - 1]} ${local.year}';
+  }
+
+  /// Ratings from nexAround travellers: the average, the newest reviews, and
+  /// "Rate this place" (or "Edit your review").
+  Widget _buildOurReviewsCard() {
+    final page = _ourReviews;
+    final count = page?.count ?? 0;
+    final mine = _myReview;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceVariant,
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.groups_rounded, size: 18, color: AppColors.brandGreen),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text('nexAround travellers',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          if (_loadingOurReviews)
+            const Text('Loading ratings…', style: TextStyle(fontSize: 13, color: AppColors.textTertiary))
+          else if (count > 0 && page?.average != null)
+            Row(
+              children: [
+                const Icon(Icons.star_rounded, size: 18, color: AppColors.brandGreen),
+                const SizedBox(width: 4),
+                Text(page!.average!.toStringAsFixed(1),
+                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+                const SizedBox(width: 6),
+                Text('· $count ${count == 1 ? 'rating' : 'ratings'}',
+                    style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+              ],
+            )
+          else
+            const Text('No ratings from nexAround travellers yet. Be the first!',
+                style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+          if (mine != null && mine.isHidden) ...[
+            const SizedBox(height: 8),
+            const Text('Our team hid your review, so other travellers do not see it.',
+                style: TextStyle(fontSize: 12.5, color: AppColors.error)),
+          ],
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            height: 44,
+            child: OutlinedButton.icon(
+              onPressed: _loadingOurReviews ? null : _openReviewSheet,
+              icon: Icon(mine == null ? Icons.star_outline_rounded : Icons.edit_rounded, size: 18),
+              label: Text(mine == null ? 'Rate this place' : 'Edit your review',
+                  style: const TextStyle(fontWeight: FontWeight.w700)),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.brandGreen,
+                side: const BorderSide(color: AppColors.brandGreen),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              ),
+            ),
+          ),
+          if (page != null && page.reviews.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            ...page.reviews.asMap().entries.map((e) {
+              final r = e.value;
+              return Column(
+                children: [
+                  if (e.key > 0) const Divider(color: AppColors.border, height: 24),
+                  _buildReview(
+                    r.reviewerName.isEmpty ? 'Traveller' : r.reviewerName,
+                    r.rating.toDouble(),
+                    r.comment ?? '',
+                    _shortDate(r.createdAt),
+                  ),
+                ],
+              );
+            }),
+          ],
+        ],
+      ),
+    );
+  }
 
   Widget _buildInfoSection(String title, IconData icon, String content, {Key? key}) {
     return Container(

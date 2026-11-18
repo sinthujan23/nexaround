@@ -7,6 +7,7 @@ import LocationPicker from '../components/LocationPicker';
 import DescriptionEditor from '../components/DescriptionEditor';
 import { COUNTRIES, getCountryByCode } from '../constants/countries';
 import { useToast } from '../hooks';
+import { isCreator } from '../session';
 
 // The label the app shows where a traveller's story shows its category.
 // Made the same way as place_label on the server: "CHINA · FURONG TOWN".
@@ -297,7 +298,8 @@ export default function OfficialStories() {
                   />
                 </div>
 
-                {openId !== 'new' && (
+                {/* Deleting is the admin's; team members hide a story instead. */}
+                {openId !== 'new' && !isCreator() && (
                   <div className="xp-section">
                     <div className="xp-section-title">Delete</div>
                     <div className="xp-section-hint">Removes the story, its likes and comments for good. Hiding keeps them.</div>

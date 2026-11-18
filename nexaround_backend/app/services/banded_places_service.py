@@ -32,6 +32,7 @@ from app.services import (
     google_places_client,
     place_bands,
     place_cache_service,
+    place_reviews,
     place_visibility,
     places_service,
     spend_guard,
@@ -127,13 +128,13 @@ def _rank_for_selection(place: dict) -> tuple:
     Around You applies its own preference when it takes its quota off the front
     (see living_map_page.dart), leaving this slice untouched.
     """
-    score = place_bands.quality_score(
-        place.get("rating"), place.get("review_count")
+    # Google rating when there is one, our travellers' ratings mixed in, our
+    # popularity score (free map data) when there is no rating at all.
+    score = place_bands.combined_score(
+        place.get("rating"), place.get("review_count"),
+        place.get("our_rating"), place.get("our_review_count"),
+        place.get("popularity"),
     )
-    if not score and place.get("popularity"):
-        # Free map data has no ratings: our popularity score (0..100) on the
-        # same 0..4 scale instead. Never set on Google places.
-        score = float(place["popularity"]) / 25.0
     return (-score, place.get("distance_m") or 0.0)
 
 
@@ -443,6 +444,9 @@ async def get_nearby_banded(
             # place brings it back without waiting for the tile to expire.
             cached = await place_visibility.filter_places(cached)
             _tag_excluded(cached, excluded_keywords)
+            # Our travellers' ratings, fresh on every answer: they feed the
+            # order below and the card's stars.
+            await place_reviews.attach(cached)
             return _assemble(
                 latitude, longitude, category, visible_bands, _within_reach(cached),
                 max_photos, cached_flag=True, source="cache", per_band=per_band,
@@ -584,6 +588,7 @@ async def get_nearby_banded(
     # place's Google twin is dropped here.
     visible = await place_visibility.filter_places(deduped)
     _tag_excluded(visible, excluded_keywords)
+    await place_reviews.attach(visible)
 
     if defer_bands:
         places_service.spawn_background(_fill_bands_bg(
