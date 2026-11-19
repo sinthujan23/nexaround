@@ -2710,9 +2710,11 @@ class _LivingMapPageState extends State<LivingMapPage>
     ).animate().fade(delay: 200.ms);
   }
 
-  /// The tall Odyssey tile: a misty-meadow walker photo under a dark teal
-  /// fade (the Odyssey card's colours), "BUILD AN ODYSSEY / Craft your
-  /// journey" and the "VIEW MY ODYSSEYS" button. The tile opens the planner.
+  /// The tall Odyssey tile: a misty-meadow walker photo with "BUILD AN
+  /// ODYSSEY / Craft your journey" at the top under the arrow and the "MY
+  /// ODYSSEYS" button at the bottom, so the walker shows between them. Dark
+  /// teal fades (the Odyssey card's colours) sit behind the words and the
+  /// button only. The tile opens the planner.
   Widget _buildOdysseyTile() {
     return GestureDetector(
       onTap: () => Navigator.push(
@@ -2745,20 +2747,33 @@ class _LivingMapPageState extends State<LivingMapPage>
                   ),
                 ),
               ),
-              // Dark teal rising from the foot, so the words and button read
-              // on the photo; the top stays clear.
+              // Dark teal from the top, behind the words; clear by the middle
+              // so the walker shows.
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      const Color(0xFF001F20).withOpacity(0.92),
+                      const Color(0xFF001F20).withOpacity(0.6),
+                      Colors.transparent,
+                    ],
+                    stops: const [0.0, 0.34, 0.58],
+                  ),
+                ),
+              ),
+              // A shorter one from the foot, behind the button.
               DecoratedBox(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.bottomCenter,
                     end: Alignment.topCenter,
                     colors: [
-                      const Color(0xFF001F20).withOpacity(0.95),
-                      const Color(0xFF001F20).withOpacity(0.7),
-                      const Color(0xFF003D3E).withOpacity(0.1),
+                      const Color(0xFF001F20).withOpacity(0.85),
                       Colors.transparent,
                     ],
-                    stops: const [0.0, 0.38, 0.7, 1.0],
+                    stops: const [0.0, 0.3],
                   ),
                 ),
               ),
@@ -2775,15 +2790,16 @@ class _LivingMapPageState extends State<LivingMapPage>
                   child: const Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 17),
                 ),
               ),
-              Positioned(
+              // Words at the top, just under the arrow.
+              const Positioned(
                 left: 14,
                 right: 14,
-                bottom: 14,
+                top: 56,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Text(
+                    Text(
                       'BUILD AN ODYSSEY',
                       maxLines: 1,
                       style: TextStyle(
@@ -2793,53 +2809,56 @@ class _LivingMapPageState extends State<LivingMapPage>
                         letterSpacing: 2,
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    const Text(
+                    SizedBox(height: 4),
+                    Text(
                       'Craft your\njourney',
                       style: TextStyle(
-                        fontSize: 19,
+                        fontSize: 20,
                         fontWeight: FontWeight.w700,
                         color: Colors.white,
                         height: 1.12,
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    // View all generated trip plans → Plans section (My Odysseys tab).
-                    // Its own tap handler so it doesn't trigger the tile's "build" action.
-                    GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () => (context.findAncestorStateOfType<HomePageState>() ?? HomePage.homeKey.currentState)?.switchToPlans(),
-                      child: Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                        decoration: BoxDecoration(
-                          color: AppColors.brandGreen,
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: const Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.list_alt_rounded, color: Colors.white, size: 16),
-                            SizedBox(width: 6),
-                            Flexible(
-                              child: FittedBox(
-                                fit: BoxFit.scaleDown,
-                                child: Text(
-                                  'VIEW MY ODYSSEYS',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 11,
-                                    letterSpacing: 1,
-                                  ),
-                                ),
+                  ],
+                ),
+              ),
+              // View all generated trip plans → Plans section (My Odysseys tab).
+              // Its own tap handler so it doesn't trigger the tile's "build" action.
+              Positioned(
+                left: 14,
+                right: 14,
+                bottom: 14,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => (context.findAncestorStateOfType<HomePageState>() ?? HomePage.homeKey.currentState)?.switchToPlans(),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    decoration: BoxDecoration(
+                      color: AppColors.brandGreen,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.list_alt_rounded, color: Colors.white, size: 16),
+                        SizedBox(width: 6),
+                        Flexible(
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              'MY ODYSSEYS',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 11,
+                                letterSpacing: 1,
                               ),
                             ),
-                          ],
+                          ),
                         ),
-                      ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
               ),
             ],
