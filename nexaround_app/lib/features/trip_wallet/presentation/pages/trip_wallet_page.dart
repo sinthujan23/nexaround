@@ -280,7 +280,6 @@ class _TripWalletPageState extends State<TripWalletPage> {
             children: [
               _MenuChoice(
                 title: 'New trip',
-                subtitle: 'Start splitting',
                 icon: Icons.luggage_rounded,
                 iconBg: AppColors.brandGreen,
                 iconColor: Colors.white,
@@ -289,7 +288,6 @@ class _TripWalletPageState extends State<TripWalletPage> {
               const SizedBox(height: 14),
               _MenuChoice(
                 title: 'Join with code',
-                subtitle: 'Got an invite?',
                 icon: Icons.dialpad_rounded,
                 iconBg: Colors.white,
                 iconColor: WalletColors.navy,
@@ -340,10 +338,10 @@ class _TripWalletPageState extends State<TripWalletPage> {
   }
 }
 
-/// One choice of the "+" menu: a white label card, then its icon.
+/// One choice of the "+" menu: a white label card with its name, then its
+/// icon.
 class _MenuChoice extends StatelessWidget {
   final String title;
-  final String subtitle;
   final IconData icon;
   final Color iconBg;
   final Color iconColor;
@@ -351,7 +349,6 @@ class _MenuChoice extends StatelessWidget {
 
   const _MenuChoice({
     required this.title,
-    required this.subtitle,
     required this.icon,
     required this.iconBg,
     required this.iconColor,
@@ -375,22 +372,14 @@ class _MenuChoice extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(12),
                 boxShadow: _shadow,
               ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(title,
-                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: WalletColors.navy)),
-                  Text(subtitle,
-                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: WalletColors.slate)),
-                ],
-              ),
+              child: Text(title,
+                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: WalletColors.navy)),
             ),
             const SizedBox(width: 12),
             Container(

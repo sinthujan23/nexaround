@@ -22,6 +22,8 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:nexaround_app/core/utils/place_image_helper.dart';
 import 'package:geolocator/geolocator.dart' as geo;
 import 'package:nexaround_app/features/planning/presentation/pages/odyssey_planner_page.dart';
+import 'package:nexaround_app/features/planning/presentation/widgets/hub_tile.dart';
+import 'package:nexaround_app/features/trip_wallet/presentation/pages/trip_wallet_page.dart';
 import 'package:nexaround_app/features/mini_tour/presentation/widgets/mini_tour_launcher.dart';
 import 'package:nexaround_app/core/services/google_places_service.dart';
 import 'package:nexaround_app/core/services/currency_service.dart';
@@ -56,7 +58,6 @@ import 'package:nexaround_app/features/living_map/presentation/widgets/animated_
 import 'package:nexaround_app/features/living_map/presentation/widgets/discovery_engine_sheet.dart';
 import 'package:nexaround_app/features/planning/presentation/pages/museums_list_page.dart';
 import 'package:nexaround_app/features/planning/presentation/pages/my_odysseys_page.dart';
-import 'package:nexaround_app/features/experiences/presentation/pages/experiences_page.dart';
 import 'package:nexaround_app/features/forum/presentation/pages/forum_home_page.dart';
 import 'package:nexaround_app/core/services/avatar_service.dart';
 import 'package:nexaround_app/core/services/plan_service.dart';
@@ -1079,10 +1080,8 @@ class _LivingMapPageState extends State<LivingMapPage>
                             _buildGreeting(),
                             const SizedBox(height: 24),
                             _buildArSpotlight(),
-                            const SizedBox(height: 16),
-                            _buildExperienceRibbon(),
-                            const SizedBox(height: 16),
-                            _buildOdysseyCTA(),
+                            const SizedBox(height: 12),
+                            _buildHomeTiles(),
                           ],
                         ),
                       ),
@@ -2553,10 +2552,56 @@ class _LivingMapPageState extends State<LivingMapPage>
     );
   }
 
-  /// Experience Banner — matching rounded card box (BorderRadius.circular(24))
-  /// like AR Spotlight and Odyssey, with adventure photo background and no arrow circle.
-  /// Opens directly to the Curated Hubs section of Plans.
-  Widget _buildExperienceRibbon() {
+  /// Home's tiles under the AR card, laid out like Curated Hubs (the
+  /// client's layout): Odyssey tall on the left, Trip Split and Experiences
+  /// stacked on the right.
+  Widget _buildHomeTiles() {
+    const gap = 10.0;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final height = (constraints.maxWidth * 0.85).clamp(260.0, 340.0);
+        final small = (height - gap) / 2;
+        return SizedBox(
+          height: height,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(flex: 105, child: _buildOdysseyTile()),
+              const SizedBox(width: gap),
+              Expanded(
+                flex: 100,
+                child: Column(
+                  children: [
+                    // The same tile as in Curated Hubs.
+                    HubTile(
+                      height: small,
+                      tag: 'GROUP TRIP',
+                      tagIcon: Icons.account_balance_wallet_rounded,
+                      accentColor: const Color(0xFF4ADE80),
+                      title: 'Trip Split',
+                      subtitle: 'Fair Split',
+                      imageAsset: 'assets/images/trip_wallet_header.jpg',
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const TripWalletPage()),
+                      ),
+                    ),
+                    const SizedBox(height: gap),
+                    SizedBox(height: small, child: _buildExperienceTile()),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  /// The Experiences tile: the Home banner's look (adventure photo, dark
+  /// green fade, "UNFORGETTABLE EXPERIENCES") in a small tile. The banner's
+  /// second line is left out: the tile has no room for it. Opens Curated Hubs.
+  Widget _buildExperienceTile() {
     return GestureDetector(
       onTap: () {
         final homeState = context.findAncestorStateOfType<HomePageState>() ??
@@ -2573,10 +2618,8 @@ class _LivingMapPageState extends State<LivingMapPage>
         }
       },
       child: Container(
-        width: double.infinity,
-        height: 88,
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color: Colors.white.withOpacity(0.08),
             width: 1,
@@ -2590,7 +2633,7 @@ class _LivingMapPageState extends State<LivingMapPage>
           ],
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: BorderRadius.circular(20),
           child: Stack(
             fit: StackFit.expand,
             children: [
@@ -2598,7 +2641,7 @@ class _LivingMapPageState extends State<LivingMapPage>
               Image.asset(
                 'assets/images/experiences_banner_bg.png',
                 fit: BoxFit.cover,
-                alignment: Alignment.center,
+                alignment: const Alignment(-0.4, 0),
               ),
 
               // ── Brand Emerald Darkening & Contrast Gradient Overlay ──
@@ -2608,9 +2651,9 @@ class _LivingMapPageState extends State<LivingMapPage>
                     begin: Alignment.centerLeft,
                     end: Alignment.centerRight,
                     colors: [
-                      Colors.black.withOpacity(0.72), // dark near text for perfect readability
+                      Colors.black.withOpacity(0.72),
                       const Color(0xFF051C14).withOpacity(0.45),
-                      Colors.transparent, // lets the vivid adventure image show through on right
+                      Colors.transparent,
                       Colors.black.withOpacity(0.30),
                     ],
                     stops: const [0.0, 0.45, 0.75, 1.0],
@@ -2618,7 +2661,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                 ),
               ),
 
-              // ── Subtle top-edge shine & bottom vignette ──
+              // ── Subtle top-edge shine & a darker foot under the title ──
               Container(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
@@ -2627,87 +2670,57 @@ class _LivingMapPageState extends State<LivingMapPage>
                     colors: [
                       Colors.white.withOpacity(0.08),
                       Colors.transparent,
-                      Colors.black.withOpacity(0.30),
+                      Colors.black.withOpacity(0.55),
                     ],
                     stops: const [0.0, 0.30, 1.0],
                   ),
                 ),
               ),
 
-              // ── Content: Title + Subtitle (clean, no inside arrow circle) ──
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    // Shrinks slightly on narrow phones instead of wrapping:
-                    // the 88-tall card has no room for a second line.
-                    FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        'UNFORGETTABLE EXPERIENCES',
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w900,
-                          color: Colors.white,
-                          letterSpacing: 0.6,
-                          height: 1.15,
-                          shadows: [
-                            Shadow(
-                              color: Colors.black.withOpacity(0.7),
-                              blurRadius: 6,
-                              offset: const Offset(0, 1.5),
-                            ),
-                          ],
+              Positioned(
+                left: 14,
+                right: 12,
+                bottom: 14,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.bottomLeft,
+                  child: Text(
+                    'UNFORGETTABLE\nEXPERIENCES',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.white,
+                      letterSpacing: 0.6,
+                      height: 1.15,
+                      shadows: [
+                        Shadow(
+                          color: Colors.black.withOpacity(0.7),
+                          blurRadius: 6,
+                          offset: const Offset(0, 1.5),
                         ),
-                      ),
+                      ],
                     ),
-                    const SizedBox(height: 5),
-                    Text(
-                      ExperiencesPage.isComingSoon
-                          ? '— Explore Curated Guides & Hubs'
-                          : '— Book Handcrafted Tours',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: const Color(0xFFD4AF37), // Warm Champagne Gold
-                        letterSpacing: 0.2,
-                        height: 1.2,
-                        shadows: [
-                          Shadow(
-                            color: Colors.black.withOpacity(0.6),
-                            blurRadius: 4,
-                            offset: const Offset(0, 1),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ),
             ],
           ),
         ),
       ),
-    ).animate().fade(delay: 200.ms).slideX(begin: -0.06, end: 0);
+    ).animate().fade(delay: 200.ms);
   }
 
-  Widget _buildOdysseyCTA() {
+  /// The tall Odyssey tile: a misty-meadow walker photo under a dark teal
+  /// fade (the Odyssey card's colours), "BUILD AN ODYSSEY / Craft your
+  /// journey" and the "VIEW MY ODYSSEYS" button. The tile opens the planner.
+  Widget _buildOdysseyTile() {
     return GestureDetector(
       onTap: () => Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => OdysseyPlannerPage()),
       ),
       child: Container(
-        padding: const EdgeInsets.fromLTRB(18, 14, 16, 14),
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF003D3E), Color(0xFF001F20)],
-          ),
           borderRadius: BorderRadius.circular(24),
           boxShadow: [
             BoxShadow(
@@ -2717,165 +2730,123 @@ class _LivingMapPageState extends State<LivingMapPage>
             ),
           ],
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                // Compass emblem
-                Container(
-                  width: 46,
-                  height: 46,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(24),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Image.asset(
+                'assets/images/odyssey_card_bg.jpg',
+                fit: BoxFit.cover,
+                alignment: const Alignment(0, -0.1),
+                errorBuilder: (_, __, ___) => const DecoratedBox(
                   decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: AppColors.brandGreen.withOpacity(0.16),
-                    border: Border.all(
-                      color: AppColors.brandGreen.withOpacity(0.5),
-                      width: 1.2,
-                    ),
-                  ),
-                  child: const Icon(
-                    Icons.explore_rounded,
-                    color: AppColors.brandGreen,
-                    size: 24,
+                    gradient: LinearGradient(colors: [Color(0xFF003D3E), Color(0xFF001F20)]),
                   ),
                 ),
-                const SizedBox(width: 14),
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'BUILD AN ODYSSEY',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w800,
-                          color: AppColors.brandGreen,
-                          letterSpacing: 2,
-                        ),
-                      ),
-                      SizedBox(height: 4),
-                      Text(
-                        'Craft your journey',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white,
-                          height: 1.1,
-                        ),
-                      ),
+              ),
+              // Dark teal rising from the foot, so the words and button read
+              // on the photo; the top stays clear.
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.topCenter,
+                    colors: [
+                      const Color(0xFF001F20).withOpacity(0.95),
+                      const Color(0xFF001F20).withOpacity(0.7),
+                      const Color(0xFF003D3E).withOpacity(0.1),
+                      Colors.transparent,
                     ],
+                    stops: const [0.0, 0.38, 0.7, 1.0],
                   ),
                 ),
-                const SizedBox(width: 12),
-                Container(
+              ),
+              Positioned(
+                top: 12,
+                right: 12,
+                child: Container(
                   width: 34,
                   height: 34,
                   decoration: const BoxDecoration(
                     shape: BoxShape.circle,
                     color: AppColors.brandGreen,
                   ),
-                  child: const Icon(
-                    Icons.arrow_forward_rounded,
-                    color: Colors.white,
-                    size: 17,
-                  ),
+                  child: const Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 17),
                 ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            _odysseyRouteLine(),
-            const SizedBox(height: 12),
-            // View all generated trip plans → Plans section (My Odysseys tab).
-            // Its own tap handler so it doesn't trigger the card's "build" action.
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => (context.findAncestorStateOfType<HomePageState>() ?? HomePage.homeKey.currentState)?.switchToPlans(),
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                decoration: BoxDecoration(
-                  color: AppColors.brandGreen,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+              ),
+              Positioned(
+                left: 14,
+                right: 14,
+                bottom: 14,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.list_alt_rounded, color: Colors.white, size: 16),
-                    SizedBox(width: 8),
-                    Text(
-                      'VIEW MY ODYSSEYS',
+                    const Text(
+                      'BUILD AN ODYSSEY',
+                      maxLines: 1,
                       style: TextStyle(
-                        color: Colors.white,
+                        fontSize: 10,
                         fontWeight: FontWeight.w800,
-                        fontSize: 11,
-                        letterSpacing: 1,
+                        color: Color(0xFF00A3A6),
+                        letterSpacing: 2,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Craft your\njourney',
+                      style: TextStyle(
+                        fontSize: 19,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                        height: 1.12,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    // View all generated trip plans → Plans section (My Odysseys tab).
+                    // Its own tap handler so it doesn't trigger the tile's "build" action.
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => (context.findAncestorStateOfType<HomePageState>() ?? HomePage.homeKey.currentState)?.switchToPlans(),
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        decoration: BoxDecoration(
+                          color: AppColors.brandGreen,
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.list_alt_rounded, color: Colors.white, size: 16),
+                            SizedBox(width: 6),
+                            Flexible(
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  'VIEW MY ODYSSEYS',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 11,
+                                    letterSpacing: 1,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ],
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     ).animate().fade(delay: 400.ms).slideX(begin: 0.1, end: 0);
-  }
-
-  /// A green dotted "voyage" route with stops, evoking an odyssey/journey.
-  Widget _odysseyRouteLine() {
-    Widget dot({double size = 7}) => Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        color: AppColors.brandGreen,
-        shape: BoxShape.circle,
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.brandGreen.withOpacity(0.5),
-            blurRadius: 6,
-          ),
-        ],
-      ),
-    );
-    Widget dashes() => Expanded(
-      child: LayoutBuilder(
-        builder: (ctx, c) {
-          final int n = (c.maxWidth / 9).floor().clamp(3, 40).toInt();
-          return Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: List.generate(
-              n,
-              (_) => Container(
-                width: 4,
-                height: 2,
-                decoration: BoxDecoration(
-                  color: AppColors.brandGreen.withOpacity(0.45),
-                  borderRadius: BorderRadius.circular(1),
-                ),
-              ),
-            ),
-          );
-        },
-      ),
-    );
-    return Row(
-      children: [
-        dot(),
-        const SizedBox(width: 6),
-        dashes(),
-        const SizedBox(width: 6),
-        dot(),
-        const SizedBox(width: 6),
-        dashes(),
-        const SizedBox(width: 6),
-        dot(),
-        const SizedBox(width: 6),
-        dashes(),
-        const SizedBox(width: 6),
-        dot(size: 9),
-      ],
-    );
   }
 
   Widget _buildCategoryScroller(List<CategoryEntity> categories) {

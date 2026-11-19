@@ -16,8 +16,8 @@ import 'package:video_player/video_player.dart';
 import 'package:nexaround_app/core/error/user_message.dart';
 import 'package:nexaround_app/features/experiences/presentation/pages/experiences_page.dart';
 import 'package:nexaround_app/features/auth/presentation/pages/home_page.dart';
-import 'dart:typed_data';
 import 'dart:ui' show ImageFilter;
+import 'package:nexaround_app/features/planning/presentation/widgets/hub_tile.dart';
 import 'package:nexaround_app/features/planning/presentation/widgets/walking_challenge_asset.dart';
 import 'package:nexaround_app/features/trip_wallet/presentation/pages/trip_wallet_page.dart';
 
@@ -390,7 +390,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
                 children: [
                   Expanded(
                     flex: 105,
-                    child: _buildHubTile(
+                    child: HubTile(
                       height: tileHeight,
                       large: true,
                       tag: 'TOP MUSEUMS',
@@ -411,7 +411,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
                     flex: 100,
                     child: Column(
                       children: [
-                        _buildHubTile(
+                        HubTile(
                           height: (tileHeight - _hubCardGap) / 2,
                           tag: 'GROUP TRIP',
                           tagIcon: Icons.account_balance_wallet_rounded,
@@ -426,7 +426,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
                           ),
                         ),
                         const SizedBox(height: _hubCardGap),
-                        _buildHubTile(
+                        HubTile(
                           height: (tileHeight - _hubCardGap) / 2,
                           tag: 'CHALLENGE',
                           tagIcon: Icons.directions_walk_rounded,
@@ -485,192 +485,6 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  /// One Curated Hubs tile: photo, dark fade, tag pill at the top, and the
-  /// title at the bottom with a round arrow at the bottom right. The tall card ([large]) has a
-  /// bigger title and a feature chip under it; the small stacked ones carry a
-  /// one-line [subtitle] instead. The whole tile is the button.
-  Widget _buildHubTile({
-    required double height,
-    required String tag,
-    required IconData tagIcon,
-    required Color accentColor,
-    required String title,
-    String? subtitle,
-    IconData? featureIcon,
-    String? featureLabel,
-    String? imageAsset,
-    Uint8List? imageBytes,
-    Alignment imageAlignment = Alignment.center,
-    bool large = false,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        height: height,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.16),
-              blurRadius: 14,
-              offset: const Offset(0, 5),
-            ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(20),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              if (imageBytes != null)
-                Image.memory(imageBytes, fit: BoxFit.cover, alignment: imageAlignment)
-              else if (imageAsset != null)
-                Image.asset(
-                  imageAsset,
-                  fit: BoxFit.cover,
-                  alignment: imageAlignment,
-                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-                ),
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.bottomCenter,
-                    end: Alignment.topCenter,
-                    colors: [
-                      const Color(0xFF0F172A).withValues(alpha: 0.9),
-                      const Color(0xFF0F172A).withValues(alpha: 0.45),
-                      Colors.black.withValues(alpha: 0.08),
-                    ],
-                    stops: const [0.0, 0.55, 1.0],
-                  ),
-                ),
-              ),
-              Padding(
-                padding: EdgeInsets.all(large ? 13 : 11),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    // Top: tag pill
-                    Row(
-                      children: [
-                        Flexible(
-                          child: FittedBox(
-                            fit: BoxFit.scaleDown,
-                            alignment: Alignment.centerLeft,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 7.5, vertical: 3.5),
-                              decoration: BoxDecoration(
-                                color: Colors.black.withValues(alpha: 0.55),
-                                borderRadius: BorderRadius.circular(7),
-                                border: Border.all(color: accentColor.withValues(alpha: 0.70), width: 0.8),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(tagIcon, size: 10.5, color: accentColor),
-                                  const SizedBox(width: 3.5),
-                                  Text(
-                                    tag,
-                                    style: TextStyle(
-                                      fontSize: 8.5,
-                                      fontWeight: FontWeight.w900,
-                                      letterSpacing: 1.0,
-                                      color: accentColor,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    // Bottom: title, then the chip (tall) or a short line
-                    // (small), with the round arrow at the bottom right, where
-                    // the Experiences card has its Explore button.
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                title,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: large ? (height >= 240 ? 20 : 18) : 15,
-                                  fontWeight: FontWeight.w800,
-                                  height: 1.12,
-                                  letterSpacing: -0.2,
-                                  color: Colors.white,
-                                ),
-                              ),
-                              if (large && featureIcon != null && featureLabel != null) ...[
-                                const SizedBox(height: 8),
-                                FittedBox(
-                                  fit: BoxFit.scaleDown,
-                                  alignment: Alignment.centerLeft,
-                                  child: _buildMicroChip(
-                                    icon: featureIcon,
-                                    label: featureLabel,
-                                    iconColor: accentColor,
-                                  ),
-                                ),
-                              ],
-                              if (!large && subtitle != null) ...[
-                                const SizedBox(height: 2),
-                                Text(
-                                  subtitle,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    fontSize: 11.5,
-                                    fontWeight: FontWeight.w500,
-                                    color: Color(0xFFCBD5E1),
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Container(
-                          width: large ? 30 : 26,
-                          height: large ? 30 : 26,
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.20),
-                                blurRadius: 4,
-                                offset: const Offset(0, 1),
-                              ),
-                            ],
-                          ),
-                          child: Icon(
-                            Icons.arrow_forward_rounded,
-                            size: large ? 16 : 14,
-                            color: const Color(0xFF0F172A),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }
