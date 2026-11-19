@@ -489,8 +489,8 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
     );
   }
 
-  /// One Curated Hubs tile: photo, dark fade, tag pill with a round arrow
-  /// beside it, and the title at the bottom. The tall card ([large]) has a
+  /// One Curated Hubs tile: photo, dark fade, tag pill at the top, and the
+  /// title at the bottom with a round arrow at the bottom right. The tall card ([large]) has a
   /// bigger title and a feature chip under it; the small stacked ones carry a
   /// one-line [subtitle] instead. The whole tile is the button.
   Widget _buildHubTile({
@@ -556,7 +556,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    // Top: tag pill + arrow
+                    // Top: tag pill
                     Row(
                       children: [
                         Flexible(
@@ -589,7 +589,60 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
                             ),
                           ),
                         ),
-                        const SizedBox(width: 6),
+                      ],
+                    ),
+                    // Bottom: title, then the chip (tall) or a short line
+                    // (small), with the round arrow at the bottom right, where
+                    // the Experiences card has its Explore button.
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                title,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: large ? (height >= 240 ? 20 : 18) : 15,
+                                  fontWeight: FontWeight.w800,
+                                  height: 1.12,
+                                  letterSpacing: -0.2,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              if (large && featureIcon != null && featureLabel != null) ...[
+                                const SizedBox(height: 8),
+                                FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  alignment: Alignment.centerLeft,
+                                  child: _buildMicroChip(
+                                    icon: featureIcon,
+                                    label: featureLabel,
+                                    iconColor: accentColor,
+                                  ),
+                                ),
+                              ],
+                              if (!large && subtitle != null) ...[
+                                const SizedBox(height: 2),
+                                Text(
+                                  subtitle,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w500,
+                                    color: Color(0xFFCBD5E1),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
                         Container(
                           width: large ? 30 : 26,
                           height: large ? 30 : 26,
@@ -610,50 +663,6 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
                             color: const Color(0xFF0F172A),
                           ),
                         ),
-                      ],
-                    ),
-                    // Bottom: title, then the chip (tall) or a short line (small)
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          title,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: large ? (height >= 240 ? 20 : 18) : 15,
-                            fontWeight: FontWeight.w800,
-                            height: 1.12,
-                            letterSpacing: -0.2,
-                            color: Colors.white,
-                          ),
-                        ),
-                        if (large && featureIcon != null && featureLabel != null) ...[
-                          const SizedBox(height: 8),
-                          FittedBox(
-                            fit: BoxFit.scaleDown,
-                            alignment: Alignment.centerLeft,
-                            child: _buildMicroChip(
-                              icon: featureIcon,
-                              label: featureLabel,
-                              iconColor: accentColor,
-                            ),
-                          ),
-                        ],
-                        if (!large && subtitle != null) ...[
-                          const SizedBox(height: 2),
-                          Text(
-                            subtitle,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w500,
-                              color: Color(0xFFCBD5E1),
-                            ),
-                          ),
-                        ],
                       ],
                     ),
                   ],
