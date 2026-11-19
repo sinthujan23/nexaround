@@ -25,7 +25,7 @@ const _muted = Color(0xFF94A3B8);
 const double _headerBody = 178;
 
 /// How far the first pass reaches up into the header photo.
-const double _passOverlap = 50;
+const double _passOverlap = 30;
 
 /// Trip Wallet's home, opened from the Curated Hubs tile: the traveller's
 /// trips as boarding passes with their own balance on the stub, "New trip"
@@ -206,12 +206,11 @@ class _TripWalletPageState extends State<TripWalletPage> {
       height: topInset + kToolbarHeight,
       padding: EdgeInsets.only(top: topInset, right: 16),
       color: _barSolid ? AppColors.brandGreenDark : Colors.transparent,
+      // Back button only: the photo's "TRIP SPLIT" heading names the page.
       child: const Row(
         children: [
           // The size an AppBar gives its leading button.
           SizedBox(width: 56, height: 56, child: AppBackButton(onImage: true)),
-          SizedBox(width: 4),
-          Text('Trip Split', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: Colors.white)),
         ],
       ),
     );
@@ -281,6 +280,9 @@ class _Header extends StatelessWidget {
 
   const _Header({required this.height, required this.title, required this.textBottom});
 
+  /// A soft dark glow behind the white heading, for the photo's bright spots.
+  static const _headingShadow = [Shadow(color: Color(0x73000000), blurRadius: 12, offset: Offset(0, 1))];
+
   @override
   Widget build(BuildContext context) {
     return SizedBox(
@@ -294,18 +296,20 @@ class _Header extends StatelessWidget {
             alignment: const Alignment(0, -0.2),
             errorBuilder: (_, __, ___) => const ColoredBox(color: AppColors.brandGreenDark),
           ),
-          // Dark over the bright sky for the bar, light over the faces, deep
-          // teal at the foot for the white heading.
+          // Dark over the bright sky for the back button, light over the
+          // faces, then deep teal from mid-photo down so the white heading
+          // reads on the bright clothes and grass.
           DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                stops: const [0, 0.4, 1],
+                stops: const [0, 0.32, 0.6, 1],
                 colors: [
-                  WalletColors.navy.withValues(alpha: 0.5),
-                  AppColors.brandGreenDark.withValues(alpha: 0.1),
-                  AppColors.brandGreenDark.withValues(alpha: 0.9),
+                  WalletColors.navy.withValues(alpha: 0.45),
+                  WalletColors.navy.withValues(alpha: 0.05),
+                  AppColors.brandGreenDark.withValues(alpha: 0.6),
+                  AppColors.brandGreenDark.withValues(alpha: 0.95),
                 ],
               ),
             ),
@@ -319,13 +323,14 @@ class _Header extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                const Text(
                   'TRIP SPLIT',
                   style: TextStyle(
-                    fontSize: 12,
+                    fontSize: 12.5,
                     fontWeight: FontWeight.w800,
-                    letterSpacing: 1.4,
-                    color: Colors.white.withValues(alpha: 0.85),
+                    letterSpacing: 1.6,
+                    color: Colors.white,
+                    shadows: _headingShadow,
                   ),
                 ),
                 const SizedBox(height: 2),
@@ -337,6 +342,7 @@ class _Header extends StatelessWidget {
                     fontWeight: FontWeight.w800,
                     letterSpacing: -0.4,
                     color: Colors.white,
+                    shadows: _headingShadow,
                   ),
                 ),
               ],
