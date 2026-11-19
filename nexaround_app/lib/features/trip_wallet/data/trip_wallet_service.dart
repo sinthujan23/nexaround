@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:nexaround_app/core/constants/api_constants.dart';
 import 'package:nexaround_app/core/network/api_client.dart';
+import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/features/trip_wallet/domain/trip_wallet_models.dart';
 
 /// Trip Wallet from `/trip-wallet`. Every change answers with the whole trip,
@@ -15,13 +16,52 @@ class TripWalletService {
   static final ValueNotifier<int> revision = ValueNotifier<int>(0);
   static const String pushType = 'trip_wallet';
 
-  WalletTrip _trip(Response r) => WalletTrip.fromJson((r.data as Map).cast<String, dynamic>());
+  /// Every answer that carries a whole trip is also kept on the device as
+  /// that trip's copy, so it opens at once next time.
+  WalletTrip _trip(Response r) {
+    final raw = Map<String, dynamic>.from(r.data as Map);
+    final trip = WalletTrip.fromJson(raw);
+    CacheService.cacheTripWalletTrip(trip.id, raw);
+    return trip;
+  }
+
+  static List<WalletTripCard> _cards(Map<String, dynamic> raw) => [
+        for (final t in (raw['trips'] as List? ?? const []))
+          WalletTripCard.fromJson((t as Map).cast<String, dynamic>()),
+      ];
 
   Future<List<WalletTripCard>> getTrips() async {
     final r = await _dio.get('$_base/trips');
-    final list = ((r.data as Map)['trips'] as List? ?? const []);
-    return [for (final t in list) WalletTripCard.fromJson((t as Map).cast<String, dynamic>())];
+    final raw = Map<String, dynamic>.from(r.data as Map);
+    CacheService.cacheTripWalletTrips(raw);
+    return _cards(raw);
   }
+
+  /// The trip list as last loaded on this device, or null when there is
+  /// none or it no longer reads (an older app's shape).
+  List<WalletTripCard>? cachedTrips() {
+    final raw = CacheService.getCachedTripWalletTrips();
+    if (raw == null) return null;
+    try {
+      return _cards(raw);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// A trip as last loaded or changed on this device, or null.
+  WalletTrip? cachedTrip(String id) {
+    final raw = CacheService.getCachedTripWalletTrip(id);
+    if (raw == null) return null;
+    try {
+      return WalletTrip.fromJson(raw);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Drops a trip's kept copy, for a trip the traveller can no longer open.
+  Future<void> forgetTrip(String id) => CacheService.removeCachedTripWalletTrip(id);
 
   Future<WalletTrip> createTrip({required String name, required String currency}) async =>
       _trip(await _dio.post('$_base/trips', data: {'name': name, 'currency': currency}));
@@ -34,7 +74,10 @@ class TripWalletService {
         if (currency != null) 'currency': currency,
       }));
 
-  Future<void> deleteTrip(String id) => _dio.delete('$_base/trips/$id');
+  Future<void> deleteTrip(String id) async {
+    await _dio.delete('$_base/trips/$id');
+    await forgetTrip(id);
+  }
 
   Future<WalletTrip> resetInvite(String id) async =>
       _trip(await _dio.post('$_base/trips/$id/invite/reset'));
@@ -50,7 +93,10 @@ class TripWalletService {
   Future<WalletTrip> removeMember(String tripId, String memberId) async =>
       _trip(await _dio.delete('$_base/trips/$tripId/members/$memberId'));
 
-  Future<void> leave(String tripId) => _dio.post('$_base/trips/$tripId/leave');
+  Future<void> leave(String tripId) async {
+    await _dio.post('$_base/trips/$tripId/leave');
+    await forgetTrip(tripId);
+  }
 
   /// [body] is ExpenseIn on the server: title, category, amount, spent_on,
   /// paid_by_member_id, split_mode, member_ids or shares, receipt_url.

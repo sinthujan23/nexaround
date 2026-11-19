@@ -29,9 +29,16 @@ class WalletTripPage extends StatefulWidget {
 
 class _WalletTripPageState extends State<WalletTripPage> {
   final _service = TripWalletService();
-  WalletTrip? _trip;
+
+  /// The trip as last seen on this device shows at once; the server's copy
+  /// replaces it when it comes.
+  late WalletTrip? _trip = _service.cachedTrip(widget.tripId);
   String? _error;
   bool _busy = false;
+
+  /// Whether [_trip] is the server's copy. Changes wait for it: the kept copy
+  /// may be older, and settle-up amounts worked out from it may be wrong.
+  bool _fresh = false;
 
   @override
   void initState() {
@@ -53,18 +60,38 @@ class _WalletTripPageState extends State<WalletTripPage> {
       setState(() {
         _trip = t;
         _error = null;
+        _fresh = true;
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() => _error = statusCodeOf(e) == 404
-          ? 'This trip was deleted, or you are no longer in it.'
-          : userMessageFor(e, action: 'load the trip'));
+      if (statusCodeOf(e) == 404) {
+        // Gone for this traveller: drop the kept copy and say so.
+        _service.forgetTrip(widget.tripId);
+        setState(() {
+          _trip = null;
+          _error = 'This trip was deleted, or you are no longer in it.';
+        });
+        return;
+      }
+      setState(() => _error = userMessageFor(e, action: 'load the trip'));
     }
+  }
+
+  /// True once the server's copy is in; otherwise says why a change has to
+  /// wait, and tries loading again if the last try failed.
+  bool _ready() {
+    if (_fresh) return true;
+    _snack(_error == null
+        ? 'Still loading the latest copy of this trip. Try again in a moment.'
+        : 'Can’t reach NexAround to check for changes. Connect, then try again.');
+    if (_error != null) _load();
+    return false;
   }
 
   /// Runs a change that answers with the trip, showing the server's reason
   /// when it is refused.
   Future<WalletTrip?> _run(Future<WalletTrip> Function() call, String action) async {
+    if (!_ready()) return null;
     setState(() => _busy = true);
     try {
       final t = await call();
@@ -87,7 +114,7 @@ class _WalletTripPageState extends State<WalletTripPage> {
 
   Future<void> _addExpense([WalletExpense? editing]) async {
     final trip = _trip;
-    if (trip == null) return;
+    if (trip == null || !_ready()) return;
     final updated = await Navigator.push<WalletTrip>(
       context,
       MaterialPageRoute(builder: (_) => AddExpensePage(trip: trip, editing: editing)),
@@ -106,6 +133,7 @@ class _WalletTripPageState extends State<WalletTripPage> {
   }
 
   Future<void> _rename() async {
+    if (!_ready()) return;
     final trip = _trip!;
     final ctrl = TextEditingController(text: trip.name);
     final name = await showDialog<String>(
@@ -142,6 +170,7 @@ class _WalletTripPageState extends State<WalletTripPage> {
   }
 
   Future<void> _leaveTrip() async {
+    if (!_ready()) return;
     final trip = _trip!;
     if (!await _confirm('Leave ${trip.name}?', 'You can only leave once you are all settled up.', 'Leave')) return;
     try {
@@ -154,6 +183,7 @@ class _WalletTripPageState extends State<WalletTripPage> {
   }
 
   Future<void> _deleteTrip() async {
+    if (!_ready()) return;
     final trip = _trip!;
     if (!await _confirm(
       'Delete ${trip.name}?',
@@ -247,10 +277,35 @@ class _WalletTripPageState extends State<WalletTripPage> {
             ),
           ],
           bottom: PreferredSize(
-            preferredSize: const Size.fromHeight(2),
-            child: _busy
-                ? const LinearProgressIndicator(minHeight: 2, color: AppColors.brandGreen)
-                : const SizedBox(height: 2),
+            preferredSize: Size.fromHeight(_error != null ? 30 : 2),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // The refresh failed: this is the trip as kept on the device.
+                if (_error != null)
+                  const SizedBox(
+                    height: 28,
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16),
+                      child: Row(
+                        children: [
+                          Icon(Icons.cloud_off_rounded, size: 15, color: WalletColors.slate),
+                          SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              'Showing saved data. Pull down to refresh.',
+                              style: TextStyle(fontSize: 12.5, color: WalletColors.slate),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                _busy
+                    ? const LinearProgressIndicator(minHeight: 2, color: AppColors.brandGreen)
+                    : const SizedBox(height: 2),
+              ],
+            ),
           ),
         ),
         floatingActionButton: FloatingActionButton.extended(
@@ -286,6 +341,7 @@ class _WalletTripPageState extends State<WalletTripPage> {
       RefreshIndicator(color: AppColors.brandGreen, onRefresh: _load, child: child);
 
   Future<void> _markPaid(WalletPayment p) async {
+    if (!_ready()) return;
     final trip = _trip!;
     final money = trip.money;
     final ctrl = TextEditingController(text: money.plain(p.amount));
@@ -332,6 +388,7 @@ class _WalletTripPageState extends State<WalletTripPage> {
 
   /// Reject or undo (owner), or withdraw (who marked it, while waiting).
   Future<void> _removePayment(WalletPayment p) async {
+    if (!_ready()) return;
     final trip = _trip!;
     final what = '${trip.nameOf(p.fromMemberId)} paid ${trip.nameOf(p.toMemberId)} ${trip.money.format(p.amount)}';
     final (title, text, yes) = !p.isPending
@@ -358,6 +415,7 @@ class _WalletTripPageState extends State<WalletTripPage> {
         },
         onDelete: () async {
           Navigator.pop(sheet);
+          if (!_ready()) return;
           if (await _confirm('Delete ${e.title}?', 'Balances are worked out again without it.', 'Delete')) {
             await _run(() => _service.deleteExpense(_trip!.id, e.id), 'delete the expense');
           }

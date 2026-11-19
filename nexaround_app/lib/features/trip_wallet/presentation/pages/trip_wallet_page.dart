@@ -40,7 +40,10 @@ class TripWalletPage extends StatefulWidget {
 class _TripWalletPageState extends State<TripWalletPage> {
   final _service = TripWalletService();
   final _scroll = ScrollController();
-  List<WalletTripCard>? _trips;
+
+  /// The list as last loaded on this device shows at once; the server's copy
+  /// replaces it when it comes.
+  late List<WalletTripCard>? _trips = _service.cachedTrips();
   String? _error;
 
   /// The top bar is see-through over the photo and turns solid once the
@@ -172,6 +175,8 @@ class _TripWalletPageState extends State<TripWalletPage> {
                   if (i > 0) const SizedBox(height: 12),
                   _TripPass(trip: trips[i], onTap: () => _open(trips[i].id)),
                 ],
+                // The refresh failed: these are the trips kept on the device.
+                if (_error != null) const _SavedNote(padding: EdgeInsets.fromLTRB(4, 14, 4, 0)),
               ],
             ),
           ),
@@ -194,8 +199,10 @@ class _TripWalletPageState extends State<TripWalletPage> {
             text: _error!,
             action: TextButton(onPressed: _load, child: const Text('Try again')),
           )
-        else
+        else ...[
           const _FirstVisit(),
+          if (_error != null) const _SavedNote(padding: EdgeInsets.fromLTRB(22, 4, 22, 0)),
+        ],
       ],
     );
   }
@@ -489,6 +496,33 @@ class _TripPass extends StatelessWidget {
           onTap: onTap,
           child: _passRow(main: main, stub: stub, perforation: const Color(0xFFD6DEE4)),
         ),
+      ),
+    );
+  }
+}
+
+/// Under a list kept on the device when the refresh failed, as the vendor
+/// screens say it.
+class _SavedNote extends StatelessWidget {
+  final EdgeInsets padding;
+
+  const _SavedNote({required this.padding});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: padding,
+      child: const Row(
+        children: [
+          Icon(Icons.cloud_off_rounded, size: 15, color: _muted),
+          SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              'Showing saved trips. Pull down to refresh.',
+              style: TextStyle(fontSize: 12.5, color: WalletColors.slate),
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -31,6 +31,8 @@ class CacheService {
     await _prefs.remove(_myExperienceRequestsKey);
     await _prefs.remove(_vendorAccessKey);
     await _prefs.remove(_vendorPortalKey);
+    await _prefs.remove(_tripWalletTripsKey);
+    await _prefs.remove(_tripWalletTripKey);
 
     savedPlacesNotifier.value++;
     favoritePlacesNotifier.value++;
@@ -1136,6 +1138,44 @@ class CacheService {
     final map = _readJsonMap(_vendorPortalKey);
     if (map.remove(vendorId) == null) return;
     await _prefs.setString(_vendorPortalKey, json.encode(map));
+  }
+
+  // ── Trip Split (Trip Wallet) ───────────────────────────────────────────
+  // Raw `/trip-wallet` answers, so the trip list and each trip open at once
+  // and offline, like the vendor portal. Every change answers with the whole
+  // trip, which is kept as that trip's copy. A trip holds all its expenses,
+  // so only the few last opened are kept. Per account, so dropped on sign-out.
+  static const String _tripWalletTripsKey = 'trip_wallet_trips_v1';
+  static const String _tripWalletTripKey = 'trip_wallet_trip_v1';
+  static const int _maxCachedWalletTrips = 10;
+
+  /// The `/trip-wallet/trips` answer: `{"trips": [...]}`.
+  static Future<void> cacheTripWalletTrips(Map<String, dynamic> raw) async {
+    if (_prefsOrNull == null) return;
+    try {
+      await _prefs.setString(_tripWalletTripsKey, json.encode(raw));
+    } catch (_) {}
+  }
+
+  static Map<String, dynamic>? getCachedTripWalletTrips() {
+    final map = _readJsonMap(_tripWalletTripsKey);
+    return map.isEmpty ? null : map;
+  }
+
+  static Future<void> cacheTripWalletTrip(String tripId, Map<String, dynamic> raw) =>
+      _putBounded(_tripWalletTripKey, tripId, raw, _maxCachedWalletTrips);
+
+  static Map<String, dynamic>? getCachedTripWalletTrip(String tripId) {
+    final value = _readJsonMap(_tripWalletTripKey)[tripId];
+    return value is Map<String, dynamic> ? value : null;
+  }
+
+  /// Drops a trip's copy: it was deleted, or the traveller left or was removed.
+  static Future<void> removeCachedTripWalletTrip(String tripId) async {
+    if (_prefsOrNull == null) return;
+    final map = _readJsonMap(_tripWalletTripKey);
+    if (map.remove(tripId) == null) return;
+    await _prefs.setString(_tripWalletTripKey, json.encode(map));
   }
 
   static Map<String, dynamic> _readJsonMap(String key) {
