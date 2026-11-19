@@ -28,8 +28,8 @@ const double _headerBody = 178;
 const double _passOverlap = 30;
 
 /// Trip Wallet's home, opened from the Curated Hubs tile: the traveller's
-/// trips as boarding passes with their own balance on the stub, "New trip"
-/// and "Join with code" docked at the bottom.
+/// trips as boarding passes with their own balance on the stub, and a "+"
+/// at the bottom right that opens "New trip" and "Join with code".
 class TripWalletPage extends StatefulWidget {
   const TripWalletPage({super.key});
 
@@ -49,6 +49,12 @@ class _TripWalletPageState extends State<TripWalletPage> {
   /// The top bar is see-through over the photo and turns solid once the
   /// photo has scrolled up under it.
   bool _barSolid = false;
+
+  /// The "+" button's two choices, New trip and Join with code, are showing.
+  bool _menuOpen = false;
+
+  static const _menuAnim = Duration(milliseconds: 200);
+  static const double _fabSize = 64;
 
   @override
   void initState() {
@@ -120,37 +126,71 @@ class _TripWalletPageState extends State<TripWalletPage> {
     if (tripId != null && mounted) _open(tripId);
   }
 
+  void _setMenu(bool open) {
+    if (open != _menuOpen) setState(() => _menuOpen = open);
+  }
+
+  /// Closes the menu, then starts the picked action.
+  void _choose(Future<void> Function() action) {
+    _setMenu(false);
+    action();
+  }
+
   @override
   Widget build(BuildContext context) {
     final padding = MediaQuery.paddingOf(context);
-    return AnnotatedRegion<SystemUiOverlayStyle>(
-      // White status bar icons, on the photo and on the solid bar alike.
-      value: const SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.light,
-        statusBarBrightness: Brightness.dark,
-      ),
-      child: Scaffold(
-        backgroundColor: _pageBg,
-        body: Stack(
-          children: [
-            RefreshIndicator(
-              color: AppColors.brandGreen,
-              edgeOffset: padding.top + kToolbarHeight,
-              onRefresh: _load,
-              child: CustomScrollView(
-                controller: _scroll,
-                physics: const AlwaysScrollableScrollPhysics(),
-                slivers: [
-                  SliverToBoxAdapter(child: _content(padding.top + _headerBody)),
-                  // Room to scroll the last pass clear of the docked buttons.
-                  SliverToBoxAdapter(child: SizedBox(height: 100 + padding.bottom)),
-                ],
+    final fabBottom = padding.bottom + 16;
+    return PopScope(
+      // Back closes the open menu first.
+      canPop: !_menuOpen,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _setMenu(false);
+      },
+      child: AnnotatedRegion<SystemUiOverlayStyle>(
+        // White status bar icons, on the photo and on the solid bar alike.
+        value: const SystemUiOverlayStyle(
+          statusBarColor: Colors.transparent,
+          statusBarIconBrightness: Brightness.light,
+          statusBarBrightness: Brightness.dark,
+        ),
+        child: Scaffold(
+          backgroundColor: _pageBg,
+          body: Stack(
+            children: [
+              RefreshIndicator(
+                color: AppColors.brandGreen,
+                edgeOffset: padding.top + kToolbarHeight,
+                onRefresh: _load,
+                child: CustomScrollView(
+                  controller: _scroll,
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  slivers: [
+                    SliverToBoxAdapter(child: _content(padding.top + _headerBody)),
+                    // Room to scroll the last pass clear of the "+" button.
+                    SliverToBoxAdapter(child: SizedBox(height: 100 + padding.bottom)),
+                  ],
+                ),
               ),
-            ),
-            Positioned(left: 0, right: 0, top: 0, child: _topBar(padding.top)),
-            Positioned(left: 0, right: 0, bottom: 0, child: _dock()),
-          ],
+              Positioned(left: 0, right: 0, top: 0, child: _topBar(padding.top)),
+              // Dims the page while the menu is open; a tap on it closes it.
+              Positioned.fill(
+                child: IgnorePointer(
+                  ignoring: !_menuOpen,
+                  child: AnimatedOpacity(
+                    opacity: _menuOpen ? 1 : 0,
+                    duration: _menuAnim,
+                    child: GestureDetector(
+                      onTap: () => _setMenu(false),
+                      child: const ColoredBox(color: Color(0x8C0F172A)),
+                    ),
+                  ),
+                ),
+              ),
+              // The choices' icons line up over the middle of the "+".
+              Positioned(right: 20 + (_fabSize - 52) / 2, bottom: fabBottom + _fabSize + 16, child: _menuChoices()),
+              Positioned(right: 20, bottom: fabBottom, child: _fab()),
+            ],
+          ),
         ),
       ),
     );
@@ -223,51 +263,141 @@ class _TripWalletPageState extends State<TripWalletPage> {
     );
   }
 
-  Widget _dock() {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          stops: const [0, 0.3],
-          colors: [_pageBg.withValues(alpha: 0), _pageBg],
+  /// New trip and Join with code, rising above the "+" when it opens.
+  Widget _menuChoices() {
+    return IgnorePointer(
+      ignoring: !_menuOpen,
+      child: AnimatedOpacity(
+        opacity: _menuOpen ? 1 : 0,
+        duration: _menuAnim,
+        child: AnimatedSlide(
+          offset: _menuOpen ? Offset.zero : const Offset(0, 0.12),
+          duration: _menuAnim,
+          curve: Curves.easeOutCubic,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              _MenuChoice(
+                title: 'New trip',
+                subtitle: 'Start splitting',
+                icon: Icons.luggage_rounded,
+                iconBg: AppColors.brandGreen,
+                iconColor: Colors.white,
+                onTap: () => _choose(_newTrip),
+              ),
+              const SizedBox(height: 14),
+              _MenuChoice(
+                title: 'Join with code',
+                subtitle: 'Got an invite?',
+                icon: Icons.dialpad_rounded,
+                iconBg: Colors.white,
+                iconColor: WalletColors.navy,
+                onTap: () => _choose(_joinWithCode),
+              ),
+            ],
+          ),
         ),
       ),
-      child: SafeArea(
-        top: false,
+    );
+  }
+
+  /// The round-cornered teal "+", which turns white with an "×" while the
+  /// menu is open.
+  Widget _fab() {
+    return Semantics(
+      button: true,
+      label: _menuOpen ? 'Close' : 'New trip or join a trip',
+      excludeSemantics: true,
+      child: GestureDetector(
+        onTap: () => _setMenu(!_menuOpen),
+        child: AnimatedContainer(
+          duration: _menuAnim,
+          width: _fabSize,
+          height: _fabSize,
+          decoration: BoxDecoration(
+            color: _menuOpen ? Colors.white : AppColors.brandGreen,
+            borderRadius: BorderRadius.circular(22),
+            boxShadow: [
+              BoxShadow(
+                color: (_menuOpen ? Colors.black : AppColors.brandGreen).withValues(alpha: 0.45),
+                blurRadius: 26,
+                spreadRadius: -8,
+                offset: const Offset(0, 14),
+              ),
+            ],
+          ),
+          // An eighth of a turn (45°) makes the "+" an "×".
+          child: AnimatedRotation(
+            turns: _menuOpen ? 0.125 : 0,
+            duration: _menuAnim,
+            curve: Curves.easeOutCubic,
+            child: Icon(Icons.add_rounded, size: 32, color: _menuOpen ? WalletColors.navy : Colors.white),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// One choice of the "+" menu: a white label card, then its icon.
+class _MenuChoice extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final Color iconBg;
+  final Color iconColor;
+  final VoidCallback onTap;
+
+  const _MenuChoice({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.iconBg,
+    required this.iconColor,
+    required this.onTap,
+  });
+
+  static const _shadow = [
+    BoxShadow(color: Color(0x66000000), blurRadius: 18, spreadRadius: -8, offset: Offset(0, 8)),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: title,
+      excludeSemantics: true,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
         child: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Expanded(
-              child: ElevatedButton.icon(
-                onPressed: _newTrip,
-                icon: const Icon(Icons.add_rounded, size: 20),
-                label: const Text('New trip'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.brandGreen,
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  padding: const EdgeInsets.symmetric(vertical: 15),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
-                ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: _shadow,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(title,
+                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: WalletColors.navy)),
+                  Text(subtitle,
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: WalletColors.slate)),
+                ],
               ),
             ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: _joinWithCode,
-                icon: const Icon(Icons.group_add_rounded, size: 20),
-                label: const Text('Join with code'),
-                style: OutlinedButton.styleFrom(
-                  backgroundColor: Colors.white,
-                  foregroundColor: WalletColors.navy,
-                  side: const BorderSide(color: WalletColors.line),
-                  padding: const EdgeInsets.symmetric(vertical: 15),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
-                ),
-              ),
+            const SizedBox(width: 12),
+            Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(color: iconBg, borderRadius: BorderRadius.circular(18), boxShadow: _shadow),
+              child: Icon(icon, color: iconColor, size: 24),
             ),
           ],
         ),
@@ -486,7 +616,9 @@ class _TripPass extends StatelessWidget {
       constraints: const BoxConstraints(minHeight: _passHeight),
       decoration: const ShapeDecoration(
         color: Colors.white,
-        shape: _PassBorder(),
+        // A grey outline so each pass stands apart from the page (client's
+        // request), following the notches too.
+        shape: _PassBorder(side: BorderSide(color: Color(0xFFCBD5E1), width: 1.2)),
         shadows: [BoxShadow(color: Color(0x400F172A), blurRadius: 20, spreadRadius: -12, offset: Offset(0, 8))],
       ),
       child: Material(
@@ -670,7 +802,10 @@ Widget _field(String label, String value) => Column(
 /// A rounded ticket with a half-circle notch top and bottom where the stub
 /// tears off. The notches are real holes, so the page shows through.
 class _PassBorder extends ShapeBorder {
-  const _PassBorder();
+  /// The outline drawn along the edge and round the notches; none by default.
+  final BorderSide side;
+
+  const _PassBorder({this.side = BorderSide.none});
 
   static const _radius = 18.0;
   static const _notch = 10.0;
@@ -693,10 +828,13 @@ class _PassBorder extends ShapeBorder {
   }
 
   @override
-  void paint(Canvas canvas, Rect rect, {TextDirection? textDirection}) {}
+  void paint(Canvas canvas, Rect rect, {TextDirection? textDirection}) {
+    if (side.style == BorderStyle.none || side.width == 0) return;
+    canvas.drawPath(getOuterPath(rect), side.toPaint());
+  }
 
   @override
-  ShapeBorder scale(double t) => this;
+  ShapeBorder scale(double t) => _PassBorder(side: side.scale(t));
 }
 
 /// The empty pass's dashed outline, notches included.
