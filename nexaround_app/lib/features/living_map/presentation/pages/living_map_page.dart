@@ -1078,7 +1078,9 @@ class _LivingMapPageState extends State<LivingMapPage>
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             _buildGreeting(),
-                            const SizedBox(height: 24),
+                            // 14 (was 24) and the shorter AR card keep the
+                            // tiles above the floating menu bar on first view.
+                            const SizedBox(height: 14),
                             _buildArSpotlight(),
                             const SizedBox(height: 12),
                             _buildHomeTiles(),
@@ -1977,12 +1979,17 @@ class _LivingMapPageState extends State<LivingMapPage>
 
   /// Full-width AR preview card — simulates an AR camera viewfinder with
   /// floating place-detail cards, pins, and distance markers.
+  static const double _arSpotlightHeight = 175;
+
   Widget _buildArSpotlight() {
     return GestureDetector(
       onTap: () => (context.findAncestorStateOfType<HomePageState>() ?? HomePage.homeKey.currentState)?.switchToAr(),
       child: Container(
         width: double.infinity,
-        height: 200,
+        // 175, not 200: with the tiles under it, the first screen then ends
+        // above the floating menu bar on an iPhone 17 (the tiles' bottoms
+        // were hidden behind it).
+        height: _arSpotlightHeight,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(24),
           // Dark background simulating a camera viewfinder
@@ -2044,7 +2051,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                 ];
                 return Positioned(
                   left: positions[i][0] * 350,
-                  top: positions[i][1] * 200,
+                  top: positions[i][1] * _arSpotlightHeight,
                   child:
                       Container(
                             width: 4,
@@ -2108,9 +2115,11 @@ class _LivingMapPageState extends State<LivingMapPage>
               ),
 
               // ── Floating place card 2 (right side) ──
+              // A little higher than before, to stay clear of the bottom text
+              // in the shorter card.
               Positioned(
                 right: 16,
-                top: 50,
+                top: 44,
                 child:
                     _buildMiniPlaceCard(
                           name: 'City Museum',
