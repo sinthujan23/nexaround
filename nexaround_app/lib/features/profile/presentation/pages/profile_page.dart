@@ -21,6 +21,10 @@ import 'package:nexaround_app/features/planning/data/odyssey_repository.dart';
 import 'package:nexaround_app/features/planning/presentation/pages/history_page.dart';
 import 'package:nexaround_app/features/experiences/presentation/pages/my_experience_requests_page.dart';
 import 'package:nexaround_app/features/plans/presentation/widgets/plan_widgets.dart';
+import 'package:nexaround_app/features/explorer_points/data/explorer_points_service.dart';
+import 'package:nexaround_app/features/explorer_points/domain/explorer_points.dart';
+import 'package:nexaround_app/features/explorer_points/presentation/pages/explorer_points_page.dart';
+import 'package:nexaround_app/features/explorer_points/presentation/widgets/points_help.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -37,6 +41,7 @@ class _ProfilePageState extends State<ProfilePage> {
   void initState() {
     super.initState();
     _loadTripsCount();
+    ExplorerPointsService.refresh();
     OdysseyRepository.revision.addListener(_fetchTripsCount);
     CacheService.historyNotifier.addListener(_fetchTripsCount);
   }
@@ -211,38 +216,62 @@ class _ProfilePageState extends State<ProfilePage> {
         ).animate().fade(delay: 300.ms),
 
         const SizedBox(height: 12),
-        // Level badge
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            gradient: AppColors.achievementGradient,
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.warning.withValues(alpha: 0.4),
-                blurRadius: 15,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: ValueListenableBuilder<int>(
-            valueListenable: CacheService.statsNotifier,
-            builder: (context, value, child) => Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.diamond_rounded, color: Colors.black, size: 14),
-                const SizedBox(width: 6),
-                Text(
-                  'Explorer Level ${CacheService.getExplorerLevel()}',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.black,
-                    letterSpacing: 0.8,
+        // Explorer level (server points): tap for my points, "?" explains them.
+        ValueListenableBuilder<PointsSummary?>(
+          valueListenable: ExplorerPointsService.summary,
+          builder: (context, mine, child) => Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(width: 44),
+              Semantics(
+                button: true,
+                label: 'My Explorer Points',
+                child: GestureDetector(
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const ExplorerPointsPage()),
+                  ),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(20),
+                      gradient: AppColors.achievementGradient,
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.warning.withValues(alpha: 0.4),
+                          blurRadius: 15,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (mine == null || mine.level.badge.isEmpty)
+                          const Icon(Icons.diamond_rounded, color: Colors.black, size: 14)
+                        else
+                          Text(mine.level.badge, style: const TextStyle(fontSize: 14)),
+                        const SizedBox(width: 6),
+                        Text(
+                          mine == null
+                              ? 'Explorer Points'
+                              : 'Lv ${mine.level.level} · ${mine.level.name} · ${mine.total} pts',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.black,
+                            letterSpacing: 0.4,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        const Icon(Icons.chevron_right_rounded, color: Colors.black, size: 16),
+                      ],
+                    ),
                   ),
                 ),
-              ],
-            ),
+              ),
+              const PointsHelpButton(size: 20),
+            ],
           ),
         ).animate().fade(delay: 400.ms).scale(begin: const Offset(0.9, 0.9), curve: Curves.easeOutBack),
       ],

@@ -369,3 +369,60 @@ async def attach_details(place_id: str, details: dict, *, name=None, lat=None, l
     await _size_links([it], card=False)
     details["photo_urls"] = it["photo_urls"]
     details["photo_credit"] = it.get("photo_credit")
+
+
+# ── Trailblazer (Explorer Points, 2026-11-20) ───────────────────────────────
+
+def _is_google_id(key: str) -> bool:
+    from app.services import place_reviews
+    return not place_reviews._is_uuid(key) and not place_reviews._is_open_id(key)
+
+
+async def place_has_photo(db, keys: list[str], *, other_than=None) -> bool:
+    """Whether a place already shows a photo, by the same sources `_fill` uses:
+    a traveller photo an admin approved, a Google photo saved on our disk (or
+    any Google photo while photos are on), our own place's stored photos, or a
+    Wikipedia / Unsplash answer. `keys` are the place's review keys
+    (place_reviews.canonical_key)."""
+    from app.models.attraction import Attraction
+    from app.services import photo_cache_service, place_reviews
+
+    conditions = [PlacePhoto.place_key.in_(keys), PlacePhoto.status == APPROVED]
+    if other_than is not None:
+        conditions.append(PlacePhoto.id != other_than)
+    if await db.scalar(select(PlacePhoto.id).where(*conditions).limit(1)):
+        return True
+
+    google_on = await _google_on()
+    for key in keys:
+        if _is_google_id(key) and photo_cache_service.is_saved(
+            f"places/{key}/photos/saved", CARD_SIDE_PX, 0
+        ):
+            return True
+
+    uuids = [uuid.UUID(k) for k in keys if place_reviews._is_uuid(k)]
+    google = [k for k in keys if _is_google_id(k)]
+    if uuids or google:
+        from sqlalchemy import or_
+        clauses = []
+        if uuids:
+            clauses.append(Attraction.id.in_(uuids))
+        if google:
+            clauses.append(Attraction.google_place_id.in_(google))
+        for urls in (await db.scalars(select(Attraction.photo_urls).where(or_(*clauses)))).all():
+            if usable_photo_urls(list(urls or []), google_on):
+                return True
+
+    found = await _found(list(keys))
+    return any(hit and hit.get("url") for hit in found.values())
+
+
+async def approved_photos(db, keys: list[str], limit: int = 20) -> list[PlacePhoto]:
+    """A place's approved traveller photos, newest first (the place page strip)."""
+    return list((await db.scalars(
+        select(PlacePhoto)
+        .where(PlacePhoto.place_key.in_(keys), PlacePhoto.status == APPROVED,
+               PlacePhoto.url.isnot(None))
+        .order_by(PlacePhoto.created_at.desc())
+        .limit(limit)
+    )).all())

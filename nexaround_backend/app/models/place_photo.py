@@ -11,7 +11,7 @@ id the app uses, stored under the Google id when we know it.
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, String
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, String, false
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -29,6 +29,8 @@ class PlacePhoto(Base):
         Index("ix_place_photos_place_status", "place_key", "status", "created_at"),
         # Admin › Media: one status, oldest waiting first.
         Index("ix_place_photos_status_created", "status", "created_at"),
+        # A traveller's own photos: their Explorer Points and "one per place".
+        Index("ix_place_photos_user", "user_id", "status"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -54,6 +56,12 @@ class PlacePhoto(Base):
     # "pending" | "approved" | "rejected"
     status: Mapped[str] = mapped_column(String(12), default="pending", nullable=False)
     reject_reason: Mapped[str] = mapped_column(String(200), nullable=True)
+    # The place showed no photo at all when this was sent, and no other
+    # traveller photo of it was approved first: worth the Trailblazer bonus
+    # (services/explorer_points.py). Settled when an admin approves it.
+    trailblazer: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=false(), nullable=False
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False

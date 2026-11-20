@@ -440,7 +440,6 @@ class _HistoryPageState extends State<HistoryPage> {
     final visitedCount = (t['visited_count'] as num?)?.toInt() ?? places;
     final status = (t['status'] ?? 'completed').toString().toLowerCase();
     final isCompleted = status == 'completed';
-    final xp = (t['xp'] as num?)?.toInt() ?? (visitedCount * 20);
     final date = _fmtDate((t['date'] ?? '').toString());
 
     return Container(
@@ -513,8 +512,8 @@ class _HistoryPageState extends State<HistoryPage> {
                 const SizedBox(height: 3),
                 Text(
                   isCompleted
-                      ? '$totalPlaces ${totalPlaces == 1 ? 'place' : 'places'} · +$xp XP${date.isNotEmpty ? ' · $date' : ''}'
-                      : '$visitedCount of $totalPlaces places · +$xp XP${date.isNotEmpty ? ' · $date' : ''}',
+                      ? '$totalPlaces ${totalPlaces == 1 ? 'place' : 'places'}${date.isNotEmpty ? ' · $date' : ''}'
+                      : '$visitedCount of $totalPlaces places${date.isNotEmpty ? ' · $date' : ''}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontSize: 12.5, color: Colors.black54),

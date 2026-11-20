@@ -1,8 +1,9 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:nexaround_app/features/explorer_points/data/explorer_points_service.dart';
+import 'package:nexaround_app/features/explorer_points/presentation/widgets/points_help.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
-import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/features/planning/data/odyssey_repository.dart';
 import 'package:nexaround_app/features/planning/domain/odyssey.dart';
 import 'package:nexaround_app/features/planning/presentation/widgets/odyssey_plan_view.dart';
@@ -414,10 +415,10 @@ class _OdysseyDetailPageState extends State<OdysseyDetailPage>
         : _odyssey.title;
     final totalStops = _odyssey.totalActivities;
     final totalDays = _odyssey.days;
-    final earnedXp = totalStops * 15;
-
-    // Bump explorer XP
-    CacheService.addExploration(placesVisited: totalStops, xp: earnedXp);
+    // A completed Odyssey counts for Explorer Points on the server; the number
+    // comes from the server's table.
+    final earnedPoints = ExplorerPointsService.info.value?.pointsFor('odyssey') ?? 0;
+    ExplorerPointsService.refresh();
 
     showDialog(
       context: context,
@@ -526,7 +527,12 @@ class _OdysseyDetailPageState extends State<OdysseyDetailPage>
                     Container(width: 1, height: 28, color: Colors.white12),
                     _buildCelebrateStat('⏱️', '$totalDays', 'Days Complete'),
                     Container(width: 1, height: 28, color: Colors.white12),
-                    _buildCelebrateStat('⭐', '+$earnedXp', 'Explorer XP'),
+                    _buildCelebrateStat(
+                      '⭐',
+                      earnedPoints > 0 ? '+$earnedPoints' : '✓',
+                      'Explorer Points',
+                      onHelp: () => showPointsExplainer(ctx),
+                    ),
                   ],
                 ),
               ).animate().fade(delay: 250.ms).scale(begin: const Offset(0.95, 0.95)),
@@ -607,8 +613,8 @@ class _OdysseyDetailPageState extends State<OdysseyDetailPage>
     );
   }
 
-  Widget _buildCelebrateStat(String emoji, String value, String label) {
-    return Column(
+  Widget _buildCelebrateStat(String emoji, String value, String label, {VoidCallback? onHelp}) {
+    final stat = Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         Row(
@@ -627,15 +633,35 @@ class _OdysseyDetailPageState extends State<OdysseyDetailPage>
           ],
         ),
         const SizedBox(height: 2),
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 10,
-            fontWeight: FontWeight.w500,
-            color: Color(0xFF94A3B8),
-          ),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w500,
+                color: Color(0xFF94A3B8),
+              ),
+            ),
+            if (onHelp != null) ...[
+              const SizedBox(width: 3),
+              const Icon(Icons.help_outline_rounded, size: 12, color: Color(0xFF94A3B8)),
+            ],
+          ],
         ),
       ],
+    );
+    if (onHelp == null) return stat;
+    // "?": what Explorer Points are.
+    return Semantics(
+      button: true,
+      label: 'What are Explorer Points?',
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onHelp,
+        child: Padding(padding: const EdgeInsets.all(6), child: stat),
+      ),
     );
   }
 

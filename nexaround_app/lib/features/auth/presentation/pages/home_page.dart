@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:nexaround_app/features/explorer_points/data/explorer_points_service.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/app/theme/app_dimensions.dart';
 import 'package:nexaround_app/features/living_map/presentation/pages/living_map_page.dart';
@@ -72,6 +73,8 @@ class HomePageState extends State<HomePage>
     // router as a tap on the line in the bell.
     NotificationService.instance.onOpen = (data) => NotificationRouter.open(data);
     NotificationService.instance.syncToken();
+    // Explorer Points: old phone XP carried over once, then the server's count.
+    ExplorerPointsService.sync();
   }
 
   DateTime? _lastPlanOpenedAt;

@@ -1,15 +1,19 @@
-"""Photos travellers send for places that have none (TL, 2026-11-18).
+"""Photos travellers send for places (TL, 2026-11-18).
 
-The app offers "Add a photo" on a place showing its category icon. The photo
-waits for an admin in Admin › Media; once approved it shows for that place to
-everyone. See services/place_photos.py.
+First offered only on a place showing its category icon; since 2026-11-20
+(Explorer Points) any place can take one photo per traveller, and the place
+page lists them. A photo waits for an admin in Admin › Media; once approved it
+shows for everyone and earns its sender points (more for the first photo of a
+place that had none). See services/place_photos.py, services/explorer_points.py.
 """
 import asyncio
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi import (
+    APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile, status,
+)
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,7 +24,7 @@ from app.core.database import get_db
 from app.models.attraction import Attraction
 from app.models.place_photo import PlacePhoto
 from app.models.user import User
-from app.services import experience_reviews, place_photos, place_reviews
+from app.services import experience_reviews, explorer_points, place_photos, place_reviews
 from app.utils.geo_utils import get_lat_lng
 
 router = APIRouter(prefix="/places", tags=["Place photos"])
@@ -33,6 +37,28 @@ class MyPlacePhoto(BaseModel):
     url: Optional[str] = None
     reject_reason: Optional[str] = None
     created_at: datetime
+    # First photo of a place that had none: worth the Trailblazer bonus.
+    trailblazer: bool = False
+    # What it earns once approved (already earned when approved).
+    points: int = 0
+
+
+class PlacePhotoPublic(BaseModel):
+    """A traveller photo on the place page: first name and last initial only."""
+    id: uuid.UUID
+    url: str
+    card_url: str
+    width: Optional[int] = None
+    height: Optional[int] = None
+    uploader_name: str
+    uploader_level: Optional[int] = None
+    uploader_level_name: Optional[str] = None
+    created_at: datetime
+
+
+class PlacePhotoList(BaseModel):
+    photos: list[PlacePhotoPublic]
+    total: int
 
 
 class PlacePhotoAdmin(BaseModel):
@@ -51,6 +77,7 @@ class PlacePhotoAdmin(BaseModel):
     reject_reason: Optional[str] = None
     created_at: datetime
     reviewed_at: Optional[datetime] = None
+    trailblazer: bool = False
 
 
 class PlacePhotoAdminList(BaseModel):
@@ -67,7 +94,9 @@ class PlacePhotoAdminUpdate(BaseModel):
 
 def _mine(p: PlacePhoto) -> MyPlacePhoto:
     return MyPlacePhoto(id=p.id, status=p.status, url=p.url,
-                        reject_reason=p.reject_reason, created_at=p.created_at)
+                        reject_reason=p.reject_reason, created_at=p.created_at,
+                        trailblazer=bool(p.trailblazer),
+                        points=explorer_points.photo_points(bool(p.trailblazer)))
 
 
 def _admin(p: PlacePhoto) -> PlacePhotoAdmin:
@@ -77,6 +106,7 @@ def _admin(p: PlacePhoto) -> PlacePhotoAdmin:
         uploader_name=p.uploader_name, url=p.url, width=p.width, height=p.height,
         size_bytes=p.size_bytes, status=p.status, reject_reason=p.reject_reason,
         created_at=p.created_at, reviewed_at=p.reviewed_at,
+        trailblazer=bool(p.trailblazer),
     )
 
 
@@ -97,7 +127,8 @@ async def upload_place_photo(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Send a photo for a place. It shows once an admin approves it."""
+    """Send a photo for a place: one per traveller per place (a rejected one
+    can be replaced). It shows once an admin approves it."""
     _check_id(place_id)
     if not consent:
         raise HTTPException(
@@ -106,23 +137,20 @@ async def upload_place_photo(
         )
     key, keys = await place_reviews.canonical_key(db, place_id)
 
-    has_photo = await db.scalar(
-        select(PlacePhoto.id).where(
-            PlacePhoto.place_key.in_(keys), PlacePhoto.status == place_photos.APPROVED,
-        ).limit(1)
-    )
-    if has_photo:
-        raise HTTPException(status_code=409, detail="This place already has a photo.")
-    waiting = await db.scalar(
-        select(PlacePhoto.id).where(
+    own = await db.scalar(
+        select(PlacePhoto.status).where(
             PlacePhoto.place_key.in_(keys), PlacePhoto.user_id == current_user.id,
-            PlacePhoto.status == place_photos.PENDING,
-        ).limit(1)
+            PlacePhoto.status.in_((place_photos.PENDING, place_photos.APPROVED)),
+        ).order_by(PlacePhoto.created_at.desc()).limit(1)
     )
-    if waiting:
+    if own == place_photos.PENDING:
         raise HTTPException(
             status_code=409,
             detail="Your photo for this place is already waiting for our team.",
+        )
+    if own == place_photos.APPROVED:
+        raise HTTPException(
+            status_code=409, detail="You have already added a photo of this place.",
         )
     now = datetime.now(timezone.utc)
     midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -138,6 +166,9 @@ async def upload_place_photo(
         )
 
     content = await file.read()
+    # Nothing shows for this place yet: the Trailblazer bonus, if it is still
+    # the first traveller photo when an admin approves it.
+    trailblazer = not await place_photos.place_has_photo(db, keys)
     # Decoding and re-encoding is CPU work: off the event loop.
     url, width, height, size = await asyncio.to_thread(place_photos.save_upload, content)
     name, lat, lng = place_name.strip(), latitude, longitude
@@ -151,7 +182,7 @@ async def upload_place_photo(
         uploader_name=experience_reviews.reviewer_display_name(current_user.display_name),
         place_name=name[:255], latitude=lat, longitude=lng,
         url=url, width=width, height=height, size_bytes=size,
-        status=place_photos.PENDING, created_at=now,
+        status=place_photos.PENDING, created_at=now, trailblazer=trailblazer,
     )
     db.add(photo)
     try:
@@ -161,7 +192,34 @@ async def upload_place_photo(
         place_photos.delete_file(url)
         raise
     await db.refresh(photo)
+    await explorer_points.bust(current_user.id)
     return _mine(photo)
+
+
+@router.get("/{place_id}/photos", response_model=PlacePhotoList)
+async def list_place_photos(
+    place_id: str,
+    limit: int = Query(20, ge=1, le=50),
+    db: AsyncSession = Depends(get_db),
+):
+    """A place's approved traveller photos, newest first, with each sender's
+    Explorer level. Public."""
+    _check_id(place_id)
+    _, keys = await place_reviews.canonical_key(db, place_id)
+    rows = await place_photos.approved_photos(db, keys, limit=limit)
+    levels = await explorer_points.levels_for(db, [p.user_id for p in rows])
+    google_on = await place_photos._google_on()
+    photos = []
+    for p in rows:
+        lv = levels.get(p.user_id)
+        photos.append(PlacePhotoPublic(
+            id=p.id, url=p.url,
+            card_url=place_photos.sized_url(p.url, card=True, google_on=google_on),
+            width=p.width, height=p.height, uploader_name=p.uploader_name,
+            uploader_level=lv, uploader_level_name=explorer_points.level_name(lv) if lv else None,
+            created_at=p.created_at,
+        ))
+    return PlacePhotoList(photos=photos, total=len(photos))
 
 
 @router.get("/{place_id}/photo/mine", response_model=Optional[MyPlacePhoto])
@@ -210,6 +268,7 @@ async def admin_list_place_photos(
 async def admin_review_place_photo(
     photo_id: uuid.UUID,
     data: PlacePhotoAdminUpdate,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     _=Depends(verify_admin_token),
 ):
@@ -222,6 +281,19 @@ async def admin_review_place_photo(
         raise HTTPException(status_code=404, detail="Photo not found")
     if photo.status == place_photos.REJECTED:
         raise HTTPException(status_code=409, detail="A rejected photo is deleted and cannot be approved.")
+    newly_approved = data.status == place_photos.APPROVED and photo.status != place_photos.APPROVED
+    before = (await explorer_points.total_for(db, photo.user_id, fresh=True)).total
+    if newly_approved and photo.trailblazer:
+        # Another traveller's photo of this place went live first.
+        cand = await place_reviews._candidate_keys(db, [photo.place_key])
+        keys = cand.get(photo.place_key) or [photo.place_key]
+        first = not await db.scalar(
+            select(PlacePhoto.id).where(
+                PlacePhoto.place_key.in_(keys), PlacePhoto.status == place_photos.APPROVED,
+                PlacePhoto.id != photo.id,
+            ).limit(1)
+        )
+        photo.trailblazer = first
     photo.status = data.status
     photo.reviewed_at = datetime.now(timezone.utc)
     if data.status == place_photos.REJECTED:
@@ -232,4 +304,11 @@ async def admin_review_place_photo(
     await db.refresh(photo)
     if photo.status == place_photos.APPROVED:
         place_photos.note_approved()
+    if newly_approved:
+        background_tasks.add_task(
+            explorer_points.after_photo_approved, photo.user_id, photo.place_name,
+            explorer_points.photo_points(bool(photo.trailblazer)), before,
+        )
+    else:
+        background_tasks.add_task(explorer_points.after_change, photo.user_id, before)
     return _admin(photo)

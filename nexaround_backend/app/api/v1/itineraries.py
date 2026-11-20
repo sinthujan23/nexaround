@@ -14,7 +14,7 @@ from app.repositories.attraction_repository import AttractionRepository
 from app.services.ai_service import ai_service
 from app.services import odyssey_ai_service, odyssey_jobs, plan_service
 from app.services.settings_service import SettingsService
-from app.services import cover_photo_service
+from app.services import cover_photo_service, explorer_points
 from app.services import ride_apps_service
 from app.services import airports_service, geo_resolver
 from app.schemas.itinerary import (
@@ -758,6 +758,7 @@ async def get_my_itineraries(
 @router.post("/", response_model=ItineraryResponse, status_code=status.HTTP_201_CREATED)
 async def create_itinerary(
     data: ItineraryCreate,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -769,7 +770,15 @@ async def create_itinerary(
         items=[item.model_dump() for item in data.items],
         status=data.status
     )
-    return await repo.create(itinerary)
+    # A finished Mini Tour arrives here already completed: Explorer Points.
+    before = None
+    if data.status == "completed":
+        before = (await explorer_points.total_for(db, current_user.id, fresh=True)).total
+    created = await repo.create(itinerary)
+    if before is not None:
+        await explorer_points.bust(current_user.id)
+        background_tasks.add_task(explorer_points.after_change, current_user.id, before)
+    return created
 
 
 @router.get("/{itinerary_id}", response_model=ItineraryResponse)
@@ -792,6 +801,7 @@ async def get_itinerary(
 async def update_itinerary(
     itinerary_id: uuid.UUID,
     data: ItineraryUpdate,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -799,6 +809,12 @@ async def update_itinerary(
     itinerary = await repo.get_by_id(itinerary_id, current_user.id)
     if not itinerary:
         raise HTTPException(status_code=404, detail="Itinerary not found")
+    # Marking a trip completed (or taking that back) moves Explorer Points.
+    before = None
+    if data.status is not None and data.status != itinerary.status and "completed" in (
+        data.status, itinerary.status
+    ):
+        before = (await explorer_points.total_for(db, current_user.id, fresh=True)).total
     
     if data.title is not None:
         itinerary.title = data.title
@@ -808,8 +824,12 @@ async def update_itinerary(
         itinerary.items = [item.model_dump() for item in data.items]
     if data.status is not None:
         itinerary.status = data.status
-        
-    return await repo.update(itinerary)
+
+    updated = await repo.update(itinerary)
+    if before is not None:
+        await explorer_points.bust(current_user.id)
+        background_tasks.add_task(explorer_points.after_change, current_user.id, before)
+    return updated
 
 @router.delete("/{itinerary_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_itinerary(
@@ -821,5 +841,8 @@ async def delete_itinerary(
     itinerary = await repo.get_by_id(itinerary_id, current_user.id)
     if not itinerary:
         raise HTTPException(status_code=404, detail="Itinerary not found")
+    was_completed = itinerary.status == "completed"
     await repo.delete(itinerary)
+    if was_completed:
+        await explorer_points.bust(current_user.id)
     return None

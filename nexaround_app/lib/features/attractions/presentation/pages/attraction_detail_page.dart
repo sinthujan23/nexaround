@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:ui';
 import 'package:dio/dio.dart';
@@ -26,6 +27,9 @@ import 'package:nexaround_app/features/attractions/data/place_reviews_service.da
 import 'package:nexaround_app/features/attractions/presentation/widgets/place_review_sheet.dart';
 import 'package:nexaround_app/features/attractions/data/place_photos_service.dart';
 import 'package:nexaround_app/features/attractions/presentation/widgets/place_photo_sheet.dart';
+import 'package:nexaround_app/features/explorer_points/data/explorer_points_service.dart';
+import 'package:nexaround_app/features/explorer_points/domain/explorer_points.dart';
+import 'package:nexaround_app/features/explorer_points/presentation/widgets/points_help.dart';
 
 class AttractionDetailPage extends StatefulWidget {
   final String? id;
@@ -119,6 +123,9 @@ class _AttractionDetailPageState extends State<AttractionDetailPage>
   bool? _serverHasPhoto;
   String? _photoCredit;
   MyPlacePhoto? _myPhoto;
+  // Every traveller's approved photos of this place (the "Traveller photos" strip).
+  List<PlacePhotoPublic> _travellerPhotos = const [];
+  bool _loadingTravellerPhotos = true;
 
   // ── Route data ──
   String? _routeDistanceStr;
@@ -138,10 +145,26 @@ class _AttractionDetailPageState extends State<AttractionDetailPage>
     if (_hasRealId) {
       _loadOurReviews();
       _loadMyPhoto();
+      _loadTravellerPhotos();
+      ExplorerPointsService.loadInfo();
     } else {
       _loadingOurReviews = false;
+      _loadingTravellerPhotos = false;
     }
   }
+
+  Future<void> _loadTravellerPhotos() async {
+    final photos = await PlacePhotosService.fetchPhotos(_placeId);
+    if (!mounted) return;
+    setState(() {
+      _travellerPhotos = photos;
+      _loadingTravellerPhotos = false;
+    });
+  }
+
+  /// The place shows no photo at all yet: a photo now is worth the
+  /// Trailblazer bonus (the server decides; this only words the hint).
+  bool get _isFirstPhoto => _serverHasPhoto == false && _travellerPhotos.isEmpty;
 
   Future<void> _loadOurReviews() async {
     final results = await Future.wait([
@@ -168,20 +191,29 @@ class _AttractionDetailPageState extends State<AttractionDetailPage>
   }
 
   Future<void> _openPhotoSheet() async {
+    if (!CacheService.isLoggedIn()) {
+      // The explainer's button leads to sign-in.
+      await showPointsExplainer(context);
+      return;
+    }
     final sent = await showPlacePhotoSheet(
       context,
       placeId: _placeId,
       placeName: widget.name,
       latitude: widget.latitude,
       longitude: widget.longitude,
+      firstPhoto: _isFirstPhoto,
     );
     if (sent == null || !mounted) return;
     setState(() => _myPhoto = sent);
+    unawaited(ExplorerPointsService.refresh());
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Thanks! Your photo will show after our team checks it.'),
+      SnackBar(
+        content: Text(sent.points > 0
+            ? 'Thanks! +${sent.points} points once our team approves your photo.'
+            : 'Thanks! Your photo will show after our team checks it.'),
         behavior: SnackBarBehavior.floating,
-        duration: Duration(seconds: 3),
+        duration: const Duration(seconds: 3),
       ),
     );
   }
@@ -205,8 +237,19 @@ class _AttractionDetailPageState extends State<AttractionDetailPage>
             Icon(pending ? Icons.hourglass_top_rounded : Icons.add_a_photo_rounded,
                 size: 16, color: Colors.white),
             const SizedBox(width: 6),
-            Text(pending ? 'Your photo is waiting for review' : 'Add a photo',
-                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white)),
+            ValueListenableBuilder<PointsInfo?>(
+              valueListenable: ExplorerPointsService.info,
+              builder: (context, info, _) {
+                final worth = info == null ? 0 : info.pointsFor('photo') + info.pointsFor('trailblazer');
+                return Text(
+                    pending
+                        ? 'Your photo is waiting for review'
+                        : worth > 0
+                            ? 'Add the first photo · +$worth points'
+                            : 'Add a photo',
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white));
+              },
+            ),
           ],
         ),
       ),
@@ -223,13 +266,24 @@ class _AttractionDetailPageState extends State<AttractionDetailPage>
       existing: _myReview,
     );
     if (result == null || !mounted) return;
+    final points = result.review?.points;
+    final earned = points?.earned ?? 0;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(result.isDeleted ? 'Your review was deleted' : 'Thanks! Your review is posted'),
+        content: Text(result.isDeleted
+            ? 'Your review was deleted'
+            : earned > 0
+                ? 'Thanks! Your review is posted · +$earned points'
+                : 'Thanks! Your review is posted'),
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 2),
       ),
     );
+    unawaited(ExplorerPointsService.refresh());
+    if (points != null && points.levelledUp) {
+      await showLevelUpDialog(context, level: points.level, name: points.levelName);
+      if (!mounted) return;
+    }
     await _loadOurReviews();
   }
 
@@ -703,6 +757,8 @@ class _AttractionDetailPageState extends State<AttractionDetailPage>
                   if (_hasRealId) ...[
                     _buildOurReviewsCard(),
                     const SizedBox(height: 16),
+                    _buildTravellerPhotosCard(),
+                    const SizedBox(height: 16),
                   ],
 
                   // Google's reviews, when the place has any.
@@ -1018,12 +1074,180 @@ class _AttractionDetailPageState extends State<AttractionDetailPage>
                     r.rating.toDouble(),
                     r.comment ?? '',
                     _shortDate(r.createdAt),
+                    level: r.reviewerLevel,
+                    levelName: r.reviewerLevelName,
                   ),
                 ],
               );
             }),
           ],
         ],
+      ),
+    );
+  }
+
+  /// Every traveller's approved photos of this place, and "Add a photo" for
+  /// this traveller (one photo per place; it waits for our team first).
+  Widget _buildTravellerPhotosCard() {
+    final mine = _myPhoto;
+    final canAdd = mine == null || mine.isRejected;
+    final waiting = mine?.isPending == true;
+    final photos = _travellerPhotos;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(20, 12, 8, 20),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceVariant,
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.photo_library_rounded, size: 18, color: AppColors.brandGreen),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text('Traveller photos',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+              ),
+              const PointsHelpButton(),
+            ],
+          ),
+          if (!_loadingTravellerPhotos && photos.isEmpty && canAdd)
+            const Padding(
+              padding: EdgeInsets.only(right: 12, bottom: 10),
+              child: Text('No traveller photos yet. Be the first!',
+                  style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+            ),
+          SizedBox(
+            height: 168,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.only(right: 12),
+              children: [
+                if (canAdd || waiting) _addPhotoTile(waiting: waiting),
+                for (final p in photos) _travellerPhotoTile(p),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _addPhotoTile({required bool waiting}) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 10),
+      child: GestureDetector(
+        onTap: waiting ? null : _openPhotoSheet,
+        child: Container(
+          width: 120,
+          height: 120,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.brandGreen.withValues(alpha: 0.5), width: 1.5),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(waiting ? Icons.hourglass_top_rounded : Icons.add_a_photo_rounded,
+                  size: 26, color: AppColors.brandGreen),
+              const SizedBox(height: 6),
+              Text(waiting ? 'Waiting for\nreview' : 'Add a photo',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: AppColors.brandGreen)),
+              if (!waiting)
+                ValueListenableBuilder<PointsInfo?>(
+                  valueListenable: ExplorerPointsService.info,
+                  builder: (context, info, _) {
+                    if (info == null) return const SizedBox.shrink();
+                    final worth = info.pointsFor('photo') + (_isFirstPhoto ? info.pointsFor('trailblazer') : 0);
+                    return Text('+$worth points',
+                        style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: AppColors.textSecondary));
+                  },
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _travellerPhotoTile(PlacePhotoPublic p) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 10),
+      child: SizedBox(
+        width: 120,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            GestureDetector(
+              onTap: () => _openTravellerPhoto(p),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: PlaceImageHelper.buildPlaceImage(
+                  imagePath: p.cardUrl,
+                  category: widget.category,
+                  name: widget.name,
+                  width: 120,
+                  height: 120,
+                ),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(p.uploaderName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+            if (p.uploaderLevel != null)
+              LevelChip(level: p.uploaderLevel!, name: p.uploaderLevelName, compact: true),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _openTravellerPhoto(PlacePhotoPublic p) {
+    showDialog<void>(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.92),
+      builder: (ctx) => Dialog.fullscreen(
+        backgroundColor: Colors.transparent,
+        child: Stack(
+          children: [
+            Center(
+              child: InteractiveViewer(
+                child: PlaceImageHelper.buildPlaceImage(
+                  imagePath: p.url,
+                  category: widget.category,
+                  name: widget.name,
+                  fit: BoxFit.contain,
+                ),
+              ),
+            ),
+            Positioned(
+              top: MediaQuery.of(ctx).padding.top + 8,
+              right: 8,
+              child: IconButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                icon: const Icon(Icons.close_rounded, color: Colors.white, size: 28),
+                tooltip: 'Close',
+              ),
+            ),
+            Positioned(
+              left: 20,
+              right: 20,
+              bottom: MediaQuery.of(ctx).padding.bottom + 20,
+              child: Text(
+                'Photo: ${p.uploaderName}'
+                '${p.uploaderLevel != null ? ' · Lv ${p.uploaderLevel} ${p.uploaderLevelName ?? ''}' : ''}',
+                style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1078,7 +1302,8 @@ class _AttractionDetailPageState extends State<AttractionDetailPage>
     );
   }
 
-  Widget _buildReview(String name, double stars, String text, String time) {
+  Widget _buildReview(String name, double stars, String text, String time,
+      {int? level, String? levelName}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1099,6 +1324,8 @@ class _AttractionDetailPageState extends State<AttractionDetailPage>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(name, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                  // Our travellers' reviews: their Explorer level (tap: what it means).
+                  if (level != null) LevelChip(level: level, name: levelName, compact: true),
                   Row(
                     children: [
                       ...List.generate(5, (i) => Icon(Icons.star_rounded, size: 12, color: i < stars ? AppColors.ratingGold : Colors.black12)),

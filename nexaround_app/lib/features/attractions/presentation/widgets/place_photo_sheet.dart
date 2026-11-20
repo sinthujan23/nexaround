@@ -4,15 +4,20 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/features/attractions/data/place_photos_service.dart';
+import 'package:nexaround_app/features/explorer_points/data/explorer_points_service.dart';
+import 'package:nexaround_app/features/explorer_points/domain/explorer_points.dart';
+import 'package:nexaround_app/features/explorer_points/presentation/widgets/points_help.dart';
 
-/// "Add a photo" for a place that shows only its category icon. Returns the
-/// sent photo (waiting for our team), or null when the traveller closed it.
+/// "Add a photo" for a place. Returns the sent photo (waiting for our team),
+/// or null when the traveller closed it. [firstPhoto]: the place shows no
+/// photo yet, so it is worth the Trailblazer bonus.
 Future<MyPlacePhoto?> showPlacePhotoSheet(
   BuildContext context, {
   required String placeId,
   required String placeName,
   double? latitude,
   double? longitude,
+  bool firstPhoto = false,
 }) {
   return showModalBottomSheet<MyPlacePhoto>(
     context: context,
@@ -24,6 +29,7 @@ Future<MyPlacePhoto?> showPlacePhotoSheet(
       placeName: placeName,
       latitude: latitude,
       longitude: longitude,
+      firstPhoto: firstPhoto,
     ),
   );
 }
@@ -33,12 +39,14 @@ class _PlacePhotoSheet extends StatefulWidget {
   final String placeName;
   final double? latitude;
   final double? longitude;
+  final bool firstPhoto;
 
   const _PlacePhotoSheet({
     required this.placeId,
     required this.placeName,
     this.latitude,
     this.longitude,
+    this.firstPhoto = false,
   });
 
   @override
@@ -200,6 +208,29 @@ class _PlacePhotoSheetState extends State<_PlacePhotoSheet> {
               const Text(
                 'Our team checks every photo before it shows.',
                 style: TextStyle(fontSize: 12, color: AppColors.textTertiary),
+              ),
+              ValueListenableBuilder<PointsInfo?>(
+                valueListenable: ExplorerPointsService.info,
+                builder: (context, info, _) {
+                  if (info == null) return const SizedBox.shrink();
+                  final photo = info.pointsFor('photo');
+                  final bonus = widget.firstPhoto ? info.pointsFor('trailblazer') : 0;
+                  return Row(
+                    children: [
+                      const Icon(Icons.emoji_events_rounded, size: 16, color: AppColors.brandGreen),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          bonus > 0
+                              ? '+${photo + bonus} points once approved (first photo of this place!)'
+                              : '+$photo points once approved',
+                          style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: AppColors.brandGreen),
+                        ),
+                      ),
+                      const PointsHelpButton(size: 17),
+                    ],
+                  );
+                },
               ),
               if (_error != null) ...[
                 const SizedBox(height: 10),

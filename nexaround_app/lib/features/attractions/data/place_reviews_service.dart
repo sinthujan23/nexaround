@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:nexaround_app/core/constants/api_constants.dart';
 import 'package:nexaround_app/core/error/user_message.dart';
 import 'package:nexaround_app/core/network/api_client.dart';
+import 'package:nexaround_app/features/explorer_points/domain/explorer_points.dart';
 
 /// Our travellers' own ratings and reviews of map places. Any place can be
 /// rated — Google, free map data or our own — by the id the app shows it with.
@@ -94,6 +95,9 @@ class PlaceReview {
   final String? comment;
   final DateTime createdAt;
   final bool edited;
+  // The reviewer's Explorer level (null from an older server).
+  final int? reviewerLevel;
+  final String? reviewerLevelName;
 
   const PlaceReview({
     required this.id,
@@ -102,6 +106,8 @@ class PlaceReview {
     this.comment,
     required this.createdAt,
     this.edited = false,
+    this.reviewerLevel,
+    this.reviewerLevelName,
   });
 
   factory PlaceReview.fromJson(Map<String, dynamic> json) => PlaceReview(
@@ -111,6 +117,8 @@ class PlaceReview {
         comment: json['comment'] as String?,
         createdAt: DateTime.tryParse(json['created_at'] as String? ?? '') ?? DateTime.now(),
         edited: json['edited'] as bool? ?? false,
+        reviewerLevel: (json['reviewer_level'] as num?)?.toInt(),
+        reviewerLevelName: json['reviewer_level_name'] as String?,
       );
 }
 
@@ -140,12 +148,15 @@ class MyPlaceReview {
   final String? comment;
   // "hidden" when an admin took it down.
   final String status;
+  // Only on the answer to a send: what it did to the traveller's points.
+  final PointsChange? points;
 
   const MyPlaceReview({
     required this.id,
     required this.rating,
     this.comment,
     this.status = 'published',
+    this.points,
   });
 
   bool get isHidden => status == 'hidden';
@@ -155,6 +166,7 @@ class MyPlaceReview {
         rating: (json['rating'] as num).toInt(),
         comment: json['comment'] as String?,
         status: json['status'] as String? ?? 'published',
+        points: PointsChange.fromJson(json['points']),
       );
 }
 

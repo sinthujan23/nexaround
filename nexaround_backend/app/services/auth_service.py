@@ -591,6 +591,8 @@ class AuthService:
         for (url,) in (await self.db.execute(select(PlacePhoto.url).where(PlacePhoto.user_id == user_id))).all():
             place_photos.delete_file(url)
         await self.db.execute(delete(PlacePhoto).where(PlacePhoto.user_id == user_id))
+        from app.models.explorer_points import ExplorerPointEvent
+        await self.db.execute(delete(ExplorerPointEvent).where(ExplorerPointEvent.user_id == user_id))
         await self.db.execute(delete(Notification).where(Notification.user_id == user_id))
         await self.db.execute(delete(DiscoveryHistory).where(DiscoveryHistory.user_id == user_id))
         await self.db.execute(delete(UserSession).where(UserSession.user_id == user_id))

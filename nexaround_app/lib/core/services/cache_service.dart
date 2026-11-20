@@ -23,6 +23,7 @@ class CacheService {
     await _prefs.remove('user_preferences_json');
     await _prefs.remove('explorer_xp');
     await _prefs.remove('places_visited');
+    await _prefs.remove(_explorerPointsKey);
     await _prefs.remove('mini_tour_history');
     await _prefs.remove('notifications');
     await _prefs.remove('odysseys_cache');
@@ -131,12 +132,7 @@ class CacheService {
       }
     }
 
-    if (prefsMap.containsKey('explorer_xp')) {
-      await _prefs.setInt('explorer_xp', prefsMap['explorer_xp'] as int? ?? 0);
-    }
-    if (prefsMap.containsKey('places_visited')) {
-      await _prefs.setInt('places_visited', prefsMap['places_visited'] as int? ?? 0);
-    }
+    // Explorer Points come from the server (ExplorerPointsService.sync).
     statsNotifier.value++;
   }
 
@@ -506,29 +502,40 @@ class CacheService {
     }
   }
 
-  // ── Explorer stats (gamification) ──────────────────────────────────────
-  // Local XP / places-visited counters powering the profile's "Explorer Level"
-  // and "Places Visited". Bumped by completing a Mini Tour. Level is derived
-  // from XP so the two never drift apart.
-  static const int xpPerLevel = 100;
+  // ── Explorer Points (2026-11-20) ───────────────────────────────────
+  // Points and levels live on the server (ExplorerPointsService); the phone
+  // keeps the last answer so the profile shows a level straight away and
+  // offline. The old phone-only XP ('explorer_xp') is sent to the server once
+  // as a carry-over, then removed.
+  static const _explorerPointsKey = 'explorer_points_json';
+  static const _explorerPointsInfoKey = 'explorer_points_info_json';
   static final ValueNotifier<int> statsNotifier = ValueNotifier(0);
 
-  static int getExplorerXp() => _prefs.getInt('explorer_xp') ?? 0;
-  static int getPlacesVisited() => _prefs.getInt('places_visited') ?? 0;
+  static String? getExplorerPointsJson() => _prefsOrNull?.getString(_explorerPointsKey);
 
-  static int explorerLevelForXp(int xp) => 1 + (xp ~/ xpPerLevel);
-  static int getExplorerLevel() => explorerLevelForXp(getExplorerXp());
-
-  /// XP earned inside the current level, 0..[xpPerLevel].
-  static int getXpIntoLevel() => getExplorerXp() % xpPerLevel;
-
-  /// Record a completed exploration. Returns true if the explorer level rose.
-  static Future<bool> addExploration({required int placesVisited, required int xp}) async {
-    final beforeLevel = getExplorerLevel();
-    await _prefs.setInt('explorer_xp', getExplorerXp() + xp);
-    await _prefs.setInt('places_visited', getPlacesVisited() + placesVisited);
+  static Future<void> saveExplorerPointsJson(String jsonStr) async {
+    if (_prefsOrNull == null) return;
+    await _prefs.setString(_explorerPointsKey, jsonStr);
     statsNotifier.value++;
-    return getExplorerLevel() > beforeLevel;
+  }
+
+  /// The public explainer (levels, how to earn): the same for every account,
+  /// so it survives a sign-out.
+  static String? getExplorerPointsInfoJson() => _prefsOrNull?.getString(_explorerPointsInfoKey);
+
+  static Future<void> saveExplorerPointsInfoJson(String jsonStr) async {
+    if (_prefsOrNull == null) return;
+    await _prefs.setString(_explorerPointsInfoKey, jsonStr);
+  }
+
+  /// The XP this phone kept before points moved to the server, or null once
+  /// it has been carried over (or there never was any).
+  static int? getLegacyExplorerXp() => _prefsOrNull?.getInt('explorer_xp');
+
+  static Future<void> clearLegacyExplorerXp() async {
+    if (_prefsOrNull == null) return;
+    await _prefs.remove('explorer_xp');
+    await _prefs.remove('places_visited');
   }
 
   // ── Active In-Progress Mini Tour ───────────────────────────────────────

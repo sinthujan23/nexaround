@@ -11,6 +11,7 @@ from app.api.v1.places import router as places_router
 from app.api.v1.place_reviews import (
     router as place_reviews_router, admin_router as place_reviews_admin_router,
 )
+from app.api.v1.explorer_points import router as explorer_points_router
 from app.api.v1.place_photos import (
     router as place_photos_router, admin_router as place_photos_admin_router,
 )
@@ -57,6 +58,7 @@ api_router.include_router(place_reviews_router)
 api_router.include_router(place_reviews_admin_router)
 api_router.include_router(place_photos_router)
 api_router.include_router(place_photos_admin_router)
+api_router.include_router(explorer_points_router)
 api_router.include_router(neva_router)
 api_router.include_router(admin_router)
 api_router.include_router(attractions_admin_router)

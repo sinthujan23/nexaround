@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import String, Date, DateTime, JSON, ForeignKey
+from sqlalchemy import String, Date, DateTime, JSON, ForeignKey, Index
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
@@ -8,6 +8,10 @@ from app.core.database import Base
 
 class Itinerary(Base):
     __tablename__ = "itineraries"
+    __table_args__ = (
+        # A traveller's completed trips: their Explorer Points.
+        Index("ix_itineraries_user_status", "user_id", "status"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4

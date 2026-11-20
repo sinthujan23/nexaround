@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,9 +21,9 @@ from app.models.place_review import PlaceReview
 from app.models.user import User
 from app.schemas.place_review import (
     PlaceReviewAdmin, PlaceReviewAdminList, PlaceReviewAdminUpdate, PlaceReviewIn,
-    PlaceReviewList, PlaceReviewMine, PlaceReviewPublic, PlaceReviewSummary,
+    PlaceReviewList, PlaceReviewMine, PlaceReviewPublic, PlaceReviewSummary, PointsChange,
 )
-from app.services import experience_reviews, place_reviews
+from app.services import experience_reviews, explorer_points, place_reviews
 from app.utils.geo_utils import get_lat_lng
 
 router = APIRouter(prefix="/places", tags=["Place reviews"])
@@ -37,10 +37,12 @@ def _mine(r: PlaceReview) -> PlaceReviewMine:
     )
 
 
-def _public(r: PlaceReview) -> PlaceReviewPublic:
+def _public(r: PlaceReview, level: Optional[int] = None) -> PlaceReviewPublic:
     return PlaceReviewPublic(
         id=r.id, reviewer_name=r.reviewer_name, rating=r.rating, comment=r.comment,
         created_at=r.created_at, edited=r.edited_at is not None,
+        reviewer_level=level,
+        reviewer_level_name=explorer_points.level_name(level) if level else None,
     )
 
 
@@ -75,9 +77,10 @@ async def list_place_reviews(
     rows = (await db.scalars(
         place_reviews.place_reviews_query(keys).limit(limit).offset(offset)
     )).all()
+    levels = await explorer_points.levels_for(db, [r.user_id for r in rows])
     return PlaceReviewList(
         summary=PlaceReviewSummary(**summary),
-        reviews=[_public(r) for r in rows],
+        reviews=[_public(r, levels.get(r.user_id)) for r in rows],
         total=summary["count"], limit=limit, offset=offset,
     )
 
@@ -99,12 +102,15 @@ async def my_place_review(
 async def review_place(
     place_id: str,
     data: PlaceReviewIn,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Rate a place, or change the rating already given. Published at once."""
+    """Rate a place, or change the rating already given. Published at once.
+    The answer says what it did to the traveller's Explorer Points."""
     _check_id(place_id)
     key, keys = await place_reviews.canonical_key(db, place_id)
+    before = (await explorer_points.total_for(db, current_user.id, fresh=True)).total
     now = datetime.now(timezone.utc)
     comment = experience_reviews.clean_comment(data.comment)
 
@@ -158,7 +164,12 @@ async def review_place(
     await db.refresh(review)
     if review.status == place_reviews.PUBLISHED:
         place_reviews.note_published()
-    return _mine(review)
+    await explorer_points.bust(current_user.id)
+    after = (await explorer_points.total_for(db, current_user.id, fresh=True)).total
+    background_tasks.add_task(explorer_points.notify_level_up, current_user.id, before, after)
+    out = _mine(review)
+    out.points = PointsChange(**explorer_points.change(before, after))
+    return out
 
 
 @router.delete("/{place_id}/review", status_code=status.HTTP_204_NO_CONTENT)
@@ -175,6 +186,7 @@ async def delete_place_review(
         raise HTTPException(status_code=404, detail="Review not found")
     await db.delete(review)
     await db.commit()
+    await explorer_points.bust(current_user.id)
     return None
 
 
@@ -218,6 +230,7 @@ async def admin_list_place_reviews(
 async def admin_update_place_review(
     review_id: uuid.UUID,
     data: PlaceReviewAdminUpdate,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     _=Depends(verify_admin_token),
 ):
@@ -228,11 +241,16 @@ async def admin_update_place_review(
     review = await db.get(PlaceReview, review_id)
     if review is None:
         raise HTTPException(status_code=404, detail="Review not found")
-    if data.status != review.status:
+    changed = data.status != review.status
+    before = (await explorer_points.total_for(db, review.user_id, fresh=True)).total if changed else 0
+    if changed:
         review.status = data.status
         review.hidden_at = (
             datetime.now(timezone.utc) if data.status == place_reviews.HIDDEN else None
         )
     await db.commit()
     await db.refresh(review)
+    if changed:
+        # Hidden: its points go; restored: they come back.
+        background_tasks.add_task(explorer_points.after_change, review.user_id, before)
     return _admin(review)

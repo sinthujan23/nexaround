@@ -18,6 +18,15 @@ class PlaceReviewIn(BaseModel):
     longitude: Optional[float] = Field(None, ge=-180, le=180)
 
 
+class PointsChange(BaseModel):
+    """What an action did to the traveller's Explorer Points."""
+    earned: int = 0
+    total: int = 0
+    level: int = 1
+    level_name: str = ""
+    levelled_up: bool = False
+
+
 class PlaceReviewMine(BaseModel):
     """The traveller's own review. `status` is "hidden" when an admin took it
     down: the traveller is told, the public list no longer shows it."""
@@ -27,6 +36,8 @@ class PlaceReviewMine(BaseModel):
     status: str = "published"
     created_at: datetime
     edited_at: Optional[datetime] = None
+    # Only on the answer to a send (PUT): the points it earned.
+    points: Optional[PointsChange] = None
 
 
 class PlaceReviewPublic(BaseModel):
@@ -37,6 +48,9 @@ class PlaceReviewPublic(BaseModel):
     comment: Optional[str] = None
     created_at: datetime
     edited: bool = False
+    # The reviewer's Explorer level (services/explorer_points.py).
+    reviewer_level: Optional[int] = None
+    reviewer_level_name: Optional[str] = None
 
 
 class PlaceReviewSummary(BaseModel):

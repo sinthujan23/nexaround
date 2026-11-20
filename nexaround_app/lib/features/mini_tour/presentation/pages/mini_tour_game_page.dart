@@ -15,11 +15,14 @@ import 'package:nexaround_app/features/attractions/domain/entities/attraction.da
 import 'package:url_launcher/url_launcher.dart';
 import 'package:nexaround_app/core/error/user_message.dart';
 import 'package:nexaround_app/core/services/feature_tracker.dart';
+import 'package:nexaround_app/features/explorer_points/data/explorer_points_service.dart';
+import 'package:nexaround_app/features/explorer_points/presentation/widgets/points_help.dart';
 
 /// A gamified "Mini Tour": real nearby places are dropped onto a Mapbox map as
 /// flags 🚩 with a checkered finish flag 🏁 on the last stop. The map tracks the
 /// user live; reaching a stop (or checking in) plants the flag ✅. Visiting every
-/// stop finishes the tour and awards Explorer XP + Places Visited.
+/// stop finishes the tour; the server counts it for Explorer Points (each tour
+/// is saved as an itinerary row, see MiniTourRepository).
 class MiniTourGamePage extends StatefulWidget {
   /// Optional tour center. When null the tour is built around the user's live
   /// GPS location; when set (e.g. picked on the map) it's built around there.
@@ -91,10 +94,11 @@ class _MiniTourGamePageState extends State<MiniTourGamePage>
   bool _stopsReady = false;
   bool _introPlayed = false;
 
-  // Reward summary, shown on the finish screen.
-  int _xpEarned = 0;
+  // Reward summary, shown on the finish screen: what the server's count of
+  // Explorer Points moved by (0 when the tour did not count, e.g. too short).
+  int _pointsEarned = 0;
   bool _leveledUp = false;
-  int _newLevel = 1;
+  String _newLevelLabel = '';
 
   bool _isExpanded = false;
 
@@ -567,7 +571,6 @@ class _MiniTourGamePageState extends State<MiniTourGamePage>
         if (!s.visited && _haversine(pos.latitude, pos.longitude, s.lat, s.lng) <= _checkInRadiusM) {
           s.visited = true;
           changed = true;
-          CacheService.addExploration(placesVisited: 1, xp: _xpPerStop);
         }
       }
       _updateRouteLine();
@@ -872,7 +875,6 @@ class _MiniTourGamePageState extends State<MiniTourGamePage>
         _selectedNavigationIndex = null;
       }
     });
-    CacheService.addExploration(placesVisited: 1, xp: _xpPerStop);
     _persistActiveState();
     _refreshMarkers();
     _updateRouteLine();
@@ -892,6 +894,7 @@ class _MiniTourGamePageState extends State<MiniTourGamePage>
 
   Future<void> _finish() async {
     await _posSub?.cancel();
+    final pointsBefore = ExplorerPointsService.summary.value ?? await ExplorerPointsService.refresh();
     final xp = _stops.length * _xpPerStop;
     final placeNames = _stops.map((s) => s.name).toList();
 
@@ -921,11 +924,14 @@ class _MiniTourGamePageState extends State<MiniTourGamePage>
         status: 'completed',
       );
     }
+    final pointsAfter = await ExplorerPointsService.refresh();
     if (!mounted) return;
     setState(() {
-      _xpEarned = xp;
-      _leveledUp = false;
-      _newLevel = CacheService.getExplorerLevel();
+      if (pointsBefore != null && pointsAfter != null) {
+        _pointsEarned = pointsAfter.total - pointsBefore.total;
+        _leveledUp = pointsAfter.level.level > pointsBefore.level.level;
+        _newLevelLabel = pointsAfter.level.label;
+      }
       _phase = _Phase.finished;
     });
   }
@@ -1470,12 +1476,21 @@ class _MiniTourGamePageState extends State<MiniTourGamePage>
             const Text('Walk Complete!', style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w900))
                 .animate().fade(delay: 200.ms),
             const SizedBox(height: 24),
-            _rewardChip('+$_xpEarned XP', Icons.bolt_rounded),
-            const SizedBox(height: 10),
+            if (_pointsEarned > 0) ...[
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(width: 44),
+                  _rewardChip('+$_pointsEarned Explorer Points', Icons.bolt_rounded),
+                  const PointsHelpButton(size: 20, color: Colors.white70),
+                ],
+              ),
+              const SizedBox(height: 10),
+            ],
             _rewardChip('+${_stops.length} Places Visited', Icons.place_rounded),
             if (_leveledUp) ...[
               const SizedBox(height: 10),
-              _rewardChip('Level Up · Explorer Level $_newLevel', Icons.diamond_rounded),
+              _rewardChip('Level Up · $_newLevelLabel', Icons.diamond_rounded),
             ],
             const SizedBox(height: 36),
             SizedBox(

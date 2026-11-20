@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/features/attractions/data/place_reviews_service.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_stars.dart';
+import 'package:nexaround_app/features/explorer_points/data/explorer_points_service.dart';
+import 'package:nexaround_app/features/explorer_points/domain/explorer_points.dart';
+import 'package:nexaround_app/features/explorer_points/presentation/widgets/points_help.dart';
 
 /// The outcome of the place rating sheet.
 class PlaceReviewSheetResult {
@@ -69,9 +72,48 @@ class _PlaceReviewSheetState extends State<_PlaceReviewSheet> {
   String? _error;
 
   @override
+  void initState() {
+    super.initState();
+    // The hint below the text box counts as the traveller types.
+    _comment.addListener(_onTyping);
+    ExplorerPointsService.loadInfo();
+  }
+
+  void _onTyping() {
+    if (mounted) setState(() {});
+  }
+
+  @override
   void dispose() {
+    _comment.removeListener(_onTyping);
     _comment.dispose();
     super.dispose();
+  }
+
+  /// "Worth 10 points · 170 more characters for +10", from the server's table.
+  String? _pointsHint(PointsInfo? info) {
+    if (info == null) return null;
+    final stars = info.rule('rating');
+    final written = info.rule('written');
+    final detailed = info.rule('detailed');
+    if (stars == null) return null;
+    if (_rating == 0) {
+      return 'Rate it for +${stars.points} points, write a review for more';
+    }
+    final length = _comment.text.trim().length;
+    var worth = stars.points;
+    EarnRule? next;
+    for (final r in [written, detailed]) {
+      if (r == null || r.minChars <= 0) continue;
+      if (length >= r.minChars) {
+        worth += r.points;
+      } else {
+        next ??= r;
+      }
+    }
+    if (next == null) return 'Worth $worth points';
+    final more = next.minChars - length;
+    return 'Worth $worth points · $more more ${more == 1 ? 'character' : 'characters'} for +${next.points}';
   }
 
   Future<void> _submit() async {
@@ -227,7 +269,25 @@ class _PlaceReviewSheetState extends State<_PlaceReviewSheet> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 4),
+                ValueListenableBuilder<PointsInfo?>(
+                  valueListenable: ExplorerPointsService.info,
+                  builder: (context, info, _) {
+                    final hint = _pointsHint(info);
+                    if (hint == null) return const SizedBox(height: 4);
+                    return Row(
+                      children: [
+                        const Icon(Icons.emoji_events_rounded, size: 16, color: AppColors.brandGreen),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(hint,
+                              style: const TextStyle(
+                                  fontSize: 12.5, fontWeight: FontWeight.w700, color: AppColors.brandGreen)),
+                        ),
+                        const PointsHelpButton(size: 17),
+                      ],
+                    );
+                  },
+                ),
                 const Text(
                   'Your review is public and shows your first name and last initial.',
                   style: TextStyle(fontSize: 12, color: AppColors.textTertiary),
