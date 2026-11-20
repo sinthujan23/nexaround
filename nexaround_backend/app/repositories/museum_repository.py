@@ -18,18 +18,25 @@ class MuseumRepository:
         result = await db.execute(
             select(Museum, Museum.image_data.isnot(None).label("has_image"))
             .options(defer(Museum.image_data))
+            .where(Museum.is_hidden.is_(False))
             .order_by(Museum.rank.asc())
         )
         return [(row.Museum, row.has_image) for row in result]
 
     @staticmethod
-    async def get_by_slug(db: AsyncSession, slug: str) -> Museum | None:
-        """Return a single museum with all masterpieces eagerly loaded."""
-        result = await db.execute(
+    async def get_by_slug(
+        db: AsyncSession, slug: str, include_hidden: bool = False,
+    ) -> Museum | None:
+        """Return a single museum with all masterpieces eagerly loaded. A
+        museum still being entered (hidden) only with `include_hidden`."""
+        query = (
             select(Museum)
             .where(Museum.slug == slug)
             .options(selectinload(Museum.masterpieces))
         )
+        if not include_hidden:
+            query = query.where(Museum.is_hidden.is_(False))
+        result = await db.execute(query)
         return result.scalar_one_or_none()
 
     @staticmethod

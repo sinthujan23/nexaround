@@ -23,12 +23,14 @@ import CityTours, { CityTourQueue } from './pages/CityTours';
 import CityTourEditor from './pages/CityTourEditorLazy';
 import CityTourTaps from './pages/CityTourTaps';
 import Team from './pages/Team';
+import Museums from './pages/Museums';
+import MuseumEditor from './pages/MuseumEditor';
 import FeatureUsage from './pages/FeatureUsage';
-import { ADMIN, CREATOR, CITY_TOURS, EXPERIENCES, TRAVEL_BYTES } from './session';
+import { ADMIN, CREATOR, CITY_TOURS, EXPERIENCES, MUSEUMS, TRAVEL_BYTES } from './session';
 import {
   CompassIcon, UsersIcon, MapPinIcon, CreditCardIcon, MegaphoneIcon, ImageIcon, SettingsIcon,
   ClipboardCheckIcon, TrendingUpIcon, EyeOffIcon, TicketIcon, InboxIcon, ShieldIcon, MonitorIcon,
-  StarIcon, BookOpenIcon, RouteIcon,
+  StarIcon, BookOpenIcon, RouteIcon, MuseumIcon,
 } from './components/Icons';
 
 // Pages a team member may open too, if given the page's `section`. Every
@@ -52,6 +54,8 @@ export const NAV_SECTIONS = [
       { path: '/exclude-keywords', label: 'Exclude Keywords', title: 'Exclude Keywords (Around You)', icon: EyeOffIcon, page: ExcludeKeywords },
       { path: '/media', label: 'Media Library', title: 'Media Library', icon: ImageIcon, page: Media },
       { path: '/stories', label: 'TravelByte Stories', title: 'TravelByte Stories', icon: BookOpenIcon, page: OfficialStories, roles: BOTH, section: TRAVEL_BYTES },
+      { path: '/museums', label: 'Museums', title: 'Museums', icon: MuseumIcon, page: Museums, roles: BOTH, section: MUSEUMS },
+      { path: '/museums/edit', label: 'Museum', title: 'Museums · Museum', icon: MuseumIcon, page: MuseumEditor, roles: BOTH, section: MUSEUMS, hidden: true },
     ],
   },
   {

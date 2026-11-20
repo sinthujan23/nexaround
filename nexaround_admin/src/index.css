@@ -4490,3 +4490,111 @@ a.btn { text-decoration: none; }
   .fu-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .fu-toolbar-right { margin-left: 0; }
 }
+
+/* Museums editor (pages/MuseumEditor.jsx): the item list. */
+.mue-list { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+.mue-row { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-bottom: 1px solid #f1f3f7; background: #fff; }
+.mue-row:last-child { border-bottom: 0; }
+.mue-row:hover { background: #f9fafb; }
+.mue-num {
+  flex: none; width: 28px; height: 28px; border-radius: 50%; background: var(--accent-light); color: var(--accent);
+  display: flex; align-items: center; justify-content: center; font-size: 12.5px; font-weight: 800;
+}
+.mue-main {
+  flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; text-align: left;
+  background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer;
+}
+.mue-main strong { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mue-main > span { font-size: 12px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mue-main .mue-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; white-space: normal; }
+.mue-empty {
+  padding: 24px 16px; text-align: center; font-size: 13px; color: var(--text-secondary);
+  border: 1px dashed var(--border); border-radius: 12px;
+}
+
+/* Museum guide phone preview (components/MuseumPreview.jsx): the app's
+   museum_guide_page.dart sizes, inside the .ctp-phone frame. */
+.mup-page { background: #fff; min-height: 100%; }
+.mup-hero {
+  position: relative; height: 260px; background: #1a1a1a; overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+}
+.mup-hero img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.mup-scrim { position: absolute; inset: 0; background: linear-gradient(to bottom, transparent, rgba(0, 0, 0, 0.87)); }
+.mup-top { position: absolute; top: 0; left: 0; right: 0; }
+.mup-back {
+  position: absolute; top: 66px; left: 12px; width: 40px; height: 40px; border-radius: 50%;
+  background: rgba(0, 0, 0, 0.45); display: flex; align-items: center; justify-content: center;
+}
+.mup-place {
+  position: absolute; left: 16px; bottom: 56px; display: flex; align-items: center; gap: 4px;
+  color: rgba(255, 255, 255, 0.7); font-size: 13px;
+}
+.mup-title {
+  position: absolute; left: 16px; right: 16px; bottom: 16px; color: #fff; font-size: 16px; font-weight: 800;
+  text-shadow: 0 0 8px #000;
+}
+.mup-tours { display: flex; gap: 8px; padding: 16px 16px 4px; flex-wrap: wrap; }
+.mup-tour {
+  border: 1px solid #e2e8f0; background: #fff; border-radius: 20px; padding: 8px 14px; cursor: pointer;
+  font: inherit; font-size: 13px; font-weight: 700; color: #475569;
+}
+.mup-tour.active { background: #007a7c; border-color: #007a7c; color: #fff; }
+.mup-tickets {
+  margin: 12px 16px 4px; padding: 14px 16px; border-radius: 16px; background: #1a1a2e;
+  display: flex; align-items: center; gap: 12px;
+}
+.mup-tickets-icon {
+  width: 42px; height: 42px; border-radius: 12px; background: rgba(0, 122, 124, 0.15); flex: none;
+  display: flex; align-items: center; justify-content: center;
+}
+.mup-tickets-text { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.mup-tickets-text strong { color: #fff; font-size: 15px; }
+.mup-tickets-text span { color: rgba(255, 255, 255, 0.6); font-size: 12px; }
+.mup-stats { padding: 12px 16px 0; }
+.mup-stat-row { display: flex; gap: 10px; align-items: flex-start; }
+.mup-stat {
+  display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 20px;
+  background: #f5f6f8; color: #64748b; font-size: 12px; font-weight: 600; white-space: nowrap;
+}
+.mup-stat-wide { flex: 1; min-width: 0; white-space: normal; }
+.mup-site {
+  display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; padding: 4px 2px;
+  color: #007a7c; font-size: 13px; font-weight: 700; text-decoration: underline;
+}
+.mup-empty {
+  margin: 24px 16px; padding: 24px; border-radius: 16px; background: #fffbeb; text-align: center;
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+}
+.mup-empty strong { font-size: 18px; }
+.mup-empty span { font-size: 13px; color: #64748b; line-height: 1.5; }
+.mup-building { display: flex; align-items: center; gap: 12px; padding: 20px 16px 8px; }
+.mup-building-icon {
+  width: 34px; height: 34px; border-radius: 10px; background: #000; flex: none;
+  display: flex; align-items: center; justify-content: center;
+}
+.mup-building > span:last-child { display: flex; flex-direction: column; gap: 2px; }
+.mup-building strong { font-size: 16px; font-weight: 800; }
+.mup-building > span:last-child > span { font-size: 12px; color: #64748b; }
+.mup-item { display: flex; padding: 0 16px; }
+.mup-rail { width: 36px; flex: none; display: flex; flex-direction: column; align-items: center; }
+.mup-line { width: 2px; flex: 1; min-height: 8px; }
+.mup-dot { width: 14px; height: 14px; border-radius: 50%; border: 2px solid #fff; flex: none; }
+.mup-card {
+  flex: 1; min-width: 0; margin-bottom: 8px; padding: 14px; border-radius: 14px; background: #fff;
+  border: 1px solid #e2e8f0; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+}
+.mup-card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.mup-chip {
+  display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 8px;
+  font-size: 11px; font-weight: 600; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+}
+.mup-stop { font-size: 12px; font-weight: 700; color: #94a3b8; flex: none; }
+.mup-name { margin-top: 8px; font-size: 15px; font-weight: 700; line-height: 1.2; }
+.mup-artist { margin-top: 2px; font-size: 13px; color: #64748b; }
+.mup-room { margin-top: 4px; display: flex; align-items: center; gap: 4px; font-size: 12px; color: #94a3b8; }
+.mup-desc { margin-top: 6px; font-size: 12px; line-height: 1.4; color: #64748b; }
+.mue-link {
+  background: none; border: 0; padding: 0; font: inherit; font-weight: 700; color: var(--accent);
+  text-decoration: underline; cursor: pointer;
+}

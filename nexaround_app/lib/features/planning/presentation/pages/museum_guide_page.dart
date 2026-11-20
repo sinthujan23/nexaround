@@ -287,12 +287,19 @@ class _MuseumGuidePageState extends State<MuseumGuidePage>
     ),
   };
 
+  /// Website and hours as entered in the admin panel; the list above only
+  /// for a server or cached list from before those were sent, then a search.
   _MuseumExtraInfo get _museumExtra {
-    return _extraInfo[widget.museum.slug] ??
-        _MuseumExtraInfo(
-          website: 'https://www.google.com/search?q=${Uri.encodeComponent(widget.museum.name)}',
-          hours: '9:00 AM – 6:00 PM',
-        );
+    final known = _extraInfo[widget.museum.slug];
+    final website = widget.museum.website?.trim() ?? '';
+    final hours = widget.museum.openingHours?.trim() ?? '';
+    return _MuseumExtraInfo(
+      website: website.isNotEmpty
+          ? website
+          : known?.website ??
+              'https://www.google.com/search?q=${Uri.encodeComponent(widget.museum.name)}',
+      hours: hours.isNotEmpty ? hours : known?.hours ?? '9:00 AM – 6:00 PM',
+    );
   }
 
   String _selected = '1d';

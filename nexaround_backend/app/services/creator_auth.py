@@ -5,7 +5,7 @@ credential first, then a member's email and password. Their token says
 `role: "creator"` (the name from when members only wrote City Tours). Admin
 endpoints refuse it with 403 (verify_admin_token); the endpoints of the areas
 a member may open take it: City Tours through city_tours_admin.require_editor,
-Experiences and TravelBytes through admin.allow_team. Which areas is the
+Experiences, TravelBytes and Museums through admin.allow_team. Which areas is the
 member's `sections`, read from the database on every request, so the admin's
 changes apply at once. Sessions are the audit trail's, so an admin sees and
 signs out members' devices in Devices & Sessions like any other.
@@ -32,7 +32,8 @@ ROLE = "creator"
 CITY_TOURS = "city_tours"
 EXPERIENCES = "experiences"
 TRAVEL_BYTES = "travel_bytes"
-SECTIONS = (CITY_TOURS, EXPERIENCES, TRAVEL_BYTES)
+MUSEUMS = "museums"
+SECTIONS = (CITY_TOURS, EXPERIENCES, TRAVEL_BYTES, MUSEUMS)
 
 
 def normalize_email(value: str) -> str:

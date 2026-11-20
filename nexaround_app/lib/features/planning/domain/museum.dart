@@ -13,6 +13,11 @@ class MuseumListItem {
   final String? imageUrl;
   final int masterpieceCount;
 
+  /// The guide page's website link and hours chip, as typed in the admin
+  /// panel. Null from servers before that, or when nobody entered them.
+  final String? website;
+  final String? openingHours;
+
   const MuseumListItem({
     required this.id,
     required this.slug,
@@ -23,6 +28,8 @@ class MuseumListItem {
     this.rank,
     this.imageUrl,
     this.masterpieceCount = 0,
+    this.website,
+    this.openingHours,
   });
 
   factory MuseumListItem.fromJson(Map<String, dynamic> json) => MuseumListItem(
@@ -35,6 +42,8 @@ class MuseumListItem {
         rank: json['rank'] as int?,
         imageUrl: json['image_url'] as String?,
         masterpieceCount: (json['masterpiece_count'] as int?) ?? 0,
+        website: json['website'] as String?,
+        openingHours: json['opening_hours'] as String?,
       );
 }
 

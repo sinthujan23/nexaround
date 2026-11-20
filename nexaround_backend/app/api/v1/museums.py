@@ -28,7 +28,7 @@ from app.schemas.museum import (
 router = APIRouter(prefix="/museums", tags=["Museums"])
 
 
-def _image_url(m: Museum, has_image: bool) -> str | None:
+def museum_image_url(m: Museum, has_image: bool) -> str | None:
     """Prefer the photo stored in the DB over whatever pointer the row carries.
 
     Rows seeded before photos moved into Postgres still hold
@@ -37,8 +37,17 @@ def _image_url(m: Museum, has_image: bool) -> str | None:
     row left on the old form renders as a grey placeholder forever. Deriving
     the URL from the bytes we actually hold keeps one stale column from
     blanking a museum again.
+
+    A photo uploaded in the admin panel leaves "?v=<hash>" on the row's
+    image_url, so a replaced photo gets a new address and the app's image
+    cache fetches it instead of showing the old one.
     """
-    return f"/api/v1/museums/{m.slug}/image" if has_image else m.image_url
+    if not has_image:
+        return m.image_url
+    base = f"/api/v1/museums/{m.slug}/image"
+    if m.image_url and m.image_url.startswith(base + "?v="):
+        return m.image_url
+    return base
 
 
 @router.get("/", response_model=list[MuseumListItem])
@@ -57,8 +66,10 @@ async def list_museums(db: AsyncSession = Depends(get_db)):
                 country=m.country,
                 annual_visitors=m.annual_visitors,
                 rank=m.rank,
-                image_url=_image_url(m, has_image),
+                image_url=museum_image_url(m, has_image),
                 masterpiece_count=count,
+                website=m.website,
+                opening_hours=m.opening_hours,
             )
         )
     return items
@@ -71,7 +82,7 @@ async def get_museum(slug: str, db: AsyncSession = Depends(get_db)):
     if museum is None:
         raise HTTPException(status_code=404, detail="Museum not found")
     detail = MuseumDetail.model_validate(museum)
-    detail.image_url = _image_url(museum, museum.image_data is not None)
+    detail.image_url = museum_image_url(museum, museum.image_data is not None)
     return detail
 
 
@@ -121,7 +132,8 @@ async def get_museum_image(slug: str, db: AsyncSession = Depends(get_db)):
     Returns the permanently stored JPEG image for a given museum.
     Includes ETag header for efficient client-side caching.
     """
-    museum = await MuseumRepository.get_by_slug(db, slug)
+    # Hidden museums too: the admin panel shows the photo while it is entered.
+    museum = await MuseumRepository.get_by_slug(db, slug, include_hidden=True)
     if museum is None:
         raise HTTPException(status_code=404, detail="Museum not found")
     if not museum.image_data:

@@ -43,6 +43,11 @@ class Museum(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
+    # Out of the app while it is being entered in the admin panel
+    # (museums_admin); a new museum starts hidden.
+    is_hidden: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False,
+    )
 
     # Relationships
     masterpieces = relationship(

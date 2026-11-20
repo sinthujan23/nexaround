@@ -3,11 +3,12 @@ import { apiDelete, apiPatch, apiPost, useApi } from '../api';
 import { Badge, EmptyState, Modal, PageError, PageLoading, Switch, Toast } from '../components/Kit';
 import { EditIcon, PlusIcon, TrashIcon, UsersIcon } from '../components/Icons';
 import { useToast } from '../hooks';
-import { CITY_TOURS, EXPERIENCES, TRAVEL_BYTES } from '../session';
+import { CITY_TOURS, EXPERIENCES, MUSEUMS, TRAVEL_BYTES } from '../session';
 
 // The areas a login can open, in the order the sidebar shows them.
 const AREAS = [
   [TRAVEL_BYTES, 'TravelBytes'],
+  [MUSEUMS, 'Museums'],
   [EXPERIENCES, 'Experiences'],
   [CITY_TOURS, 'City Guides'],
 ];
@@ -217,7 +218,7 @@ export default function Team() {
 
       {loading && !data ? <PageLoading /> : !data?.length ? (
         <EmptyState icon={<UsersIcon size={28} />} title="No team logins yet">
-          Add the people who enter City Guides, Experiences or TravelBytes.
+          Add the people who enter City Guides, Experiences, TravelBytes or Museums.
         </EmptyState>
       ) : (
         <div className="card table-wrap ctt-card">
