@@ -482,15 +482,19 @@ class _TabsHeader extends SliverPersistentHeaderDelegate {
   Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
     // The white sheet's rounded top over the dark summary; the corners show
     // the summary's navy, also once pinned under the navy bar.
-    return ColoredBox(
-      color: _tripNavy,
-      child: Container(
-        padding: const EdgeInsets.only(top: 6),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        child: TabBar(
+    // Fills the header's whole 56 px: the gap plus the tab bar alone come to
+    // a little less, and a pinned header whose child is shorter than its
+    // extent is invalid, which left the whole page blank.
+    return SizedBox.expand(
+      child: ColoredBox(
+        color: _tripNavy,
+        child: Container(
+          padding: const EdgeInsets.only(top: 6),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: TabBar(
             labelColor: WalletColors.navy,
             unselectedLabelColor: WalletColors.slate,
             indicatorColor: AppColors.brandGreen,
@@ -517,7 +521,8 @@ class _TabsHeader extends SliverPersistentHeaderDelegate {
                 ),
               ),
             ],
-            ),
+          ),
+        ),
       ),
     );
   }
