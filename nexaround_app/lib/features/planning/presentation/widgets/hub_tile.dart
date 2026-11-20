@@ -21,6 +21,11 @@ class HubTile extends StatelessWidget {
   final Uint8List? imageBytes;
   final Alignment imageAlignment;
   final bool large;
+
+  /// Home's look: the title in heavy capitals, as on Home's Experiences
+  /// tile, with a small round arrow ([TitleArrow]) joined to its end in place
+  /// of the round arrow at the bottom right.
+  final bool arrowOnTitle;
   final VoidCallback onTap;
 
   const HubTile({
@@ -37,6 +42,7 @@ class HubTile extends StatelessWidget {
     this.imageBytes,
     this.imageAlignment = Alignment.center,
     this.large = false,
+    this.arrowOnTitle = false,
     required this.onTap,
   });
 
@@ -141,18 +147,44 @@ class HubTile extends StatelessWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Text(
-                                title,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: large ? (height >= 240 ? 20 : 18) : 15,
-                                  fontWeight: FontWeight.w800,
-                                  height: 1.12,
-                                  letterSpacing: -0.2,
-                                  color: Colors.white,
+                              if (arrowOnTitle)
+                                Text.rich(
+                                  TextSpan(
+                                    text: title.toUpperCase(),
+                                    children: const [
+                                      WidgetSpan(
+                                        alignment: PlaceholderAlignment.middle,
+                                        child: Padding(padding: EdgeInsets.only(left: 6), child: TitleArrow()),
+                                      ),
+                                    ],
+                                  ),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: titleCapsStyle,
+                                )
+                              else
+                                // Shrinks a little on narrow phones so the whole
+                                // title fits in two lines ("Museum Master Guides"
+                                // showed as "Museum / Master Gui…").
+                                LayoutBuilder(
+                                  builder: (context, constraints) {
+                                    final style = TextStyle(
+                                      fontSize: large ? (height >= 240 ? 20 : 18) : 15,
+                                      fontWeight: FontWeight.w800,
+                                      height: 1.12,
+                                      letterSpacing: -0.2,
+                                      color: Colors.white,
+                                    );
+                                    return Text(
+                                      title,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: style.copyWith(
+                                        fontSize: _fittedSize(context, title, style, constraints.maxWidth, 2),
+                                      ),
+                                    );
+                                  },
                                 ),
-                              ),
                               if (large && feature != null && featureText != null) ...[
                                 const SizedBox(height: 8),
                                 FittedBox(
@@ -177,27 +209,29 @@ class HubTile extends StatelessWidget {
                             ],
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        Container(
-                          width: large ? 30 : 26,
-                          height: large ? 30 : 26,
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.20),
-                                blurRadius: 4,
-                                offset: const Offset(0, 1),
-                              ),
-                            ],
+                        if (!arrowOnTitle) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            width: large ? 30 : 26,
+                            height: large ? 30 : 26,
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.20),
+                                  blurRadius: 4,
+                                  offset: const Offset(0, 1),
+                                ),
+                              ],
+                            ),
+                            child: Icon(
+                              Icons.arrow_forward_rounded,
+                              size: large ? 16 : 14,
+                              color: const Color(0xFF0F172A),
+                            ),
                           ),
-                          child: Icon(
-                            Icons.arrow_forward_rounded,
-                            size: large ? 16 : 14,
-                            color: const Color(0xFF0F172A),
-                          ),
-                        ),
+                        ],
                       ],
                     ),
                   ],
@@ -207,6 +241,60 @@ class HubTile extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// The biggest font size, from [style]'s own down to 13, at which [text]
+/// fits in [maxLines] lines of [width] without being cut off. Measured with
+/// the screen's font and text scale, as the Text will be drawn.
+double _fittedSize(BuildContext context, String text, TextStyle style, double width, int maxLines) {
+  final base = DefaultTextStyle.of(context).style.merge(style);
+  final scaler = MediaQuery.textScalerOf(context);
+  var size = base.fontSize ?? 15;
+  const min = 13.0;
+  while (size > min) {
+    final painter = TextPainter(
+      text: TextSpan(text: text, style: base.copyWith(fontSize: size)),
+      maxLines: maxLines,
+      textDirection: Directionality.of(context),
+      textScaler: scaler,
+    )..layout(maxWidth: width);
+    final fits = !painter.didExceedMaxLines;
+    painter.dispose();
+    if (fits) break;
+    size -= 1;
+  }
+  return size;
+}
+
+/// Home tiles' title style: heavy white capitals with a soft dark glow, as
+/// "UNFORGETTABLE EXPERIENCES" on Home.
+const titleCapsStyle = TextStyle(
+  fontSize: 15,
+  fontWeight: FontWeight.w900,
+  color: Colors.white,
+  letterSpacing: 0.6,
+  height: 1.15,
+  shadows: [Shadow(color: Color(0xB3000000), blurRadius: 6, offset: Offset(0, 1.5))],
+);
+
+/// The small white round arrow joined to the end of a Home tile's title, so
+/// the title reads like a link.
+class TitleArrow extends StatelessWidget {
+  const TitleArrow({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 20,
+      height: 20,
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        shape: BoxShape.circle,
+        boxShadow: [BoxShadow(color: Color(0x33000000), blurRadius: 4, offset: Offset(0, 1))],
+      ),
+      child: const Icon(Icons.arrow_forward_rounded, size: 14, color: Color(0xFF0F172A)),
     );
   }
 }

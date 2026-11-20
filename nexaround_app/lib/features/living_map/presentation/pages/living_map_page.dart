@@ -2572,14 +2572,15 @@ class _LivingMapPageState extends State<LivingMapPage>
                 flex: 100,
                 child: Column(
                   children: [
-                    // The same tile as in Curated Hubs.
+                    // The Curated Hubs tile, with Home's title: heavy capitals
+                    // and the arrow joined on, like the Experiences tile below.
                     HubTile(
                       height: small,
                       tag: 'GROUP TRIP',
                       tagIcon: Icons.account_balance_wallet_rounded,
                       accentColor: const Color(0xFF4ADE80),
                       title: 'Trip Split',
-                      subtitle: 'Fair Split',
+                      arrowOnTitle: true,
                       imageAsset: 'assets/images/trip_wallet_header.jpg',
                       onTap: () => Navigator.push(
                         context,
@@ -2684,22 +2685,19 @@ class _LivingMapPageState extends State<LivingMapPage>
                 child: FittedBox(
                   fit: BoxFit.scaleDown,
                   alignment: Alignment.bottomLeft,
-                  child: Text(
-                    'UNFORGETTABLE\nEXPERIENCES',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w900,
-                      color: Colors.white,
-                      letterSpacing: 0.6,
-                      height: 1.15,
-                      shadows: [
-                        Shadow(
-                          color: Colors.black.withOpacity(0.7),
-                          blurRadius: 6,
-                          offset: const Offset(0, 1.5),
+                  // The arrow joined to the title says the tile opens, as on
+                  // the Trip Split tile above.
+                  child: Text.rich(
+                    TextSpan(
+                      text: 'UNFORGETTABLE\nEXPERIENCES',
+                      children: const [
+                        WidgetSpan(
+                          alignment: PlaceholderAlignment.middle,
+                          child: Padding(padding: EdgeInsets.only(left: 6), child: TitleArrow()),
                         ),
                       ],
                     ),
+                    style: titleCapsStyle,
                   ),
                 ),
               ),
