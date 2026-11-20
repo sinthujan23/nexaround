@@ -141,11 +141,22 @@ export default function Media() {
                   : <div style={{ display: 'grid', placeItems: 'center', height: '100%', color: 'var(--text-secondary)' }}>Deleted</div>}
               </button>
               <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
-                <strong style={{ fontSize: 14 }}>{p.place_name}</strong>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                  <strong style={{ fontSize: 14, flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>{p.place_name}</strong>
+                  {/* Beside the name, not in the button row: there it was cut off on narrow cards. */}
+                  {p.latitude != null && p.longitude != null && (
+                    <a className="btn btn-ghost btn-sm" target="_blank" rel="noreferrer"
+                      style={{ flexShrink: 0 }}
+                      href={`https://www.google.com/maps/search/?api=1&query=${p.latitude},${p.longitude}`}
+                      title="Open the place on the map">
+                      <MapPinIcon size={14} />
+                    </a>
+                  )}
+                </div>
                 <span className="muted" style={{ fontSize: 12 }}>{sourceOf(p.place_key)}</span>
                 <span className="muted" style={{ fontSize: 12 }}>By {p.uploader_name} · {formatDateTime(p.created_at)}</span>
                 {p.reject_reason && <span style={{ fontSize: 12 }}>Reason: {p.reject_reason}</span>}
-                <div style={{ display: 'flex', gap: 8, marginTop: 'auto', paddingTop: 8 }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 'auto', paddingTop: 8 }}>
                   {p.status === 'pending' && (
                     <button className="btn btn-primary btn-sm" disabled={saving}
                       onClick={() => review(p, 'approved', 'Photo approved')}>
@@ -157,13 +168,6 @@ export default function Media() {
                       onClick={() => review(p, 'rejected', p.status === 'approved' ? 'Photo taken down' : 'Photo rejected')}>
                       <CrossIcon size={14} /> {p.status === 'approved' ? 'Take down' : 'Reject'}
                     </button>
-                  )}
-                  {p.latitude != null && p.longitude != null && (
-                    <a className="btn btn-ghost btn-sm" target="_blank" rel="noreferrer"
-                      href={`https://www.google.com/maps/search/?api=1&query=${p.latitude},${p.longitude}`}
-                      title="Open the place on the map">
-                      <MapPinIcon size={14} />
-                    </a>
                   )}
                 </div>
               </div>

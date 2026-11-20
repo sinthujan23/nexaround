@@ -1,5 +1,8 @@
+import 'dart:math' as math;
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/error/user_message.dart';
@@ -40,17 +43,29 @@ class _WalletTripPageState extends State<WalletTripPage> {
   /// may be older, and settle-up amounts worked out from it may be wrong.
   bool _fresh = false;
 
+  /// The page's outer scroll. Once the dark top, with its Add expense
+  /// button, has scrolled away, a floating Add expense button takes over.
+  final _outer = ScrollController();
+  bool _showFab = false;
+
   @override
   void initState() {
     super.initState();
     _load();
     TripWalletService.revision.addListener(_load);
+    _outer.addListener(_onOuterScroll);
   }
 
   @override
   void dispose() {
     TripWalletService.revision.removeListener(_load);
+    _outer.dispose();
     super.dispose();
+  }
+
+  void _onOuterScroll() {
+    final show = _outer.offset > 140;
+    if (show != _showFab) setState(() => _showFab = show);
   }
 
   Future<void> _load() async {
@@ -243,14 +258,31 @@ class _WalletTripPageState extends State<WalletTripPage> {
       length: 3,
       child: Scaffold(
         backgroundColor: Colors.white,
+        // Dark like the summary under it, so the two read as one top.
         appBar: AppBar(
-          backgroundColor: Colors.white,
-          foregroundColor: WalletColors.navy,
+          backgroundColor: _tripNavy,
+          foregroundColor: Colors.white,
+          surfaceTintColor: Colors.transparent,
           elevation: 0,
-          leading: const AppBackButton(),
-          title: Text(trip.name, style: const TextStyle(fontWeight: FontWeight.w800)),
+          scrolledUnderElevation: 0,
+          systemOverlayStyle: const SystemUiOverlayStyle(
+            statusBarColor: Colors.transparent,
+            statusBarIconBrightness: Brightness.light,
+            statusBarBrightness: Brightness.dark,
+          ),
+          iconTheme: const IconThemeData(color: Colors.white),
+          actionsIconTheme: const IconThemeData(color: Colors.white),
+          leading: const AppBackButton(onImage: true),
+          centerTitle: true,
+          // Colour set here: the app's AppBar theme would paint it dark.
+          title: Text(
+            trip.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Colors.white),
+          ),
           actions: [
-            IconButton(tooltip: 'Invite', icon: const Icon(Icons.person_add_alt_1_rounded), onPressed: _invite),
+            // Invite moved into the summary's quick buttons.
             PopupMenuButton<String>(
               onSelected: (v) {
                 switch (v) {
@@ -289,12 +321,12 @@ class _WalletTripPageState extends State<WalletTripPage> {
                       padding: EdgeInsets.symmetric(horizontal: 16),
                       child: Row(
                         children: [
-                          Icon(Icons.cloud_off_rounded, size: 15, color: WalletColors.slate),
+                          Icon(Icons.cloud_off_rounded, size: 15, color: Color(0xFFCBD5E1)),
                           SizedBox(width: 6),
                           Expanded(
                             child: Text(
                               'Showing saved data. Pull down to refresh.',
-                              style: TextStyle(fontSize: 12.5, color: WalletColors.slate),
+                              style: TextStyle(fontSize: 12.5, color: Color(0xFFCBD5E1)),
                             ),
                           ),
                         ],
@@ -308,16 +340,27 @@ class _WalletTripPageState extends State<WalletTripPage> {
             ),
           ),
         ),
-        floatingActionButton: FloatingActionButton.extended(
-          onPressed: () => _addExpense(),
-          backgroundColor: AppColors.brandGreen,
-          foregroundColor: Colors.white,
-          icon: const Icon(Icons.add_rounded),
-          label: const Text('Add expense', style: TextStyle(fontWeight: FontWeight.w700)),
-        ),
+        // Only once the summary's own Add expense button is out of sight.
+        floatingActionButton: _showFab
+            ? FloatingActionButton.extended(
+                onPressed: () => _addExpense(),
+                backgroundColor: AppColors.brandGreen,
+                foregroundColor: Colors.white,
+                icon: const Icon(Icons.add_rounded),
+                label: const Text('Add expense', style: TextStyle(fontWeight: FontWeight.w700)),
+              )
+            : null,
         body: NestedScrollView(
+          controller: _outer,
           headerSliverBuilder: (_, __) => [
-            SliverToBoxAdapter(child: _Summary(trip: trip, onPeople: _people)),
+            SliverToBoxAdapter(
+              child: _Summary(
+                trip: trip,
+                onPeople: _people,
+                onInvite: _invite,
+                onAddExpense: () => _addExpense(),
+              ),
+            ),
             SliverPersistentHeader(pinned: true, delegate: _TabsHeader(trip.pendingCount)),
           ],
           body: TabBarView(
@@ -431,41 +474,50 @@ class _TabsHeader extends SliverPersistentHeaderDelegate {
   _TabsHeader(this.pending);
 
   @override
-  double get minExtent => 48;
+  double get minExtent => 56;
   @override
-  double get maxExtent => 48;
+  double get maxExtent => 56;
 
   @override
   Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
-    return Container(
-      color: Colors.white,
-      child: TabBar(
-        labelColor: WalletColors.navy,
-        unselectedLabelColor: WalletColors.slate,
-        indicatorColor: AppColors.brandGreen,
-        indicatorWeight: 3,
-        labelStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
-        tabs: [
-          const Tab(text: 'Expenses'),
-          const Tab(text: 'Balances'),
-          Tab(
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text('Settle up'),
-                if (pending > 0) ...[
-                  const SizedBox(width: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                    decoration: BoxDecoration(color: const Color(0xFFF59E0B), borderRadius: BorderRadius.circular(9)),
-                    child: Text('$pending',
-                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white)),
-                  ),
-                ],
-              ],
+    // The white sheet's rounded top over the dark summary; the corners show
+    // the summary's navy, also once pinned under the navy bar.
+    return ColoredBox(
+      color: _tripNavy,
+      child: Container(
+        padding: const EdgeInsets.only(top: 6),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: TabBar(
+            labelColor: WalletColors.navy,
+            unselectedLabelColor: WalletColors.slate,
+            indicatorColor: AppColors.brandGreen,
+            indicatorWeight: 3,
+            labelStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+            tabs: [
+              const Tab(text: 'Expenses'),
+              const Tab(text: 'Balances'),
+              Tab(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text('Settle up'),
+                    if (pending > 0) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                        decoration: BoxDecoration(color: const Color(0xFFF59E0B), borderRadius: BorderRadius.circular(9)),
+                        child: Text('$pending',
+                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white)),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
             ),
-          ),
-        ],
       ),
     );
   }
@@ -474,98 +526,269 @@ class _TabsHeader extends SliverPersistentHeaderDelegate {
   bool shouldRebuild(covariant _TabsHeader oldDelegate) => oldDelegate.pending != pending;
 }
 
+/// The trip page's dark top (the bar above and the tabs' corners use it too).
+const _tripNavy = Color(0xFF0F172A);
+
+/// The trip page's top, kept compact: your balance with the trip total and
+/// people beside a spending ring, one line of category shares, then Add
+/// expense and three quick buttons. It scrolls away; the tabs stay.
 class _Summary extends StatelessWidget {
   final WalletTrip trip;
   final VoidCallback onPeople;
-  const _Summary({required this.trip, required this.onPeople});
+  final VoidCallback onInvite;
+  final VoidCallback onAddExpense;
+  const _Summary({
+    required this.trip,
+    required this.onPeople,
+    required this.onInvite,
+    required this.onAddExpense,
+  });
+
+  static const _muted = Color(0xFF94A3B8);
 
   @override
   Widget build(BuildContext context) {
     final money = trip.money;
     final net = trip.myNet;
-    final (label, color) = net > 0
-        ? ('You get back', const Color(0xFF4ADE80))
+    final (label, labelColor) = net > 0
+        ? ('YOU GET BACK', const Color(0xFF86EFAC))
         : net < 0
-            ? ('You owe', const Color(0xFFFCA5A5))
-            : ('You are', Colors.white70);
-    final active = trip.activeMembers;
+            ? ('YOU OWE', const Color(0xFFFCA5A5))
+            : ('YOUR BALANCE', _muted);
+    final people = trip.activeMembers.length;
+    final shares = _categoryShares(trip);
+    final shareTotal = shares.fold<int>(0, (a, s) => a + s.$2);
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(22),
-        gradient: const LinearGradient(
-          colors: [WalletColors.navy, Color(0xFF134E4A)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-      ),
+      color: _tripNavy,
+      padding: const EdgeInsets.fromLTRB(20, 2, 20, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('TRIP TOTAL',
-                        style: TextStyle(color: Colors.white60, fontSize: 11, letterSpacing: 1.2, fontWeight: FontWeight.w800)),
+                    Text(label,
+                        style: TextStyle(color: labelColor, fontSize: 11, letterSpacing: 1.3, fontWeight: FontWeight.w800)),
+                    const SizedBox(height: 2),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        net == 0 ? 'Settled' : money.format(net.abs()),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 32,
+                          height: 1.1,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: -0.5,
+                        ),
+                      ),
+                    ),
                     const SizedBox(height: 4),
-                    Text(money.format(trip.totalSpent),
-                        style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w900)),
+                    // Opens the people list, as the old people row did.
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: onPeople,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              'Trip total ${money.format(trip.totalSpent)} · $people ${people == 1 ? 'person' : 'people'}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(color: _muted, fontSize: 12.5, fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                          const Icon(Icons.chevron_right_rounded, size: 16, color: _muted),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
               ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(label.toUpperCase(),
-                      style: const TextStyle(color: Colors.white60, fontSize: 11, letterSpacing: 1.2, fontWeight: FontWeight.w800)),
-                  const SizedBox(height: 4),
-                  Text(net == 0 ? 'Settled' : money.format(net.abs()),
-                      style: TextStyle(color: color, fontSize: 20, fontWeight: FontWeight.w900)),
-                ],
-              ),
+              const SizedBox(width: 12),
+              _SpendRing(shares: shares, total: money.format(trip.totalSpent)),
             ],
           ),
-          const SizedBox(height: 14),
-          InkWell(
-            onTap: onPeople,
-            borderRadius: BorderRadius.circular(12),
-            child: Row(
-              children: [
-                SizedBox(
-                  height: 30,
-                  width: 30.0 + 20.0 * ((active.length.clamp(1, 5)) - 1),
-                  child: Stack(
-                    children: [
-                      for (var i = 0; i < active.length && i < 5; i++)
-                        Positioned(
-                          left: i * 20.0,
-                          child: Container(
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border: Border.all(color: WalletColors.navy, width: 2),
-                            ),
-                            child: WalletAvatar(active[i], size: 26),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Text('${active.length} ${active.length == 1 ? 'person' : 'people'}',
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
-                const Icon(Icons.chevron_right_rounded, color: Colors.white60, size: 20),
-              ],
+          if (shareTotal > 0) ...[
+            const SizedBox(height: 10),
+            // One line, shrunk to fit if a trip has many categories.
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Row(
+                children: [
+                  for (var i = 0; i < shares.length; i++) ...[
+                    if (i > 0) const SizedBox(width: 12),
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(color: walletCategoryColor(shares[i].$1), shape: BoxShape.circle),
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      '${walletCategoryLabel(shares[i].$1)} ${(shares[i].$2 * 100 / shareTotal).round()}%',
+                      style: const TextStyle(color: Color(0xFFCBD5E1), fontSize: 12, fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                ],
+              ),
             ),
+          ],
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: _QuickButton(icon: Icons.add_rounded, label: 'Add expense', primary: true, onTap: onAddExpense),
+              ),
+              const SizedBox(width: 8),
+              _QuickButton(icon: Icons.person_add_alt_1_rounded, label: 'Invite', onTap: onInvite),
+              const SizedBox(width: 8),
+              _QuickButton(icon: Icons.group_rounded, label: 'People', onTap: onPeople),
+              const SizedBox(width: 8),
+              _QuickButton(
+                icon: Icons.check_circle_rounded,
+                label: 'Settle up',
+                onTap: () => DefaultTabController.of(context).animateTo(2),
+              ),
+            ],
           ),
         ],
       ),
     );
   }
+}
+
+/// Each category's part of the trip's spending, biggest first.
+List<(String, int)> _categoryShares(WalletTrip trip) {
+  final sums = <String, int>{};
+  for (final e in trip.expenses) {
+    sums[e.category] = (sums[e.category] ?? 0) + e.amount;
+  }
+  final list = [
+    for (final entry in sums.entries)
+      if (entry.value > 0) (entry.key, entry.value),
+  ];
+  list.sort((a, b) => b.$2.compareTo(a.$2));
+  return list;
+}
+
+/// A quick button under the summary: the primary one is teal with its label,
+/// the others are round-cornered glass squares with the label as tooltip.
+class _QuickButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool primary;
+  final VoidCallback onTap;
+  const _QuickButton({required this.icon, required this.label, required this.onTap, this.primary = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final child = Material(
+      color: primary ? const Color(0xFF14B8A6) : Colors.white.withValues(alpha: 0.1),
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: onTap,
+        child: SizedBox(
+          height: 44,
+          width: primary ? null : 52,
+          child: primary
+              ? Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(icon, size: 19, color: Colors.white),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  ],
+                )
+              : Icon(icon, size: 20, color: Colors.white),
+        ),
+      ),
+    );
+    return primary ? child : Tooltip(message: label, child: Semantics(label: label, button: true, child: child));
+  }
+}
+
+/// The spending ring: one arc per category in its colour, the trip total in
+/// the middle. A plain faint ring before any expense is added.
+class _SpendRing extends StatelessWidget {
+  final List<(String, int)> shares;
+  final String total;
+  const _SpendRing({required this.shares, required this.total});
+
+  static const double _size = 76;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: _size,
+      height: _size,
+      child: CustomPaint(
+        painter: _RingPainter(shares),
+        child: Padding(
+          padding: const EdgeInsets.all(15),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text('TOTAL',
+                  style: TextStyle(color: Color(0xFF94A3B8), fontSize: 8.5, letterSpacing: 1, fontWeight: FontWeight.w800)),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(total,
+                    style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w900)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RingPainter extends CustomPainter {
+  final List<(String, int)> shares;
+  const _RingPainter(this.shares);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final stroke = size.width * 0.12;
+    final rect = (Offset.zero & size).deflate(stroke / 2);
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke;
+    canvas.drawArc(rect, 0, 2 * math.pi, false, paint..color = Colors.white.withValues(alpha: 0.1));
+    final sum = shares.fold<int>(0, (a, s) => a + s.$2);
+    if (sum <= 0) return;
+    // A small gap between arcs, none when one category has it all.
+    final gap = shares.length > 1 ? 0.05 : 0.0;
+    var start = -math.pi / 2;
+    for (final (category, amount) in shares) {
+      final sweep = 2 * math.pi * amount / sum;
+      canvas.drawArc(
+        rect,
+        start + gap / 2,
+        math.max(sweep - gap, 0.01),
+        false,
+        paint..color = walletCategoryColor(category),
+      );
+      start += sweep;
+    }
+  }
+
+  @override
+  bool shouldRepaint(_RingPainter old) => old.shares != shares;
 }
 
 class _ExpensesTab extends StatelessWidget {

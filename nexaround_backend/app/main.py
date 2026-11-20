@@ -1,6 +1,7 @@
 from fastapi import FastAPI, UploadFile, File, Depends, Request
 import asyncio
 import logging
+import mimetypes
 import uuid
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -136,7 +137,10 @@ async def shutdown():
     from app.services import google_places_client
     await google_places_client.aclose_http_client()
 
-# Static files
+# Static files. Python 3.12's type table has no .webp, so traveller photos
+# went out as text/plain, and with "nosniff" browsers would not draw them
+# (Admin › Media Library showed a broken image).
+mimetypes.add_type("image/webp", ".webp")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 # CORS — use explicit trusted origins from environment config.
