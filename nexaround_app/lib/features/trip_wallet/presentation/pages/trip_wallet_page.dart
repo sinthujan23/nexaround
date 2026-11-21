@@ -206,7 +206,7 @@ class _TripWalletPageState extends State<TripWalletPage> {
         fit: StackFit.passthrough,
         children: [
           // The heading is the page's name, so no "TRIP SPLIT" line over it.
-          _Header(height: headerHeight, title: 'Trip Split', eyebrow: false, textBottom: _passOverlap + 14),
+          _Header(height: headerHeight, title: 'Trip Split', eyebrow: false, tagline: true, textBottom: _passOverlap + 14),
           Padding(
             padding: EdgeInsets.fromLTRB(16, headerHeight - _passOverlap, 16, 0),
             child: Column(
@@ -408,7 +408,16 @@ class _Header extends StatelessWidget {
   /// The small "TRIP SPLIT" line over the heading.
   final bool eyebrow;
 
-  const _Header({required this.height, required this.title, required this.textBottom, this.eyebrow = true});
+  /// The slogan, "Travel together. Settle smarter.", under the heading.
+  final bool tagline;
+
+  const _Header({
+    required this.height,
+    required this.title,
+    required this.textBottom,
+    this.eyebrow = true,
+    this.tagline = false,
+  });
 
   /// A soft dark glow behind the white heading, for the photo's bright spots.
   static const _headingShadow = [Shadow(color: Color(0x73000000), blurRadius: 12, offset: Offset(0, 1))];
@@ -477,6 +486,10 @@ class _Header extends StatelessWidget {
                     shadows: _headingShadow,
                   ),
                 ),
+                if (tagline) ...[
+                  const SizedBox(height: 2),
+                  const TripSplitTagline(fontSize: 14.5),
+                ],
               ],
             ),
           ),

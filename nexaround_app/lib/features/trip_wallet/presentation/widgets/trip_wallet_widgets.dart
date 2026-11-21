@@ -303,3 +303,33 @@ class WalletEmpty extends StatelessWidget {
     );
   }
 }
+
+/// Trip Split's slogan, "Travel together. Settle smarter.", with the second
+/// half in mint. On the Home tile (two lines) and under the Trip Split title.
+class TripSplitTagline extends StatelessWidget {
+  final double fontSize;
+
+  /// Breaks the line after "together.".
+  final bool twoLines;
+
+  const TripSplitTagline({super.key, this.fontSize = 12, this.twoLines = false});
+
+  @override
+  Widget build(BuildContext context) {
+    return Text.rich(
+      TextSpan(
+        children: [
+          TextSpan(text: twoLines ? 'Travel together.\n' : 'Travel together. '),
+          const TextSpan(text: 'Settle smarter.', style: TextStyle(color: Color(0xFF5EEAD4))),
+        ],
+      ),
+      style: TextStyle(
+        fontSize: fontSize,
+        fontWeight: FontWeight.w700,
+        height: 1.3,
+        color: Colors.white,
+        shadows: const [Shadow(color: Color(0x80000000), blurRadius: 4, offset: Offset(0, 1))],
+      ),
+    );
+  }
+}

@@ -27,6 +27,11 @@ class HubTile extends StatelessWidget {
   /// tile, with a small round arrow ([TitleArrow]) joined to its end in place
   /// of the round arrow at the bottom right.
   final bool arrowOnTitle;
+
+  /// Text at the top left, in place of a tag (Home's Trip Split slogan), on
+  /// a soft dark fade from the top so it reads over the photo. The title
+  /// stays at the bottom.
+  final Widget? topText;
   final VoidCallback onTap;
 
   const HubTile({
@@ -44,6 +49,7 @@ class HubTile extends StatelessWidget {
     this.imageAlignment = Alignment.center,
     this.large = false,
     this.arrowOnTitle = false,
+    this.topText,
     required this.onTap,
   });
 
@@ -97,16 +103,28 @@ class HubTile extends StatelessWidget {
                   ),
                 ),
               ),
+              // A soft dark band from the top, behind [topText].
+              if (topText != null)
+                const DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [Color(0xCC0F172A), Color(0x000F172A)],
+                      stops: [0.0, 0.55],
+                    ),
+                  ),
+                ),
               Padding(
                 padding: EdgeInsets.all(large ? 13 : 11),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    // Top: tag pill. Without one, an empty box keeps the
-                    // title at the bottom.
+                    // Top: tag pill, or [topText]. Without either, an empty
+                    // box keeps the title at the bottom.
                     if (tagText == null)
-                      const SizedBox.shrink()
+                      topText ?? const SizedBox.shrink()
                     else
                       Row(
                         children: [

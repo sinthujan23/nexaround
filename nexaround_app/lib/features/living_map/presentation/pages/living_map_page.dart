@@ -24,6 +24,7 @@ import 'package:geolocator/geolocator.dart' as geo;
 import 'package:nexaround_app/features/planning/presentation/pages/odyssey_planner_page.dart';
 import 'package:nexaround_app/features/planning/presentation/widgets/hub_tile.dart';
 import 'package:nexaround_app/features/trip_wallet/presentation/pages/trip_wallet_page.dart';
+import 'package:nexaround_app/features/trip_wallet/presentation/widgets/trip_wallet_widgets.dart' show TripSplitTagline;
 import 'package:nexaround_app/features/mini_tour/presentation/widgets/mini_tour_launcher.dart';
 import 'package:nexaround_app/core/services/google_places_service.dart';
 import 'package:nexaround_app/core/services/currency_service.dart';
@@ -2588,6 +2589,8 @@ class _LivingMapPageState extends State<LivingMapPage>
                       accentColor: const Color(0xFF4ADE80),
                       title: 'Trip Split',
                       arrowOnTitle: true,
+                      // The client's slogan at the top; the title stays put.
+                      topText: const TripSplitTagline(twoLines: true),
                       imageAsset: 'assets/images/trip_wallet_header.jpg',
                       onTap: () => Navigator.push(
                         context,
