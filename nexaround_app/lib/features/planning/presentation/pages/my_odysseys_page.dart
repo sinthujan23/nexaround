@@ -413,8 +413,6 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
                       children: [
                         HubTile(
                           height: (tileHeight - _hubCardGap) / 2,
-                          tag: 'GROUP TRIP',
-                          tagIcon: Icons.account_balance_wallet_rounded,
                           accentColor: const Color(0xFF4ADE80),
                           title: 'Trip Split',
                           subtitle: 'Fair Split',

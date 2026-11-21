@@ -2,16 +2,17 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
-/// One Curated Hubs tile: photo, dark fade, tag pill at the top, and the
-/// title at the bottom with a round arrow at the bottom right. The tall card
+/// One Curated Hubs tile: photo, dark fade, a tag pill at the top (none when
+/// [tag] is null), and the title at the bottom with a round arrow at the
+/// bottom right. The tall card
 /// ([large]) has a bigger title and a feature chip under it; the small
 /// stacked ones carry a one-line [subtitle] instead. The whole tile is the
 /// button. Used by Curated Hubs and by the Home screen's tiles, so the same
 /// card looks the same in both places.
 class HubTile extends StatelessWidget {
   final double height;
-  final String tag;
-  final IconData tagIcon;
+  final String? tag;
+  final IconData? tagIcon;
   final Color accentColor;
   final String title;
   final String? subtitle;
@@ -31,8 +32,8 @@ class HubTile extends StatelessWidget {
   const HubTile({
     super.key,
     required this.height,
-    required this.tag,
-    required this.tagIcon,
+    this.tag,
+    this.tagIcon,
     required this.accentColor,
     required this.title,
     this.subtitle,
@@ -53,6 +54,7 @@ class HubTile extends StatelessWidget {
     final feature = featureIcon;
     final featureText = featureLabel;
     final line = subtitle;
+    final tagText = tag;
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -101,41 +103,47 @@ class HubTile extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    // Top: tag pill
-                    Row(
-                      children: [
-                        Flexible(
-                          child: FittedBox(
-                            fit: BoxFit.scaleDown,
-                            alignment: Alignment.centerLeft,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 7.5, vertical: 3.5),
-                              decoration: BoxDecoration(
-                                color: Colors.black.withValues(alpha: 0.55),
-                                borderRadius: BorderRadius.circular(7),
-                                border: Border.all(color: accentColor.withValues(alpha: 0.70), width: 0.8),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(tagIcon, size: 10.5, color: accentColor),
-                                  const SizedBox(width: 3.5),
-                                  Text(
-                                    tag,
-                                    style: TextStyle(
-                                      fontSize: 8.5,
-                                      fontWeight: FontWeight.w900,
-                                      letterSpacing: 1.0,
-                                      color: accentColor,
+                    // Top: tag pill. Without one, an empty box keeps the
+                    // title at the bottom.
+                    if (tagText == null)
+                      const SizedBox.shrink()
+                    else
+                      Row(
+                        children: [
+                          Flexible(
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerLeft,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 7.5, vertical: 3.5),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withValues(alpha: 0.55),
+                                  borderRadius: BorderRadius.circular(7),
+                                  border: Border.all(color: accentColor.withValues(alpha: 0.70), width: 0.8),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (tagIcon != null) ...[
+                                      Icon(tagIcon, size: 10.5, color: accentColor),
+                                      const SizedBox(width: 3.5),
+                                    ],
+                                    Text(
+                                      tagText,
+                                      style: TextStyle(
+                                        fontSize: 8.5,
+                                        fontWeight: FontWeight.w900,
+                                        letterSpacing: 1.0,
+                                        color: accentColor,
+                                      ),
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                      ],
-                    ),
+                        ],
+                      ),
                     // Bottom: title, then the chip (tall) or a short line
                     // (small), with the round arrow at the bottom right, where
                     // the Experiences card has its Explore button.

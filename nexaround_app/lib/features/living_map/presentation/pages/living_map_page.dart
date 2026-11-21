@@ -2585,8 +2585,6 @@ class _LivingMapPageState extends State<LivingMapPage>
                     // and the arrow joined on, like the Experiences tile below.
                     HubTile(
                       height: small,
-                      tag: 'GROUP TRIP',
-                      tagIcon: Icons.account_balance_wallet_rounded,
                       accentColor: const Color(0xFF4ADE80),
                       title: 'Trip Split',
                       arrowOnTitle: true,

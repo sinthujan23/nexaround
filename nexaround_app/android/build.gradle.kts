@@ -22,6 +22,9 @@ allprojects {
             if (requested.group == "com.google.firebase" && requested.name == "firebase-iid") {
                 useVersion("21.1.0")
             }
+            if (requested.group == "com.facebook.android") {
+                useVersion("18.3.0")
+            }
         }
     }
 }
