@@ -20,6 +20,7 @@ import 'dart:ui' show ImageFilter;
 import 'package:nexaround_app/features/planning/presentation/widgets/hub_tile.dart';
 import 'package:nexaround_app/features/planning/presentation/widgets/walking_challenge_asset.dart';
 import 'package:nexaround_app/features/trip_wallet/presentation/pages/trip_wallet_page.dart';
+import 'package:nexaround_app/features/trip_wallet/presentation/widgets/trip_wallet_widgets.dart' show TripSplitTagline;
 
 class MyOdysseysPage extends StatefulWidget {
   final int initialTabIndex;
@@ -415,7 +416,10 @@ class _MyOdysseysPageState extends State<MyOdysseysPage>
                           height: (tileHeight - _hubCardGap) / 2,
                           accentColor: const Color(0xFF4ADE80),
                           title: 'Trip Split',
-                          subtitle: 'Fair Split',
+                          // Same text layout as Home's Trip Split tile: the
+                          // slogan at the top, "TRIP SPLIT →" at the bottom.
+                          arrowOnTitle: true,
+                          topText: const TripSplitTagline(twoLines: true),
                           // Same photo as the Trip Split page header.
                           imageAsset: 'assets/images/trip_wallet_header.jpg',
                           onTap: () => Navigator.push(
