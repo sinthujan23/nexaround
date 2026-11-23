@@ -123,7 +123,7 @@ export function Modal({ title, onClose, maxWidth, children }) {
 }
 
 /** A form panel that slides in from the right, keeping the page in view. */
-export function Drawer({ title, subtitle, onClose, footer, children, onSubmit }) {
+export function Drawer({ title, subtitle, onClose, footer, children, onSubmit, wide = false }) {
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onKey);
@@ -133,7 +133,7 @@ export function Drawer({ title, subtitle, onClose, footer, children, onSubmit })
   const Body = onSubmit ? 'form' : 'div';
   return (
     <div className="drawer-overlay" onClick={onClose}>
-      <Body className="drawer" onClick={(e) => e.stopPropagation()} onSubmit={onSubmit}>
+      <Body className={`drawer ${wide ? 'drawer-wide' : ''}`} onClick={(e) => e.stopPropagation()} onSubmit={onSubmit}>
         <div className="drawer-head">
           <div>
             <div className="drawer-title">{title}</div>

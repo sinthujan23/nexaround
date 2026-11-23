@@ -5,6 +5,7 @@ import { Switch, Toast } from '../components/Kit';
 import ImageUploader from '../components/ImageUploader';
 import LocationPicker from '../components/LocationPicker';
 import DescriptionEditor from '../components/DescriptionEditor';
+import TravelBytePreview from '../components/TravelBytePreview';
 import { COUNTRIES, getCountryByCode } from '../constants/countries';
 import { useToast } from '../hooks';
 import { isCreator } from '../session';
@@ -206,6 +207,8 @@ export default function OfficialStories() {
               </div>
 
               <div className="xp-body">
+                <div className="with-phone">
+                <div>
                 <div className="xp-section">
                   <div className="xp-section-title">Photos</div>
                   <div className="xp-section-hint">The first photo is the cover. Travellers swipe through the rest.</div>
@@ -310,6 +313,14 @@ export default function OfficialStories() {
                     </div>
                   </div>
                 )}
+                </div>
+                <aside className="with-phone-side">
+                  <TravelBytePreview
+                    story={{ ...form, likes: open?.likes_count ?? 0, comments: open?.comments_count ?? 0 }}
+                    label={placeLabel(form.country, form.region_label)}
+                  />
+                </aside>
+                </div>
               </div>
 
               <div className="xp-savebar">

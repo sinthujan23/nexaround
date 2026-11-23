@@ -307,18 +307,33 @@ async def send_to_tokens(
     """Send to many device tokens (one user can have several — Android + iOS).
     Returns the tokens FCM reports as UNREGISTERED so the caller can prune them.
     """
+    _, invalid = await deliver_to_tokens(db, tokens, title, body, data)
+    return invalid
+
+
+async def deliver_to_tokens(
+    db,
+    tokens: list,
+    title: str,
+    body: str,
+    data: Optional[dict] = None,
+) -> tuple[int, list]:
+    """send_to_tokens, also counting the devices it reached:
+    ``(delivered, unregistered_tokens)``."""
     uniq = [t for t in dict.fromkeys(tokens) if t]  # dedup + drop empties
     if not uniq:
         logger.warning("FCM skipped: user has no device tokens")
-        return []
+        return 0, []
     app = await _resolve_app(db)
     if app is None:
         logger.warning("FCM skipped: no Firebase credential configured")
-        return []
+        return 0, []
     logger.info(f"FCM: sending '{title}' to {len(uniq)} device token(s)")
+    delivered = 0
     invalid = []
     for t in uniq:
         ok, status = await _send_one(t, title, body, data)
+        delivered += 1 if ok else 0
         if status == "UNREGISTERED":
             invalid.append(t)
-    return invalid
+    return delivered, invalid

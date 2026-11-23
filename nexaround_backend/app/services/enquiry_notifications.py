@@ -22,6 +22,7 @@ from app.core.database import async_session
 from sqlalchemy import select
 
 from app.models.experience import ExperienceEnquiry, ExperienceVendor, VendorUser
+from app.models.notification import Notification
 from app.models.user import User
 from app.services import email_service, legal_service, partner_activity
 from app.services.experience_format import vendor_option_label
@@ -64,33 +65,37 @@ def _free_cancellation_note(enquiry: ExperienceEnquiry) -> str:
     )
 
 
-async def _push(db, user_id, title: str, body: str, enquiry_id) -> None:
+async def _push(db, user_id, title: str, body: str, enquiry_id) -> bool:
     """To every device the traveller is signed in on, pruning dead tokens."""
-    await _push_data(
+    return await _push_data(
         db, user_id, title, body, {"type": PUSH_TYPE, "enquiry_id": str(enquiry_id)},
     )
 
 
-async def _push_data(db, user_id, title: str, body: str, data: dict) -> None:
-    """To every device the account is signed in on, pruning dead tokens."""
+async def _push_data(db, user_id, title: str, body: str, data: dict) -> bool:
+    """To every device the account is signed in on, pruning dead tokens.
+    True when at least one device took it."""
     from app.services import fcm_service
 
     user = await db.get(User, user_id)
     if not user or not user.is_active:
-        return
+        return False
     prefs = user.preferences or {}
     tokens = list(prefs.get("fcm_tokens") or [])
     legacy = prefs.get("fcm_token")
     if legacy and legacy not in tokens:
         tokens.append(legacy)
     if not tokens:
-        return
-    invalid = await fcm_service.send_to_tokens(db, tokens, title=title, body=body, data=data)
+        return False
+    delivered, invalid = await fcm_service.deliver_to_tokens(
+        db, tokens, title=title, body=body, data=data,
+    )
     if invalid:
         new_prefs = {**prefs, "fcm_tokens": [t for t in tokens if t not in invalid]}
         new_prefs.pop("fcm_token", None)
         user.preferences = new_prefs
         await db.commit()
+    return delivered > 0
 
 
 async def _tell_vendor(db, enquiry, title: str, body: str) -> None:
@@ -264,6 +269,49 @@ async def booking_update(enquiry_id: uuid.UUID, event: str) -> None:
                 )
     except Exception:
         logger.exception("booking update (%s) failed for enquiry %s", event, enquiry_id)
+
+
+async def message_traveller(db, enquiry: ExperienceEnquiry, text: str) -> dict:
+    """NexAround's own words to the traveller about one request, typed in the
+    admin panel (e.g. "your phone number doesn't work, please send it again").
+
+    A line in the app's bell and a push, which open My requests, and an email
+    they can answer (it comes from the support address). Runs in the request,
+    so the admin sees which went out: ``{"bell", "push", "email"}``.
+    """
+    experience = enquiry.package_title_snapshot or "experience"
+    title = f"About your {experience} request"
+    sent = {"bell": False, "push": False, "email": False}
+    if enquiry.user_id:
+        user = await db.get(User, enquiry.user_id)
+        if user and user.is_active:
+            # Its push_status is written below, once the push has been tried.
+            line = Notification(user_id=user.id, title=title, body=text, type=PUSH_TYPE)
+            db.add(line)
+            await db.commit()
+            sent["bell"] = True
+            try:
+                sent["push"] = await _push(db, user.id, title, text, enquiry.id)
+            except Exception:
+                logger.exception("message push failed for enquiry %s", enquiry.id)
+            line.push_status = "sent" if sent["push"] else "failed"
+            await db.commit()
+    if enquiry.contact_email:
+        sent["email"] = await email_service.send_experience_update_email(
+            enquiry.contact_email,
+            subject=f"About your request: {enquiry.package_title_snapshot or 'your experience'}",
+            heading="A message about your request",
+            intro=text,
+            rows=(
+                ("Request", request_ref(enquiry)),
+                ("Experience", enquiry.package_title_snapshot),
+                ("Provider", enquiry.vendor_name_snapshot),
+                ("Preferred date", day(enquiry.preferred_date) or "Flexible"),
+                ("Guests", _guests(enquiry.party_size)),
+            ),
+            notes=("Reply to this email to answer us.",),
+        )
+    return sent
 
 
 async def customer_cancelled(enquiry_id: uuid.UUID) -> None:

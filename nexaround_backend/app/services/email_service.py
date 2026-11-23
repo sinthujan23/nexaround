@@ -315,7 +315,7 @@ async def send_experience_update_email(
       <div class="card">
         <div class="logo">nexaround</div>
         <h2>{esc(heading)}</h2>
-        <p style="color:#37474F;font-size:15px;line-height:1.5;">{esc(intro)}</p>
+        <p style="color:#37474F;font-size:15px;line-height:1.5;white-space:pre-line;">{esc(intro)}</p>
         {f'<table style="width:100%;border-collapse:collapse;font-size:14px;">{table}</table>' if table else ''}
         {f'<ul class="notes">{note_html}</ul>' if note_html else ''}
         {button}

@@ -450,6 +450,22 @@ class ExperienceEnquiryUpdate(BaseModel):
     admin_notes: Optional[str] = None
     confirmed_date: Optional[date] = None
     cancellation_reason: Optional[str] = Field(None, max_length=1000)
+    # The right number, once the traveller has sent it: with its country code
+    # (enquiry_lifecycle.clean_phone). The old one goes into the admin notes.
+    contact_phone: Optional[str] = Field(None, max_length=40)
+
+
+class EnquiryTravellerMessage(BaseModel):
+    """NexAround's own message to the traveller about one request."""
+    message: str = Field(..., max_length=500)
+
+
+class EnquiryTravellerMessageResult(BaseModel):
+    """Which ways the message reached the traveller."""
+    bell: bool = False
+    push: bool = False
+    email: bool = False
+    enquiry: ExperienceEnquiryAdminResponse
 
 
 # --- The traveller's own requests (app: My requests) ------------------------

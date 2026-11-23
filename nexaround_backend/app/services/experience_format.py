@@ -516,6 +516,26 @@ def normalize_phone(raw: Optional[str]) -> Optional[str]:
     return cleaned
 
 
+def international_phone(raw: Optional[str]) -> Optional[str]:
+    """`'+234 803-123 4567' -> '+2348031234567'`: a number the admin typed in
+    place of a wrong one. It must carry its country code (a leading + or 00)
+    and have 7-15 digits (E.164); None when it does not, or when it holds
+    anything but digits, spaces, dashes, dots and brackets."""
+    text = (raw or "").strip()
+    if not text or any(ch not in "+0123456789 -.()" for ch in text):
+        return None
+    compact = "".join(ch for ch in text if ch.isdigit() or ch == "+")
+    if compact.startswith("00"):
+        compact = "+" + compact[2:]
+    if not compact.startswith("+") or "+" in compact[1:]:
+        return None
+    digits = compact[1:]
+    # No country code starts with 0.
+    if not 7 <= len(digits) <= 15 or digits.startswith("0"):
+        return None
+    return compact
+
+
 def whatsapp_number(raw: Optional[str]) -> Optional[str]:
     """Digits only — `wa.me` rejects a leading '+'."""
     if not raw:

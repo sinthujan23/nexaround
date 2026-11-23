@@ -17,6 +17,7 @@ from fastapi import (
 from PIL import Image
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm.attributes import set_committed_value
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.admin import PanelUser, allow_team, verify_admin_token
@@ -51,8 +52,11 @@ from app.schemas.experience import (
     ExperienceEnquiryAdminResponse,
     ExperienceEnquiryListResponse,
     ExperienceEnquiryUpdate,
+    EnquiryTravellerMessage,
+    EnquiryTravellerMessageResult,
     ExperiencePackageAdminResponse,
     ExperiencePackageCreate,
+    ExperiencePackageDetail,
     ExperiencePackageListResponse,
     ExperiencePackageUpdate,
     ExperienceVendorAdminResponse,
@@ -68,11 +72,11 @@ from app.schemas.experience import (
 )
 from app.services import experience_reviews, google_places_client
 from app.services.experience_service import (
-    apply_package_derived_fields, apply_vendor_cascade,
+    NO_REVIEWS, apply_package_derived_fields, apply_vendor_cascade, package_to_detail,
 )
 from app.services.settings_service import SettingsService
 from app.services.experience_format import (
-    apply_price_options, commission_of, commission_totals, package_field_value,
+    apply_price_options, commission_of, commission_totals, international_phone, package_field_value,
     price_options_for_save, vendor_amount_of, vendor_place_problem,
 )
 from app.utils.geo_utils import get_lat_lng, point_or_none
@@ -372,6 +376,58 @@ async def create_package(
     await partner_events.publish(vendor.id, partner_events.PACKAGES_CHANGED)
     await partner_activity.announce(activity)
     return _package_response(package)
+
+
+@router.post(
+    "/vendors/{vendor_id}/packages/preview", response_model=ExperiencePackageDetail,
+)
+async def preview_package(
+    vendor_id: uuid.UUID,
+    data: ExperiencePackageCreate,
+    package_id: Optional[uuid.UUID] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    user: PanelUser = Depends(allow_experiences),
+):
+    """The package form as the app would show it, saved nowhere: the same
+    data the app's package endpoints send, made by the same code
+    (package_to_detail), so the panel's phone preview reads prices,
+    duration and place exactly as travellers will. `package_id` is the
+    package being edited, for its ratings and, for a team member, its
+    commission (which they cannot change)."""
+    repo = ExperienceRepository(db)
+    vendor = await repo.get_vendor(vendor_id)
+    if not vendor:
+        raise HTTPException(status_code=404, detail="Vendor not found")
+    existing = await repo.get_package(package_id, published_only=False) if package_id else None
+    if existing is not None and existing.vendor_id != vendor.id:
+        existing = None
+    if user.is_admin and data.commission_percent is not None:
+        percent = data.commission_percent
+    else:
+        percent = existing.commission_percent if existing is not None else 0
+
+    package = ExperiencePackage(
+        id=existing.id if existing is not None else uuid.uuid4(),
+        vendor_id=vendor.id,
+        **{key: package_field_value(data, key) for key in _PACKAGE_SCALARS},
+        commission_percent=percent or 0,
+    )
+    # Linked without touching vendor.packages, so nothing can flush it.
+    set_committed_value(package, "vendor", vendor)
+    apply_price_options(
+        package,
+        price_options_for_save(
+            data, existing.price_options if existing is not None else None,
+            percent=package.commission_percent,
+        ),
+    )
+    rating = NO_REVIEWS
+    if existing is not None:
+        rating = (await repo.rating_summaries([existing.id])).get(existing.id, NO_REVIEWS)
+    vendor_rating = (await repo.vendor_rating_summaries([vendor.id])).get(vendor.id, NO_REVIEWS)
+    detail = package_to_detail(package, None, rating, vendor_rating)
+    await db.rollback()
+    return detail
 
 
 @router.put("/packages/{package_id}", response_model=ExperiencePackageAdminResponse)
@@ -806,6 +862,17 @@ async def update_enquiry(
         )
     if data.admin_notes is not None:
         enquiry.admin_notes = data.admin_notes
+    if data.contact_phone is not None:
+        phone = international_phone(data.contact_phone)
+        if phone is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Enter the number with its country code, e.g. +234 803 123 4567.",
+            )
+        if phone != enquiry.contact_phone:
+            # The old number stays on record, in the team's own notes.
+            _add_admin_note(enquiry, f"Phone changed from {enquiry.contact_phone} to {phone}.")
+            enquiry.contact_phone = phone
     # A confirmation or cancellation reaches the vendor's bell (web and app):
     # package, date and guests only, never who the traveller is.
     activity = partner_activity.request_updated(db, enquiry, event) if event else None
@@ -822,6 +889,54 @@ async def update_enquiry(
         )
         background_tasks.add_task(enquiry_notifications.vendor_update_alert, enquiry.id, event)
     return ExperienceEnquiryAdminResponse.model_validate(enquiry)
+
+
+def _add_admin_note(enquiry, line: str) -> None:
+    """Add a dated line under the team's notes on a request (Sri Lanka time,
+    as the Enquiries page shows times)."""
+    from zoneinfo import ZoneInfo
+
+    stamp = datetime.now(ZoneInfo("Asia/Colombo")).strftime("%d %b %Y, %H:%M")
+    notes = (enquiry.admin_notes or "").rstrip()
+    enquiry.admin_notes = f"{notes}\n{stamp} · {line}" if notes else f"{stamp} · {line}"
+
+
+@router.post(
+    "/enquiries/{enquiry_id}/message", response_model=EnquiryTravellerMessageResult
+)
+async def message_traveller(
+    enquiry_id: uuid.UUID,
+    data: EnquiryTravellerMessage,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(verify_admin_token),
+):
+    """Send the traveller a message about this request: a line in the app's
+    bell and a push (both open My requests), and an email. Works with the app
+    already in the stores. The message is copied into the admin notes."""
+    from app.models.experience import ExperienceEnquiry
+
+    enquiry = await db.get(ExperienceEnquiry, enquiry_id)
+    if not enquiry:
+        raise HTTPException(status_code=404, detail="Enquiry not found")
+    text = data.message.strip()
+    if len(text) < 3:
+        raise HTTPException(status_code=400, detail="Write the message first.")
+    if not enquiry.user_id and not enquiry.contact_email:
+        raise HTTPException(
+            status_code=400, detail="This traveller has no app account or email to reach.",
+        )
+    sent = await enquiry_notifications.message_traveller(db, enquiry, text)
+    reached = " + ".join(label for key, label in (("bell", "app"), ("email", "email")) if sent[key])
+    if not reached:
+        raise HTTPException(
+            status_code=502, detail="Nothing went out: the app and the email both failed.",
+        )
+    _add_admin_note(enquiry, f"Message sent ({reached}): {text}")
+    await db.commit()
+    await db.refresh(enquiry)
+    return EnquiryTravellerMessageResult(
+        **sent, enquiry=ExperienceEnquiryAdminResponse.model_validate(enquiry),
+    )
 
 
 # --- Reviews ----------------------------------------------------------------

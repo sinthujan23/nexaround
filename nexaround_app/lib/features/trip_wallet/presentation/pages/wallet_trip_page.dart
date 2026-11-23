@@ -48,6 +48,10 @@ class _WalletTripPageState extends State<WalletTripPage> {
   final _outer = ScrollController();
   bool _showFab = false;
 
+  /// How far the outer scroll goes before the top's own Add expense button
+  /// is mostly out of sight.
+  static const _fabAfter = 220.0;
+
   @override
   void initState() {
     super.initState();
@@ -64,7 +68,7 @@ class _WalletTripPageState extends State<WalletTripPage> {
   }
 
   void _onOuterScroll() {
-    final show = _outer.offset > 140;
+    final show = _outer.offset > _fabAfter;
     if (show != _showFab) setState(() => _showFab = show);
   }
 
@@ -534,9 +538,9 @@ class _TabsHeader extends SliverPersistentHeaderDelegate {
 /// The trip page's dark top (the bar above and the tabs' corners use it too).
 const _tripNavy = Color(0xFF0F172A);
 
-/// The trip page's top, kept compact: your balance with the trip total and
-/// people beside a spending ring, one line of category shares, then Add
-/// expense and three quick buttons. It scrolls away; the tabs stay.
+/// The trip page's top: your balance in a labelled pill with who it is with
+/// and the trip total, the people row, a spending ring, category chips, and
+/// four labelled quick buttons. It scrolls away; the tabs stay.
 class _Summary extends StatelessWidget {
   final WalletTrip trip;
   final VoidCallback onPeople;
@@ -560,12 +564,22 @@ class _Summary extends StatelessWidget {
         : net < 0
             ? ('YOU OWE', const Color(0xFFFCA5A5))
             : ('YOUR BALANCE', _muted);
-    final people = trip.activeMembers.length;
+    final people = trip.activeMembers;
     final shares = _categoryShares(trip);
     final shareTotal = shares.fold<int>(0, (a, s) => a + s.$2);
+    final withWhom = _counterpart(trip);
+    final total = money.format(trip.totalSpent);
     return Container(
-      color: _tripNavy,
-      padding: const EdgeInsets.fromLTRB(20, 2, 20, 16),
+      // A soft teal glow at the top right, fading into the page's navy.
+      decoration: const BoxDecoration(
+        gradient: RadialGradient(
+          center: Alignment(0.8, -1),
+          radius: 1.3,
+          colors: [Color(0xFF134E4A), _tripNavy],
+          stops: [0, 0.6],
+        ),
+      ),
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -575,9 +589,16 @@ class _Summary extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(label,
-                        style: TextStyle(color: labelColor, fontSize: 11, letterSpacing: 1.3, fontWeight: FontWeight.w800)),
-                    const SizedBox(height: 2),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: labelColor.withValues(alpha: 0.14),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(label,
+                          style: TextStyle(color: labelColor, fontSize: 11, letterSpacing: 1.3, fontWeight: FontWeight.w800)),
+                    ),
+                    const SizedBox(height: 6),
                     FittedBox(
                       fit: BoxFit.scaleDown,
                       alignment: Alignment.centerLeft,
@@ -585,76 +606,71 @@ class _Summary extends StatelessWidget {
                         net == 0 ? 'Settled' : money.format(net.abs()),
                         style: const TextStyle(
                           color: Colors.white,
-                          fontSize: 32,
+                          fontSize: 38,
                           height: 1.1,
                           fontWeight: FontWeight.w900,
-                          letterSpacing: -0.5,
+                          letterSpacing: -0.8,
                         ),
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    // Opens the people list, as the old people row did.
+                    const SizedBox(height: 2),
+                    Text(
+                      withWhom == null ? 'Trip total $total' : '$withWhom · trip total $total',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: _muted, fontSize: 13, fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 10),
+                    // Opens the people list.
                     GestureDetector(
                       behavior: HitTestBehavior.opaque,
                       onTap: onPeople,
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Flexible(
-                            child: Text(
-                              'Trip total ${money.format(trip.totalSpent)} · $people ${people == 1 ? 'person' : 'people'}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(color: _muted, fontSize: 12.5, fontWeight: FontWeight.w600),
-                            ),
+                          _FaceStack(people),
+                          const SizedBox(width: 8),
+                          Text(
+                            '${people.length} ${people.length == 1 ? 'person' : 'people'}',
+                            style: const TextStyle(color: Color(0xFFE2E8F0), fontSize: 13, fontWeight: FontWeight.w700),
                           ),
-                          const Icon(Icons.chevron_right_rounded, size: 16, color: _muted),
+                          const Icon(Icons.chevron_right_rounded, size: 18, color: _muted),
                         ],
                       ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(width: 12),
-              _SpendRing(shares: shares, total: money.format(trip.totalSpent)),
+              const SizedBox(width: 14),
+              _SpendRing(shares: shares, total: total),
             ],
           ),
           if (shareTotal > 0) ...[
-            const SizedBox(height: 10),
-            // One line, shrunk to fit if a trip has many categories.
+            const SizedBox(height: 14),
+            // One line of chips, shrunk to fit if a trip has many categories.
             FittedBox(
               fit: BoxFit.scaleDown,
               alignment: Alignment.centerLeft,
               child: Row(
                 children: [
                   for (var i = 0; i < shares.length; i++) ...[
-                    if (i > 0) const SizedBox(width: 12),
-                    Container(
-                      width: 8,
-                      height: 8,
-                      decoration: BoxDecoration(color: walletCategoryColor(shares[i].$1), shape: BoxShape.circle),
-                    ),
-                    const SizedBox(width: 5),
-                    Text(
-                      '${walletCategoryLabel(shares[i].$1)} ${(shares[i].$2 * 100 / shareTotal).round()}%',
-                      style: const TextStyle(color: Color(0xFFCBD5E1), fontSize: 12, fontWeight: FontWeight.w600),
+                    if (i > 0) const SizedBox(width: 5),
+                    _CategoryChip(
+                      color: walletCategoryColor(shares[i].$1),
+                      text: '${walletCategoryLabel(shares[i].$1)} ${(shares[i].$2 * 100 / shareTotal).round()}%',
                     ),
                   ],
                 ],
               ),
             ),
           ],
-          const SizedBox(height: 14),
+          const SizedBox(height: 18),
           Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Expanded(
-                child: _QuickButton(icon: Icons.add_rounded, label: 'Add expense', primary: true, onTap: onAddExpense),
-              ),
-              const SizedBox(width: 8),
+              _QuickButton(icon: Icons.add_rounded, label: 'Add expense', primary: true, onTap: onAddExpense),
               _QuickButton(icon: Icons.person_add_alt_1_rounded, label: 'Invite', onTap: onInvite),
-              const SizedBox(width: 8),
               _QuickButton(icon: Icons.group_rounded, label: 'People', onTap: onPeople),
-              const SizedBox(width: 8),
               _QuickButton(
                 icon: Icons.check_circle_rounded,
                 label: 'Settle up',
@@ -662,6 +678,87 @@ class _Summary extends StatelessWidget {
               ),
             ],
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Who your balance is with, from the payments that settle it up:
+/// "to Ana", "from Tom and Kenji", "to 3 people". Null when settled.
+String? _counterpart(WalletTrip trip) {
+  final net = trip.myNet;
+  if (net == 0) return null;
+  final ids = <String>[];
+  for (final p in trip.settleUp) {
+    if (net < 0 && p.fromMemberId == trip.myMemberId) ids.add(p.toMemberId);
+    if (net > 0 && p.toMemberId == trip.myMemberId) ids.add(p.fromMemberId);
+  }
+  if (ids.isEmpty) return null;
+  final word = net < 0 ? 'to' : 'from';
+  String first(String id) => trip.nameOf(id).split(' ').first;
+  return switch (ids.length) {
+    1 => '$word ${first(ids[0])}',
+    2 => '$word ${first(ids[0])} and ${first(ids[1])}',
+    _ => '$word ${ids.length} people',
+  };
+}
+
+/// Up to four overlapping faces of the trip's people, ringed in the navy.
+class _FaceStack extends StatelessWidget {
+  final List<WalletMember> people;
+  const _FaceStack(this.people);
+
+  static const double _face = 26;
+  static const double _step = 19;
+
+  @override
+  Widget build(BuildContext context) {
+    final shown = people.take(4).toList();
+    if (shown.isEmpty) return const SizedBox.shrink();
+    return SizedBox(
+      width: _face + (shown.length - 1) * _step,
+      height: _face,
+      child: Stack(
+        children: [
+          for (var i = 0; i < shown.length; i++)
+            Positioned(
+              left: i * _step,
+              child: Container(
+                width: _face,
+                height: _face,
+                padding: const EdgeInsets.all(2),
+                decoration: const BoxDecoration(color: _tripNavy, shape: BoxShape.circle),
+                child: WalletAvatar(shown[i], size: _face - 4),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A category's share of the spending, as a small glass chip.
+class _CategoryChip extends StatelessWidget {
+  final Color color;
+  final String text;
+  const _CategoryChip({required this.color, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(9),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(width: 7, height: 7, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+          const SizedBox(width: 4),
+          Text(text, style: const TextStyle(color: Color(0xFFE2E8F0), fontSize: 10.5, fontWeight: FontWeight.w700)),
         ],
       ),
     );
@@ -682,8 +779,8 @@ List<(String, int)> _categoryShares(WalletTrip trip) {
   return list;
 }
 
-/// A quick button under the summary: the primary one is teal with its label,
-/// the others are round-cornered glass squares with the label as tooltip.
+/// A quick button under the summary: a 56 px round-cornered square with its
+/// name under it. The primary one (Add expense) is teal, the others glass.
 class _QuickButton extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -693,36 +790,44 @@ class _QuickButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final child = Material(
-      color: primary ? const Color(0xFF14B8A6) : Colors.white.withValues(alpha: 0.1),
-      borderRadius: BorderRadius.circular(14),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(14),
+    const teal = Color(0xFF14B8A6);
+    return Semantics(
+      label: label,
+      button: true,
+      excludeSemantics: true,
+      onTap: onTap,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
         onTap: onTap,
         child: SizedBox(
-          height: 44,
-          width: primary ? null : 52,
-          child: primary
-              ? Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(icon, size: 19, color: Colors.white),
-                    const SizedBox(width: 6),
-                    Flexible(
-                      child: Text(
-                        label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700),
-                      ),
-                    ),
-                  ],
-                )
-              : Icon(icon, size: 20, color: Colors.white),
+          width: 74,
+          child: Column(
+            children: [
+              Material(
+                color: primary ? teal : Colors.white.withValues(alpha: 0.08),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(18),
+                  side: BorderSide(color: primary ? teal : Colors.white.withValues(alpha: 0.12)),
+                ),
+                child: InkWell(
+                  customBorder: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                  onTap: onTap,
+                  child: SizedBox(width: 56, height: 56, child: Icon(icon, size: 24, color: Colors.white)),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Color(0xFFCBD5E1), fontSize: 11.5, fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
         ),
       ),
     );
-    return primary ? child : Tooltip(message: label, child: Semantics(label: label, button: true, child: child));
   }
 }
 
@@ -733,7 +838,7 @@ class _SpendRing extends StatelessWidget {
   final String total;
   const _SpendRing({required this.shares, required this.total});
 
-  static const double _size = 76;
+  static const double _size = 104;
 
   @override
   Widget build(BuildContext context) {
@@ -743,16 +848,16 @@ class _SpendRing extends StatelessWidget {
       child: CustomPaint(
         painter: _RingPainter(shares),
         child: Padding(
-          padding: const EdgeInsets.all(15),
+          padding: const EdgeInsets.all(20),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               const Text('TOTAL',
-                  style: TextStyle(color: Color(0xFF94A3B8), fontSize: 8.5, letterSpacing: 1, fontWeight: FontWeight.w800)),
+                  style: TextStyle(color: Color(0xFF94A3B8), fontSize: 10, letterSpacing: 1, fontWeight: FontWeight.w800)),
               FittedBox(
                 fit: BoxFit.scaleDown,
                 child: Text(total,
-                    style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w900)),
+                    style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w900)),
               ),
             ],
           ),
@@ -827,86 +932,158 @@ class _ExpensesTab extends StatelessWidget {
     final money = trip.money;
     final day = DateFormat('EEE d MMM');
     // Grouped by day, newest first (the server sends them newest first).
-    final items = <Widget>[];
-    String? lastDay;
+    final days = <(String, List<WalletExpense>)>[];
     for (final e in trip.expenses) {
       final d = day.format(e.spentOn);
-      if (d != lastDay) {
-        items.add(Padding(
-          padding: const EdgeInsets.fromLTRB(4, 14, 4, 6),
-          child: Text(d.toUpperCase(),
-              style: const TextStyle(fontSize: 11.5, letterSpacing: 1, fontWeight: FontWeight.w800, color: WalletColors.slate)),
-        ));
-        lastDay = d;
-      }
-      final myShare = e.shares.where((s) => s.memberId == trip.myMemberId).fold<int>(0, (a, s) => a + s.amount);
-      final paidByMe = e.paidByMemberId == trip.myMemberId;
-      final String mine;
-      if (paidByMe) {
-        mine = 'you lent ${money.format(e.amount - myShare)}';
-      } else if (myShare > 0) {
-        mine = 'your share ${money.format(myShare)}';
-      } else {
-        mine = 'not in it';
-      }
-      items.add(Material(
-        color: Colors.white,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(14),
-          onTap: () => onOpen(e),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-            child: Row(
-              children: [
-                WalletCategoryIcon(e.category),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Flexible(
-                            child: Text(e.title,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: WalletColors.navy)),
-                          ),
-                          if (e.receiptUrl != null) ...[
-                            const SizedBox(width: 4),
-                            const Icon(Icons.photo_outlined, size: 14, color: WalletColors.slate),
-                          ],
-                        ],
-                      ),
-                      const SizedBox(height: 2),
-                      Text('${trip.nameOf(e.paidByMemberId)} paid · ${e.shares.length} '
-                          '${e.shares.length == 1 ? 'person' : 'people'}',
-                          style: const TextStyle(fontSize: 12.5, color: WalletColors.slate)),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(money.format(e.amount),
-                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: WalletColors.navy)),
-                    const SizedBox(height: 2),
-                    Text(mine,
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: paidByMe ? WalletColors.green : (myShare > 0 ? WalletColors.red : WalletColors.slate),
-                        )),
-                  ],
-                ),
-              ],
-            ),
-          ),
+      if (days.isEmpty || days.last.$1 != d) days.add((d, []));
+      days.last.$2.add(e);
+    }
+    final items = <Widget>[];
+    for (final (d, expenses) in days) {
+      final dayTotal = expenses.fold<int>(0, (a, e) => a + e.amount);
+      items.add(Padding(
+        padding: const EdgeInsets.fromLTRB(4, 14, 4, 7),
+        child: Row(
+          children: [
+            Expanded(child: Text(d.toUpperCase(), style: _dayStyle)),
+            Text(money.format(dayTotal), style: _dayStyle),
+          ],
         ),
       ));
+      items.add(_DayCard(
+        children: [
+          for (var i = 0; i < expenses.length; i++) ...[
+            if (i > 0) const Divider(height: 1, thickness: 1, indent: 64, color: Color(0xFFF1F5F9)),
+            _expenseRow(expenses[i]),
+          ],
+        ],
+      ));
     }
-    return ListView(padding: const EdgeInsets.fromLTRB(12, 0, 12, 96), children: items);
+    return ColoredBox(
+      color: _listGrey,
+      child: ListView(padding: const EdgeInsets.fromLTRB(14, 0, 14, 96), children: items),
+    );
+  }
+
+  static const _listGrey = Color(0xFFF4F6F8);
+  static const _dayStyle =
+      TextStyle(fontSize: 11.5, letterSpacing: 1, fontWeight: FontWeight.w800, color: WalletColors.slate);
+
+  Widget _expenseRow(WalletExpense e) {
+    final money = trip.money;
+    final myShare = e.shares.where((s) => s.memberId == trip.myMemberId).fold<int>(0, (a, s) => a + s.amount);
+    final paidByMe = e.paidByMemberId == trip.myMemberId;
+    final (String mine, _PillTone tone) = paidByMe
+        ? ('you lent ${money.format(e.amount - myShare)}', _PillTone.green)
+        : myShare > 0
+            ? ('your share ${money.format(myShare)}', _PillTone.red)
+            : ('not in it', _PillTone.slate);
+    return InkWell(
+      onTap: () => onOpen(e),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 12),
+        child: Row(
+          children: [
+            WalletCategoryIcon(e.category, size: 40),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text.rich(
+                    TextSpan(
+                      text: e.title,
+                      children: [
+                        if (e.receiptUrl != null)
+                          const WidgetSpan(
+                            alignment: PlaceholderAlignment.middle,
+                            child: Padding(
+                              padding: EdgeInsets.only(left: 4),
+                              child: Icon(Icons.photo_outlined, size: 14, color: Color(0xFF94A3B8)),
+                            ),
+                          ),
+                      ],
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700, color: WalletColors.navy),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '${trip.nameOf(e.paidByMemberId)} paid · ${e.shares.length} '
+                    '${e.shares.length == 1 ? 'person' : 'people'}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 12, color: WalletColors.slate),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(money.format(e.amount),
+                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: WalletColors.navy)),
+                const SizedBox(height: 3),
+                _SharePill(mine, tone),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// One day's expenses together in a white rounded card.
+class _DayCard extends StatelessWidget {
+  final List<Widget> children;
+  const _DayCard({required this.children});
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: const [
+          BoxShadow(color: Color(0x400F172A), offset: Offset(0, 4), blurRadius: 14, spreadRadius: -10),
+        ],
+      ),
+      child: Material(
+        color: Colors.white,
+        clipBehavior: Clip.antiAlias,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+          side: const BorderSide(color: Color(0xFFEEF1F4)),
+        ),
+        child: Column(children: children),
+      ),
+    );
+  }
+}
+
+enum _PillTone { green, red, slate }
+
+/// What an expense means for you, as a coloured pill: green when you lent,
+/// red for your share, grey when you are not in it.
+class _SharePill extends StatelessWidget {
+  final String text;
+  final _PillTone tone;
+  const _SharePill(this.text, this.tone);
+
+  @override
+  Widget build(BuildContext context) {
+    final (bg, fg) = switch (tone) {
+      _PillTone.green => (const Color(0xFFDCFCE7), WalletColors.green),
+      _PillTone.red => (const Color(0xFFFEE2E2), WalletColors.red),
+      _PillTone.slate => (const Color(0xFFF1F5F9), WalletColors.slate),
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(8)),
+      child: Text(text, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: fg)),
+    );
   }
 }
 

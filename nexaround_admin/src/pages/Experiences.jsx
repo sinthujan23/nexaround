@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useApi, apiGet, apiPost, apiPut, apiPatch, apiDelete, mediaUrl } from '../api';
 import {
@@ -15,6 +15,7 @@ import DescriptionEditor from '../components/DescriptionEditor';
 import { COUNTRIES, getCountryByCode, normalizeCountryCode } from '../constants/countries';
 import { CURRENCY_OPTIONS } from '../constants/currencies';
 import PriceOptionsEditor, { optionsToRows, rowsToOptions } from '../components/PriceOptionsEditor';
+import ExperiencePreview from '../components/ExperiencePreview';
 import { isCreator } from '../session';
 
 const CATEGORIES = [
@@ -93,6 +94,26 @@ const formatPrice = (pkg) => {
     ? `${price} ($${Number(pkg.price_usd).toLocaleString()})`
     : price) + (more > 0 ? ` +${more} more` : '');
 };
+
+/** What the package form sends: to save it, and to preview it in the phone. */
+function packagePayload(packageForm) {
+  const { price_rows: priceRows, ...form } = packageForm;
+  const number = (v) => (v === '' || v == null ? null : Number(v));
+  return {
+    ...form,
+    // The server stores these and mirrors the first into the single fields.
+    price_options: rowsToOptions(priceRows, true),
+    price_amount: number(packageForm.price_amount),
+    price_usd: number(packageForm.price_usd),
+    commission_percent: packageForm.commission_percent === '' ? 0 : Number(packageForm.commission_percent),
+    duration_minutes: number(packageForm.duration_minutes),
+    max_participants: number(packageForm.max_participants),
+    booking_window_days: number(packageForm.booking_window_days),
+    sort_order: Number(packageForm.sort_order) || 0,
+    latitude: packageForm.uses_vendor_location ? null : Number(packageForm.latitude),
+    longitude: packageForm.uses_vendor_location ? null : Number(packageForm.longitude),
+  };
+}
 
 /** A vendor's own edit waiting in Vendor changes, as a link there (the
  * admin's page: team members get the badge alone). */
@@ -246,6 +267,34 @@ export default function Experiences() {
   const [editingPackageId, setEditingPackageId] = useState(null);
   const [packageVendorId, setPackageVendorId] = useState(null);
   const [packageSaving, setPackageSaving] = useState(false);
+  // The phone preview: the server's reading of the form (`forBody` is the
+  // request it answered), refreshed a moment after typing stops.
+  const [packagePreview, setPackagePreview] = useState({ pkg: null, forBody: null, problem: '' });
+  const previewBody = useMemo(() => {
+    if (drawer !== 'package') return null;
+    // A meeting point being picked has no pin yet; the preview has no map.
+    const body = packagePayload({ ...packageForm, uses_vendor_location: true });
+    return JSON.stringify(body);
+  }, [drawer, packageForm]);
+  useEffect(() => {
+    if (!previewBody || !packageVendorId) return undefined;
+    let current = true;
+    const query = editingPackageId ? `?package_id=${editingPackageId}` : '';
+    const timer = setTimeout(async () => {
+      try {
+        const pkg = await apiPost(`/admin/experiences/vendors/${packageVendorId}/packages/preview${query}`, JSON.parse(previewBody));
+        if (current) setPackagePreview({ pkg, forBody: previewBody, problem: '' });
+      } catch (err) {
+        if (!current) return;
+        const problem = err.status === 422 ? 'finish the number or price being typed.' : (err.message || 'could not reach the server.');
+        setPackagePreview((p) => ({ ...p, forBody: previewBody, problem }));
+      }
+    }, 450);
+    return () => {
+      current = false;
+      clearTimeout(timer);
+    };
+  }, [previewBody, packageVendorId, editingPackageId]);
 
   // Every package across vendors, for the "All packages" view
   const [allPackages, setAllPackages] = useState([]);
@@ -433,6 +482,7 @@ export default function Experiences() {
   };
 
   const openNewPackage = () => {
+    setPackagePreview({ pkg: null, forBody: null, problem: '' });
     setPackageVendorId(selected.id);
     setEditingPackageId(null);
     setPackageForm(emptyPackage);
@@ -440,6 +490,7 @@ export default function Experiences() {
   };
 
   const openEditPackage = (pkg) => {
+    setPackagePreview({ pkg: null, forBody: null, problem: '' });
     setPackageVendorId(pkg.vendor_id || selected?.id);
     setEditingPackageId(pkg.id);
     setPackageForm({
@@ -475,21 +526,7 @@ export default function Experiences() {
       notify('Pick the meeting point on the map, or use the vendor address.', 'error');
       return;
     }
-    const { price_rows: priceRows, ...form } = packageForm;
-    const payload = {
-      ...form,
-      // The server stores these and mirrors the first into the single fields.
-      price_options: rowsToOptions(priceRows, true),
-      price_amount: packageForm.price_amount === '' ? null : Number(packageForm.price_amount),
-      price_usd: packageForm.price_usd === '' ? null : Number(packageForm.price_usd),
-      commission_percent: packageForm.commission_percent === '' ? 0 : Number(packageForm.commission_percent),
-      duration_minutes: packageForm.duration_minutes === '' ? null : Number(packageForm.duration_minutes),
-      max_participants: packageForm.max_participants === '' ? null : Number(packageForm.max_participants),
-      booking_window_days: packageForm.booking_window_days === '' ? null : Number(packageForm.booking_window_days),
-      sort_order: Number(packageForm.sort_order) || 0,
-      latitude: packageForm.uses_vendor_location ? null : Number(packageForm.latitude),
-      longitude: packageForm.uses_vendor_location ? null : Number(packageForm.longitude),
-    };
+    const payload = packagePayload(packageForm);
     setPackageSaving(true);
     try {
       if (editingPackageId) {
@@ -1343,6 +1380,7 @@ export default function Experiences() {
           subtitle={packageVendor ? `For ${packageVendor.name}` : undefined}
           onClose={closePackageDrawer}
           onSubmit={savePackage}
+          wide
           footer={
             <>
               <Switch
@@ -1367,6 +1405,8 @@ export default function Experiences() {
             </>
           }
         >
+          <div className="with-phone">
+          <div>
           <div className="xp-section">
             <div className="form-group">
               <label className="form-label">Title *</label>
@@ -1574,6 +1614,15 @@ export default function Experiences() {
                 }
               />
             )}
+          </div>
+          </div>
+          <aside className="with-phone-side">
+            <ExperiencePreview
+              pkg={packagePreview.pkg}
+              waiting={previewBody !== packagePreview.forBody}
+              problem={packagePreview.problem}
+            />
+          </aside>
           </div>
         </Drawer>
       )}

@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { useApi, apiGet, apiPatch } from '../api';
+import { useApi, apiGet, apiPatch, apiPost } from '../api';
 import { notifyEnquiriesChanged } from '../enquiryAlerts';
 import {
-  InboxIcon, PhoneIcon, MailIcon, WhatsAppIcon, RefreshIcon,
+  InboxIcon, PhoneIcon, MailIcon, WhatsAppIcon, RefreshIcon, SendIcon, EditIcon,
 } from '../components/Icons';
-import { SearchBar, Toast } from '../components/Kit';
+import { Modal, SearchBar, Toast } from '../components/Kit';
 import { useToast } from '../hooks';
 
 const PAGE_SIZE = 50;
@@ -90,6 +90,9 @@ export default function ExperienceEnquiries() {
   const [counts, setCounts] = useState({});
   const [countsVersion, setCountsVersion] = useState(0);
   const [toast, notify] = useToast();
+  // The phone being corrected (null = not editing), and the message box.
+  const [phoneDraft, setPhoneDraft] = useState(null);
+  const [messaging, setMessaging] = useState(false);
   // ?id= from a pop-up or a link: open that request once the list has it.
   const [params, setParams] = useSearchParams();
   const wanted = params.get('id');
@@ -151,6 +154,7 @@ export default function ExperienceEnquiries() {
     if (notesDirty && !confirm('Discard the unsaved note?')) return;
     setSelected(enquiry);
     setNotes(enquiry.admin_notes || '');
+    setPhoneDraft(null);
   };
 
   const close = () => {
@@ -168,11 +172,14 @@ export default function ExperienceEnquiries() {
     try {
       const updated = await apiPatch(`/admin/experiences/enquiries/${selected.id}`, patch);
       setSelected(updated);
-      if ('admin_notes' in patch) setNotes(updated.admin_notes || '');
+      // A phone change adds a line to the notes on the server.
+      if ('admin_notes' in patch || !notesDirty) setNotes(updated.admin_notes || '');
       refresh();
       notify(message);
+      return true;
     } catch (err) {
       notify(`Could not update enquiry: ${err.message}`, 'error');
+      return false;
     } finally {
       setSaving(false);
     }
@@ -295,7 +302,38 @@ export default function ExperienceEnquiries() {
                 <div className="xp-section">
                   <div className="contact-card">
                     <div className="contact-card-lines">
-                      {selected.contact_phone}
+                      {phoneDraft === null ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          {selected.contact_phone}
+                          <button
+                            type="button" className="btn btn-ghost btn-sm" style={{ padding: '2px 8px' }}
+                            title="Correct the phone number" onClick={() => setPhoneDraft(selected.contact_phone || '')}
+                          >
+                            <EditIcon size={13} /> Edit phone
+                          </button>
+                        </div>
+                      ) : (
+                        <form
+                          style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}
+                          onSubmit={async (e) => {
+                            e.preventDefault();
+                            if (await update({ contact_phone: phoneDraft }, 'Phone number saved')) setPhoneDraft(null);
+                          }}
+                        >
+                          <input
+                            className="form-input" style={{ width: 200, padding: '6px 10px' }} autoFocus
+                            value={phoneDraft} maxLength={40} placeholder="+234 803 123 4567"
+                            onChange={(e) => setPhoneDraft(e.target.value)}
+                          />
+                          <button type="submit" className="btn btn-primary btn-sm" disabled={saving || !phoneDraft.trim()}>
+                            {saving ? 'Saving…' : 'Save'}
+                          </button>
+                          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPhoneDraft(null)}>Cancel</button>
+                          <div style={{ flexBasis: '100%', fontSize: 12 }}>
+                            <span>With the country code. The old number is kept in the notes below.</span>
+                          </div>
+                        </form>
+                      )}
                       {selected.contact_email && <div><span>{selected.contact_email}</span></div>}
                     </div>
                     <div className="contact-card-actions">
@@ -313,6 +351,11 @@ export default function ExperienceEnquiries() {
                         <a className="btn btn-ghost btn-sm" href={`mailto:${selected.contact_email}`}>
                           <MailIcon size={14} /> Email
                         </a>
+                      )}
+                      {(selected.user_id || selected.contact_email) && (
+                        <button type="button" className="btn btn-primary btn-sm" onClick={() => setMessaging(true)}>
+                          <SendIcon size={14} /> Notify traveller
+                        </button>
                       )}
                     </div>
                   </div>
@@ -542,7 +585,91 @@ export default function ExperienceEnquiries() {
         </section>
       </div>
 
+      {messaging && selected && (
+        <MessageTraveller
+          enquiry={selected}
+          onClose={() => setMessaging(false)}
+          onSent={(result) => {
+            setMessaging(false);
+            setSelected(result.enquiry);
+            // The message is copied into the notes on the server.
+            if (!notesDirty) setNotes(result.enquiry.admin_notes || '');
+            refresh();
+            const ways = [
+              result.push ? 'push notification' : result.bell ? 'app (in the bell)' : null,
+              result.email ? 'email' : null,
+            ].filter(Boolean);
+            notify(`Sent by ${ways.join(' and ')}`);
+          }}
+        />
+      )}
+
       <Toast toast={toast} />
     </div>
+  );
+}
+
+/** A short message to the traveller about one request: a push and a line in
+ * the app's bell (both open My requests), and an email they can answer. */
+function MessageTraveller({ enquiry, onClose, onSent }) {
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const experience = enquiry.package_title_snapshot || 'your experience';
+  const wrongPhone = `The phone number on your ${experience} request (${enquiry.contact_phone}) doesn't work. `
+    + 'Please send your correct number, with the country code, to support@nexaround.com, '
+    + 'or send a new request in the app with the correct number.';
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setBusy(true);
+    setError('');
+    try {
+      onSent(await apiPost(`/admin/experiences/enquiries/${enquiry.id}/message`, { message: text }));
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const goesTo = [
+    enquiry.user_id && 'a notification in the app',
+    enquiry.contact_email && `an email to ${enquiry.contact_email}`,
+  ].filter(Boolean).join(' and ');
+
+  return (
+    <Modal title={`Notify ${enquiry.contact_name}`} onClose={onClose} maxWidth="520px">
+      <form onSubmit={submit}>
+        <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6, marginTop: 0 }}>
+          Goes as {goesTo}. They answer by replying to the email.
+        </p>
+        {error && <div className="login-error" style={{ marginBottom: 12 }}>{error}</div>}
+        {enquiry.contact_email && (
+          <button
+            type="button" className="btn btn-ghost btn-sm" style={{ marginBottom: 10 }}
+            onClick={() => setText(wrongPhone)}
+          >
+            Use: phone number doesn&apos;t work
+          </button>
+        )}
+        <div className="form-group">
+          <label className="form-label">Message</label>
+          <textarea
+            className="form-input" rows={5} value={text} maxLength={500} autoFocus required
+            placeholder="Write what the traveller should know or do."
+            onChange={(e) => setText(e.target.value)}
+          />
+          <div style={{ fontSize: 12, color: 'var(--text-secondary)', textAlign: 'right' }}>{text.length}/500</div>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+          <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
+          <button type="submit" className="btn btn-primary" disabled={busy || text.trim().length < 3}>
+            {busy ? 'Sending…' : 'Send'}
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }

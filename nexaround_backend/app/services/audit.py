@@ -56,6 +56,8 @@ _SKIPPED_ROUTES = frozenset({
     "/api/v1/partner/auth/set-password",
     # Moves a read watermark; one row per bell click is noise.
     "/api/v1/partner/activity/seen",
+    # The panel's phone preview while a package is typed: saves nothing.
+    "/api/v1/admin/experiences/vendors/{vendor_id}/packages/preview",
     # Revoking a device is recorded by hand, with the device named.
     "/api/v1/admin/sessions/{session_id}/revoke",
     "/api/v1/partner/sessions/{session_id}/revoke",
@@ -104,6 +106,8 @@ _SUMMARIES = {
     ("PATCH", "/api/v1/partner/enquiries/{enquiry_id}"): "Updated an enquiry",
     ("PUT", "/api/v1/partner/reviews/{review_id}/reply"): "Replied to a review",
     ("PATCH", "/api/v1/admin/experiences/reviews/{review_id}"): "Moderated a review",
+    ("POST", "/api/v1/admin/experiences/enquiries/{enquiry_id}/message"):
+        "Sent a traveller a message about their request",
     ("POST", "/api/v1/partner/agreement/accept"): "Accepted the Provider Agreement",
     ("PUT", "/api/v1/admin/legal/{kind}"): "Edited a legal document",
     ("POST", "/api/v1/admin/legal/vendors/{vendor_id}/offline-acceptance"):
