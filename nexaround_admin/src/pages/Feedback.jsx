@@ -44,9 +44,9 @@ const STATUSES = [
 ];
 
 const REASONS = {
-  wrong_places: 'Wrong places', too_rushed: 'Too rushed', prices_off: 'Prices were off',
-  route_confusing: 'Route confusing', places_closed: 'Places were closed', too_long: 'Too long',
-  too_far: 'Too far to walk', clues_hard: 'Clues too hard', map_problem: 'Map problem', other: 'Other',
+  wrong_places: 'Wrong places', too_rushed: 'Too rushed', prices_off: 'Prices off',
+  route_confusing: 'Confusing route', places_closed: 'Places closed', too_long: 'Too long',
+  too_far: 'Too far', clues_hard: 'Clues too hard', map_problem: 'Map problem', other: 'Other',
 };
 
 const SCREENS = {

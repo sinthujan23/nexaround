@@ -4,11 +4,14 @@ import 'package:flutter/material.dart';
 /// "How was it?" and the quarterly survey. The keys must match the server's
 /// `app/services/feedback_service.py`; the labels and icons are the app's.
 class FeedbackKind {
-  const FeedbackKind(this.key, this.label, this.icon, this.color);
+  const FeedbackKind(this.key, this.label, this.icon, this.color, [this.note = '']);
   final String key;
   final String label;
   final IconData icon;
   final Color color;
+
+  /// A short line under the label (message types only).
+  final String note;
 }
 
 class FeedbackVocab {
@@ -23,11 +26,11 @@ class FeedbackVocab {
   /// to call what explorers send an idea (an idea taken from a user can bring
   /// an IP claim), so it is split into Suggestion and Improvement.
   static const types = [
-    FeedbackKind('suggestion', 'Suggestion', Icons.lightbulb_rounded, Color(0xFFF59E0B)),
-    FeedbackKind('improvement', 'Improvement', Icons.trending_up_rounded, Color(0xFF3B82F6)),
-    FeedbackKind('problem', 'Problem', Icons.bug_report_rounded, Color(0xFFEF4444)),
-    FeedbackKind('love', 'Love it', Icons.favorite_rounded, Color(0xFFEC4899)),
-    FeedbackKind('other', 'Other', Icons.chat_bubble_rounded, Color(0xFF64748B)),
+    FeedbackKind('suggestion', 'Suggestion', Icons.lightbulb_rounded, Color(0xFFF59E0B), 'Something to add'),
+    FeedbackKind('improvement', 'Improvement', Icons.trending_up_rounded, Color(0xFF3B82F6), 'Something to make better'),
+    FeedbackKind('problem', 'Problem', Icons.bug_report_rounded, Color(0xFFEF4444), "Something isn't working"),
+    FeedbackKind('love', 'Love it', Icons.favorite_rounded, Color(0xFFEC4899), 'Something you enjoy'),
+    FeedbackKind('other', 'Other', Icons.chat_bubble_rounded, Color(0xFF64748B), 'Anything else'),
   ];
 
   static FeedbackKind type(String key) =>
@@ -65,22 +68,23 @@ class FeedbackVocab {
     FeedbackKind('other', 'Other', Icons.more_horiz_rounded, teal),
   ];
 
-  /// The quick "Not great" reasons per finished thing.
+  /// The quick "Not great" reasons per finished thing. Labels are kept short
+  /// so each fits on one line in the 2 × 2 grid.
   static const quickReasons = <String, List<FeedbackKind>>{
     'odyssey': [
       FeedbackKind('wrong_places', 'Wrong places', Icons.wrong_location_rounded, Color(0xFFEF4444)),
       FeedbackKind('too_rushed', 'Too rushed', Icons.speed_rounded, Color(0xFFEF4444)),
-      FeedbackKind('prices_off', 'Prices were off', Icons.payments_rounded, Color(0xFFEF4444)),
+      FeedbackKind('prices_off', 'Prices off', Icons.payments_rounded, Color(0xFFEF4444)),
       FeedbackKind('other', 'Other', Icons.more_horiz_rounded, Color(0xFFEF4444)),
     ],
     'city_guides': [
-      FeedbackKind('route_confusing', 'Route confusing', Icons.alt_route_rounded, Color(0xFFEF4444)),
-      FeedbackKind('places_closed', 'Places were closed', Icons.door_front_door_rounded, Color(0xFFEF4444)),
+      FeedbackKind('route_confusing', 'Confusing route', Icons.alt_route_rounded, Color(0xFFEF4444)),
+      FeedbackKind('places_closed', 'Places closed', Icons.door_front_door_rounded, Color(0xFFEF4444)),
       FeedbackKind('too_long', 'Too long', Icons.timer_rounded, Color(0xFFEF4444)),
       FeedbackKind('other', 'Other', Icons.more_horiz_rounded, Color(0xFFEF4444)),
     ],
     'walking_challenge': [
-      FeedbackKind('too_far', 'Too far to walk', Icons.directions_walk_rounded, Color(0xFFEF4444)),
+      FeedbackKind('too_far', 'Too far', Icons.directions_walk_rounded, Color(0xFFEF4444)),
       FeedbackKind('clues_hard', 'Clues too hard', Icons.psychology_rounded, Color(0xFFEF4444)),
       FeedbackKind('map_problem', 'Map problem', Icons.map_rounded, Color(0xFFEF4444)),
       FeedbackKind('other', 'Other', Icons.more_horiz_rounded, Color(0xFFEF4444)),

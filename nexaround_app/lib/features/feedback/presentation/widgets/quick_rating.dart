@@ -1,10 +1,10 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/features/feedback/data/feedback_service.dart';
 import 'package:nexaround_app/features/feedback/feedback_constants.dart';
 import 'package:nexaround_app/features/feedback/presentation/pages/feedback_page.dart';
+import 'package:nexaround_app/features/feedback/presentation/widgets/feedback_ui.dart';
 
 /// One tap after finishing something: "Good" or "Not great". "Not great"
 /// then offers quick reasons and "Tell us more" (the feedback page with the
@@ -31,7 +31,7 @@ class QuickRatingCard extends StatefulWidget {
   final String subtitle;
   final IconData icon;
 
-  /// For dark screens (the Walking Challenge finish).
+  /// For dark screens (the Walking Challenge finish): a dark glass card.
   final bool dark;
 
   @override
@@ -84,39 +84,42 @@ class _QuickRatingCardState extends State<QuickRatingCard> {
     // Already asked on an earlier visit, and nothing answered this time.
     if (_asked == null || (_asked == true && _good == null)) return const SizedBox.shrink();
     final dark = widget.dark;
-    final fg = dark ? Colors.white : AppColors.textPrimary;
-    final sub = dark ? Colors.white70 : AppColors.textSecondary;
 
     Widget body;
     if (_good == null) {
       body = Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(color: FeedbackVocab.teal, borderRadius: BorderRadius.circular(14)),
-              child: Icon(widget.icon, color: Colors.white, size: 23),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(widget.title, style: TextStyle(fontSize: 16.5, fontWeight: FontWeight.w700, color: fg)),
-                const SizedBox(height: 2),
-                Text(widget.subtitle, style: TextStyle(fontSize: 13, color: sub)),
-              ]),
-            ),
-          ]),
+          _CardHeader(
+            icon: widget.icon,
+            title: widget.title,
+            subtitle: widget.subtitle,
+            dark: dark,
+            iconBox: dark
+                ? BoxDecoration(color: FeedbackVocab.mint.withValues(alpha: 0.16), borderRadius: BorderRadius.circular(13))
+                : BoxDecoration(gradient: FeedbackUi.gradient, borderRadius: BorderRadius.circular(13)),
+            iconColor: dark ? FeedbackVocab.mint : Colors.white,
+          ),
           const SizedBox(height: 14),
           ThumbButtons(onGood: () => _answer(true), onBad: () => _answer(false), dark: dark),
         ],
       );
     } else if (_good == true) {
       body = Row(children: [
-        const Icon(Icons.favorite_rounded, color: Color(0xFF10B981), size: 22),
-        const SizedBox(width: 10),
-        Expanded(child: Text('Thanks! Glad you liked it.', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: fg))),
+        Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: dark ? const Color(0xFF10B981).withValues(alpha: 0.18) : const Color(0xFFECFDF5),
+          ),
+          child: Icon(Icons.favorite_rounded, size: 19, color: dark ? const Color(0xFF6EE7B7) : const Color(0xFF10B981)),
+        ),
+        const SizedBox(width: 11),
+        Expanded(
+          child: Text('Thanks! Glad you liked it.',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: dark ? Colors.white : FeedbackUi.ink)),
+        ),
       ]);
     } else {
       body = BadReasons(
@@ -142,16 +145,10 @@ class _QuickRatingCardState extends State<QuickRatingCard> {
         width: double.infinity,
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(22),
-          color: dark
-              ? Colors.white.withValues(alpha: 0.08)
-              : (_good == false ? const Color(0xFFFEF2F2) : null),
-          gradient: dark || _good == false
-              ? null
-              : const LinearGradient(colors: [Color(0xFFF1FBF9), Color(0xFFFFF7EA)]),
-          border: Border.all(
-            color: dark ? Colors.white24 : (_good == false ? const Color(0xFFFDE2E2) : const Color(0xFFD9EEEA)),
-          ),
+          borderRadius: BorderRadius.circular(20),
+          color: dark ? Colors.white.withValues(alpha: 0.08) : Colors.white,
+          border: dark ? Border.all(color: Colors.white.withValues(alpha: 0.12)) : null,
+          boxShadow: dark ? null : const [BoxShadow(color: Color(0x1A003C3C), blurRadius: 26, offset: Offset(0, 10))],
         ),
         child: body,
       ),
@@ -159,7 +156,48 @@ class _QuickRatingCardState extends State<QuickRatingCard> {
   }
 }
 
-/// "Good" / "Not great" side by side.
+/// Icon square, title and one-line subtitle at the top of a rating card.
+class _CardHeader extends StatelessWidget {
+  const _CardHeader({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.dark,
+    required this.iconBox,
+    required this.iconColor,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final bool dark;
+  final BoxDecoration iconBox;
+  final Color iconColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(children: [
+      Container(width: 40, height: 40, decoration: iconBox, child: Icon(icon, size: 22, color: iconColor)),
+      const SizedBox(width: 12),
+      Expanded(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 16.5, fontWeight: FontWeight.w700, color: dark ? Colors.white : FeedbackUi.ink)),
+          const SizedBox(height: 1),
+          Text(subtitle,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 13, color: dark ? Colors.white.withValues(alpha: 0.65) : FeedbackUi.sub)),
+        ]),
+      ),
+    ]);
+  }
+}
+
+/// "Good" / "Not great" side by side, the same width. [big] puts the icon
+/// over the label (the City Guide sheet).
 class ThumbButtons extends StatelessWidget {
   const ThumbButtons({super.key, required this.onGood, required this.onBad, this.big = false, this.dark = false});
   final VoidCallback onGood;
@@ -169,25 +207,45 @@ class ThumbButtons extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Widget button(String label, IconData icon, Color color, Color bg, Color border, VoidCallback onTap) {
+    Widget button({
+      required String label,
+      required IconData icon,
+      required Color fg,
+      required Color bg,
+      required Color border,
+      required VoidCallback onTap,
+    }) {
+      final content = big
+          ? Column(mainAxisSize: MainAxisSize.min, children: [
+              Icon(icon, color: fg, size: 30),
+              const SizedBox(height: 4),
+              Text(label, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15.5, color: fg)),
+            ])
+          : Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              Icon(icon, color: fg, size: 20),
+              const SizedBox(width: 7),
+              Flexible(
+                child: Text(label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: fg)),
+              ),
+            ]);
       return Expanded(
         child: Material(
-          color: dark ? Colors.white.withValues(alpha: 0.1) : bg,
-          borderRadius: BorderRadius.circular(16),
+          color: bg,
+          borderRadius: BorderRadius.circular(big ? 18 : 14),
           child: InkWell(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(big ? 18 : 14),
             onTap: onTap,
             child: Container(
-              height: big ? 60 : 50,
+              height: big ? 96 : 48,
+              alignment: Alignment.center,
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: dark ? Colors.white24 : border, width: 1.5),
+                borderRadius: BorderRadius.circular(big ? 18 : 14),
+                border: Border.all(color: border, width: 1.5),
               ),
-              child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                Icon(icon, color: color, size: 22),
-                const SizedBox(width: 8),
-                Text(label, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: dark ? Colors.white : color)),
-              ]),
+              child: content,
             ),
           ),
         ),
@@ -195,14 +253,29 @@ class ThumbButtons extends StatelessWidget {
     }
 
     return Row(children: [
-      button('Good', Icons.thumb_up_rounded, const Color(0xFF10B981), const Color(0xFFECFDF5), const Color(0xFFA7F3D0), onGood),
+      button(
+        label: 'Good',
+        icon: Icons.thumb_up_rounded,
+        fg: dark ? const Color(0xFF6EE7B7) : const Color(0xFF047857),
+        bg: dark ? const Color(0xFF10B981).withValues(alpha: 0.16) : const Color(0xFFECFDF5),
+        border: dark ? const Color(0xFF34D399).withValues(alpha: 0.45) : const Color(0xFFA7F3D0),
+        onTap: onGood,
+      ),
       const SizedBox(width: 10),
-      button('Not great', Icons.thumb_down_rounded, const Color(0xFFEF4444), const Color(0xFFFEF2F2), const Color(0xFFFECACA), onBad),
+      button(
+        label: 'Not great',
+        icon: Icons.thumb_down_rounded,
+        fg: dark ? const Color(0xFFFCA5A5) : const Color(0xFFB91C1C),
+        bg: dark ? const Color(0xFFEF4444).withValues(alpha: 0.14) : const Color(0xFFFEF2F2),
+        border: dark ? const Color(0xFFF87171).withValues(alpha: 0.45) : const Color(0xFFFECACA),
+        onTap: onBad,
+      ),
     ]);
   }
 }
 
-/// After "Not great": quick reasons and "Tell us more".
+/// After "Not great": "Sorry about that", the reasons in a 2 × 2 grid, and
+/// "Tell us more".
 class BadReasons extends StatelessWidget {
   const BadReasons({
     super.key,
@@ -218,60 +291,105 @@ class BadReasons extends StatelessWidget {
   final VoidCallback onMore;
   final bool dark;
 
+  static const _red = Color(0xFFEF4444);
+
+  Widget _tile(FeedbackKind r) {
+    final on = selected.contains(r.key);
+    final onFg = dark ? const Color(0xFFFCA5A5) : const Color(0xFFB91C1C);
+    return Semantics(
+      button: true,
+      selected: on,
+      child: GestureDetector(
+        onTap: () => onToggle(r.key),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          height: 46,
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          decoration: BoxDecoration(
+            color: on
+                ? (dark ? _red.withValues(alpha: 0.18) : const Color(0xFFFEF2F2))
+                : (dark ? Colors.white.withValues(alpha: 0.06) : Colors.white),
+            borderRadius: BorderRadius.circular(13),
+            border: Border.all(
+              color: on ? _red : (dark ? Colors.white.withValues(alpha: 0.18) : FeedbackUi.line),
+              width: 1.5,
+            ),
+          ),
+          child: Row(children: [
+            Icon(r.icon, size: 18, color: on ? onFg : _red),
+            const SizedBox(width: 6),
+            Expanded(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(r.label,
+                    maxLines: 1,
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: on ? FontWeight.w700 : FontWeight.w600,
+                      color: on ? onFg : (dark ? Colors.white : FeedbackUi.ink),
+                    )),
+              ),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final reasons = FeedbackVocab.quickReasons[feature] ?? const [];
+    final reasons = FeedbackVocab.quickReasons[feature] ?? const <FeedbackKind>[];
+    final accent = dark ? FeedbackVocab.mint : FeedbackVocab.teal;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(children: [
-          const Icon(Icons.thumb_down_rounded, color: Color(0xFFEF4444), size: 22),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text('Sorry about that. What went wrong?',
-                style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.w700, color: dark ? Colors.white : AppColors.textPrimary)),
+        _CardHeader(
+          icon: Icons.sentiment_dissatisfied_rounded,
+          title: 'Sorry about that',
+          subtitle: 'What went wrong? Pick any.',
+          dark: dark,
+          iconBox: BoxDecoration(
+            color: dark ? _red.withValues(alpha: 0.16) : const Color(0xFFFEF2F2),
+            borderRadius: BorderRadius.circular(13),
           ),
-        ]),
-        const SizedBox(height: 12),
-        Wrap(
-          spacing: 7,
-          runSpacing: 7,
-          children: [
-            for (final r in reasons)
-              GestureDetector(
-                onTap: () => onToggle(r.key),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 150),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-                  decoration: BoxDecoration(
-                    color: selected.contains(r.key)
-                        ? const Color(0xFFEF4444)
-                        : (dark ? Colors.white.withValues(alpha: 0.1) : Colors.white),
-                    borderRadius: BorderRadius.circular(13),
-                    border: Border.all(color: selected.contains(r.key) ? const Color(0xFFEF4444) : const Color(0xFFF1D5D5)),
-                  ),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(r.icon, size: 17, color: selected.contains(r.key) ? Colors.white : const Color(0xFFEF4444)),
-                    const SizedBox(width: 6),
-                    Text(r.label,
-                        style: TextStyle(
-                          fontSize: 13.5,
-                          fontWeight: FontWeight.w600,
-                          color: selected.contains(r.key) ? Colors.white : (dark ? Colors.white : AppColors.textPrimary),
-                        )),
-                  ]),
-                ),
-              ),
-          ],
+          iconColor: dark ? const Color(0xFFFCA5A5) : _red,
         ),
-        const SizedBox(height: 12),
-        GestureDetector(
-          onTap: onMore,
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Text('Tell us more',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: dark ? FeedbackVocab.mint : FeedbackVocab.teal)),
-            const SizedBox(width: 4),
-            Icon(Icons.arrow_forward_rounded, size: 18, color: dark ? FeedbackVocab.mint : FeedbackVocab.teal),
+        const SizedBox(height: 14),
+        for (var i = 0; i < reasons.length; i += 2)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(children: [
+              Expanded(child: _tile(reasons[i])),
+              const SizedBox(width: 8),
+              Expanded(child: i + 1 < reasons.length ? _tile(reasons[i + 1]) : const SizedBox.shrink()),
+            ]),
+          ),
+        Container(
+          margin: const EdgeInsets.only(top: 6),
+          padding: const EdgeInsets.only(top: 12),
+          decoration: BoxDecoration(
+            border: Border(top: BorderSide(color: dark ? Colors.white.withValues(alpha: 0.12) : const Color(0xFFEEF2F1))),
+          ),
+          child: Row(children: [
+            Expanded(
+              child: Text(selected.isEmpty ? 'Thanks for telling us.' : 'Saved. Thank you!',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 12.8, color: dark ? Colors.white.withValues(alpha: 0.6) : FeedbackUi.mute)),
+            ),
+            Semantics(
+              button: true,
+              child: GestureDetector(
+                onTap: onMore,
+                behavior: HitTestBehavior.opaque,
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Text('Tell us more', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: accent)),
+                  const SizedBox(width: 4),
+                  Icon(Icons.arrow_forward_rounded, size: 18, color: accent),
+                ]),
+              ),
+            ),
           ]),
         ),
       ],
@@ -296,7 +414,7 @@ Future<void> showQuickRatingSheet(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.white,
-    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(32))),
+    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
     builder: (_) => _QuickRatingSheet(feature: feature, refId: refId, refLabel: refLabel, title: title, question: question),
   );
 }
@@ -334,27 +452,34 @@ class _QuickRatingSheetState extends State<_QuickRatingSheet> {
   Widget build(BuildContext context) {
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(22, 12, 22, 20),
+        padding: const EdgeInsets.fromLTRB(20, 10, 20, 16),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(width: 42, height: 5, decoration: BoxDecoration(color: const Color(0xFFDDDDDD), borderRadius: BorderRadius.circular(9))),
+            Container(
+              width: 40,
+              height: 5,
+              decoration: BoxDecoration(color: const Color(0xFFD5DDDC), borderRadius: BorderRadius.circular(3)),
+            ),
             const SizedBox(height: 18),
             if (!_bad) ...[
               Container(
-                width: 84,
-                height: 84,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(28),
-                  gradient: const LinearGradient(colors: [Color(0xFFFDBA4D), Color(0xFFF59E0B)]),
-                  boxShadow: [BoxShadow(color: const Color(0xFFF59E0B).withValues(alpha: 0.35), blurRadius: 24, offset: const Offset(0, 12))],
+                width: 76,
+                height: 76,
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(colors: [FeedbackUi.teal2, FeedbackVocab.tealDark]),
+                  boxShadow: [BoxShadow(color: Color(0x4D005E60), blurRadius: 24, offset: Offset(0, 12))],
                 ),
-                child: const Icon(Icons.flag_rounded, color: Colors.white, size: 44),
+                child: const Icon(Icons.flag_rounded, color: Colors.white, size: 40),
               ),
               const SizedBox(height: 14),
-              Text(widget.title, textAlign: TextAlign.center, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700)),
-              const SizedBox(height: 4),
-              Text(widget.question, textAlign: TextAlign.center, style: const TextStyle(fontSize: 14.5, color: AppColors.textSecondary)),
+              Text(widget.title,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700, color: FeedbackUi.ink)),
+              const SizedBox(height: 5),
+              Text(widget.question,
+                  textAlign: TextAlign.center, style: const TextStyle(fontSize: 14.5, color: FeedbackUi.sub)),
               const SizedBox(height: 20),
               ThumbButtons(
                 big: true,
@@ -369,10 +494,11 @@ class _QuickRatingSheetState extends State<_QuickRatingSheet> {
                   setState(() => _bad = true);
                 },
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 4),
               TextButton(
                 onPressed: () => Navigator.pop(context),
-                child: const Text('Skip', style: TextStyle(color: AppColors.textTertiary, fontWeight: FontWeight.w600, fontSize: 15)),
+                child: const Text('Skip',
+                    style: TextStyle(color: FeedbackUi.sub, fontWeight: FontWeight.w600, fontSize: 15)),
               ),
             ] else ...[
               BadReasons(
@@ -396,20 +522,12 @@ class _QuickRatingSheetState extends State<_QuickRatingSheet> {
                 },
               ),
               const SizedBox(height: 18),
-              SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: FilledButton(
-                  onPressed: () {
-                    if (_reasons.isNotEmpty) _rate(false, reasons: _reasons.toList());
-                    Navigator.pop(context);
-                  },
-                  style: FilledButton.styleFrom(
-                    backgroundColor: FeedbackVocab.teal,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  ),
-                  child: const Text('Done', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
-                ),
+              FeedbackPrimaryButton(
+                label: 'Done',
+                onTap: () {
+                  if (_reasons.isNotEmpty) _rate(false, reasons: _reasons.toList());
+                  Navigator.pop(context);
+                },
               ),
             ],
           ],

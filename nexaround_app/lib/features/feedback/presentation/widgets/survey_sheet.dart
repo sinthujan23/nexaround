@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/features/feedback/data/feedback_service.dart';
 import 'package:nexaround_app/features/feedback/feedback_constants.dart';
+import 'package:nexaround_app/features/feedback/presentation/widgets/feedback_ui.dart';
 
 /// The quarterly survey: an intro, five questions (one per screen) and a
-/// thank-you. "Later" (or closing it) hides the pop-up for 3 days; the Home
-/// card stays until the survey is answered or closed by the team.
+/// thank-you. "Later" (or closing it) hides the pop-up for 3 days; the Tell us
+/// button keeps offering it until it is answered or the team closes it.
 Future<void> showSurveySheet(BuildContext context, SurveyRound round) {
   return showModalBottomSheet<void>(
     context: context,
@@ -13,7 +13,7 @@ Future<void> showSurveySheet(BuildContext context, SurveyRound round) {
     isDismissible: false,
     enableDrag: false,
     backgroundColor: Colors.white,
-    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(32))),
+    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
     builder: (_) => _SurveySheet(round: round),
   );
 }
@@ -32,15 +32,23 @@ class _SurveySheetState extends State<_SurveySheet> {
   final _a = SurveyAnswer();
   final _other = TextEditingController();
   final _comment = TextEditingController();
+  final _commentFocus = FocusNode();
 
   /// 0 = intro, 1..5 = questions, 6 = thanks.
   int _step = 0;
   bool _sending = false;
 
   @override
+  void initState() {
+    super.initState();
+    _commentFocus.addListener(() => setState(() {}));
+  }
+
+  @override
   void dispose() {
     _other.dispose();
     _comment.dispose();
+    _commentFocus.dispose();
     super.dispose();
   }
 
@@ -89,10 +97,14 @@ class _SurveySheetState extends State<_SurveySheet> {
         child: SafeArea(
           top: false,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(22, 12, 22, 16),
+            padding: const EdgeInsets.fromLTRB(20, 10, 20, 14),
             child: Column(
               children: [
-                Container(width: 42, height: 5, decoration: BoxDecoration(color: const Color(0xFFDDDDDD), borderRadius: BorderRadius.circular(9))),
+                Container(
+                  width: 40,
+                  height: 5,
+                  decoration: BoxDecoration(color: const Color(0xFFD5DDDC), borderRadius: BorderRadius.circular(3)),
+                ),
                 const SizedBox(height: 14),
                 if (_step >= 1 && _step <= _questions) _header(),
                 Expanded(
@@ -117,100 +129,86 @@ class _SurveySheetState extends State<_SurveySheet> {
     );
   }
 
+  /// Back (or close on the first question), the 5-step progress bar, Later.
   Widget _header() {
+    final first = _step == 1;
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(children: [
-          Text('QUESTION $_step OF $_questions',
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: FeedbackVocab.teal, letterSpacing: 0.3)),
-          const Spacer(),
-          GestureDetector(
-            onTap: _later,
-            child: const Row(children: [
-              Text('Later', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textTertiary)),
-              SizedBox(width: 4),
-              Icon(Icons.schedule_rounded, size: 17, color: AppColors.textMuted),
-            ]),
+          FeedbackCircleButton(
+            icon: first ? Icons.close_rounded : Icons.arrow_back_rounded,
+            label: first ? 'Later' : 'Back',
+            onTap: first ? _later : () => setState(() => _step--),
           ),
-        ]),
-        const SizedBox(height: 10),
-        Row(children: [
-          for (var i = 0; i < _questions; i++) ...[
-            if (i > 0) const SizedBox(width: 5),
-            Expanded(
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 250),
-                height: 5,
-                decoration: BoxDecoration(
-                  color: i < _step ? FeedbackVocab.teal : const Color(0xFFE9EDED),
-                  borderRadius: BorderRadius.circular(9),
-                ),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              child: Row(children: [
+                for (var i = 0; i < _questions; i++) ...[
+                  if (i > 0) const SizedBox(width: 5),
+                  Expanded(
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 250),
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: i < _step ? FeedbackVocab.teal : const Color(0xFFE3EAE9),
+                        borderRadius: BorderRadius.circular(9),
+                      ),
+                    ),
+                  ),
+                ],
+              ]),
+            ),
+          ),
+          Semantics(
+            button: true,
+            child: GestureDetector(
+              onTap: _later,
+              behavior: HitTestBehavior.opaque,
+              child: const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: Text('Later', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: FeedbackUi.mute)),
               ),
             ),
-          ],
+          ),
         ]),
-        const SizedBox(height: 20),
+        const SizedBox(height: 16),
+        Text('QUESTION $_step OF $_questions',
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 1, color: FeedbackVocab.teal)),
+        const SizedBox(height: 6),
       ],
     );
   }
 
   Widget _footer() {
     if (_step == 0) {
-      return Column(children: [
-        _primary('Start survey', Icons.arrow_forward_rounded, () => setState(() => _step = 1)),
+      return Column(mainAxisSize: MainAxisSize.min, children: [
+        FeedbackPrimaryButton(
+          label: 'Start survey',
+          icon: Icons.arrow_forward_rounded,
+          iconAfter: true,
+          onTap: () => setState(() => _step = 1),
+        ),
         TextButton(
           onPressed: _later,
-          child: const Text('Remind me later', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textTertiary)),
+          child: const Text('Remind me later',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: FeedbackUi.sub)),
         ),
       ]);
     }
-    if (_step > _questions) return _primary('Done', null, () => Navigator.pop(context));
+    if (_step > _questions) {
+      return FeedbackPrimaryButton(label: 'Done', onTap: () => Navigator.pop(context));
+    }
     final last = _step == _questions;
     return Padding(
       padding: const EdgeInsets.only(top: 10),
-      child: Row(children: [
-        if (_step > 1) ...[
-          SizedBox(
-            width: 56,
-            height: 56,
-            child: Material(
-              color: const Color(0xFFF2F3F3),
-              borderRadius: BorderRadius.circular(18),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(18),
-                onTap: () => setState(() => _step--),
-                child: const Icon(Icons.arrow_back_rounded),
-              ),
-            ),
-          ),
-          const SizedBox(width: 10),
-        ],
-        Expanded(
-          child: _primary(
-            _sending ? 'Sending…' : last ? 'Send answers' : 'Next',
-            last ? Icons.send_rounded : Icons.arrow_forward_rounded,
-            _canGoOn && !_sending ? _next : null,
-          ),
-        ),
-      ]),
-    );
-  }
-
-  Widget _primary(String label, IconData? icon, VoidCallback? onTap) {
-    return SizedBox(
-      width: double.infinity,
-      height: 56,
-      child: FilledButton(
-        onPressed: onTap,
-        style: FilledButton.styleFrom(
-          backgroundColor: FeedbackVocab.teal,
-          disabledBackgroundColor: FeedbackVocab.teal.withValues(alpha: 0.35),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        ),
-        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          Text(label, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
-          if (icon != null) ...[const SizedBox(width: 8), Icon(icon, size: 20)],
-        ]),
+      child: FeedbackPrimaryButton(
+        label: _sending ? 'Sending…' : last ? 'Send answers' : 'Next',
+        icon: last ? Icons.send_rounded : Icons.arrow_forward_rounded,
+        iconAfter: !last,
+        busy: _sending,
+        onTap: _canGoOn ? _next : null,
       ),
     );
   }
@@ -218,10 +216,12 @@ class _SurveySheetState extends State<_SurveySheet> {
   Widget _question(String text, [String? hint]) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(text, style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w700, height: 1.22, letterSpacing: -0.3)),
+          Text(text,
+              style: const TextStyle(
+                  fontSize: 22, fontWeight: FontWeight.w700, height: 1.22, letterSpacing: -0.3, color: FeedbackUi.ink)),
           if (hint != null) ...[
-            const SizedBox(height: 5),
-            Text(hint, style: const TextStyle(fontSize: 14, color: AppColors.textTertiary)),
+            const SizedBox(height: 6),
+            Text(hint, style: const TextStyle(fontSize: 13.5, color: FeedbackUi.mute)),
           ],
           const SizedBox(height: 16),
         ],
@@ -237,101 +237,169 @@ class _SurveySheetState extends State<_SurveySheet> {
         _ => _thanks(),
       };
 
+  /// A selectable tile used for features and "why not": a round icon and a
+  /// one-line label that shrinks rather than wrapping.
+  Widget _pickTile({required IconData icon, required String label, required bool on, required VoidCallback onTap}) {
+    return Semantics(
+      button: true,
+      selected: on,
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          height: 52,
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          decoration: BoxDecoration(
+            color: on ? FeedbackVocab.tint : Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: on ? FeedbackVocab.teal : FeedbackUi.line, width: 1.5),
+          ),
+          child: Row(children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              width: 30,
+              height: 30,
+              decoration: BoxDecoration(shape: BoxShape.circle, color: on ? FeedbackVocab.teal : FeedbackUi.bg),
+              child: Icon(icon, size: 17, color: on ? Colors.white : FeedbackVocab.teal),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(label,
+                    maxLines: 1,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: on ? FontWeight.w700 : FontWeight.w600,
+                      color: on ? FeedbackVocab.tealDark : FeedbackUi.ink,
+                    )),
+              ),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  /// Two tiles per row.
+  List<Widget> _pairs(List<Widget> tiles) => [
+        for (var i = 0; i < tiles.length; i += 2)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(children: [
+              Expanded(child: tiles[i]),
+              const SizedBox(width: 8),
+              Expanded(child: i + 1 < tiles.length ? tiles[i + 1] : const SizedBox.shrink()),
+            ]),
+          ),
+      ];
+
   // ── Intro ───────────────────────────────────────────────────────────────
 
   Widget _intro() {
     Widget bullet(IconData icon, String text) => Padding(
-          padding: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.only(bottom: 10),
           child: Row(children: [
             Container(
-              width: 38,
-              height: 38,
-              decoration: BoxDecoration(color: const Color(0xFFEEF7F6), borderRadius: BorderRadius.circular(12)),
+              width: 36,
+              height: 36,
+              decoration: const BoxDecoration(color: FeedbackVocab.tint, shape: BoxShape.circle),
               child: Icon(icon, size: 20, color: FeedbackVocab.teal),
             ),
             const SizedBox(width: 12),
-            Expanded(child: Text(text, style: const TextStyle(fontSize: 15, color: Color(0xFF333333)))),
+            Expanded(child: Text(text, style: const TextStyle(fontSize: 14.5, color: FeedbackUi.ink))),
           ]),
         );
     return SingleChildScrollView(
-      child: Column(children: [
-        Align(
-          alignment: Alignment.centerRight,
-          child: IconButton(onPressed: _later, icon: const Icon(Icons.close_rounded, color: AppColors.textTertiary)),
-        ),
-        SizedBox(
-          width: 150,
-          height: 130,
-          child: Stack(children: [
-            Positioned(
-              left: 25,
-              top: 10,
-              child: Transform.rotate(
-                angle: -0.1,
-                child: Container(
-                  width: 100,
-                  height: 100,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(32),
-                    gradient: const LinearGradient(colors: [FeedbackVocab.teal, Color(0xFF004547)]),
-                    boxShadow: [BoxShadow(color: FeedbackVocab.teal.withValues(alpha: 0.35), blurRadius: 30, offset: const Offset(0, 16))],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            height: 118,
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(22),
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xFF004547), FeedbackVocab.teal, FeedbackUi.teal2],
+                stops: [0, 0.7, 1],
+              ),
+            ),
+            child: Stack(
+              alignment: Alignment.centerLeft,
+              children: [
+                Positioned(
+                  left: -30,
+                  top: -50,
+                  child: Container(
+                    width: 160,
+                    height: 150,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: RadialGradient(
+                        colors: [FeedbackVocab.mint.withValues(alpha: 0.35), FeedbackVocab.mint.withValues(alpha: 0)],
+                      ),
+                    ),
                   ),
-                  child: const Icon(Icons.how_to_vote_rounded, color: Colors.white, size: 52),
                 ),
-              ),
-            ),
-            Positioned(
-              right: 0,
-              top: 0,
-              child: Transform.rotate(
-                angle: 0.2,
-                child: Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(color: const Color(0xFFFDBA4D), borderRadius: BorderRadius.circular(14)),
-                  child: const Icon(Icons.lightbulb_rounded, color: Colors.white, size: 22),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Row(children: [
+                    Container(
+                      width: 58,
+                      height: 58,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.16),
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: const Icon(Icons.how_to_vote_rounded, size: 32, color: Colors.white),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('QUICK SURVEY · ${widget.round.name.toUpperCase()}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                  fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.4, color: FeedbackVocab.mint)),
+                          const SizedBox(height: 4),
+                          const Text('Help shape the next NexAround update',
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(fontSize: 19, fontWeight: FontWeight.w700, height: 1.2, color: Colors.white)),
+                        ],
+                      ),
+                    ),
+                  ]),
                 ),
-              ),
+              ],
             ),
-            Positioned(
-              left: 0,
-              bottom: 6,
-              child: Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(13),
-                  boxShadow: const [BoxShadow(color: Color(0x1F000000), blurRadius: 14, offset: Offset(0, 6))],
-                ),
-                child: const Icon(Icons.star_rounded, color: Color(0xFFF59E0B), size: 22),
-              ),
-            ),
-          ]),
-        ),
-        const SizedBox(height: 14),
-        const Text('Help shape the next\nNexAround update',
-            textAlign: TextAlign.center, style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700, height: 1.2)),
-        const SizedBox(height: 10),
-        const Text('Tell us how you use the app and what we should build next.',
-            textAlign: TextAlign.center, style: TextStyle(fontSize: 15, color: AppColors.textSecondary, height: 1.5)),
-        const SizedBox(height: 22),
-        bullet(Icons.timer_rounded, 'About 1 minute, 5 questions'),
-        bullet(Icons.lock_rounded, 'Answers go only to the NexAround team'),
-        bullet(Icons.event_repeat_rounded, 'We ask once every 3 months'),
-      ]),
+          ),
+          const SizedBox(height: 16),
+          const Text('Tell us how you use the app and what we should build next.',
+              style: TextStyle(fontSize: 14.5, color: FeedbackUi.sub, height: 1.45)),
+          const SizedBox(height: 16),
+          bullet(Icons.timer_rounded, 'About 1 minute · 5 questions'),
+          bullet(Icons.lock_rounded, 'Only the NexAround team sees answers'),
+          bullet(Icons.event_repeat_rounded, 'We ask once every 3 months'),
+        ],
+      ),
     );
   }
 
   // ── Q1: recommend 0–10 ──────────────────────────────────────────────────
 
   Widget _nps() {
-    Color edge(int i) => i <= 6 ? const Color(0xFFF87171) : (i <= 8 ? const Color(0xFFFBBF24) : const Color(0xFF34D399));
     final n = _a.nps;
     final reply = n == null
         ? null
         : n >= 9
-            ? (Icons.celebration_rounded, '$n · Great! Thanks, that means a lot to us.')
+            ? (Icons.celebration_rounded, '$n · Great! That means a lot to us.')
             : n >= 7
                 ? (Icons.lightbulb_rounded, '$n · Thanks! What would make it a 10? Tell us in a moment.')
                 : (Icons.handshake_rounded, '$n · Thanks for being honest. We\'ll keep improving.');
@@ -340,57 +408,70 @@ class _SurveySheetState extends State<_SurveySheet> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _question('How likely are you to recommend NexAround to a friend?'),
-          const SizedBox(height: 10),
-          const Row(children: [
-            Icon(Icons.sentiment_dissatisfied_rounded, size: 20, color: Color(0xFFF87171)),
-            SizedBox(width: 4),
-            Text('Not likely', style: TextStyle(fontSize: 12.5, color: AppColors.textTertiary)),
-            Spacer(),
-            Text('Very likely', style: TextStyle(fontSize: 12.5, color: AppColors.textTertiary)),
-            SizedBox(width: 4),
-            Icon(Icons.sentiment_very_satisfied_rounded, size: 20, color: Color(0xFF34D399)),
-          ]),
-          const SizedBox(height: 10),
-          SizedBox(
-            height: 56,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
+          const SizedBox(height: 6),
+          // 0–5 on the first row, 6–10 on the second, all the same size.
+          LayoutBuilder(builder: (_, box) {
+            // Rounded down so six always fit on the first row.
+            final cell = ((box.maxWidth - 5 * 8) / 6).floorToDouble();
+            return Wrap(
+              spacing: 8,
+              runSpacing: 8,
               children: [
-                for (var i = 0; i <= 10; i++) ...[
-                  if (i > 0) const SizedBox(width: 4),
-                  Expanded(
+                for (var i = 0; i <= 10; i++)
+                  Semantics(
+                    button: true,
+                    selected: n == i,
                     child: GestureDetector(
                       onTap: () => setState(() => _a.nps = i),
                       child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 160),
-                        height: n == i ? 56 : 46,
+                        duration: const Duration(milliseconds: 150),
+                        width: cell,
+                        height: 48,
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
-                          color: n == i ? FeedbackVocab.teal : const Color(0xFFF3F5F5),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border(bottom: BorderSide(color: edge(i), width: 4)),
+                          color: n == i ? null : FeedbackUi.bg,
+                          gradient: n == i ? FeedbackUi.gradient : null,
+                          borderRadius: BorderRadius.circular(14),
                           boxShadow: n == i
-                              ? [BoxShadow(color: FeedbackVocab.teal.withValues(alpha: 0.3), blurRadius: 12, offset: const Offset(0, 6))]
+                              ? const [BoxShadow(color: Color(0x47005E60), blurRadius: 16, offset: Offset(0, 8))]
                               : null,
                         ),
                         child: Text('$i',
-                            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: n == i ? Colors.white : const Color(0xFF333333))),
+                            style: TextStyle(
+                                fontSize: 17, fontWeight: FontWeight.w700, color: n == i ? Colors.white : FeedbackUi.ink)),
                       ),
                     ),
                   ),
-                ],
               ],
+            );
+          }),
+          const SizedBox(height: 14),
+          Container(
+            height: 6,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(9),
+              gradient: const LinearGradient(
+                colors: [Color(0xFFF87171), Color(0xFFFBBF24), Color(0xFF34D399)],
+                stops: [0, 0.6, 1],
+              ),
             ),
           ),
+          const SizedBox(height: 6),
+          const Row(children: [
+            Text('Not likely', style: TextStyle(fontSize: 12.5, color: FeedbackUi.mute)),
+            Spacer(),
+            Text('Very likely', style: TextStyle(fontSize: 12.5, color: FeedbackUi.mute)),
+          ]),
           if (reply != null) ...[
-            const SizedBox(height: 24),
+            const SizedBox(height: 22),
             Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(color: const Color(0xFFEEF8F6), borderRadius: BorderRadius.circular(18)),
+              padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
+              decoration: BoxDecoration(color: FeedbackVocab.tint, borderRadius: BorderRadius.circular(16)),
               child: Row(children: [
                 Icon(reply.$1, color: FeedbackVocab.teal, size: 26),
-                const SizedBox(width: 12),
-                Expanded(child: Text(reply.$2, style: const TextStyle(fontSize: 14.5, height: 1.4))),
+                const SizedBox(width: 11),
+                Expanded(
+                    child: Text(reply.$2, style: const TextStyle(fontSize: 14.5, height: 1.4, color: FeedbackUi.ink))),
               ]),
             ),
           ],
@@ -408,58 +489,16 @@ class _SurveySheetState extends State<_SurveySheet> {
         children: [
           _question('Which features do you use most?',
               'Pick as many as you like${_a.features.isEmpty ? '' : ' · ${_a.features.length} picked'}'),
-          GridView.count(
-            crossAxisCount: 3,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            mainAxisSpacing: 9,
-            crossAxisSpacing: 9,
-            childAspectRatio: 0.98,
-            children: [
-              for (final f in FeedbackVocab.features)
-                _tile(
-                  icon: f.icon,
-                  label: f.label,
-                  on: _a.features.contains(f.key),
-                  onTap: () => setState(() => _a.features.contains(f.key) ? _a.features.remove(f.key) : _a.features.add(f.key)),
-                ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _tile({required IconData icon, required String label, required bool on, required VoidCallback onTap, Color? color}) {
-    final c = color ?? FeedbackVocab.teal;
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.fromLTRB(6, 12, 6, 10),
-        decoration: BoxDecoration(
-          color: on ? FeedbackVocab.tint : Colors.white,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: on ? FeedbackVocab.teal : const Color(0xFFECECEC), width: 1.5),
-        ),
-        child: Stack(children: [
-          Center(
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(color: on ? c : const Color(0xFFF3F5F5), borderRadius: BorderRadius.circular(14)),
-                child: Icon(icon, size: 23, color: on ? Colors.white : const Color(0xFF4A5555)),
+          ..._pairs([
+            for (final f in FeedbackVocab.features)
+              _pickTile(
+                icon: f.icon,
+                label: f.label,
+                on: _a.features.contains(f.key),
+                onTap: () => setState(() => _a.features.contains(f.key) ? _a.features.remove(f.key) : _a.features.add(f.key)),
               ),
-              const SizedBox(height: 7),
-              Text(label,
-                  textAlign: TextAlign.center,
-                  maxLines: 2,
-                  style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, height: 1.15)),
-            ]),
-          ),
-          if (on) const Positioned(top: 0, right: 0, child: Icon(Icons.check_circle_rounded, size: 18, color: FeedbackVocab.teal)),
-        ]),
+          ]),
+        ],
       ),
     );
   }
@@ -473,28 +512,25 @@ class _SurveySheetState extends State<_SurveySheet> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _question('What should we build next?', 'Pick up to 3, in order${picks.isEmpty ? '' : ' · ${picks.length} picked'}'),
-          for (final (i, o) in widget.round.options.indexed) _optionRow(o, i, picks.indexOf(o.key)),
-          const SizedBox(height: 2),
+          for (final o in widget.round.options) _optionRow(o, picks.indexOf(o.key)),
+          const SizedBox(height: 3),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
             decoration: BoxDecoration(
+              color: Colors.white,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFFD4D4D4), width: 1.5),
+              border: Border.all(color: FeedbackUi.line, width: 1.5),
             ),
             child: Row(children: [
-              const Icon(Icons.edit_rounded, size: 20, color: AppColors.textTertiary),
+              const Icon(Icons.edit_outlined, size: 20, color: FeedbackVocab.teal),
               const SizedBox(width: 10),
               Expanded(
                 child: TextField(
                   controller: _other,
                   maxLength: 300,
                   textCapitalization: TextCapitalization.sentences,
-                  decoration: const InputDecoration(
-                    border: InputBorder.none,
-                    counterText: '',
-                    hintText: 'Something else? Tell us…',
-                    hintStyle: TextStyle(color: AppColors.textTertiary),
-                  ),
+                  decoration: FeedbackUi.plainInput('Something else? Tell us…'),
+                  style: const TextStyle(fontSize: 14.5, color: FeedbackUi.ink),
                 ),
               ),
             ]),
@@ -504,52 +540,64 @@ class _SurveySheetState extends State<_SurveySheet> {
     );
   }
 
-  Widget _optionRow(SurveyOption o, int index, int rank) {
+  Widget _optionRow(SurveyOption o, int rank) {
     final on = rank >= 0;
     final full = _a.buildNext.length >= 3;
-    final color = FeedbackVocab.optionColor(index);
-    return GestureDetector(
-      onTap: () => setState(() {
-        if (on) {
-          _a.buildNext.remove(o.key);
-        } else if (!full) {
-          _a.buildNext.add(o.key);
-        }
-      }),
-      child: AnimatedOpacity(
-        duration: const Duration(milliseconds: 150),
-        opacity: !on && full ? 0.5 : 1,
-        child: AnimatedContainer(
+    return Semantics(
+      button: true,
+      selected: on,
+      child: GestureDetector(
+        onTap: () => setState(() {
+          if (on) {
+            _a.buildNext.remove(o.key);
+          } else if (!full) {
+            _a.buildNext.add(o.key);
+          }
+        }),
+        child: AnimatedOpacity(
           duration: const Duration(milliseconds: 150),
-          margin: const EdgeInsets.only(bottom: 7),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-          decoration: BoxDecoration(
-            color: on ? FeedbackVocab.tint : Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: on ? FeedbackVocab.teal : const Color(0xFFECECEC), width: 1.5),
-          ),
-          child: Row(children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(11)),
-              child: Icon(FeedbackVocab.optionIcon(o.icon), size: 21, color: color),
+          opacity: !on && full ? 0.5 : 1,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            margin: const EdgeInsets.only(bottom: 7),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: on ? FeedbackVocab.tint : Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: on ? FeedbackVocab.teal : FeedbackUi.line, width: 1.5),
             ),
-            const SizedBox(width: 12),
-            Expanded(child: Text(o.label, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600))),
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 150),
-              width: 26,
-              height: 26,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: on ? FeedbackVocab.teal : Colors.transparent,
-                border: on ? null : Border.all(color: const Color(0xFFD4D4D4), width: 2),
+            child: Row(children: [
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(shape: BoxShape.circle, color: on ? FeedbackVocab.teal : FeedbackUi.bg),
+                child: Icon(FeedbackVocab.optionIcon(o.icon), size: 18, color: on ? Colors.white : FeedbackVocab.teal),
               ),
-              child: on ? Text('${rank + 1}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13)) : null,
-            ),
-          ]),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Text(o.label,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600, color: FeedbackUi.ink)),
+              ),
+              const SizedBox(width: 8),
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
+                width: 24,
+                height: 24,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: on ? FeedbackVocab.teal : Colors.transparent,
+                  border: on ? null : Border.all(color: const Color(0xFFD3DCDB), width: 2),
+                ),
+                child: on
+                    ? Text('${rank + 1}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13))
+                    : null,
+              ),
+            ]),
+          ),
         ),
       ),
     );
@@ -561,29 +609,28 @@ class _SurveySheetState extends State<_SurveySheet> {
     Widget payTile(String key, IconData icon, String label, Color color) {
       final on = _a.wouldPay == key;
       return Expanded(
-        child: GestureDetector(
-          onTap: () => setState(() {
-            _a.wouldPay = key;
-            if (key == 'no') _a.priceRange = null;
-          }),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 150),
-            padding: const EdgeInsets.symmetric(vertical: 14),
-            decoration: BoxDecoration(
-              color: on ? FeedbackVocab.tint : Colors.white,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: on ? FeedbackVocab.teal : const Color(0xFFECECEC), width: 1.5),
-            ),
-            child: Column(children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(shape: BoxShape.circle, color: on ? color : color.withValues(alpha: 0.12)),
-                child: Icon(icon, size: 23, color: on ? Colors.white : color),
+        child: Semantics(
+          button: true,
+          selected: on,
+          child: GestureDetector(
+            onTap: () => setState(() {
+              _a.wouldPay = key;
+              if (key == 'no') _a.priceRange = null;
+            }),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
+              decoration: BoxDecoration(
+                color: on ? color.withValues(alpha: 0.08) : Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: on ? color : FeedbackUi.line, width: on ? 2 : 1.5),
               ),
-              const SizedBox(height: 6),
-              Text(label, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
-            ]),
+              child: Column(children: [
+                Icon(icon, size: 26, color: color),
+                const SizedBox(height: 3),
+                Text(label, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: FeedbackUi.ink)),
+              ]),
+            ),
           ),
         ),
       );
@@ -602,138 +649,106 @@ class _SurveySheetState extends State<_SurveySheet> {
             const SizedBox(width: 9),
             payTile('no', Icons.thumb_down_rounded, 'No', const Color(0xFFEF4444)),
           ]),
-          const SizedBox(height: 22),
-          if (pays) ..._priceLadder(),
+          const SizedBox(height: 20),
+          if (pays) ..._priceList(),
           if (_a.wouldPay == 'no') ..._whyNot(),
         ],
       ),
     );
   }
 
-  List<Widget> _priceLadder() {
+  List<Widget> _priceList() {
     return [
-      const Row(children: [
-        Icon(Icons.calendar_month_rounded, size: 19, color: FeedbackVocab.teal),
-        SizedBox(width: 6),
-        Text('How much a month feels fair?', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-      ]),
+      const Text('How much a month feels fair?',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: FeedbackUi.ink)),
       const SizedBox(height: 2),
-      const Text('In US dollars', style: TextStyle(fontSize: 12.5, color: AppColors.textTertiary)),
-      const SizedBox(height: 14),
-      SizedBox(
-        height: 196,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            for (final (i, (key, label)) in FeedbackVocab.priceRanges.indexed) ...[
-              if (i > 0) const SizedBox(width: 7),
-              Expanded(
-                child: GestureDetector(
-                  onTap: () => setState(() => _a.priceRange = key),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      if (_a.priceRange == key)
-                        Container(
-                          margin: const EdgeInsets.only(bottom: 6),
-                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                          decoration: BoxDecoration(color: FeedbackVocab.tint, borderRadius: BorderRadius.circular(99)),
-                          child: const Text('Fair', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: FeedbackVocab.teal)),
-                        ),
-                      AnimatedContainer(
-                        duration: const Duration(milliseconds: 180),
-                        height: 58.0 + i * 26,
-                        alignment: Alignment.topCenter,
-                        padding: const EdgeInsets.only(top: 9),
-                        decoration: BoxDecoration(
-                          borderRadius: const BorderRadius.vertical(top: Radius.circular(14), bottom: Radius.circular(8)),
-                          color: _a.priceRange == key ? null : const Color(0xFFEEF1F1),
-                          gradient: _a.priceRange == key
-                              ? const LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFF00A3A5), FeedbackVocab.teal])
-                              : null,
-                        ),
-                        child: Icon(Icons.payments_rounded, size: 18, color: _a.priceRange == key ? Colors.white : const Color(0xFFB9C2C2)),
-                      ),
-                      const SizedBox(height: 7),
-                      Text(label,
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 12.5,
-                            fontWeight: _a.priceRange == key ? FontWeight.w700 : FontWeight.w600,
-                            color: _a.priceRange == key ? FeedbackVocab.teal : const Color(0xFF555555),
-                          )),
-                    ],
-                  ),
-                ),
+      const Text('In US dollars', style: TextStyle(fontSize: 12.5, color: FeedbackUi.mute)),
+      const SizedBox(height: 10),
+      for (final (key, label) in FeedbackVocab.priceRanges)
+        Semantics(
+          button: true,
+          selected: _a.priceRange == key,
+          child: GestureDetector(
+            onTap: () => setState(() => _a.priceRange = key),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              margin: const EdgeInsets.only(bottom: 7),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: _a.priceRange == key ? FeedbackVocab.tint : Colors.white,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: _a.priceRange == key ? FeedbackVocab.teal : FeedbackUi.line, width: 1.5),
               ),
-            ],
-          ],
+              child: Row(children: [
+                Icon(_a.priceRange == key ? Icons.radio_button_checked_rounded : Icons.radio_button_unchecked_rounded,
+                    size: 22, color: _a.priceRange == key ? FeedbackVocab.teal : const Color(0xFFC9D3D2)),
+                const SizedBox(width: 11),
+                Expanded(
+                  child: Text(label,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: _a.priceRange == key ? FontWeight.w700 : FontWeight.w600,
+                        color: _a.priceRange == key ? FeedbackVocab.tealDark : FeedbackUi.ink,
+                      )),
+                ),
+                const Text('a month', style: TextStyle(fontSize: 12, color: FeedbackUi.mute)),
+              ]),
+            ),
+          ),
         ),
-      ),
     ];
   }
 
   List<Widget> _whyNot() {
     return [
       const Text.rich(TextSpan(children: [
-        TextSpan(text: 'What holds you back? ', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-        TextSpan(text: '(optional)', style: TextStyle(fontSize: 14, color: AppColors.textTertiary)),
+        TextSpan(text: 'What holds you back? ', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: FeedbackUi.ink)),
+        TextSpan(text: '(optional)', style: TextStyle(fontSize: 14, color: FeedbackUi.mute)),
       ])),
-      const SizedBox(height: 12),
-      Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: [
-          for (final w in FeedbackVocab.whyNot)
-            GestureDetector(
-              onTap: () => setState(() => _a.whyNot.contains(w.key) ? _a.whyNot.remove(w.key) : _a.whyNot.add(w.key)),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 150),
-                padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
-                decoration: BoxDecoration(
-                  color: _a.whyNot.contains(w.key) ? FeedbackVocab.tint : Colors.white,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: _a.whyNot.contains(w.key) ? FeedbackVocab.teal : const Color(0xFFECECEC), width: 1.5),
-                ),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(w.icon, size: 19, color: _a.whyNot.contains(w.key) ? FeedbackVocab.teal : const Color(0xFF7A8585)),
-                  const SizedBox(width: 7),
-                  Text(w.label, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600)),
-                ]),
-              ),
-            ),
-        ],
-      ),
+      const SizedBox(height: 10),
+      ..._pairs([
+        for (final w in FeedbackVocab.whyNot)
+          _pickTile(
+            icon: w.icon,
+            label: w.label,
+            on: _a.whyNot.contains(w.key),
+            onTap: () => setState(() => _a.whyNot.contains(w.key) ? _a.whyNot.remove(w.key) : _a.whyNot.add(w.key)),
+          ),
+      ]),
     ];
   }
 
   // ── Q5: anything else ───────────────────────────────────────────────────
 
   Widget _commentStep() {
+    final focused = _commentFocus.hasFocus;
     return SingleChildScrollView(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _question("Anything else you'd like to tell us?", 'Optional · write in any language'),
-          Container(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: FeedbackVocab.teal, width: 1.5),
-              boxShadow: [BoxShadow(color: FeedbackVocab.teal.withValues(alpha: 0.08), spreadRadius: 4)],
-            ),
-            child: TextField(
-              controller: _comment,
-              minLines: 6,
-              maxLines: 10,
-              maxLength: 2000,
-              textCapitalization: TextCapitalization.sentences,
-              decoration: const InputDecoration(
-                border: InputBorder.none,
-                hintText: 'Your thoughts…',
-                hintStyle: TextStyle(color: AppColors.textTertiary),
+          GestureDetector(
+            onTap: _commentFocus.requestFocus,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              constraints: const BoxConstraints(minHeight: 150),
+              padding: const EdgeInsets.fromLTRB(15, 14, 15, 14),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: focused ? FeedbackVocab.teal : FeedbackUi.line, width: 1.5),
+                boxShadow: focused ? [BoxShadow(color: FeedbackVocab.teal.withValues(alpha: 0.10), spreadRadius: 4)] : null,
               ),
-              style: const TextStyle(fontSize: 15, height: 1.5),
+              child: TextField(
+                controller: _comment,
+                focusNode: _commentFocus,
+                minLines: 6,
+                maxLines: 10,
+                maxLength: 2000,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: FeedbackUi.plainInput('Your thoughts…'),
+                style: const TextStyle(fontSize: 15, height: 1.5, color: FeedbackUi.ink),
+              ),
             ),
           ),
         ],
@@ -744,53 +759,24 @@ class _SurveySheetState extends State<_SurveySheet> {
   // ── Thanks ──────────────────────────────────────────────────────────────
 
   Widget _thanks() {
-    const dots = [
-      (40.0, 30.0, 10.0, Color(0xFFFDBA4D)), (190.0, 10.0, 8.0, FeedbackVocab.mint), (230.0, 70.0, 12.0, Color(0xFFF472B6)),
-      (20.0, 110.0, 8.0, Color(0xFF60A5FA)), (210.0, 140.0, 9.0, Color(0xFF34D399)), (70.0, 150.0, 7.0, Color(0xFFFDBA4D)),
-      (130.0, 0.0, 9.0, Color(0xFFA78BFA)),
-    ];
     return SingleChildScrollView(
       child: Column(children: [
-        const SizedBox(height: 40),
-        SizedBox(
-          width: 250,
-          height: 180,
-          child: Stack(children: [
-            for (final d in dots)
-              Positioned(
-                left: d.$1,
-                top: d.$2,
-                child: Container(width: d.$3, height: d.$3, decoration: BoxDecoration(color: d.$4, borderRadius: BorderRadius.circular(3))),
-              ),
-            Positioned(
-              left: 65,
-              top: 30,
-              child: Container(
-                width: 120,
-                height: 120,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: const LinearGradient(colors: [Color(0xFF00A3A5), FeedbackVocab.tealDark]),
-                  boxShadow: [BoxShadow(color: FeedbackVocab.teal.withValues(alpha: 0.35), blurRadius: 36, offset: const Offset(0, 18))],
-                ),
-                child: const Icon(Icons.task_alt_rounded, color: Colors.white, size: 62),
-              ),
-            ),
-          ]),
-        ),
-        const SizedBox(height: 10),
-        const Text('Thank you!', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w700)),
+        const SizedBox(height: 36),
+        const FeedbackSuccessBadge(),
+        const SizedBox(height: 16),
+        const Text('Thank you!',
+            style: TextStyle(fontSize: 30, fontWeight: FontWeight.w700, letterSpacing: -0.4, color: FeedbackUi.ink)),
         const SizedBox(height: 8),
         const Text('Your answers help decide what we build next.',
-            textAlign: TextAlign.center, style: TextStyle(fontSize: 16, color: AppColors.textSecondary, height: 1.5)),
-        const SizedBox(height: 24),
+            textAlign: TextAlign.center, style: TextStyle(fontSize: 15, color: FeedbackUi.sub, height: 1.45)),
+        const SizedBox(height: 22),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-          decoration: BoxDecoration(color: const Color(0xFFF3F6F6), borderRadius: BorderRadius.circular(99)),
+          decoration: BoxDecoration(color: FeedbackUi.bg, borderRadius: BorderRadius.circular(99)),
           child: const Row(mainAxisSize: MainAxisSize.min, children: [
             Icon(Icons.event_repeat_rounded, size: 18, color: FeedbackVocab.teal),
             SizedBox(width: 8),
-            Text('Next survey in about 3 months', style: TextStyle(fontSize: 13.5, color: Color(0xFF4B5A5A))),
+            Text('Next survey in about 3 months', style: TextStyle(fontSize: 13.5, color: FeedbackUi.sub)),
           ]),
         ),
       ]),

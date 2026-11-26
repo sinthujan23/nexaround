@@ -1324,9 +1324,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                       ];
                     }(),
 
-                    // Room for the menu bar and the Tell us button above it,
-                    // so the last card can scroll clear of both.
-                    const SliverToBoxAdapter(child: SizedBox(height: 180)),
+                    const SliverToBoxAdapter(child: SizedBox(height: 90)),
                   ],
                 ),
               ),

@@ -803,7 +803,7 @@ class _OdysseyDetailPageState extends State<OdysseyDetailPage>
       refId: id,
       refLabel: label,
       title: "How's this plan?",
-      subtitle: 'Your answer helps us make better Odysseys',
+      subtitle: 'Helps us make better plans',
       icon: Icons.auto_awesome_rounded,
     );
   }

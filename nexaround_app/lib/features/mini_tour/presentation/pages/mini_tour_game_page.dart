@@ -1501,7 +1501,7 @@ class _MiniTourGamePageState extends State<MiniTourGamePage>
                 refId: _tourId,
                 refLabel: _area.isNotEmpty && _area != 'your area' ? 'Walking Challenge · $_area' : 'Walking Challenge',
                 title: 'How was this walk?',
-                subtitle: 'Your answer helps us make better challenges',
+                subtitle: 'Helps us make better walks',
                 icon: Icons.directions_walk_rounded,
                 dark: true,
               ),
