@@ -6,7 +6,6 @@ import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/constants/api_constants.dart';
 import 'package:nexaround_app/core/constants/place_bands.dart';
 import 'package:nexaround_app/core/utils/place_sections.dart';
-import 'package:nexaround_app/features/feedback/presentation/widgets/home_feedback_slot.dart';
 import 'package:nexaround_app/features/feedback/presentation/widgets/tell_us_button.dart';
 import 'package:nexaround_app/core/network/api_client.dart';
 import 'package:nexaround_app/core/widgets/glass_card.dart';
@@ -1134,9 +1133,6 @@ class _LivingMapPageState extends State<LivingMapPage>
                               child: _buildForumBanner(),
                             ),
                           ),
-                          // "Tell us what you want", or the quarterly survey.
-                          const SliverToBoxAdapter(child: HomeFeedbackSlot()),
-
                           /*
                           // Curated For You Shimmer
                           SliverToBoxAdapter(
@@ -1269,9 +1265,6 @@ class _LivingMapPageState extends State<LivingMapPage>
                             child: _buildForumBanner(),
                           ),
                         ),
-                        // "Tell us what you want", or the quarterly survey.
-                        const SliverToBoxAdapter(child: HomeFeedbackSlot()),
-
                         /*
                         // Curated For You
                         SliverToBoxAdapter(
@@ -1350,14 +1343,13 @@ class _LivingMapPageState extends State<LivingMapPage>
                 ),
               ),
 
-              // "Tell us": feedback and the quarterly survey, always in reach
-              // (the nearby-place alert takes the same spot while it shows).
-              if (!(_showProximityAlert && masterAttractions.isNotEmpty))
-                const Positioned(
-                  right: TellUsButton.right,
-                  bottom: TellUsButton.bottom,
-                  child: TellUsButton(),
-                ),
+              // "Tell us": feedback and the quarterly survey, always in reach.
+              // It steps aside while the nearby-place alert takes its spot.
+              Positioned(
+                right: TellUsButton.right,
+                bottom: TellUsButton.bottom,
+                child: TellUsButton(hidden: _showProximityAlert && masterAttractions.isNotEmpty),
+              ),
 
               // Proximity alert bottom sheet
               if (_showProximityAlert && masterAttractions.isNotEmpty)

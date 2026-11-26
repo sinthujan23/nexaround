@@ -100,13 +100,9 @@ class FeedbackService {
   static const String _base = ApiConstants.apiVersion;
   static const String pushType = 'feedback_reply';
 
-  /// Bumped after the survey is answered or snoozed, so the Home card
-  /// reloads and turns back into "Tell us what you want".
+  /// Bumped after the survey is answered or snoozed, so the Home "Tell us"
+  /// button reloads (its "1" and survey item go away).
   static final ValueNotifier<int> surveyRevision = ValueNotifier<int>(0);
-
-  /// The latest survey state Home loaded, so the "Tell us" button can show
-  /// its badge and survey item without asking the server again.
-  static final ValueNotifier<SurveyState?> surveyState = ValueNotifier<SurveyState?>(null);
 
   static String get _osVersion {
     try {

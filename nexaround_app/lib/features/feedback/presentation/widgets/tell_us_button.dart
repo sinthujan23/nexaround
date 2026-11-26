@@ -17,8 +17,16 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// for this explorer, then Suggestion / Improvement / Problem / Love it, each
 /// opening the Feedback page with that choice picked. A one-time tip
 /// introduces it, and an amber "1" shows while a survey is waiting.
+///
+/// It also brings the survey up by itself once after 20 seconds on Home (the
+/// server decides whether it may: "Later" hides it for 3 days, at most 3
+/// times a round, never in an account's first day).
 class TellUsButton extends StatefulWidget {
-  const TellUsButton({super.key});
+  const TellUsButton({super.key, this.hidden = false});
+
+  /// Out of sight while something else (the nearby-place alert) takes its
+  /// spot. It stays mounted, so the survey timer keeps running.
+  final bool hidden;
 
   /// Where Home places it: just above the floating menu bar, which is 72 high
   /// and sits 20 from the bottom of the screen.
@@ -36,31 +44,87 @@ class TellUsButton extends StatefulWidget {
 
 class _TellUsButtonState extends State<TellUsButton> with SingleTickerProviderStateMixin {
   static const _tipSeenKey = 'tell_us_tip_seen_v1';
+  static const _popUpAfter = Duration(seconds: 20);
 
+  /// One survey pop-up per app run at most, whatever the server allows.
+  static bool _poppedThisRun = false;
+
+  final _service = FeedbackService();
   late final AnimationController _pulse =
       AnimationController(vsync: this, duration: const Duration(milliseconds: 1400));
   Timer? _tipTimer;
+  Timer? _surveyTimer;
   bool _tip = false;
+  SurveyState? _survey;
+  bool _surveyOpen = false;
 
   @override
   void initState() {
     super.initState();
     _tipTimer = Timer(const Duration(seconds: 2), _maybeShowTip);
+    _loadSurvey();
+    FeedbackService.surveyRevision.addListener(_loadSurvey);
   }
 
   @override
   void dispose() {
     _tipTimer?.cancel();
+    _surveyTimer?.cancel();
+    FeedbackService.surveyRevision.removeListener(_loadSurvey);
     _pulse.dispose();
     super.dispose();
+  }
+
+  /// Home is really what the explorer sees: the Home tab is selected (its
+  /// TickerMode is on), nothing is open on top of it, and the app is in front.
+  bool get _onScreen =>
+      !widget.hidden &&
+      TickerMode.of(context) &&
+      (ModalRoute.of(context)?.isCurrent ?? false) &&
+      WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
+
+  /// Reloaded after the survey is answered or snoozed, so the "1" and the
+  /// menu's survey item go away.
+  Future<void> _loadSurvey() async {
+    try {
+      final s = await _service.currentSurvey();
+      if (!mounted) return;
+      setState(() => _survey = s);
+      _surveyTimer?.cancel();
+      if (s.showTicket && s.autoShow && !_poppedThisRun) _surveyTimer = Timer(_popUpAfter, _maybePopUp);
+    } catch (_) {
+      // Signed out or offline: no badge and no survey item.
+    }
+  }
+
+  void _maybePopUp() {
+    if (!mounted || _poppedThisRun) return;
+    final round = _survey?.round;
+    if (round == null || !(_survey?.autoShow ?? false)) return;
+    if (!_onScreen) {
+      _surveyTimer = Timer(_popUpAfter, _maybePopUp);
+      return;
+    }
+    _poppedThisRun = true;
+    _service.surveyShown(round.id).catchError((_) {});
+    _openSurvey(round);
+  }
+
+  Future<void> _openSurvey(SurveyRound round) async {
+    if (_surveyOpen) return;
+    _surveyOpen = true;
+    try {
+      await showSurveySheet(context, round);
+    } finally {
+      _surveyOpen = false;
+    }
   }
 
   /// The tip shows once ever, while Home is really on screen: the Home tab is
   /// selected (its TickerMode is on) and nothing is open on top of it.
   Future<void> _maybeShowTip() async {
     if (!mounted) return;
-    final onScreen = TickerMode.of(context) && (ModalRoute.of(context)?.isCurrent ?? false);
-    if (!onScreen) {
+    if (!_onScreen) {
       _tipTimer = Timer(const Duration(seconds: 3), _maybeShowTip);
       return;
     }
@@ -87,8 +151,8 @@ class _TellUsButtonState extends State<TellUsButton> with SingleTickerProviderSt
 
   Future<void> _openMenu() async {
     _hideTip();
-    final state = FeedbackService.surveyState.value;
-    final round = state != null && state.showTicket ? state.round : null;
+    final s = _survey;
+    final round = s != null && s.showTicket ? s.round : null;
     final pick = await showGeneralDialog<String>(
       context: context,
       barrierDismissible: true,
@@ -100,7 +164,7 @@ class _TellUsButtonState extends State<TellUsButton> with SingleTickerProviderSt
     );
     if (!mounted || pick == null) return;
     if (pick == 'survey' && round != null) {
-      await showSurveySheet(context, round);
+      await _openSurvey(round);
     } else {
       await openFeedbackPage(context, type: pick, source: 'tell_us');
     }
@@ -108,6 +172,17 @@ class _TellUsButtonState extends State<TellUsButton> with SingleTickerProviderSt
 
   @override
   Widget build(BuildContext context) {
+    return IgnorePointer(
+      ignoring: widget.hidden,
+      child: AnimatedOpacity(
+        opacity: widget.hidden ? 0 : 1,
+        duration: const Duration(milliseconds: 200),
+        child: _button(),
+      ),
+    );
+  }
+
+  Widget _button() {
     return Row(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.end,
@@ -161,7 +236,7 @@ class _TellUsButtonState extends State<TellUsButton> with SingleTickerProviderSt
                       );
                     },
                   ),
-                  const _Circle(),
+                  _Circle(badge: _survey?.showTicket ?? false),
                   Positioned(
                     left: 0,
                     right: 0,
@@ -194,7 +269,8 @@ class _TellUsButtonState extends State<TellUsButton> with SingleTickerProviderSt
 /// The teal circle: a chat bubble with a small amber sparkle, and an amber
 /// "1" while a survey is waiting for this explorer.
 class _Circle extends StatelessWidget {
-  const _Circle();
+  const _Circle({required this.badge});
+  final bool badge;
 
   @override
   Widget build(BuildContext context) {
@@ -242,29 +318,24 @@ class _Circle extends StatelessWidget {
               ),
             ]),
           ),
-          ValueListenableBuilder<SurveyState?>(
-            valueListenable: FeedbackService.surveyState,
-            builder: (_, s, __) {
-              if (s == null || !s.showTicket) return const SizedBox.shrink();
-              return Positioned(
-                top: -4,
-                right: -4,
-                child: Container(
-                  constraints: const BoxConstraints(minWidth: 20),
-                  height: 20,
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF59E0B),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Colors.white, width: 2.5),
-                  ),
-                  child: const Text('1',
-                      style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: Colors.white, height: 1)),
+          if (badge)
+            Positioned(
+              top: -4,
+              right: -4,
+              child: Container(
+                constraints: const BoxConstraints(minWidth: 20),
+                height: 20,
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF59E0B),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.white, width: 2.5),
                 ),
-              );
-            },
-          ),
+                child: const Text('1',
+                    style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: Colors.white, height: 1)),
+              ),
+            ),
         ],
       ),
     );
