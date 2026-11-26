@@ -4,23 +4,29 @@ import 'package:nexaround_app/features/feedback/feedback_constants.dart';
 import 'package:nexaround_app/features/feedback/presentation/widgets/feedback_ui.dart';
 
 /// The quarterly survey: an intro, five questions (one per screen) and a
-/// thank-you. "Later" (or closing it) hides the pop-up for 3 days; the Tell us
-/// button keeps offering it until it is answered or the team closes it.
-Future<void> showSurveySheet(BuildContext context, SurveyRound round) {
-  return showModalBottomSheet<void>(
+/// thank-you. Closing it unanswered in any way ("Remind me later", Later, ✕,
+/// dragging it down, tapping outside, Back) hides the pop-up for 3 days; the
+/// Tell us button keeps offering it until it is answered or the team closes it.
+Future<void> showSurveySheet(BuildContext context, SurveyRound round) async {
+  var answered = false;
+  await showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
-    isDismissible: false,
-    enableDrag: false,
     backgroundColor: Colors.white,
     shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
-    builder: (_) => _SurveySheet(round: round),
+    builder: (_) => _SurveySheet(round: round, onAnswered: () => answered = true),
   );
+  if (!answered) {
+    try {
+      await FeedbackService().surveyLater(round.id);
+    } catch (_) {}
+  }
 }
 
 class _SurveySheet extends StatefulWidget {
-  const _SurveySheet({required this.round});
+  const _SurveySheet({required this.round, required this.onAnswered});
   final SurveyRound round;
+  final VoidCallback onAnswered;
 
   @override
   State<_SurveySheet> createState() => _SurveySheetState();
@@ -52,12 +58,8 @@ class _SurveySheetState extends State<_SurveySheet> {
     super.dispose();
   }
 
-  Future<void> _later() async {
-    Navigator.pop(context);
-    try {
-      await _service.surveyLater(widget.round.id);
-    } catch (_) {}
-  }
+  /// showSurveySheet snoozes the survey when it closes unanswered.
+  void _later() => Navigator.pop(context);
 
   bool get _canGoOn => switch (_step) {
         1 => _a.nps != null,
@@ -76,6 +78,7 @@ class _SurveySheetState extends State<_SurveySheet> {
     setState(() => _sending = true);
     try {
       await _service.answerSurvey(widget.round.id, _a);
+      widget.onAnswered();
       if (mounted) setState(() => _step = _questions + 1);
     } catch (e) {
       if (!mounted) return;
@@ -87,29 +90,32 @@ class _SurveySheetState extends State<_SurveySheet> {
     }
   }
 
+  /// The start and thank-you screens are only as tall as their content; the
+  /// questions get a tall sheet with their content starting at the top.
   @override
   Widget build(BuildContext context) {
     final mq = MediaQuery.of(context);
-    return Padding(
-      padding: EdgeInsets.only(bottom: mq.viewInsets.bottom),
-      child: SizedBox(
-        height: mq.size.height * 0.88,
-        child: SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 10, 20, 14),
+    final question = _step >= 1 && _step <= _questions;
+    final handle = Container(
+      width: 40,
+      height: 5,
+      decoration: BoxDecoration(color: const Color(0xFFC9D3D2), borderRadius: BorderRadius.circular(3)),
+    );
+    final Widget body = question
+        ? SizedBox(
+            height: mq.size.height * 0.86,
             child: Column(
               children: [
-                Container(
-                  width: 40,
-                  height: 5,
-                  decoration: BoxDecoration(color: const Color(0xFFD5DDDC), borderRadius: BorderRadius.circular(3)),
-                ),
+                handle,
                 const SizedBox(height: 14),
-                if (_step >= 1 && _step <= _questions) _header(),
+                _header(),
                 Expanded(
                   child: AnimatedSwitcher(
                     duration: const Duration(milliseconds: 220),
+                    layoutBuilder: (current, previous) => Stack(
+                      alignment: Alignment.topCenter,
+                      children: [...previous, if (current != null) current],
+                    ),
                     transitionBuilder: (child, anim) => FadeTransition(
                       opacity: anim,
                       child: SlideTransition(
@@ -123,7 +129,25 @@ class _SurveySheetState extends State<_SurveySheet> {
                 _footer(),
               ],
             ),
-          ),
+          )
+        : Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              handle,
+              const SizedBox(height: 18),
+              Flexible(child: SingleChildScrollView(child: _step == 0 ? _intro() : _thanks())),
+              _footer(),
+            ],
+          );
+    return Padding(
+      padding: EdgeInsets.only(bottom: mq.viewInsets.bottom),
+      child: SafeArea(
+        top: false,
+        child: AnimatedSize(
+          duration: const Duration(milliseconds: 260),
+          curve: Curves.easeOutCubic,
+          alignment: Alignment.topCenter,
+          child: Padding(padding: const EdgeInsets.fromLTRB(20, 10, 20, 14), child: body),
         ),
       ),
     );
@@ -198,7 +222,10 @@ class _SurveySheetState extends State<_SurveySheet> {
       ]);
     }
     if (_step > _questions) {
-      return FeedbackPrimaryButton(label: 'Done', onTap: () => Navigator.pop(context));
+      return Padding(
+        padding: const EdgeInsets.only(top: 24),
+        child: FeedbackPrimaryButton(label: 'Done', onTap: () => Navigator.pop(context)),
+      );
     }
     final last = _step == _questions;
     return Padding(
@@ -227,14 +254,13 @@ class _SurveySheetState extends State<_SurveySheet> {
         ],
       );
 
+  /// One question's screen (steps 1–5).
   Widget _content() => switch (_step) {
-        0 => _intro(),
         1 => _nps(),
         2 => _features(),
         3 => _buildNext(),
         4 => _pay(),
-        5 => _commentStep(),
-        _ => _thanks(),
+        _ => _commentStep(),
       };
 
   /// A selectable tile used for features and "why not": a round icon and a
@@ -296,99 +322,98 @@ class _SurveySheetState extends State<_SurveySheet> {
       ];
 
   // ── Intro ───────────────────────────────────────────────────────────────
+  // The earlier design (the TL preferred it): the tilted vote card with a
+  // bulb and a star, a centred title and three short promises.
 
   Widget _intro() {
     Widget bullet(IconData icon, String text) => Padding(
           padding: const EdgeInsets.only(bottom: 10),
           child: Row(children: [
             Container(
-              width: 36,
-              height: 36,
-              decoration: const BoxDecoration(color: FeedbackVocab.tint, shape: BoxShape.circle),
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(color: const Color(0xFFEEF7F6), borderRadius: BorderRadius.circular(12)),
               child: Icon(icon, size: 20, color: FeedbackVocab.teal),
             ),
             const SizedBox(width: 12),
-            Expanded(child: Text(text, style: const TextStyle(fontSize: 14.5, color: FeedbackUi.ink))),
+            Expanded(
+              child: Text(text,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 15, color: Color(0xFF333333))),
+            ),
           ]),
         );
-    return SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            height: 118,
-            clipBehavior: Clip.antiAlias,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(22),
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Color(0xFF004547), FeedbackVocab.teal, FeedbackUi.teal2],
-                stops: [0, 0.7, 1],
+    return Column(
+      children: [
+        SizedBox(
+          width: 150,
+          height: 128,
+          child: Stack(children: [
+            Positioned(
+              left: 25,
+              top: 10,
+              child: Transform.rotate(
+                angle: -0.1,
+                child: Container(
+                  width: 100,
+                  height: 100,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(32),
+                    gradient: const LinearGradient(colors: [FeedbackVocab.teal, Color(0xFF004547)]),
+                    boxShadow: [BoxShadow(color: FeedbackVocab.teal.withValues(alpha: 0.35), blurRadius: 30, offset: const Offset(0, 16))],
+                  ),
+                  child: const Icon(Icons.how_to_vote_rounded, color: Colors.white, size: 52),
+                ),
               ),
             ),
-            child: Stack(
-              alignment: Alignment.centerLeft,
-              children: [
-                Positioned(
-                  left: -30,
-                  top: -50,
-                  child: Container(
-                    width: 160,
-                    height: 150,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: RadialGradient(
-                        colors: [FeedbackVocab.mint.withValues(alpha: 0.35), FeedbackVocab.mint.withValues(alpha: 0)],
-                      ),
-                    ),
-                  ),
+            Positioned(
+              right: 0,
+              top: 0,
+              child: Transform.rotate(
+                angle: 0.2,
+                child: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(color: const Color(0xFFFDBA4D), borderRadius: BorderRadius.circular(14)),
+                  child: const Icon(Icons.lightbulb_rounded, color: Colors.white, size: 22),
                 ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: Row(children: [
-                    Container(
-                      width: 58,
-                      height: 58,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.16),
-                        borderRadius: BorderRadius.circular(18),
-                      ),
-                      child: const Icon(Icons.how_to_vote_rounded, size: 32, color: Colors.white),
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('QUICK SURVEY · ${widget.round.name.toUpperCase()}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                  fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.4, color: FeedbackVocab.mint)),
-                          const SizedBox(height: 4),
-                          const Text('Help shape the next NexAround update',
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(fontSize: 19, fontWeight: FontWeight.w700, height: 1.2, color: Colors.white)),
-                        ],
-                      ),
-                    ),
-                  ]),
-                ),
-              ],
+              ),
             ),
-          ),
-          const SizedBox(height: 16),
-          const Text('Tell us how you use the app and what we should build next.',
-              style: TextStyle(fontSize: 14.5, color: FeedbackUi.sub, height: 1.45)),
-          const SizedBox(height: 16),
-          bullet(Icons.timer_rounded, 'About 1 minute · 5 questions'),
-          bullet(Icons.lock_rounded, 'Only the NexAround team sees answers'),
-          bullet(Icons.event_repeat_rounded, 'We ask once every 3 months'),
-        ],
-      ),
+            Positioned(
+              left: 0,
+              bottom: 6,
+              child: Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(13),
+                  boxShadow: const [BoxShadow(color: Color(0x1F000000), blurRadius: 14, offset: Offset(0, 6))],
+                ),
+                child: const Icon(Icons.star_rounded, color: Color(0xFFF59E0B), size: 22),
+              ),
+            ),
+          ]),
+        ),
+        const SizedBox(height: 12),
+        const Text('Help shape the next\nNexAround update',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 25, fontWeight: FontWeight.w700, height: 1.2, letterSpacing: -0.3, color: FeedbackUi.ink)),
+        const SizedBox(height: 8),
+        const Text('Tell us how you use the app and\nwhat we should build next.',
+            textAlign: TextAlign.center, style: TextStyle(fontSize: 14.5, color: FeedbackUi.sub, height: 1.45)),
+        const SizedBox(height: 20),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Column(children: [
+            bullet(Icons.timer_rounded, 'About 1 minute · 5 questions'),
+            bullet(Icons.lock_rounded, 'Only our team sees answers'),
+            bullet(Icons.event_repeat_rounded, 'We ask once every 3 months'),
+          ]),
+        ),
+        const SizedBox(height: 10),
+      ],
     );
   }
 
@@ -759,9 +784,8 @@ class _SurveySheetState extends State<_SurveySheet> {
   // ── Thanks ──────────────────────────────────────────────────────────────
 
   Widget _thanks() {
-    return SingleChildScrollView(
-      child: Column(children: [
-        const SizedBox(height: 36),
+    return Column(children: [
+        const SizedBox(height: 8),
         const FeedbackSuccessBadge(),
         const SizedBox(height: 16),
         const Text('Thank you!',
@@ -779,7 +803,6 @@ class _SurveySheetState extends State<_SurveySheet> {
             Text('Next survey in about 3 months', style: TextStyle(fontSize: 13.5, color: FeedbackUi.sub)),
           ]),
         ),
-      ]),
-    );
+      ]);
   }
 }
