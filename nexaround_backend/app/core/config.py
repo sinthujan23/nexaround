@@ -117,6 +117,12 @@ class Settings(BaseSettings):
     SMTP_USER: str = ""
     SMTP_PASSWORD: str = ""
     EMAILS_FROM_EMAIL: str = "noreply@nexaround.com"
+    # The admin panel's Support inbox reads the SMTP login's own mailbox
+    # (support@) over IMAP. A blank host means the SMTP host with "smtp."
+    # swapped for "imap." (Hostinger: imap.hostinger.com).
+    IMAP_HOST: str = ""
+    IMAP_PORT: int = 993
+    SUPPORT_MAIL_NAME: str = "NexAround Support"
 
     @field_validator("GOOGLE_CLIENT_IDS", "APPLE_CLIENT_IDS", mode="before")
     @classmethod

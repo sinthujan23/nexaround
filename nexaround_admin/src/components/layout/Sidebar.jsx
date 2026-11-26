@@ -5,8 +5,9 @@ import { compactCount, usePlaceCounts } from '../../places';
 import { useVendorChangeCount } from '../../vendorChanges';
 import { useProviderApplicationCount } from '../../providerApplications';
 import { useCityTourCount } from '../../cityTours';
+import { useSupportUnread } from '../../supportMail';
 import {
-  ADMIN, CREATOR, canPublishGuides, isCreator, sessionName, sessionSections,
+  ADMIN, CREATOR, SUPPORT_INBOX, canPublishGuides, isCreator, sessionName, sessionSections,
 } from '../../session';
 import { CrossIcon, LogOutIcon, MenuIcon } from '../Icons';
 
@@ -16,9 +17,10 @@ function AdminSidebar({ onLogout, extraCounts }) {
   const vendorChanges = useVendorChangeCount();
   const applications = useProviderApplicationCount();
   const cityTours = useCityTourCount();
+  const supportMail = useSupportUnread();
   const counts = {
     ...placeCounts, vendor_changes: vendorChanges, provider_applications: applications,
-    city_tours: cityTours, ...extraCounts,
+    city_tours: cityTours, support_mail: supportMail, ...extraCounts,
   };
   return (
     <SidebarView
@@ -29,19 +31,23 @@ function AdminSidebar({ onLogout, extraCounts }) {
 }
 
 /**
- * A team member sees only their areas, and no counts: those come from
- * admin-only endpoints, which refuse a member's token.
+ * A team member sees only their areas, and no counts but Support inbox's:
+ * the others come from admin-only endpoints, which refuse a member's token.
  */
+function CreatorSidebar({ onLogout }) {
+  const sections = sessionSections();
+  const supportMail = useSupportUnread(sections.includes(SUPPORT_INBOX));
+  return (
+    <SidebarView
+      onLogout={onLogout} sections={navSectionsFor(CREATOR, sections)} counts={{ support_mail: supportMail }}
+      creator={!canPublishGuides()}
+      user={{ name: sessionName(), role: 'Team member' }}
+    />
+  );
+}
+
 export default function Sidebar(props) {
-  if (isCreator()) {
-    return (
-      <SidebarView
-        onLogout={props.onLogout} sections={navSectionsFor(CREATOR, sessionSections())} counts={{}}
-        creator={!canPublishGuides()}
-        user={{ name: sessionName(), role: 'Team member' }}
-      />
-    );
-  }
+  if (isCreator()) return <CreatorSidebar onLogout={props.onLogout} />;
   return <AdminSidebar {...props} />;
 }
 

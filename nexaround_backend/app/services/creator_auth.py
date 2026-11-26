@@ -33,7 +33,8 @@ CITY_TOURS = "city_tours"
 EXPERIENCES = "experiences"
 TRAVEL_BYTES = "travel_bytes"
 MUSEUMS = "museums"
-SECTIONS = (CITY_TOURS, EXPERIENCES, TRAVEL_BYTES, MUSEUMS)
+SUPPORT_INBOX = "support_inbox"
+SECTIONS = (CITY_TOURS, EXPERIENCES, TRAVEL_BYTES, MUSEUMS, SUPPORT_INBOX)
 
 
 def normalize_email(value: str) -> str:

@@ -1315,7 +1315,7 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
   IconData _getFoodIcon(String category, String name, int index) {
     final cat = category.toLowerCase();
     final nm = name.toLowerCase();
-    if (cat.contains('cafe') || cat.contains('coffee') || nm.contains('cafe') || nm.contains('coffee')) {
+    if (cat.contains('cafe') || cat.contains('café') || cat.contains('coffee') || nm.contains('cafe') || nm.contains('coffee')) {
       return Icons.coffee_rounded;
     }
     if (cat.contains('street') || cat.contains('fast') || nm.contains('burger') || nm.contains('pizza')) {
@@ -1332,7 +1332,7 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
     if (cat.contains('food') || cat.contains('restaurant') || nm.contains('restaurant') || nm.contains('kitchen') || nm.contains('bistro')) {
       return Icons.restaurant_rounded;
     }
-    if (cat.contains('cafe') || cat.contains('coffee') || nm.contains('cafe') || nm.contains('coffee')) {
+    if (cat.contains('cafe') || cat.contains('café') || cat.contains('coffee') || nm.contains('cafe') || nm.contains('coffee')) {
       return Icons.local_cafe_rounded;
     }
     if (cat.contains('bar') || cat.contains('bakery') || nm.contains('bakery') || nm.contains('sweet')) {
@@ -1759,9 +1759,17 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
     String defaultCategory = 'Attraction',
     String emoji = '📍',
   }) {
-    final catName = (a.categoryName != null && a.categoryName!.isNotEmpty)
-        ? a.categoryName!
-        : defaultCategory;
+    // What the place is ("Chinese restaurant", "Convenience store"), judged
+    // from its own Google types for the tab it is listed in. The stored
+    // category ("POI", "Experiences") is an old filing label and often named a
+    // different tab than the one the card sat in (QA, 2026-11).
+    final catName = PlaceSections.kindLabel(a, defaultCategory);
+    // A label the icon picker has no keyword for ("Doctor", "Night club")
+    // falls back to the tab's own icon rather than a bare pin.
+    var cardIcon = _getExperienceIcon(catName, a.name, index);
+    if (cardIcon == Icons.place_rounded) {
+      cardIcon = _getExperienceIcon(defaultCategory, a.name, index);
+    }
     // Null covers "no photo" and "unusable value" alike, so the icon fallback
     // is chosen once here rather than half-decided by an isNotEmpty check and
     // half by CachedNetworkImage failing on a malformed URL.
@@ -1819,7 +1827,7 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
                           color: AppColors.secondary.withOpacity(0.1),
                           child: Center(
                             child: Icon(
-                              _getExperienceIcon(catName, a.name, index),
+                              cardIcon,
                               color: AppColors.secondary,
                               size: 36,
                             ),
@@ -1836,7 +1844,7 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
                         ),
                         child: Center(
                           child: Icon(
-                            _getExperienceIcon(catName, a.name, index),
+                            cardIcon,
                             color: AppColors.secondary,
                             size: 36,
                           ),

@@ -25,6 +25,7 @@ export const CITY_TOURS = 'city_tours';
 export const EXPERIENCES = 'experiences';
 export const TRAVEL_BYTES = 'travel_bytes';
 export const MUSEUMS = 'museums';
+export const SUPPORT_INBOX = 'support_inbox';
 
 /** Whether this token's expiry time (`exp`, in seconds) has passed. A token
  * with no readable expiry counts as not expired: the server decides then. */

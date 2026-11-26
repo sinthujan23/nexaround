@@ -26,11 +26,14 @@ import Team from './pages/Team';
 import Museums from './pages/Museums';
 import MuseumEditor from './pages/MuseumEditor';
 import FeatureUsage from './pages/FeatureUsage';
-import { ADMIN, CREATOR, CITY_TOURS, EXPERIENCES, MUSEUMS, TRAVEL_BYTES } from './session';
+import SupportInbox from './pages/SupportInbox';
+import {
+  ADMIN, CREATOR, CITY_TOURS, EXPERIENCES, MUSEUMS, SUPPORT_INBOX, TRAVEL_BYTES,
+} from './session';
 import {
   CompassIcon, UsersIcon, MapPinIcon, CreditCardIcon, MegaphoneIcon, ImageIcon, SettingsIcon,
   ClipboardCheckIcon, TrendingUpIcon, EyeOffIcon, TicketIcon, InboxIcon, ShieldIcon, MonitorIcon,
-  StarIcon, BookOpenIcon, RouteIcon, MuseumIcon,
+  StarIcon, BookOpenIcon, RouteIcon, MuseumIcon, MailIcon,
 } from './components/Icons';
 
 // Pages a team member may open too, if given the page's `section`. Every
@@ -71,6 +74,7 @@ export const NAV_SECTIONS = [
     items: [
       { path: '/experiences', label: 'Experiences', title: 'Experiences & Vendors', icon: TicketIcon, page: Experiences, roles: BOTH, section: EXPERIENCES },
       { path: '/experiences/changes', label: 'Vendor changes', title: 'Experiences · Vendor changes', icon: ClipboardCheckIcon, page: VendorChanges, badge: 'vendor_changes' },
+      { path: '/support-inbox', label: 'Support inbox', title: 'Support inbox · support@nexaround.com', icon: MailIcon, page: SupportInbox, badge: 'support_mail', roles: BOTH, section: SUPPORT_INBOX },
       { path: '/enquiries', label: 'Enquiries', title: 'Experience Enquiries', icon: InboxIcon, page: ExperienceEnquiries, badge: 'enquiries' },
       { path: '/experiences/applications', label: 'Provider applications', title: 'Experiences · Provider applications', icon: UsersIcon, page: ProviderApplications, badge: 'provider_applications' },
       { path: '/reviews', label: 'Reviews', title: 'Experience Reviews', icon: StarIcon, page: ExperienceReviews },

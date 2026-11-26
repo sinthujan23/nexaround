@@ -72,9 +72,14 @@ class PlaceSections {
   ];
   /// Carry `store` but belong to another section — cafés and chemists above all,
   /// which Google files as `food_store` and `store` respectively.
+  /// The bare legacy `food` tag is deliberately absent: Google puts it on every
+  /// grocery and convenience shop, which belong here. Places of worship are
+  /// present: temples sell books and offerings, so Google adds `book_store`.
   static const _nonShoppingTags = [
+    'place_of_worship', 'hindu_temple', 'buddhist_temple', 'church', 'mosque',
+    'synagogue',
     'cafe', 'coffee_shop', 'restaurant', 'bar', 'bakery', 'ice_cream_shop',
-    'dessert_shop', 'confectionery', 'food', 'food_store', 'meal_takeaway',
+    'dessert_shop', 'confectionery', 'food_store', 'meal_takeaway',
     'meal_delivery', 'pharmacy', 'drugstore', 'hospital', 'doctor', 'dentist',
     'medical_clinic', 'school', 'university', 'bank', 'atm', 'finance',
     'lodging', 'hotel', 'spa', 'beauty_salon', 'hair_care', 'body_art_service',
@@ -220,6 +225,10 @@ class PlaceSections {
     final tags = tagsOf(a);
     if (_nonShoppingTags.any(tags.contains)) return false;
     if (_stayWords.any(a.name.toLowerCase().contains)) return false;
+    if (_destinationTags.any((t) => t != 'art_gallery' && tags.contains(t)) &&
+        !_shopName.hasMatch(a.name.toLowerCase())) {
+      return false;
+    }
     if (_shoppingTags.any(tags.contains)) return true;
     if (!_hasNoInformativeTags(a)) return false;
     final cat = (a.categoryName ?? '').toLowerCase();
@@ -250,18 +259,108 @@ class PlaceSections {
     };
   }
 
+  /// Eating types — mirrors the server's Food & Drink list minus the bare
+  /// legacy `food` tag, which Google also puts on grocery shops and on any
+  /// museum or gym with a café inside.
   static const _foodTags = [
     'restaurant', 'cafe', 'coffee_shop', 'bakery', 'bar', 'night_club',
     'meal_takeaway', 'meal_delivery', 'ice_cream_shop', 'dessert_shop',
-    'tea_house', 'fast_food_restaurant', 'food_court', 'food', 'food_store',
+    'tea_house', 'fast_food_restaurant', 'food_court', 'food_store',
+  ];
+  /// Mirrors `_EXCLUDED_TAGS['Food & Drink']` on the server.
+  static const _nonFoodTags = [
+    'lodging', 'hotel', 'hospital', 'doctor', 'pharmacy', 'school',
+    'university', 'bank', 'atm', 'gas_station', 'car_repair',
+    'shopping_mall', 'department_store', 'supermarket',
   ];
 
+  /// Places whose main purpose is something other than eating or shopping.
+  /// Mirrors `_DESTINATION_TYPES` in place_bands.py. Google also gives them the
+  /// types of whatever else is on site — a museum's café, a gym's juice bar, a
+  /// monastery's bookshop — and those extras used to list them under Food or
+  /// Shopping (QA, 2026-11). The main purpose wins unless the name says the
+  /// place itself is a restaurant or a shop ("Museum Café", "Zoo Gift Shop").
+  static const _destinationTags = [
+    'museum', 'art_museum', 'history_museum', 'art_gallery',
+    'historical_landmark', 'historical_place', 'cultural_landmark', 'monument',
+    'castle', 'zoo', 'aquarium', 'amusement_park', 'amusement_center',
+    'water_park', 'planetarium', 'gym', 'fitness_center', 'sports_complex',
+    'sports_club', 'golf_course', 'stadium', 'place_of_worship', 'hindu_temple',
+    'buddhist_temple', 'church', 'mosque', 'synagogue', 'park', 'national_park',
+    'state_park', 'beach', 'botanical_garden', 'wildlife_park', 'hiking_area',
+    'campground',
+  ];
+  static final _foodName = RegExp(
+    r'\b(restaurants?|restaurante|ristorante|caf[eé]s?|caff[eè]|coffee|bakery|bakes|'
+    r'bistro|brasserie|bar|pub|grill|kitchen|diner|eatery|pizzeria|pizza|bbq|'
+    r'barbecue|canteen|cafeteria|trattoria|taverna|tavern|food|foods|dining)\b',
+  );
+  static final _shopName =
+      RegExp(r'\b(shops?|stores?|mall|market|supermarket|boutique|bazaar|mart)\b');
+
+  /// Shop types that make the bare `food` tag mean "sells groceries".
+  static const _grocerySigns = [
+    'convenience_store', 'grocery_store', 'grocery_or_supermarket',
+    'supermarket', 'department_store', 'shopping_mall', 'market', 'liquor_store',
+  ];
+  static bool _isShopType(String t) =>
+      _grocerySigns.contains(t) || (t.endsWith('_store') && t != 'food_store');
+
   static bool isFood(AttractionEntity a) {
-    if (_foodTags.any(tagsOf(a).contains)) return true;
-    if (!_hasNoInformativeTags(a)) return false;
-    final cat = (a.categoryName ?? '').toLowerCase();
-    return cat.contains('food') || cat.contains('restaurant') ||
-        cat.contains('cafe') || cat.contains('dining') || cat.contains('meal');
+    final tags = tagsOf(a);
+    if (_nonFoodTags.any(tags.contains)) return false;
+    if (!_foodTags.any(tags.contains)) {
+      if (tags.contains('food')) {
+        if (tags.any(_isShopType)) return false;
+      } else {
+        if (!_hasNoInformativeTags(a)) return false;
+        final cat = (a.categoryName ?? '').toLowerCase();
+        return cat.contains('food') || cat.contains('restaurant') ||
+            cat.contains('cafe') || cat.contains('dining') || cat.contains('meal');
+      }
+    }
+    if (_destinationTags.any(tags.contains) &&
+        !_foodName.hasMatch(a.name.toLowerCase())) {
+      return false;
+    }
+    return true;
+  }
+
+  /// What the place is, for the small label on its card in [section] — e.g.
+  /// "Chinese restaurant", "Convenience store", "Art museum". The first of the
+  /// place's own types that fits the section; the section's name otherwise.
+  /// Replaces the stored category ("POI", "Experiences"), which is an old
+  /// filing label and often names a different section than the tab it is in.
+  static String kindLabel(AttractionEntity a, String section) {
+    bool fits(String t) {
+      switch (section) {
+        case 'Food & Drink':
+          return _foodTags.contains(t) || t.endsWith('_restaurant');
+        case 'Shopping':
+          return t != 'store' && (_shoppingTags.contains(t) || _isShopType(t));
+        case 'Nature':
+          return _natureTags.contains(t);
+        case 'POI':
+          return _heritageTags.contains(t) || _poiTags.contains(t) ||
+              t == 'art_museum' || t == 'amusement_center';
+        case 'Medical':
+        case 'Hospital':
+          return const [
+            'hospital', 'pharmacy', 'drugstore', 'doctor', 'dentist',
+            'physiotherapist', 'medical_center', 'medical_clinic',
+            'medical_lab', 'dental_clinic',
+          ].contains(t);
+      }
+      return false;
+    }
+
+    for (final t in tagsOf(a)) {
+      if (t == 'point_of_interest_landmark' || !fits(t)) continue;
+      if (t == 'cafe') return 'Café';
+      final words = t.replaceAll('_', ' ');
+      return words[0].toUpperCase() + words.substring(1);
+    }
+    return section;
   }
 
   static List<AttractionEntity> deduplicate(List<AttractionEntity> list) {

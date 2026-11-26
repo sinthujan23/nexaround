@@ -278,7 +278,12 @@ _EXCLUDED_TAGS: dict[str, set[str]] = {
         # Shopping type list would otherwise accept — they belong to
         # Food & Drink, and were displacing actual shops.
         "cafe", "coffee_shop", "ice_cream_shop", "dessert_shop", "bakery",
-        "confectionery", "food", "food_store", "meal_takeaway", "meal_delivery",
+        "confectionery", "food_store", "meal_takeaway", "meal_delivery",
+        # Temples and monasteries sell books and offerings, so Google adds
+        # `book_store` / `store` — QA found a Buddhist monastery under Shopping.
+        "place_of_worship", "hindu_temple", "buddhist_temple", "church", "mosque", "synagogue",
+        # The bare legacy `food` tag is deliberately NOT here: Google puts it on
+        # every grocery and convenience shop, which belong in Shopping.
     },
     "Medical": _NON_HEALTH_TAGS,
     "Hospital": _NON_HEALTH_TAGS,
@@ -288,6 +293,59 @@ _EXCLUDED_TAGS: dict[str, set[str]] = {
         "shopping_mall", "department_store", "supermarket",
     },
 }
+
+# Places whose main purpose is something other than eating or shopping. Google
+# also hangs the types of whatever else is on site on them — a museum with a
+# café gets `cafe` and `food`, a gym with a juice bar gets `cafe`, a monastery
+# with a bookshop gets `book_store` — and any one of those used to be enough to
+# list the place under Food & Drink or Shopping (QA, 2026-11). The main purpose
+# wins unless the name says the place itself is a restaurant or a shop
+# ("Museum Café", "Zoo Gift Shop").
+_DESTINATION_TYPES = {
+    "museum", "art_museum", "history_museum", "art_gallery", "historical_landmark",
+    "historical_place", "cultural_landmark", "monument", "castle",
+    "zoo", "aquarium", "amusement_park", "amusement_center", "water_park",
+    "planetarium", "gym", "fitness_center", "sports_complex", "sports_club",
+    "golf_course", "stadium", "place_of_worship", "hindu_temple",
+    "buddhist_temple", "church", "mosque", "synagogue",
+    "park", "national_park", "state_park", "beach", "botanical_garden",
+    "wildlife_park", "hiking_area", "campground",
+}
+# Art galleries sell art: a gallery is a fair Shopping result.
+_SHOPPING_DESTINATION_TYPES = _DESTINATION_TYPES - {"art_gallery"}
+
+_FOOD_NAME = re.compile(
+    r"\b(restaurants?|restaurante|ristorante|caf[eé]s?|caff[eè]|coffee|bakery|bakes|"
+    r"bistro|brasserie|bar|pub|grill|kitchen|diner|eatery|pizzeria|pizza|bbq|"
+    r"barbecue|canteen|cafeteria|trattoria|taverna|tavern|food|foods|dining)\b"
+)
+_SHOP_NAME = re.compile(r"\b(shops?|stores?|mall|market|supermarket|boutique|bazaar|mart)\b")
+
+# Shop types that make Google's bare `food` tag mean "sells groceries" rather
+# than "serves meals". `food_store` stays food (tea and spice shops), and the
+# bare `store` proves nothing either way.
+_GROCERY_SIGNS = {
+    "convenience_store", "grocery_store", "grocery_or_supermarket", "supermarket",
+    "department_store", "shopping_mall", "market", "liquor_store",
+}
+
+
+def _is_shop_type(tag: str) -> bool:
+    return tag in _GROCERY_SIGNS or (tag.endswith("_store") and tag != "food_store")
+
+
+def _food_verdict(tag_set: set[str], lowered_name: str) -> bool:
+    """Food & Drink membership: a real eating type, or the bare legacy `food`
+    tag on a place that isn't a shop; and not a destination that merely has a
+    café or restaurant inside."""
+    eating = allowed_tags_for("Food & Drink") - {"food"}
+    if not (tag_set & eating):
+        if "food" not in tag_set or any(_is_shop_type(t) for t in tag_set):
+            return False
+    if tag_set & _DESTINATION_TYPES and not _FOOD_NAME.search(lowered_name):
+        return False
+    return True
+
 
 # Generic Google tags that say nothing about what a place is. A row carrying
 # only these is untyped in practice and must not satisfy the relevance gate.
@@ -358,6 +416,11 @@ def is_relevant(category: Optional[str], tags, name: Optional[str] = None) -> bo
             return False
 
     if _sibling_owns(category, tag_set, lowered):
+        return False
+
+    if category == "Food & Drink":
+        return _food_verdict(tag_set, lowered)
+    if category == "Shopping" and tag_set & _SHOPPING_DESTINATION_TYPES and not _SHOP_NAME.search(lowered):
         return False
 
     # A place named for what it is outranks a place Google typed vaguely: plenty

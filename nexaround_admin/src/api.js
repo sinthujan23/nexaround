@@ -278,3 +278,25 @@ const API_ORIGIN = API_BASE.replace(/\/api\/v1$/, '');
 export const mediaUrl = (url) => (!url || /^https?:/.test(url) ? url : API_ORIGIN + url);
 
 export { API_BASE, API_ORIGIN };
+
+/** A file from an admin endpoint, as a Blob. A plain link can't carry the
+ * sign-in token, so downloads go through fetch. */
+export async function apiDownload(endpoint) {
+  let response;
+  try {
+    response = await fetch(`${API_BASE}${endpoint}`, {
+      headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_token')}` },
+    });
+  } catch {
+    throw new Error('Unable to connect to the server. Please check your internet connection.');
+  }
+  if (!response.ok) {
+    let message = `Download failed (${response.status})`;
+    try {
+      const data = await response.json();
+      if (typeof data?.detail === 'string') message = data.detail;
+    } catch { /* not JSON */ }
+    throw new Error(message);
+  }
+  return response.blob();
+}

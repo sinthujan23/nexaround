@@ -1,27 +1,64 @@
 import asyncio
 import html
 import smtplib
+import threading
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.utils import formatdate, make_msgid
+from typing import Iterable
 from app.core.config import settings
 
 
-def _send_smtp_sync(to_email: str, subject: str, html_body: str, reply_to: str = "") -> bool:
-    """Synchronous SMTP worker executed in threadpool to prevent blocking async loop."""
+def _build(to_email: str, subject: str, html_body: str, reply_to: str, date: str, message_id: str):
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
     msg["From"] = settings.EMAILS_FROM_EMAIL
     msg["To"] = to_email
+    msg["Date"] = date
+    msg["Message-ID"] = message_id
     if reply_to:
         msg["Reply-To"] = reply_to
     msg.attach(MIMEText(html_body, "html"))
+    return msg
+
+
+def _send_smtp_sync(
+    to_email: str, subject: str, html_body: str, reply_to: str = "",
+    *, hide: Iterable[str] = (), keep_copy: bool = True,
+) -> bool:
+    """Synchronous SMTP worker executed in threadpool to prevent blocking async loop.
+
+    Once sent, a copy goes to the support mailbox's "System" folder (the
+    admin panel's Support inbox), in the background so the caller doesn't
+    wait. Each string in `hide` (a login code, a sign-in link) is blanked out
+    in that copy: anyone with Support inbox access could otherwise use it to
+    get into the account.
+    """
+    date = formatdate(localtime=False)
+    domain = (settings.EMAILS_FROM_EMAIL.split("@")[-1] or None) if settings.EMAILS_FROM_EMAIL else None
+    message_id = make_msgid(domain=domain)
+    msg = _build(to_email, subject, html_body, reply_to, date, message_id)
 
     with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=5) as server:
         server.starttls()
         if settings.SMTP_USER and settings.SMTP_PASSWORD:
             server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
         server.sendmail(settings.EMAILS_FROM_EMAIL, [to_email], msg.as_string())
+
+    if keep_copy:
+        copy_subject, copy_html = subject, html_body
+        for secret in hide:
+            if secret:
+                copy_subject = copy_subject.replace(secret, "••••••")
+                copy_html = copy_html.replace(secret, "•••••• (hidden in this copy)")
+        copy = _build(to_email, copy_subject, copy_html, reply_to, date, message_id)
+        threading.Thread(target=_keep_copy, args=(copy.as_bytes(),), daemon=True).start()
     return True
+
+
+def _keep_copy(raw: bytes) -> None:
+    from app.services import support_mailbox
+    support_mailbox.save_system_copy(raw)
 
 
 async def send_otp_email(to_email: str, otp_code: str) -> bool:
@@ -62,7 +99,7 @@ async def send_otp_email(to_email: str, otp_code: str) -> bool:
         return True
 
     try:
-        await asyncio.to_thread(_send_smtp_sync, to_email, subject, html_body)
+        await asyncio.to_thread(_send_smtp_sync, to_email, subject, html_body, hide=[otp_code])
         print(f"✅ OTP email sent successfully via SMTP to {to_email}")
         return True
     except Exception as e:
@@ -109,7 +146,7 @@ async def send_password_reset_email(to_email: str, otp_code: str) -> bool:
         return True
 
     try:
-        await asyncio.to_thread(_send_smtp_sync, to_email, subject, html_body)
+        await asyncio.to_thread(_send_smtp_sync, to_email, subject, html_body, hide=[otp_code])
         print(f"✅ Password reset OTP email sent successfully via SMTP to {to_email}")
         return True
     except Exception as e:
@@ -178,7 +215,7 @@ async def send_vendor_invite_email(
         return True
 
     try:
-        await asyncio.to_thread(_send_smtp_sync, to_email, what, html_body)
+        await asyncio.to_thread(_send_smtp_sync, to_email, what, html_body, hide=[link])
         print(f"✅ Partner link email sent successfully via SMTP to {to_email}")
         return True
     except Exception as e:
@@ -388,7 +425,8 @@ async def send_website_contact_email(
     """
 
     try:
-        await asyncio.to_thread(_send_smtp_sync, to_email, subject, html_body, email)
+        # It arrives in the support Inbox already; no second copy.
+        await asyncio.to_thread(_send_smtp_sync, to_email, subject, html_body, email, keep_copy=False)
         return True
     except Exception as e:
         print(f"❌ Failed to send website contact message via SMTP: {e}")

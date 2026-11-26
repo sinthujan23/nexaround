@@ -87,7 +87,7 @@ class CityTourDetail(CityTourListItem):
 
 
 # Team members (admin/team): the admin-panel areas a login opens.
-TeamSection = Literal["city_tours", "experiences", "travel_bytes", "museums"]
+TeamSection = Literal["city_tours", "experiences", "travel_bytes", "museums", "support_inbox"]
 
 
 def _sections(value: Optional[list]) -> Optional[list]:

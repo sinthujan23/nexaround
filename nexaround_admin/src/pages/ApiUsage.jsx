@@ -163,7 +163,6 @@ export default function ApiUsage() {
   const [pipeline, setPipeline] = useState(null);
   const [tailFilter, setTailFilter] = useState('');
   const [alerts, setAlerts] = useState({ alerts: [], open_counts: {} });
-  const [spend, setSpend] = useState(null);
   const [routes, setRoutes] = useState([]);
   const [tokens, setTokens] = useState({ usage: [], total_tokens: 0 });
   const [coverage, setCoverage] = useState([]);
@@ -197,7 +196,7 @@ export default function ApiUsage() {
       const q = `from=${from.toISOString()}&to=${to.toISOString()}`
         + `${provider ? `&provider=${provider}` : ''}${ingest ? `&ingest=${ingest}` : ''}`;
       try {
-        const [s, ts, f, b, d, u, h, ev, pl, al, sp, rt, tk, cv, rc] = await Promise.all([
+        const [s, ts, f, b, d, u, h, ev, pl, al, rt, tk, cv, rc] = await Promise.all([
           apiGet(`/admin/telemetry/summary?${q}`),
           apiGet(`/admin/telemetry/timeseries?${q}&group_by=served_from`),
           apiGet(`/admin/telemetry/funnel?${q}${userFilter ? `&user_id=${userFilter}` : ''}`),
@@ -208,7 +207,6 @@ export default function ApiUsage() {
           apiGet(`/admin/telemetry/events?${q}&page_size=40${tailFilter ? `&operation=${encodeURIComponent(tailFilter)}` : ''}${userFilter ? `&user_id=${userFilter}` : ''}`),
           apiGet('/admin/telemetry/pipeline'),
           apiGet('/admin/telemetry/alerts?only_open=true&limit=10'),
-          apiGet('/admin/telemetry/spend'),
           apiGet(`/admin/telemetry/routes?${q}${userFilter ? `&user_id=${userFilter}` : ''}`),
           apiGet(`/admin/telemetry/tokens?${q}`),
           apiGet('/admin/telemetry/coverage'),
@@ -218,7 +216,7 @@ export default function ApiUsage() {
         setSummary(s); setSeries(ts); setFunnel(f.operations || []);
         setBreakdown(b); setDupes(d); setUsers(u.users || []);
         setHealth(h); setEvents(ev.events || []); setPipeline(pl);
-        setAlerts(al); setSpend(sp);
+        setAlerts(al);
         setRoutes(rt.routes || []); setTokens(tk); setCoverage(cv.sources || []);
         setRecon(rc);
       } catch (e) {
@@ -467,38 +465,6 @@ export default function ApiUsage() {
             that period. Switch the filter to <strong>Measured only</strong> for figures that
             come from recorded outcomes.
           </p>
-        </Card>
-      )}
-
-      {/* ── Budget ───────────────────────────────────────────────── */}
-      {spend && spend.monthly_budget_usd > 0 && (
-        <Card
-          title="Monthly budget"
-          style={{ marginBottom: '20px' }}
-          action={
-            <Badge tone={spend.enforcing ? 'green' : 'yellow'}>
-              {spend.enforcing ? 'enforcing' : 'alerts only'}
-            </Badge>
-          }
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '8px' }}>
-            <span>{usd(spend.month_to_date_usd)} of {usd(spend.monthly_budget_usd)}</span>
-            <span style={{ color: spend.over_budget ? 'var(--danger)' : 'var(--text-secondary)', fontWeight: 700 }}>
-              {spend.pct_consumed}%
-            </span>
-          </div>
-          <Bar
-            pct={spend.pct_consumed || 0}
-            color={spend.over_budget ? 'var(--danger)' : (spend.pct_consumed || 0) > 80 ? 'var(--warning)' : 'var(--accent)'}
-            height={10}
-          />
-          {spend.over_budget && (
-            <p style={{ marginTop: '10px', fontSize: '13px', color: 'var(--danger)', fontWeight: 600 }}>
-              {spend.enforcing
-                ? 'Budget reached — paid calls are being refused and cached results served instead.'
-                : 'Budget reached, but enforcement is off — calls are still being paid for.'}
-            </p>
-          )}
         </Card>
       )}
 

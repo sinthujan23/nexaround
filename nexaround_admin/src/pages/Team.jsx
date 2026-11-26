@@ -3,7 +3,9 @@ import { apiDelete, apiPatch, apiPost, useApi } from '../api';
 import { Badge, EmptyState, Modal, PageError, PageLoading, Switch, Toast } from '../components/Kit';
 import { EditIcon, PlusIcon, TrashIcon, UsersIcon } from '../components/Icons';
 import { useToast } from '../hooks';
-import { CITY_TOURS, EXPERIENCES, MUSEUMS, TRAVEL_BYTES } from '../session';
+import {
+  CITY_TOURS, EXPERIENCES, MUSEUMS, SUPPORT_INBOX, TRAVEL_BYTES,
+} from '../session';
 
 // The areas a login can open, in the order the sidebar shows them.
 const AREAS = [
@@ -11,6 +13,7 @@ const AREAS = [
   [MUSEUMS, 'Museums'],
   [EXPERIENCES, 'Experiences'],
   [CITY_TOURS, 'City Guides'],
+  [SUPPORT_INBOX, 'Support inbox'],
 ];
 
 const formatDate = (value) => (value

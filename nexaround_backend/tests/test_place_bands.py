@@ -275,3 +275,43 @@ def test_case_differences_still_count_as_the_same_name():
     ]
     names = [p.name.lower() for p in _flat(_assemble(pool))]
     assert names.count("wawe") == 1
+
+
+# ── One main purpose wins (QA, 2026-11) ─────────────────────────────────────
+# Google adds the types of whatever else is on site: a museum's café, a gym's
+# juice bar, a monastery's bookshop. Those extras must not list the place under
+# Food & Drink or Shopping, and grocery shops tagged `food` belong in Shopping.
+
+@pytest.mark.parametrize("name, tags", [
+    ("Museum of Contemporary Art Australia", ["art_museum", "museum", "cafe", "food", "store"]),
+    ("The Y Fitness and Aquatic Centre", ["fitness_center", "gym", "cafe", "food"]),
+    ("Entertainment Park", ["amusement_park", "cafe", "food"]),
+    ("St. George Leagues Club", ["sports_club", "museum", "restaurant", "food"]),
+    ("Ajay Shop", ["convenience_store", "food", "store"]),
+])
+def test_places_with_a_cafe_inside_are_not_food(name, tags):
+    assert pb.is_relevant("Food & Drink", tags, name) is False
+
+
+@pytest.mark.parametrize("name, tags", [
+    ("Kinniya Hot BBQ", ["restaurant", "food"]),
+    ("Old legacy eatery", ["food", "point_of_interest"]),
+    ("Hill country tea stores", ["food_store", "store", "food"]),
+    ("Museum Café", ["cafe", "museum", "food"]),
+])
+def test_real_eating_places_stay_food(name, tags):
+    assert pb.is_relevant("Food & Drink", tags, name) is True
+
+
+def test_grocery_shops_tagged_food_are_shopping():
+    assert pb.is_relevant("Shopping", ["convenience_store", "food", "store"], "Ajay Shop") is True
+
+
+def test_places_of_worship_are_never_shopping():
+    tags = ["book_store", "place_of_worship", "store"]
+    assert pb.is_relevant("Shopping", tags, "Mahamevnawa Buddhist Monastery") is False
+
+
+def test_a_shop_named_as_a_shop_survives_its_destination_type():
+    assert pb.is_relevant("Shopping", ["gift_shop", "zoo", "store"], "Zoo Gift Shop") is True
+    assert pb.is_relevant("Shopping", ["gift_shop", "zoo", "store"], "City Zoo") is False
