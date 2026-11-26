@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
+import 'package:nexaround_app/features/feedback/presentation/pages/feedback_page.dart';
 import 'package:nexaround_app/core/widgets/glass_card.dart';
 import 'package:nexaround_app/features/auth/presentation/pages/login_page.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
@@ -512,6 +513,12 @@ class _ProfilePageState extends State<ProfilePage> {
             await CacheService.setNotificationsEnabled(!current);
             setState(() {});
           },
+        ),
+        _buildMenuItem(
+          Icons.lightbulb_outline_rounded,
+          'Tell us what you want',
+          'New',
+          onTap: () => openFeedbackPage(context, source: 'profile'),
         ),
         _buildMenuItem(
           Icons.help_outline_rounded, 

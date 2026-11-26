@@ -7,6 +7,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:geolocator/geolocator.dart' as geo;
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mapbox;
 import 'package:nexaround_app/app/theme/app_colors.dart';
+import 'package:nexaround_app/features/feedback/presentation/widgets/quick_rating.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/core/services/google_places_service.dart';
 import 'package:nexaround_app/features/mini_tour/data/mini_tour_repository.dart';
@@ -1465,8 +1466,9 @@ class _MiniTourGamePageState extends State<MiniTourGamePage>
   }
 
   Widget _buildFinished() {
+    // Scrolls, so the "How was it?" card fits on small phones too.
     return Center(
-      child: Padding(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.all(32),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -1491,6 +1493,18 @@ class _MiniTourGamePageState extends State<MiniTourGamePage>
             if (_leveledUp) ...[
               const SizedBox(height: 10),
               _rewardChip('Level Up · $_newLevelLabel', Icons.diamond_rounded),
+            ],
+            if (_tourId.isNotEmpty) ...[
+              const SizedBox(height: 24),
+              QuickRatingCard(
+                feature: 'walking_challenge',
+                refId: _tourId,
+                refLabel: _area.isNotEmpty && _area != 'your area' ? 'Walking Challenge · $_area' : 'Walking Challenge',
+                title: 'How was this walk?',
+                subtitle: 'Your answer helps us make better challenges',
+                icon: Icons.directions_walk_rounded,
+                dark: true,
+              ),
             ],
             const SizedBox(height: 36),
             SizedBox(

@@ -7,6 +7,7 @@ import 'package:flutter/rendering.dart' show RenderAbstractViewport;
 import 'package:flutter/services.dart';
 import 'package:latlong2/latlong2.dart' as ll;
 import 'package:nexaround_app/app/theme/app_colors.dart';
+import 'package:nexaround_app/features/feedback/presentation/widgets/quick_rating.dart';
 import 'package:nexaround_app/core/error/user_message.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/features/city_tours/data/city_tours_service.dart';
@@ -344,6 +345,17 @@ class _CityTourPageState extends State<CityTourPage>
                 : 'Trip finished. Well done!',
         action: SnackBarAction(label: 'Undo', onPressed: () => _undo(step.id)),
       );
+      // "How was it?" once per guide, when its trip (or a day of it) ends.
+      if (trip.isFinished) {
+        unawaited(showQuickRatingSheet(
+          context,
+          feature: 'city_guides',
+          refId: widget.card.id,
+          refLabel: '${widget.card.title} · ${widget.card.city}',
+          title: dayNumber > 0 ? 'Day $dayNumber done. Well done!' : 'Trip finished. Well done!',
+          question: 'How was the ${widget.card.city} City Guide?',
+        ));
+      }
     } catch (e) {
       // Tried again with the same time, so a dropped signal costs nothing.
       if (mounted) {

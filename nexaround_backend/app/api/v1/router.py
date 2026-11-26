@@ -36,6 +36,8 @@ from app.api.v1.city_tours_admin import router as city_tours_admin_router
 from app.api.v1.team_admin import router as team_admin_router
 from app.api.v1.museums_admin import router as museums_admin_router
 from app.api.v1.support_mail_admin import router as support_mail_admin_router
+from app.api.v1.feedback import router as feedback_router
+from app.api.v1.feedback_admin import router as feedback_admin_router
 from app.api.v1.trip_wallet import router as trip_wallet_router
 from app.api.v1.legal import (
     admin_router as legal_admin_router,
@@ -81,6 +83,8 @@ api_router.include_router(city_tours_admin_router)
 api_router.include_router(team_admin_router)
 api_router.include_router(museums_admin_router)
 api_router.include_router(support_mail_admin_router)
+api_router.include_router(feedback_router)
+api_router.include_router(feedback_admin_router)
 api_router.include_router(trip_wallet_router)
 api_router.include_router(legal_router)
 api_router.include_router(legal_partner_router)

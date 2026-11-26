@@ -6,8 +6,9 @@ import { useVendorChangeCount } from '../../vendorChanges';
 import { useProviderApplicationCount } from '../../providerApplications';
 import { useCityTourCount } from '../../cityTours';
 import { useSupportUnread } from '../../supportMail';
+import { useFeedbackNew } from '../../feedbackCount';
 import {
-  ADMIN, CREATOR, SUPPORT_INBOX, canPublishGuides, isCreator, sessionName, sessionSections,
+  ADMIN, CREATOR, FEEDBACK, SUPPORT_INBOX, canPublishGuides, isCreator, sessionName, sessionSections,
 } from '../../session';
 import { CrossIcon, LogOutIcon, MenuIcon } from '../Icons';
 
@@ -18,9 +19,10 @@ function AdminSidebar({ onLogout, extraCounts }) {
   const applications = useProviderApplicationCount();
   const cityTours = useCityTourCount();
   const supportMail = useSupportUnread();
+  const feedback = useFeedbackNew();
   const counts = {
     ...placeCounts, vendor_changes: vendorChanges, provider_applications: applications,
-    city_tours: cityTours, support_mail: supportMail, ...extraCounts,
+    city_tours: cityTours, support_mail: supportMail, feedback, ...extraCounts,
   };
   return (
     <SidebarView
@@ -31,15 +33,16 @@ function AdminSidebar({ onLogout, extraCounts }) {
 }
 
 /**
- * A team member sees only their areas, and no counts but Support inbox's:
+ * A team member sees only their areas, and no counts but Support inbox's and Feedback's:
  * the others come from admin-only endpoints, which refuse a member's token.
  */
 function CreatorSidebar({ onLogout }) {
   const sections = sessionSections();
   const supportMail = useSupportUnread(sections.includes(SUPPORT_INBOX));
+  const feedback = useFeedbackNew(sections.includes(FEEDBACK));
   return (
     <SidebarView
-      onLogout={onLogout} sections={navSectionsFor(CREATOR, sections)} counts={{ support_mail: supportMail }}
+      onLogout={onLogout} sections={navSectionsFor(CREATOR, sections)} counts={{ support_mail: supportMail, feedback }}
       creator={!canPublishGuides()}
       user={{ name: sessionName(), role: 'Team member' }}
     />

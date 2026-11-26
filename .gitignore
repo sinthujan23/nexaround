@@ -40,6 +40,8 @@ Thumbs.db
 
 # Uploads
 nexaround_backend/app/static/uploads/
+# Explorer feedback screenshots: private, served to the admin panel only.
+nexaround_backend/app/private_uploads/
 
 # Local/Test Scripts
 nexaround_backend/debug_vps.py

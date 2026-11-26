@@ -6,6 +6,8 @@ import 'package:nexaround_app/core/services/discovery_history_service.dart';
 import 'package:nexaround_app/features/auth/presentation/pages/home_page.dart';
 import 'package:nexaround_app/features/city_tours/presentation/pages/city_tour_page.dart';
 import 'package:nexaround_app/features/experiences/presentation/pages/my_experience_requests_page.dart';
+import 'package:nexaround_app/features/feedback/data/feedback_service.dart';
+import 'package:nexaround_app/features/feedback/presentation/pages/my_feedback_page.dart';
 import 'package:nexaround_app/features/explorer_points/data/explorer_points_service.dart';
 import 'package:nexaround_app/features/explorer_points/presentation/pages/explorer_points_page.dart';
 import 'package:nexaround_app/features/notifications/presentation/pages/notifications_page.dart';
@@ -33,6 +35,7 @@ import 'package:nexaround_app/features/vendor_portal/presentation/pages/vendor_p
 /// | vendor_request     | vendor_id, enquiry_id     | vendor portal, that request open   |
 /// | vendor_review      | vendor_id, package_id?    | vendor portal, the package/profile |
 /// | explorer_points    | -                         | My Explorer Points                 |
+/// | feedback_reply     | feedback_id               | My feedback (the team's reply)     |
 /// | broadcast, other   | -                         | the bell (push taps only)          |
 class NotificationRouter {
   NotificationRouter._();
@@ -98,6 +101,11 @@ class NotificationRouter {
               vendorId: _id(data, const ['vendor_id']),
               packageId: packageId,
               toProfile: packageId == null));
+        case FeedbackService.pushType:
+          // The team answered something the traveller sent.
+          unawaited(Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const MyFeedbackPage()),
+          ));
         case ExplorerPointsService.pushType:
           // A photo went live or a new level: the traveller's points.
           unawaited(Navigator.of(context).push(

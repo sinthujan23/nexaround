@@ -61,6 +61,9 @@ class OdysseyPlanView extends StatefulWidget {
   /// Called when the user enters/updates the actual cost for a completed activity.
   final void Function(int dayIndex, int activityIndex, String actualCost)? onActualCostChanged;
 
+  /// Shown at the very end of the Itinerary tab (the "How's this plan?" card).
+  final Widget? footer;
+
   const OdysseyPlanView({
     super.key,
     required this.odyssey,
@@ -70,6 +73,7 @@ class OdysseyPlanView extends StatefulWidget {
     this.onSwapPartner,
     this.swappingPartnerName,
     this.onActualCostChanged,
+    this.footer,
   });
 
   @override
@@ -1786,6 +1790,10 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
                   ),
                   const SizedBox(height: 12),
                   _buildBookingSection(context, _dynamicPartners),
+                ],
+                if (widget.footer != null) ...[
+                  const SizedBox(height: 24),
+                  widget.footer!,
                 ],
               ],
             ),

@@ -4,7 +4,7 @@ import { Badge, EmptyState, Modal, PageError, PageLoading, Switch, Toast } from 
 import { EditIcon, PlusIcon, TrashIcon, UsersIcon } from '../components/Icons';
 import { useToast } from '../hooks';
 import {
-  CITY_TOURS, EXPERIENCES, MUSEUMS, SUPPORT_INBOX, TRAVEL_BYTES,
+  CITY_TOURS, EXPERIENCES, FEEDBACK, MUSEUMS, SUPPORT_INBOX, TRAVEL_BYTES,
 } from '../session';
 
 // The areas a login can open, in the order the sidebar shows them.
@@ -14,6 +14,7 @@ const AREAS = [
   [EXPERIENCES, 'Experiences'],
   [CITY_TOURS, 'City Guides'],
   [SUPPORT_INBOX, 'Support inbox'],
+  [FEEDBACK, 'Feedback & surveys'],
 ];
 
 const formatDate = (value) => (value

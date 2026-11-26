@@ -6,6 +6,7 @@ import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/constants/api_constants.dart';
 import 'package:nexaround_app/core/constants/place_bands.dart';
 import 'package:nexaround_app/core/utils/place_sections.dart';
+import 'package:nexaround_app/features/feedback/presentation/widgets/home_feedback_slot.dart';
 import 'package:nexaround_app/core/network/api_client.dart';
 import 'package:nexaround_app/core/widgets/glass_card.dart';
 import 'package:nexaround_app/features/attractions/presentation/pages/attraction_detail_page.dart';
@@ -1132,6 +1133,8 @@ class _LivingMapPageState extends State<LivingMapPage>
                               child: _buildForumBanner(),
                             ),
                           ),
+                          // "Tell us what you want", or the quarterly survey.
+                          const SliverToBoxAdapter(child: HomeFeedbackSlot()),
 
                           /*
                           // Curated For You Shimmer
@@ -1265,6 +1268,8 @@ class _LivingMapPageState extends State<LivingMapPage>
                             child: _buildForumBanner(),
                           ),
                         ),
+                        // "Tell us what you want", or the quarterly survey.
+                        const SliverToBoxAdapter(child: HomeFeedbackSlot()),
 
                         /*
                         // Curated For You

@@ -27,8 +27,9 @@ import Museums from './pages/Museums';
 import MuseumEditor from './pages/MuseumEditor';
 import FeatureUsage from './pages/FeatureUsage';
 import SupportInbox from './pages/SupportInbox';
+import Feedback from './pages/Feedback';
 import {
-  ADMIN, CREATOR, CITY_TOURS, EXPERIENCES, MUSEUMS, SUPPORT_INBOX, TRAVEL_BYTES,
+  ADMIN, CREATOR, CITY_TOURS, EXPERIENCES, FEEDBACK, MUSEUMS, SUPPORT_INBOX, TRAVEL_BYTES,
 } from './session';
 import {
   CompassIcon, UsersIcon, MapPinIcon, CreditCardIcon, MegaphoneIcon, ImageIcon, SettingsIcon,
@@ -54,6 +55,7 @@ export const NAV_SECTIONS = [
     items: [
       { path: '/dashboard', label: 'Dashboard', title: 'Dashboard Overview', icon: CompassIcon, page: Dashboard },
       { path: '/feature-usage', label: 'Feature usage', title: 'Feature Usage', icon: TrendingUpIcon, page: FeatureUsage },
+      { path: '/feedback', label: 'Feedback', title: 'Feedback & Surveys', icon: MegaphoneIcon, page: Feedback, badge: 'feedback', roles: BOTH, section: FEEDBACK },
       { path: '/exclude-keywords', label: 'Exclude Keywords', title: 'Exclude Keywords (Around You)', icon: EyeOffIcon, page: ExcludeKeywords },
       { path: '/media', label: 'Media Library', title: 'Media Library', icon: ImageIcon, page: Media },
       { path: '/stories', label: 'TravelByte Stories', title: 'TravelByte Stories', icon: BookOpenIcon, page: OfficialStories, roles: BOTH, section: TRAVEL_BYTES },

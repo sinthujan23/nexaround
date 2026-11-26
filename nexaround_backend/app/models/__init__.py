@@ -30,6 +30,7 @@ from app.models.open_place import OpenPlace, OpenArea
 from app.models.place_review import PlaceReview
 from app.models.place_photo import PlacePhoto
 from app.models.explorer_points import ExplorerPointEvent
+from app.models.feedback import Feedback, SurveyRound, SurveyResponse, SurveyPrompt
 from app.models.trip_wallet import (
     WalletTrip, WalletMember, WalletExpense, WalletExpenseShare, WalletSettlement,
 )
@@ -61,5 +62,6 @@ __all__ = [
     "Subscription", "SubscriptionEvent",
     "WalletTrip", "WalletMember", "WalletExpense", "WalletExpenseShare",
     "WalletSettlement",
+    "Feedback", "SurveyRound", "SurveyResponse", "SurveyPrompt",
 ]
 

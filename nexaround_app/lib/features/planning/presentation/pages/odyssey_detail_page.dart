@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:nexaround_app/features/explorer_points/data/explorer_points_service.dart';
+import 'package:nexaround_app/features/feedback/presentation/widgets/quick_rating.dart';
 import 'package:nexaround_app/features/explorer_points/presentation/widgets/points_help.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/features/planning/data/odyssey_repository.dart';
@@ -785,7 +786,25 @@ class _OdysseyDetailPageState extends State<OdysseyDetailPage>
                   onSwapPartner: _isEffectivelyReadOnly ? null : _swapPartner,
                   swappingPartnerName: _swappingPartnerName,
                   onActualCostChanged: _isEffectivelyReadOnly ? null : _updateActualCost,
+                  footer: _ratingCard(),
                 ),
+    );
+  }
+
+  /// "How's this plan?" at the end of the itinerary: a finished, saved plan
+  /// that is the traveller's own. Asked once per plan.
+  Widget? _ratingCard() {
+    final id = _odyssey.id;
+    if (id == null || id.isEmpty || widget.isReadOnly || _odyssey.dayPlans.isEmpty) return null;
+    final label = _odyssey.title.isNotEmpty ? _odyssey.title : _odyssey.destination;
+    return QuickRatingCard(
+      key: ValueKey('rate-odyssey-$id'),
+      feature: 'odyssey',
+      refId: id,
+      refLabel: label,
+      title: "How's this plan?",
+      subtitle: 'Your answer helps us make better Odysseys',
+      icon: Icons.auto_awesome_rounded,
     );
   }
 
