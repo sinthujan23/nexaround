@@ -393,7 +393,7 @@ class _SurveySheetState extends State<_SurveySheet> {
           ]),
         ),
         const SizedBox(height: 12),
-        const Text('Help shape the next\nNexAround update',
+        const Text('Help shape the next\nNexARound update',
             textAlign: TextAlign.center,
             style: TextStyle(fontSize: 25, fontWeight: FontWeight.w700, height: 1.2, letterSpacing: -0.3, color: FeedbackUi.ink)),
         const SizedBox(height: 8),
