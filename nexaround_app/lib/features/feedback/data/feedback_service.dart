@@ -104,6 +104,10 @@ class FeedbackService {
   /// reloads and turns back into "Tell us what you want".
   static final ValueNotifier<int> surveyRevision = ValueNotifier<int>(0);
 
+  /// The latest survey state Home loaded, so the "Tell us" button can show
+  /// its badge and survey item without asking the server again.
+  static final ValueNotifier<SurveyState?> surveyState = ValueNotifier<SurveyState?>(null);
+
   static String get _osVersion {
     try {
       final v = '${Platform.operatingSystem} ${Platform.operatingSystemVersion}';

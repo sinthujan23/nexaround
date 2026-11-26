@@ -26,7 +26,11 @@ logger = logging.getLogger(__name__)
 
 # ── Fixed vocabularies (mirrored in the app's feedback_constants.dart) ─────
 
-MESSAGE_TYPES = ("idea", "problem", "love", "other")
+MESSAGE_TYPES = ("suggestion", "improvement", "problem", "love", "other")
+# The first test builds sent "idea". The client asked (2026-11-26) not to call
+# what explorers send an "idea" (an idea taken from a user can bring an IP
+# claim), so it is stored as a suggestion.
+LEGACY_TYPES = {"idea": "suggestion"}
 QUICK_TYPES = ("good", "bad")
 # Things a quick rating can be about.
 QUICK_FEATURES = ("odyssey", "city_guides", "walking_challenge")
@@ -159,13 +163,20 @@ async def check_daily_limit(db: AsyncSession, user_id: uuid.UUID) -> None:
 
 # ── Explorer side: messages and quick ratings ─────────────────────────────
 
+def message_type(raw: str) -> str:
+    """A message's type, with the old "idea" stored as "suggestion"."""
+    t = LEGACY_TYPES.get(raw, raw)
+    if t not in MESSAGE_TYPES:
+        raise HTTPException(status_code=400, detail="Pick what it's about.")
+    return t
+
+
 async def create_message(
     db: AsyncSession, user: User, *, type: str, text: str, screenshots: list[str], can_reply: bool,
     source_screen: Optional[str], feature: Optional[str], ref_id: Optional[str], ref_label: Optional[str],
     app_version: Optional[str], platform: Optional[str], os_version: Optional[str],
 ) -> Feedback:
-    if type not in MESSAGE_TYPES:
-        raise HTTPException(status_code=400, detail="Pick what it's about.")
+    type = message_type(type)
     text = (text or "").strip()
     if len(text) < 2:
         raise HTTPException(status_code=400, detail="Write a few words first.")
@@ -602,8 +613,8 @@ async def reply(db: AsyncSession, item: Feedback, text: str, by: str) -> dict:
         logger.exception("feedback reply push failed for %s", item.id)
     line.push_status = "sent" if sent["push"] else "failed"
 
-    label = {"idea": "Your idea", "problem": "The problem you reported", "love": "Your message",
-             "other": "Your message"}.get(item.type, "Your message")
+    label = {"suggestion": "Your suggestion", "improvement": "What you'd improve",
+             "problem": "The problem you reported"}.get(item.type, "Your message")
     if user.email:
         sent["email"] = await email_service.send_experience_update_email(
             user.email,

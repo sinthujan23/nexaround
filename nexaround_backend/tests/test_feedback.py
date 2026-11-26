@@ -72,6 +72,15 @@ def test_at_most_fifteen_options():
 
 # ── Fixed vocabularies match what the app sends ────────────────────────────
 
+def test_message_types_have_no_idea():
+    # Client, 2026-11-26: "idea" was split into Suggestion and Improvement.
+    assert fb.MESSAGE_TYPES == ("suggestion", "improvement", "problem", "love", "other")
+    assert fb.message_type("idea") == "suggestion"
+    assert fb.message_type("improvement") == "improvement"
+    with pytest.raises(HTTPException):
+        fb.message_type("wish")
+
+
 def test_price_ranges_and_pay_answers():
     assert fb.WOULD_PAY == ("yes", "maybe", "no")
     assert fb.PRICE_RANGES == ("lt2", "2to5", "5to8", "8to12", "gt12")

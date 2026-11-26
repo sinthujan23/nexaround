@@ -8,7 +8,7 @@ import 'package:nexaround_app/features/feedback/feedback_constants.dart';
 import 'package:nexaround_app/features/feedback/presentation/pages/my_feedback_page.dart';
 
 /// Opens "Tell us what you want". [source] says where it was opened from
-/// (home, profile, odyssey, city_guides, walking_challenge); [feature],
+/// (home, tell_us, profile, odyssey, city_guides, walking_challenge); [feature],
 /// [refId] and [refLabel] are set when it follows a "Not great" rating.
 Future<void> openFeedbackPage(
   BuildContext context, {
@@ -62,7 +62,7 @@ class _FeedbackPageState extends State<FeedbackPage> {
   final _service = FeedbackService();
   final _text = TextEditingController();
   final _focus = FocusNode();
-  late String _type = widget.initialType ?? 'idea';
+  late String _type = widget.initialType ?? 'suggestion';
   final List<_Shot> _shots = [];
   bool _canReply = true;
   bool _sending = false;
@@ -171,7 +171,7 @@ class _FeedbackPageState extends State<FeedbackPage> {
               const Text('Tell us what you want',
                   style: TextStyle(fontSize: 28, fontWeight: FontWeight.w700, letterSpacing: -0.4, height: 1.15)),
               const SizedBox(height: 6),
-              const Text('We read every message. The best ideas end up in the app.',
+              const Text('Every message goes straight to the NexAround team.',
                   style: TextStyle(fontSize: 15, color: AppColors.textSecondary, height: 1.4)),
               if (widget.refLabel != null) ...[
                 const SizedBox(height: 14),
@@ -291,7 +291,8 @@ class _FeedbackPageState extends State<FeedbackPage> {
   }
 
   String get _hint => switch (_type) {
-        'idea' => 'What would make NexAround better for you?',
+        'suggestion' => 'What would you like to see in NexAround?',
+        'improvement' => 'What could work better? Where in the app?',
         'problem' => 'What went wrong? Where in the app did it happen?',
         'love' => 'What do you enjoy most?',
         _ => 'Tell us anything…',

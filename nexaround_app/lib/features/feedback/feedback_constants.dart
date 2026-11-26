@@ -19,9 +19,12 @@ class FeedbackVocab {
   static const mint = Color(0xFF5EEAD4);
   static const tint = Color(0xFFE9F6F5);
 
-  /// What a message is about.
+  /// What a message is about. No "Idea": the client asked (2026-11-26) not
+  /// to call what explorers send an idea (an idea taken from a user can bring
+  /// an IP claim), so it is split into Suggestion and Improvement.
   static const types = [
-    FeedbackKind('idea', 'Idea', Icons.lightbulb_rounded, Color(0xFFF59E0B)),
+    FeedbackKind('suggestion', 'Suggestion', Icons.lightbulb_rounded, Color(0xFFF59E0B)),
+    FeedbackKind('improvement', 'Improvement', Icons.trending_up_rounded, Color(0xFF3B82F6)),
     FeedbackKind('problem', 'Problem', Icons.bug_report_rounded, Color(0xFFEF4444)),
     FeedbackKind('love', 'Love it', Icons.favorite_rounded, Color(0xFFEC4899)),
     FeedbackKind('other', 'Other', Icons.chat_bubble_rounded, Color(0xFF64748B)),

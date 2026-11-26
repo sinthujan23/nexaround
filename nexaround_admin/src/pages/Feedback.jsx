@@ -3,6 +3,7 @@ import { apiDownload, apiGet, apiPost } from '../api';
 import {
   BarChartIcon, BugIcon, CrossIcon, HeartIcon, InboxIcon, LightbulbIcon, MegaphoneIcon,
   MessageCircleIcon, RefreshIcon, SearchIcon, SendIcon, SlidersIcon, ThumbsDownIcon, ThumbsUpIcon,
+  TrendingUpIcon,
 } from '../components/Icons';
 import { Toast } from '../components/Kit';
 import { useToast } from '../hooks';
@@ -18,7 +19,8 @@ import {
 // a bell line, a push and an email from support@.
 
 const TYPES = {
-  idea: { label: 'Idea', Icon: LightbulbIcon, tone: 'amber' },
+  suggestion: { label: 'Suggestion', Icon: LightbulbIcon, tone: 'amber' },
+  improvement: { label: 'Improvement', Icon: TrendingUpIcon, tone: 'blue' },
   problem: { label: 'Problem', Icon: BugIcon, tone: 'red' },
   love: { label: 'Love it', Icon: HeartIcon, tone: 'pink' },
   other: { label: 'Other', Icon: MessageCircleIcon, tone: 'slate' },
@@ -29,7 +31,8 @@ const TYPES = {
 const FILTERS = [
   { key: 'all', label: 'All', Icon: InboxIcon },
   { key: 'new', label: 'New', Icon: MegaphoneIcon, countKey: 'new' },
-  { key: 'idea', label: 'Ideas', Icon: LightbulbIcon },
+  { key: 'suggestion', label: 'Suggestions', Icon: LightbulbIcon },
+  { key: 'improvement', label: 'Improvements', Icon: TrendingUpIcon },
   { key: 'problem', label: 'Problems', Icon: BugIcon },
   { key: 'love', label: 'Love it', Icon: HeartIcon },
   { key: 'other', label: 'Other', Icon: MessageCircleIcon },
@@ -47,7 +50,7 @@ const REASONS = {
 };
 
 const SCREENS = {
-  home: 'Home card', profile: 'Profile', odyssey: 'Odyssey plan', city_guides: 'City Guide',
+  home: 'Home card', tell_us: 'Tell us button', profile: 'Profile', odyssey: 'Odyssey plan', city_guides: 'City Guide',
   walking_challenge: 'Walking Challenge', my_feedback: 'My feedback',
 };
 

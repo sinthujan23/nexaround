@@ -65,7 +65,7 @@ async def counts(_: PanelUser = Depends(allow_feedback), db: AsyncSession = Depe
 
 @router.get("/feedback")
 async def list_feedback(
-    filter: Literal["all", "idea", "problem", "love", "other", "quick", "new"] = "all",
+    filter: Literal["all", "suggestion", "improvement", "problem", "love", "other", "quick", "new"] = "all",
     q: str = Query("", max_length=200),
     page: int = Query(1, ge=1, le=500),
     _: PanelUser = Depends(allow_feedback),

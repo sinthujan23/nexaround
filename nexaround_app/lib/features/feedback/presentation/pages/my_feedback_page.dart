@@ -93,7 +93,7 @@ class _MyFeedbackPageState extends State<MyFeedbackPage> {
           SizedBox(height: 14),
           Text('Nothing sent yet', textAlign: TextAlign.center, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
           SizedBox(height: 6),
-          Text('Your ideas and the team\'s replies show here.',
+          Text('Your messages and the team\'s replies show here.',
               textAlign: TextAlign.center, style: TextStyle(color: AppColors.textSecondary)),
         ],
       );

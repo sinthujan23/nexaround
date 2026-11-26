@@ -5,8 +5,8 @@ them, and whether they would pay. Three kinds of input, all read in the admin
 panel's Feedback page:
 
 - `Feedback` kind "message": the "Tell us what you want" form (Home card,
-  Profile row): an idea, a problem, praise or anything else, with optional
-  screenshots. The team can answer when the explorer allowed it.
+  Home "Tell us" button, Profile row): a suggestion, an improvement, a
+  problem, praise or anything else, with optional screenshots. The team can answer when the explorer allowed it.
 - `Feedback` kind "quick": one tap after finishing something (an Odyssey plan,
   a City Guide trip, a Walking Challenge): good or bad, plus optional reasons.
   One per explorer per finished thing.
@@ -50,7 +50,7 @@ class Feedback(Base):
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True,
     )
     kind: Mapped[str] = mapped_column(String(10), nullable=False, default="message")
-    # message: idea | problem | love | other.  quick: good | bad.
+    # message: suggestion | improvement | problem | love | other.  quick: good | bad.
     type: Mapped[str] = mapped_column(String(12), nullable=False)
     text: Mapped[str] = mapped_column(Text, nullable=True)
     # Quick "bad" reasons, e.g. ["too_far", "clues_hard"].

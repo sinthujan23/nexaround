@@ -51,6 +51,7 @@ class _HomeFeedbackSlotState extends State<HomeFeedbackSlot> {
       final s = await _service.currentSurvey();
       if (!mounted) return;
       setState(() => _survey = s);
+      FeedbackService.surveyState.value = s;
       _timer?.cancel();
       if (s.showTicket && s.autoShow && !_poppedThisRun) _timer = Timer(_popUpAfter, _maybePopUp);
     } catch (_) {
@@ -232,7 +233,7 @@ class _YourVoiceCard extends StatelessWidget {
                 const SizedBox(height: 4),
                 const Padding(
                   padding: EdgeInsets.only(right: 90),
-                  child: Text('Ideas, problems or wishes. The team reads every one.',
+                  child: Text('Suggestions, problems or wishes. The team reads every one.',
                       style: TextStyle(fontSize: 13, color: Color(0xFF4B5A5A), height: 1.4)),
                 ),
                 const SizedBox(height: 14),
@@ -241,7 +242,9 @@ class _YourVoiceCard extends StatelessWidget {
                     child: SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
                       child: Row(children: [
-                        typeButton('idea'),
+                        typeButton('suggestion'),
+                        const SizedBox(width: 7),
+                        typeButton('improvement'),
                         const SizedBox(width: 7),
                         typeButton('problem'),
                         const SizedBox(width: 7),

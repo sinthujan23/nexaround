@@ -7,6 +7,7 @@ import 'package:nexaround_app/core/constants/api_constants.dart';
 import 'package:nexaround_app/core/constants/place_bands.dart';
 import 'package:nexaround_app/core/utils/place_sections.dart';
 import 'package:nexaround_app/features/feedback/presentation/widgets/home_feedback_slot.dart';
+import 'package:nexaround_app/features/feedback/presentation/widgets/tell_us_button.dart';
 import 'package:nexaround_app/core/network/api_client.dart';
 import 'package:nexaround_app/core/widgets/glass_card.dart';
 import 'package:nexaround_app/features/attractions/presentation/pages/attraction_detail_page.dart';
@@ -1330,7 +1331,9 @@ class _LivingMapPageState extends State<LivingMapPage>
                       ];
                     }(),
 
-                    const SliverToBoxAdapter(child: SizedBox(height: 90)),
+                    // Room for the menu bar and the Tell us button above it,
+                    // so the last card can scroll clear of both.
+                    const SliverToBoxAdapter(child: SizedBox(height: 180)),
                   ],
                 ),
               ),
@@ -1346,6 +1349,15 @@ class _LivingMapPageState extends State<LivingMapPage>
                   },
                 ),
               ),
+
+              // "Tell us": feedback and the quarterly survey, always in reach
+              // (the nearby-place alert takes the same spot while it shows).
+              if (!(_showProximityAlert && masterAttractions.isNotEmpty))
+                const Positioned(
+                  right: TellUsButton.right,
+                  bottom: TellUsButton.bottom,
+                  child: TellUsButton(),
+                ),
 
               // Proximity alert bottom sheet
               if (_showProximityAlert && masterAttractions.isNotEmpty)
