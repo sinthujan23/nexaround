@@ -102,6 +102,8 @@ class _FeedbackPageState extends State<FeedbackPage> {
     final picked = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
+      // The sheet draws its own bar; the app theme would add a second one.
+      showDragHandle: false,
       backgroundColor: Colors.transparent,
       builder: (_) => _TypeSheet(selected: _type),
     );

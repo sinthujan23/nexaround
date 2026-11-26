@@ -413,6 +413,8 @@ Future<void> showQuickRatingSheet(
   await showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
+    // The sheet draws its own bar; the app theme would add a second one.
+    showDragHandle: false,
     backgroundColor: Colors.white,
     shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
     builder: (_) => _QuickRatingSheet(feature: feature, refId: refId, refLabel: refLabel, title: title, question: question),

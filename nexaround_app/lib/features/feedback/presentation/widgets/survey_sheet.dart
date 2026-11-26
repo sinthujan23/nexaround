@@ -12,6 +12,8 @@ Future<void> showSurveySheet(BuildContext context, SurveyRound round) async {
   await showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
+    // The sheet draws its own bar; the app theme would add a second one.
+    showDragHandle: false,
     backgroundColor: Colors.white,
     shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
     builder: (_) => _SurveySheet(round: round, onAnswered: () => answered = true),
@@ -90,8 +92,9 @@ class _SurveySheetState extends State<_SurveySheet> {
     }
   }
 
-  /// The start and thank-you screens are only as tall as their content; the
-  /// questions get a tall sheet with their content starting at the top.
+  /// Every screen is only as tall as its content (up to 90% of the screen,
+  /// then it scrolls), so no screen has empty space under its last item.
+  /// The sheet's height eases from one question to the next.
   @override
   Widget build(BuildContext context) {
     final mq = MediaQuery.of(context);
@@ -101,16 +104,17 @@ class _SurveySheetState extends State<_SurveySheet> {
       height: 5,
       decoration: BoxDecoration(color: const Color(0xFFC9D3D2), borderRadius: BorderRadius.circular(3)),
     );
-    final Widget body = question
-        ? SizedBox(
-            height: mq.size.height * 0.86,
-            child: Column(
-              children: [
-                handle,
-                const SizedBox(height: 14),
-                _header(),
-                Expanded(
-                  child: AnimatedSwitcher(
+    final body = ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: mq.size.height * 0.9),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          handle,
+          SizedBox(height: question ? 14 : 18),
+          if (question) _header(),
+          Flexible(
+            child: question
+                ? AnimatedSwitcher(
                     duration: const Duration(milliseconds: 220),
                     layoutBuilder: (current, previous) => Stack(
                       alignment: Alignment.topCenter,
@@ -124,21 +128,13 @@ class _SurveySheetState extends State<_SurveySheet> {
                       ),
                     ),
                     child: KeyedSubtree(key: ValueKey(_step), child: _content()),
-                  ),
-                ),
-                _footer(),
-              ],
-            ),
-          )
-        : Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              handle,
-              const SizedBox(height: 18),
-              Flexible(child: SingleChildScrollView(child: _step == 0 ? _intro() : _thanks())),
-              _footer(),
-            ],
-          );
+                  )
+                : SingleChildScrollView(child: _step == 0 ? _intro() : _thanks()),
+          ),
+          _footer(),
+        ],
+      ),
+    );
     return Padding(
       padding: EdgeInsets.only(bottom: mq.viewInsets.bottom),
       child: SafeArea(
@@ -229,7 +225,7 @@ class _SurveySheetState extends State<_SurveySheet> {
     }
     final last = _step == _questions;
     return Padding(
-      padding: const EdgeInsets.only(top: 10),
+      padding: const EdgeInsets.only(top: 16),
       child: FeedbackPrimaryButton(
         label: _sending ? 'Sending…' : last ? 'Send answers' : 'Next',
         icon: last ? Icons.send_rounded : Icons.arrow_forward_rounded,
